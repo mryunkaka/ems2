@@ -1,0 +1,239 @@
+[29-Dec-2025 13:56:42 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 13:59:09 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 13:59:14 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 13:59:27 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 13:59:31 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 14:00:17 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 14:02:37 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 14:02:41 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 14:09:39 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 14:52:56 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 15:00:58 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:271
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(271): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 271
+[29-Dec-2025 15:12:46 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:284
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(284): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 284
+[29-Dec-2025 15:12:55 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:284
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(284): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 284
+[29-Dec-2025 15:13:00 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '' for key 'uniq_tx_hash' in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php:284
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(284): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 284
+[05-Jan-2026 20:14:52 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 20:14:56 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 22:47:48 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 22:47:53 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 22:48:06 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 22:48:36 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[05-Jan-2026 22:48:42 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[06-Jan-2026 09:45:39 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[06-Jan-2026 14:50:24 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[06-Jan-2026 14:50:37 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[06-Jan-2026 16:01:41 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:01:43 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:01:44 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:03:00 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:03:09 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:03:10 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:03:11 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:04:49 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:04:49 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:04:50 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[06-Jan-2026 16:06:43 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:113
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(113): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 113
+[07-Jan-2026 02:39:09 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[07-Jan-2026 02:39:12 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[07-Jan-2026 02:39:14 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[07-Jan-2026 11:05:04 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[07-Jan-2026 11:05:07 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'name_before' in 'INSERT INTO' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:141
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(141): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 141
+[09-Jan-2026 21:14:40 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'kode_nomor_induk_rs' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php:111
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/setting_akun_action.php(111): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/setting_akun_action.php on line 111
+[11-Jan-2026 20:50:46 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:46 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/index.php(8): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[13-Feb-2026 08:31:15 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1052 Column 'created_at' in WHERE is ambiguous in /home/hark8423/public_html/ems/dashboard/reimbursement.php:87
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/reimbursement.php(87): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/reimbursement.php on line 87
+[13-Feb-2026 08:31:19 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1052 Column 'created_at' in WHERE is ambiguous in /home/hark8423/public_html/ems/dashboard/reimbursement.php:87
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/reimbursement.php(87): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/reimbursement.php on line 87
+[13-Feb-2026 08:31:51 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1052 Column 'created_at' in WHERE is ambiguous in /home/hark8423/public_html/ems/dashboard/reimbursement.php:87
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/reimbursement.php(87): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/reimbursement.php on line 87
+[13-Feb-2026 08:32:18 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[23000]: Integrity constraint violation: 1052 Column 'created_at' in WHERE is ambiguous in /home/hark8423/public_html/ems/dashboard/reimbursement.php:87
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/reimbursement.php(87): PDOStatement->execute()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/reimbursement.php on line 87
+[24-Feb-2026 20:16:54 Asia/Jakarta] [PUSH FAILED] Client error: `POST https://fcm.googleapis.com/fcm/send/eN2VjEpwsD8:APA91bGHTdWFct8YR-MEmO6IGtde3QUQmfuuz6jehZnL26h4PgPbrlyxXJlUzg5GmF466dOFI38qQ-gJBwseZ5rRyXJMr0FKhpYJCWnY6ey-1e34X-QVT7Irfpi_SZjRxh2h7A205UO-` resulted in a `410 Gone` response:
+push subscription has unsubscribed or expired.
+
+ | https://fcm.googleapis.com/fcm/send/eN2VjEpwsD8:APA91bGHTdWFct8YR-MEmO6IGtde3QUQmfuuz6jehZnL26h4PgPbrlyxXJlUzg5GmF466dOFI38qQ-gJBwseZ5rRyXJMr0FKhpYJCWnY6ey-1e34X-QVT7Irfpi_SZjRxh2h7A205UO-
+[24-Feb-2026 20:44:07 Asia/Jakarta] [PUSH FAILED] Client error: `POST https://fcm.googleapis.com/fcm/send/eN2VjEpwsD8:APA91bGHTdWFct8YR-MEmO6IGtde3QUQmfuuz6jehZnL26h4PgPbrlyxXJlUzg5GmF466dOFI38qQ-gJBwseZ5rRyXJMr0FKhpYJCWnY6ey-1e34X-QVT7Irfpi_SZjRxh2h7A205UO-` resulted in a `410 Gone` response:
+push subscription has unsubscribed or expired.
+
+ | https://fcm.googleapis.com/fcm/send/eN2VjEpwsD8:APA91bGHTdWFct8YR-MEmO6IGtde3QUQmfuuz6jehZnL26h4PgPbrlyxXJlUzg5GmF466dOFI38qQ-gJBwseZ5rRyXJMr0FKhpYJCWnY6ey-1e34X-QVT7Irfpi_SZjRxh2h7A205UO-

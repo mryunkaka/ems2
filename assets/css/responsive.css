@@ -1,0 +1,1195 @@
+/* =========================================================
+   EMS RESPONSIVE.CSS — MEDIA QUERIES
+   ========================================================= */
+/* 
+   FUNGSI FILE INI:
+   - Responsive Breakpoints untuk semua komponen
+   - Large Desktop (≥ 1440px)
+   - Desktop & Laptop (≤ 1439px)
+   - Large Tablet (≤ 1199px)
+   - Tablet Landscape (≤ 1023px)
+   - Tablet Portrait (≤ 900px)
+   - Mobile & Small Tablet (≤ 768px)
+   - Mobile (≤ 640px)
+   - Small Mobile (≤ 480px)
+   - Extra Small Mobile (≤ 375px, ≤ 320px)
+   - Login Page Responsive
+   - Modal Responsive
+   - Identity Card Responsive
+   - Lightbox Responsive
+   - iOS Safari Fixes
+   ========================================================= */
+
+/* =========================================================
+   LARGE DESKTOP (≥ 1440px)
+   ========================================================= */
+@media (min-width: 1440px) {
+  .page {
+    max-width: 1320px;
+  }
+
+  .card {
+    padding: 22px;
+  }
+}
+
+/* =========================================================
+   DESKTOP & LAPTOP (≤ 1439px)
+   ========================================================= */
+@media (max-width: 1439px) {
+  .page {
+    max-width: 1200px;
+  }
+}
+
+/* =========================================================
+   LARGE TABLET (≤ 1199px)
+   ========================================================= */
+@media (max-width: 1199px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Login Page */
+  .login-card {
+    max-width: 460px;
+  }
+}
+
+/* =========================================================
+   TABLET LANDSCAPE (≤ 1023px)
+   ========================================================= */
+@media (max-width: 1023px) {
+  .sidebar {
+    width: 220px;
+  }
+
+  .sidebar.open ~ .main-content .content {
+    margin-left: 220px;
+  }
+
+  .page {
+    max-width: 100%;
+  }
+
+  .card {
+    border-radius: 14px;
+  }
+
+  /* Identity Modal - Tablet */
+  .modal-card {
+    max-width: 720px;
+  }
+
+  .history-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 240px;
+    height: 180px;
+  }
+}
+
+/* =========================================================
+   TABLET PORTRAIT (≤ 900px)
+   ========================================================= */
+@media (max-width: 900px) {
+  .row-form-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .card-header-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* Login Page */
+  .login-wrapper {
+    padding: 30px;
+  }
+
+  .login-card {
+    max-width: 520px;
+    padding: 38px 32px;
+  }
+
+  .login-wrapper .brand img {
+    width: 84px;
+    height: 84px;
+  }
+
+  .login-wrapper .brand h2 {
+    font-size: 23px;
+  }
+
+  .login-wrapper form h3 {
+    font-size: 21px;
+  }
+}
+
+/* =========================================================
+   MOBILE & SMALL TABLET (≤ 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  /* Typography */
+  h1 {
+    font-size: 20px;
+  }
+
+  /* Layout */
+  .main-content {
+    padding-top: 76px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .content {
+    margin-left: 0 !important;
+    padding: 16px;
+  }
+
+  .sidebar {
+    width: 85%;
+  }
+
+  /* Cards */
+  .card {
+    padding: 16px;
+  }
+
+  /* Dashboard */
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Total Display */
+  .total-display {
+    border-radius: 16px;
+  }
+
+  .total-amount {
+    font-size: 28px;
+  }
+
+  /* Buttons */
+  .btn,
+  button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn + .btn,
+  button + button {
+    margin-top: 6px;
+  }
+
+  /* Card Header Actions */
+  .card-header-actions-right {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .card-header-actions-right a,
+  .card-header-actions-right button,
+  .card-header-actions-right form {
+    width: 100%;
+  }
+
+  .card-header-actions-right a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Card Header Flex */
+  .card-header-flex {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-header-flex form {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .card-header-flex button,
+  .card-header-flex a {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Filter Bar */
+  .filter-group {
+    flex: 100%;
+  }
+
+  /* Table Mobile Optimization */
+  table,
+  .table-custom,
+  .table-wrapper-sm table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: auto;
+  }
+
+  .table-wrapper-sm {
+    overflow-x: visible !important;
+    margin-left: -16px;
+    margin-right: -16px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .table-custom {
+    font-size: 12px;
+  }
+
+  .table-custom th,
+  .table-custom td {
+    padding: 10px 8px;
+    font-size: 12px;
+    word-wrap: break-word;
+    white-space: normal !important;
+  }
+
+  .table-custom th {
+    background: rgba(14, 165, 233, 0.15);
+  }
+
+  .table-custom th:first-child,
+  .table-custom td:first-child {
+    width: 60%;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .table-custom th:last-child,
+  .table-custom td:last-child {
+    width: 40%;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  /* Identity Modal - Mobile */
+  .modal-overlay {
+    padding: 16px;
+  }
+
+  /* Document Preview Modal - Mobile */
+  #docPreviewModal .modal-card {
+    max-width: 100%;
+    height: 90vh;
+  }
+
+  #docPreviewModal .modal-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  #docPreviewModal .modal-header > div {
+    flex-wrap: wrap;
+  }
+
+  .zoom-control-btn {
+    width: 32px !important;
+    height: 28px !important;
+    font-size: 12px;
+  }
+
+  #docPreviewImage {
+    max-height: 70vh !important;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    max-height: 90vh;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+  }
+
+  .modal-header strong {
+    font-size: 16px;
+  }
+
+  .modal-body {
+    padding: 20px;
+  }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 220px;
+    height: 160px;
+  }
+
+  /* Lightbox Mobile */
+  .image-lightbox {
+    padding: 15px;
+  }
+
+  /* Document Preview - Small Mobile */
+  #docPreviewModal .modal-header {
+    padding: 10px 12px;
+  }
+
+  #docPreviewModal .modal-header strong {
+    font-size: 13px;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+
+  .zoom-control-btn {
+    width: 28px !important;
+    height: 26px !important;
+    font-size: 11px;
+  }
+
+  #docPreviewImage {
+    max-height: 65vh !important;
+  }
+
+  .lightbox-close {
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+
+  .lightbox-caption {
+    position: fixed;
+    bottom: 20px;
+    font-size: 13px;
+  }
+}
+
+/* =========================================================
+   MOBILE (≤ 640px)
+   ========================================================= */
+@media (max-width: 640px) {
+  /* Dashboard */
+  .dashboard-card {
+    min-height: 100px;
+  }
+
+  /* Search */
+  .search-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-actions {
+    width: 100%;
+  }
+
+  .search-actions .btn {
+    flex: 1;
+  }
+
+  /* Modal */
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-box {
+    max-width: 100%;
+    border-radius: 12px;
+    margin: 16px;
+  }
+
+  .modal-actions {
+    flex-direction: row;
+  }
+
+  .modal-actions button {
+    height: 44px;
+  }
+
+  /* Table */
+  .table-custom th,
+  .table-custom td {
+    font-size: 12px;
+  }
+}
+
+/* =========================================================
+   MOBILE LARGE (481px - 599px) - LOGIN
+   ========================================================= */
+@media (max-width: 599px) and (min-width: 481px) {
+  .login-wrapper {
+    padding: 24px;
+  }
+
+  .login-card {
+    max-width: 100%;
+    padding: 34px 28px;
+  }
+
+  .login-wrapper .brand img {
+    width: 76px;
+    height: 76px;
+  }
+
+  .login-wrapper .brand h2 {
+    font-size: 21px;
+  }
+
+  .login-wrapper input,
+  .login-wrapper select,
+  .login-wrapper button {
+    padding: 16px;
+    font-size: 16px;
+  }
+
+  /* Identity Modal */
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    max-height: 92vh;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+  }
+
+  .modal-header {
+    padding: 14px 18px;
+  }
+
+  .modal-header strong {
+    font-size: 15px;
+  }
+
+  .modal-header strong::before {
+    font-size: 20px;
+  }
+
+  .modal-body {
+    padding: 18px;
+  }
+
+  .identity-wrapper {
+    gap: 20px;
+  }
+
+  .identity-section-title {
+    font-size: 15px;
+  }
+
+  .identity-section-title::before {
+    font-size: 18px;
+  }
+
+  .identity-card {
+    padding: 16px;
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 200px;
+    height: 150px;
+  }
+
+  .identity-detail-row {
+    grid-template-columns: 100px 1fr;
+    gap: 10px;
+  }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   SMALL MOBILE (≤ 480px)
+   ========================================================= */
+@media (max-width: 480px) {
+  /* Document Upload - Mobile */
+  .doc-upload-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .doc-status-badge {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .file-upload-label {
+    padding: 12px 14px;
+  }
+
+  .file-icon {
+    font-size: 24px;
+  }
+
+  .file-text strong {
+    font-size: 13px;
+  }
+
+  .file-text small {
+    font-size: 11px;
+  }
+
+  .selected-file-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .selected-file-info strong {
+    font-size: 12px;
+  }
+  /* Layout */
+  .main-content {
+    padding-top: 80px;
+  }
+
+  /* Typography */
+  h1 {
+    font-size: 18px;
+  }
+
+  /* Cards */
+  .card {
+    padding: 12px;
+  }
+
+  /* Forms */
+  label {
+    font-size: 12px;
+  }
+
+  input,
+  select {
+    font-size: 16px;
+  }
+
+  /* Total Display */
+  .total-amount {
+    font-size: 24px;
+  }
+
+  /* Topbar */
+  .topbar-title {
+    font-size: 13px;
+  }
+
+  .topbar-subtitle {
+    font-size: 10px;
+  }
+
+  .topbar-logo {
+    width: 32px;
+    height: 32px;
+    padding: 5px;
+  }
+
+  /* Table Extra Compact */
+  .table-wrapper-sm {
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+
+  .table-custom {
+    font-size: 11px;
+  }
+
+  .table-custom th,
+  .table-custom td {
+    padding: 8px 6px;
+    font-size: 11px;
+  }
+
+  .table-custom th:first-child,
+  .table-custom td:first-child {
+    width: 55%;
+  }
+
+  .table-custom th:last-child,
+  .table-custom td:last-child {
+    width: 45%;
+  }
+
+  /* Login Page */
+  .login-wrapper {
+    padding: 20px;
+  }
+
+  .login-card {
+    max-width: 100%;
+    padding: 32px 26px;
+    border-radius: 22px;
+  }
+
+  .login-wrapper .brand img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .login-wrapper .brand h2 {
+    font-size: 20px;
+  }
+
+  .login-wrapper form h3 {
+    font-size: 19px;
+  }
+
+  .login-wrapper input,
+  .login-wrapper select {
+    padding: 15px;
+    font-size: 16px;
+  }
+
+  .login-wrapper button {
+    padding: 15px;
+    font-size: 16px;
+  }
+
+  .login-wrapper .switch {
+    font-size: 14px;
+  }
+
+  /* Identity Modal - Small Mobile */
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-start;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    max-height: 94vh;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    padding: 12px 16px;
+  }
+
+  .modal-header strong {
+    font-size: 14px;
+  }
+
+  .modal-header strong::before {
+    font-size: 18px;
+  }
+
+  .modal-header button {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .identity-wrapper {
+    gap: 18px;
+  }
+
+  .identity-section-title {
+    font-size: 14px;
+    gap: 6px;
+  }
+
+  .identity-section-title::before {
+    font-size: 16px;
+  }
+
+  .history-count-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    margin-left: 6px;
+  }
+
+  .identity-card {
+    padding: 14px;
+    border-radius: 10px;
+  }
+
+  .identity-card-header {
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 180px;
+    height: 140px;
+    margin-bottom: 14px;
+  }
+
+  .identity-no-photo {
+    font-size: 13px;
+  }
+
+  .identity-details {
+    gap: 10px;
+  }
+
+  .identity-detail-row {
+    grid-template-columns: 90px 1fr;
+    gap: 8px;
+    padding: 8px 0;
+  }
+
+  .identity-label {
+    font-size: 12px;
+  }
+
+  .identity-value {
+    font-size: 14px;
+  }
+
+  .identity-status-badge {
+    padding: 5px 12px;
+    font-size: 11px;
+  }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  /* Lightbox */
+  .image-lightbox {
+    padding: 10px;
+  }
+
+  .lightbox-close {
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    top: 10px;
+    right: 10px;
+  }
+
+  .lightbox-image {
+    border-radius: 8px;
+  }
+
+  .lightbox-caption {
+    font-size: 12px;
+    bottom: 15px;
+  }
+}
+
+/* =========================================================
+   EXTRA SMALL MOBILE (≤ 375px)
+   ========================================================= */
+@media (max-width: 375px) {
+  /* Login Page */
+  .login-wrapper {
+    padding: 16px;
+  }
+
+  .login-card {
+    max-width: 100%;
+    padding: 28px 22px;
+    border-radius: 20px;
+  }
+
+  .login-wrapper .brand img {
+    width: 68px;
+    height: 68px;
+  }
+
+  .login-wrapper .brand h2 {
+    font-size: 19px;
+  }
+
+  .login-wrapper .brand p {
+    font-size: 13px;
+  }
+
+  .login-wrapper form h3 {
+    font-size: 18px;
+  }
+
+  .login-wrapper input,
+  .login-wrapper select {
+    padding: 14px 16px;
+    font-size: 16px;
+  }
+
+  .login-wrapper button {
+    padding: 14px;
+    font-size: 15px;
+  }
+
+  .login-wrapper .switch {
+    font-size: 13px;
+  }
+
+  .login-wrapper .notif {
+    font-size: 14px;
+    padding: 14px 16px;
+  }
+
+  /* Identity Modal */
+  .modal-overlay {
+    padding: 8px;
+    align-items: flex-start;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    max-height: 95vh;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+  }
+
+  .modal-header {
+    padding: 12px 14px;
+  }
+
+  .modal-header strong {
+    font-size: 13px;
+  }
+
+  .modal-header strong::before {
+    font-size: 16px;
+  }
+
+  .modal-header button {
+    width: 26px;
+    height: 26px;
+    font-size: 14px;
+  }
+
+  .modal-body {
+    padding: 14px;
+  }
+
+  .identity-wrapper {
+    gap: 16px;
+  }
+
+  .identity-section-title {
+    font-size: 13px;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+  }
+
+  .identity-section-title::before {
+    font-size: 15px;
+  }
+
+  .history-count-badge {
+    font-size: 10px;
+    padding: 3px 7px;
+    margin-left: 4px;
+  }
+
+  .identity-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .identity-card-header {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 160px;
+    height: 120px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+  }
+
+  .identity-no-photo {
+    font-size: 12px;
+  }
+
+  .identity-details {
+    gap: 8px;
+  }
+
+  .identity-detail-row {
+    grid-template-columns: 80px 1fr;
+    gap: 8px;
+    padding: 7px 0;
+  }
+
+  .identity-label {
+    font-size: 11px;
+  }
+
+  .identity-value {
+    font-size: 13px;
+  }
+
+  .identity-status-badge {
+    padding: 4px 10px;
+    font-size: 10px;
+    gap: 4px;
+  }
+
+  .badge-active-status::before {
+    font-size: 12px;
+  }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* =========================================================
+   EXTRA SMALL (≤ 320px)
+   ========================================================= */
+@media (max-width: 320px) {
+  /* Login Page */
+  .login-wrapper {
+    padding: 12px;
+  }
+
+  .login-card {
+    padding: 24px 18px;
+  }
+
+  .login-wrapper .brand img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .login-wrapper .brand h2 {
+    font-size: 18px;
+  }
+
+  .login-wrapper input,
+  .login-wrapper select,
+  .login-wrapper button {
+    padding: 13px 15px;
+  }
+
+  /* Identity Modal */
+  .modal-overlay {
+    padding: 6px;
+  }
+
+  .modal-card {
+    margin-top: 6px;
+    margin-bottom: 6px;
+    border-radius: 10px;
+  }
+
+  .modal-header {
+    padding: 10px 12px;
+  }
+
+  .modal-header strong {
+    font-size: 12px;
+  }
+
+  .modal-body {
+    padding: 12px;
+  }
+
+  .identity-photo,
+  .identity-no-photo {
+    max-width: 140px;
+    height: 110px;
+  }
+
+  .identity-detail-row {
+    grid-template-columns: 70px 1fr;
+    gap: 6px;
+  }
+
+  .identity-label {
+    font-size: 10px;
+  }
+
+  .identity-value {
+    font-size: 12px;
+  }
+}
+
+/* =========================================================
+   iOS SAFARI FIXES
+   ========================================================= */
+@supports (-webkit-touch-callout: none) {
+  /* General iOS Fixes */
+  input,
+  select {
+    font-size: 16px;
+  }
+
+  .glass-effect,
+  .topbar {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .sidebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  input,
+  select,
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Login Page iOS */
+  .login-wrapper input,
+  .login-wrapper select {
+    font-size: 16px !important;
+  }
+
+  .login-wrapper input,
+  .login-wrapper select,
+  .login-wrapper button,
+  .login-wrapper a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .login-wrapper {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modal iOS */
+  .modal-overlay {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-body {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-card {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
+/* =========================================================
+   PREVENT ZOOM ON MOBILE
+   ========================================================= */
+@media (max-width: 768px) {
+  .login-wrapper input[type="text"],
+  .login-wrapper input[type="password"],
+  .login-wrapper select,
+  input[type="text"],
+  input[type="password"],
+  select {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .medic-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .status-badge {
+    font-size: 11px;
+    padding: 5px 12px;
+  }
+}
+
+/* =========================================
+   FORCE OFFLINE BUTTON — OVERRIDE MOBILE WIDTH
+   ========================================= */
+@media (max-width: 768px) {
+  .btn-force-offline {
+    width: auto !important; /* ⬅️ INI KUNCI UTAMA */
+    max-width: none;
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-force-offline {
+    width: auto !important;
+  }
+}
+
+/* =========================================================
+   MOBILE REFINEMENT — ONLINE MEDICS CARD
+   ========================================================= */
+@media (max-width: 480px) {
+  .online-medic-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 6px;
+  }
+
+  /* Bagian kiri (nama + role + badge) */
+  .medic-main {
+    width: 100%;
+  }
+
+  .medic-main strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .medic-role {
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  /* Badge row */
+  .weekly-badge,
+  .weekly-online {
+    margin-left: 0;
+    margin-right: 6px;
+    margin-top: 4px;
+  }
+
+  /* Statistik kanan → jadi full width */
+  .medic-stats {
+    width: 100%;
+    text-align: left;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+  }
+
+  .medic-stats .tx {
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .medic-stats .amount {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  /* Force Offline pindah ke bawah */
+  .btn-force-offline {
+    margin-left: 0;
+    margin-top: 6px;
+    align-self: flex-start;
+  }
+}

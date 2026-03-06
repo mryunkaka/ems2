@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.*
+
+# Runtime / generated
+storage/
+backup/
+node_modules/
+vendor/
+
+# Host/control files
+.ftpquota
+
+# Logs & dumps
+*.log
+*.sql
+cron/error_log
+actions/error_log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

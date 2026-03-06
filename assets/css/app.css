@@ -1,0 +1,269 @@
+/* =========================================================
+   EMS APP.CSS — FOUNDATION & VARIABLES
+   ========================================================= */
+/* 
+   FUNGSI FILE INI:
+   - CSS Reset & Normalization
+   - Root Theme Variables (Colors, Gradients, Surfaces)
+   - Base Typography Styles
+   - Global Utility Classes
+   - Scrollbar Styling
+   - Global Animations
+   ========================================================= */
+
+/* =========================================================
+   CSS RESET
+   ========================================================= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+/* =========================================================
+   ROOT THEME VARIABLES
+   ========================================================= */
+:root {
+  /* Background Gradient */
+  --ml-bg-start: #0c4a6e;
+  --ml-bg-mid: #075985;
+  --ml-bg-end: #0369a1;
+
+  /* Primary Theme */
+  --ml-primary: #0ea5e9;
+  --ml-primary-700: #0284c7;
+  --ml-accent: #06b6d4;
+
+  /* Semantic Colors */
+  --ml-success: #10b981;
+  --ml-warning: #f59e0b;
+  --ml-danger: #ef4444;
+
+  /* Surface / Glass */
+  --ml-surface: rgba(255, 255, 255, 0.92);
+  --ml-surface-soft: rgba(255, 255, 255, 0.85);
+  --ml-border: rgba(14, 165, 233, 0.35);
+
+  /* Text */
+  --ml-text-main: #0f172a;
+  --ml-text-muted: #64748b;
+}
+
+/* =========================================================
+   BODY BASE
+   ========================================================= */
+body {
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ml-text-main);
+  background: linear-gradient(
+    180deg,
+    var(--ml-bg-start),
+    var(--ml-bg-mid),
+    var(--ml-bg-end)
+  );
+  min-height: 100vh;
+}
+
+/* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+h1 {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 0 0 6px;
+}
+
+h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+
+p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ml-text-muted);
+}
+
+small {
+  font-size: 12px;
+  color: var(--ml-text-muted);
+}
+
+/* =========================================================
+   LINKS
+   ========================================================= */
+a {
+  color: var(--ml-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--ml-primary-700);
+  text-decoration: underline;
+}
+
+/* =========================================================
+   UTILITY CLASSES
+   ========================================================= */
+.glass-effect {
+  background: var(--ml-surface);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--ml-border);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--ml-primary), var(--ml-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 700;
+}
+
+.text-muted {
+  color: var(--ml-text-muted);
+  font-size: 13px;
+}
+
+.small {
+  font-size: 12px;
+  color: var(--ml-text-muted);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* =========================================================
+   SCROLLBAR
+   ========================================================= */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(14, 165, 233, 0.45);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(14, 165, 233, 0.65);
+}
+
+/* =========================================================
+   TABLE RESET
+   ========================================================= */
+table {
+  border-spacing: 0;
+}
+
+th {
+  text-align: left;
+}
+
+/* =========================================================
+   FORM BASE
+   ========================================================= */
+input,
+select,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+@keyframes subtle-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.subtle-float {
+  animation: subtle-float 6s ease-in-out infinite;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideFade {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
