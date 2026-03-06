@@ -16,7 +16,7 @@ vendor/
 *.sql
 cron/error_log
 actions/error_log
-database.php
+config/database.php
 
 # IDE / OS
 .vscode/
