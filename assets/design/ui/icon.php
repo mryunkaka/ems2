@@ -1,0 +1,45 @@
+<?php
+
+function ems_icon(string $name, string $classes = 'h-5 w-5', string $stroke = '1.8'): string
+{
+    $paths = [
+        'bars-3' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M3.75 12h16.5M3.75 18.75h16.5" />',
+        'bell' => '<path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9a6 6 0 1 0-12 0v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.082 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />',
+        'inbox' => '<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 13.5v3a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25v-3m16.5 0-2.574-7.724A2.25 2.25 0 0 0 15.54 4.5H8.46a2.25 2.25 0 0 0-2.136 1.276L3.75 13.5m16.5 0h-4.523a1.125 1.125 0 0 1-1.09-.818l-.49-1.764a.75.75 0 0 0-.724-.543H10.58a.75.75 0 0 0-.723.543l-.49 1.764a1.125 1.125 0 0 1-1.09.818H3.75" />',
+        'home' => '<path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75V19.5A2.25 2.25 0 0 0 6.75 21.75h10.5a2.25 2.25 0 0 0 2.25-2.25V9.75" />',
+        'ticket' => '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6.75v10.5m-9-10.5v10.5m-3-7.5h15a2.25 2.25 0 0 1 2.25 2.25v1.5A2.25 2.25 0 0 0 19.5 15.75h-.75a2.25 2.25 0 0 0-2.25 2.25v1.5A2.25 2.25 0 0 1 14.25 21h-4.5A2.25 2.25 0 0 1 7.5 18.75v-1.5a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 1 2.25 12.75v-1.5A2.25 2.25 0 0 1 4.5 9h.75A2.25 2.25 0 0 0 7.5 6.75v-1.5A2.25 2.25 0 0 1 9.75 3h4.5a2.25 2.25 0 0 1 2.25 2.25v1.5A2.25 2.25 0 0 0 18.75 9h.75" />',
+        'wrench' => '<path stroke-linecap="round" stroke-linejoin="round" d="M11.42 3.17a.75.75 0 0 1 .643 1.078 6.75 6.75 0 0 0 8.517 8.516.75.75 0 0 1 1.078.643 9 9 0 0 1-11.428 8.848l-4.647 1.162a1.125 1.125 0 0 1-1.364-1.364l1.162-4.647A9 9 0 0 1 11.42 3.17Z" />',
+        'building-office-2' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M5.25 21V6.375C5.25 5.339 6.09 4.5 7.125 4.5h9.75c1.035 0 1.875.84 1.875 1.875V21M9 9.75h.008v.008H9V9.75Zm0 3h.008v.008H9v-.008Zm0 3h.008v.008H9v-.008Zm3-6h.008v.008H12V9.75Zm0 3h.008v.008H12v-.008Zm0 3h.008v.008H12v-.008Zm3-6h.008v.008H15V9.75Zm0 3h.008v.008H15v-.008Zm0 3h.008v.008H15v-.008Z" />',
+        'beaker' => '<path stroke-linecap="round" stroke-linejoin="round" d="M14.25 2.25v2.69l5.77 9.99a2.25 2.25 0 0 1-1.949 3.37H5.929a2.25 2.25 0 0 1-1.949-3.37l5.77-9.99V2.25m4.5 0h-4.5m4.5 0h1.5m-6 0h-1.5M8.25 7.5h7.5" />',
+        'receipt-percent' => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 14.25 15 8.25m-5.25 0h.008v.008H9.75V8.25Zm4.5 6h.008v.008h-.008v-.008ZM6.75 3.75h10.5A2.25 2.25 0 0 1 19.5 6v12.19a.56.56 0 0 1-.955.393l-1.778-1.778a.75.75 0 0 0-1.06 0l-1.778 1.778a.75.75 0 0 1-1.06 0l-1.779-1.778a.75.75 0 0 0-1.06 0l-1.778 1.778a.56.56 0 0 1-.955-.393V6A2.25 2.25 0 0 1 6.75 3.75Z" />',
+        'cake' => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 0 0-.75.75v.807c0 .414-.336.75-.75.75H9.75A.75.75 0 0 1 9 8.307V7.5a.75.75 0 0 0-1.5 0v.807c0 .414-.336.75-.75.75H6a.75.75 0 0 1-.75-.75V7.5a.75.75 0 0 0-1.5 0v.807a2.25 2.25 0 0 0 2.25 2.25h.75v2.943a48.29 48.29 0 0 1-3.208 1.885.75.75 0 0 0-.292 1.019l1.053 1.844A2.25 2.25 0 0 0 6.3 19.5h11.4a2.25 2.25 0 0 0 1.947-1.252l1.053-1.844a.75.75 0 0 0-.292-1.02A48.302 48.302 0 0 1 17.25 13.5v-2.943H18a2.25 2.25 0 0 0 2.25-2.25V7.5a.75.75 0 0 0-1.5 0v.807a.75.75 0 0 1-.75.75h-.75a.75.75 0 0 1-.75-.75V7.5a.75.75 0 0 0-1.5 0v.807a.75.75 0 0 1-.75.75h-.75a.75.75 0 0 1-.75-.75V7.5a.75.75 0 0 0-.75-.75Z" />',
+        'user-group' => '<path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a8.967 8.967 0 0 0 3.741-1.334A9 9 0 0 0 12 4.5a9 9 0 0 0-9.741 12.886A8.967 8.967 0 0 0 6 18.72m12 0a9.024 9.024 0 0 1-12 0m12 0v.53a2.25 2.25 0 0 1-2.25 2.25H8.25A2.25 2.25 0 0 1 6 19.25v-.53m6-9a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />',
+        'chart-bar' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75Zm6.75-6.75C9.75 5.754 10.254 5.25 10.875 5.25h2.25c.621 0 1.125.504 1.125 1.125v13.5c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V6.375Zm6.75 3A1.125 1.125 0 0 1 17.625 8.25h2.25C20.496 8.25 21 8.754 21 9.375v10.5c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125v-10.5Z" />',
+        'clock' => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2.25m5.25-2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />',
+        'banknotes' => '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5m-18 0v8.25A2.25 2.25 0 0 0 6 18.75h12a2.25 2.25 0 0 0 2.25-2.25V8.25m-18 0V6A2.25 2.25 0 0 1 4.5 3.75h15A2.25 2.25 0 0 1 21.75 6v2.25m-9.75 3h.008v.008H12v-.008Z" />',
+        'document-text' => '<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-8.625a1.125 1.125 0 0 0-1.125-1.125H8.25m11.25 9.75-3-3m3 3-3 3m-8.25-6h4.5m-4.5 3h3m-6 6h12A2.25 2.25 0 0 0 19.5 18V9.621a1.125 1.125 0 0 0-.33-.795l-5.996-5.996A1.125 1.125 0 0 0 12.379 2.5H6A2.25 2.25 0 0 0 3.75 4.75v13.5A2.25 2.25 0 0 0 6 20.5Z" />',
+        'cog-6-tooth' => '<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6h3m-1.5-3v3m0 12v3m-3-1.5h3m8.25-6h-3m-12 0h-3m11.03-5.78-2.12 2.12m-5.82 5.82-2.12 2.12m0-9.94 2.12 2.12m5.82 5.82 2.12 2.12M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />',
+        'clipboard-document-list' => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 5.25H7.5A2.25 2.25 0 0 0 5.25 7.5v10.5A2.25 2.25 0 0 0 7.5 20.25h9A2.25 2.25 0 0 0 18.75 18V7.5A2.25 2.25 0 0 0 16.5 5.25H15m-6 0a3 3 0 1 1 6 0m-6 0a3 3 0 0 0 6 0m-7.5 5.25h9m-9 3h9m-9 3h6" />',
+        'arrow-right-on-rectangle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-7.5A2.25 2.25 0 0 0 3.75 5.25v13.5A2.25 2.25 0 0 0 6 21h7.5a2.25 2.25 0 0 0 2.25-2.25V15m-6-3h11.25m0 0-3-3m3 3-3 3" />',
+        'x-mark' => '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />',
+        'chevron-left' => '<path stroke-linecap="round" stroke-linejoin="round" d="m15.75 19.5-7.5-7.5 7.5-7.5" />',
+        'chevron-right' => '<path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />',
+        'magnifying-glass' => '<path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35m1.6-5.4a6.75 6.75 0 1 1-13.5 0 6.75 6.75 0 0 1 13.5 0Z" />',
+        'lock-closed' => '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V7.875a4.5 4.5 0 1 0-9 0V10.5m-.75 0h10.5A2.25 2.25 0 0 1 19.5 12.75v6A2.25 2.25 0 0 1 17.25 21H6.75A2.25 2.25 0 0 1 4.5 18.75v-6A2.25 2.25 0 0 1 6.75 10.5Z" />',
+        'plus' => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />',
+        'minus' => '<path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14" />',
+        'arrow-path' => '<path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356m-1.636 4.992a9 9 0 1 0 2.263 5.448M2.985 19.644v-4.992h4.992" />',
+        'trash' => '<path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0 1 15.916 21.75H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0V4.875c0-.621-.504-1.125-1.125-1.125h-3.75c-.621 0-1.125.504-1.125 1.125V5.25m7.5 0h-7.5" />',
+        'exclamation-triangle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.008v.008H12v-.008Zm-9.348 2.04h18.696c1.54 0 2.502-1.667 1.732-3L13.732 4.04c-.77-1.333-2.694-1.333-3.464 0L.92 15.54c-.77 1.333.192 3 1.732 3Z" />',
+        'check-circle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m6 2.25a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />',
+    ];
+
+    $path = $paths[$name] ?? $paths['x-mark'];
+
+    return sprintf(
+        '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="%s" stroke="currentColor" class="%s" aria-hidden="true">%s</svg>',
+        htmlspecialchars($stroke, ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars($classes, ENT_QUOTES, 'UTF-8'),
+        $path
+    );
+}

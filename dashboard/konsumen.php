@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Data Konsumen';
 
@@ -51,7 +52,7 @@ if ($q !== '' || ($startDate && $endDate)) {
 
     $params = [];
 
-    // 🔍 FILTER KEYWORD
+    // FILTER KEYWORD
     if ($q !== '') {
         $sql .= "
             AND (
@@ -63,7 +64,7 @@ if ($q !== '' || ($startDate && $endDate)) {
         $params[':q'] = "%$q%";
     }
 
-    // 📅 FILTER TANGGAL
+    // FILTER TANGGAL
     if ($startDate && $endDate) {
         $sql .= " AND DATE(s.created_at) BETWEEN :start_date AND :end_date";
         $params[':start_date'] = $startDate;
@@ -80,21 +81,22 @@ if ($q !== '' || ($startDate && $endDate)) {
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1>Data Konsumen</h1>
+	        <h1 class="page-title">Data Konsumen</h1>
 
-        <p class="text-muted">Menampilkan seluruh data transaksi konsumen</p>
+	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen</p>
 
         <div class="card">
-            <div class="card-header-actions" style="margin-bottom: 20px;">
+            <div class="card-header-actions card-section">
                 <div class="card-header-actions-title">
                     Daftar Transaksi Konsumen
                 </div>
                 <?php if ($userRole !== 'staff'): ?>
                     <div class="card-header-actions-right">
                         <button type="button" class="btn btn-success" onclick="openImportModal()">
-                            📥 Import Excel
+                            <?= ems_icon('arrow-up-tray', 'h-4 w-4') ?>
+                            <span>Import Excel</span>
                         </button>
                     </div>
                 <?php endif; ?>
@@ -107,11 +109,11 @@ if ($q !== '' || ($startDate && $endDate)) {
                     <input type="hidden" name="end_date" id="endDate">
 
                     <!-- CUSTOM DATE (HIDDEN DEFAULT) -->
-                    <div class="search-field search-field-date" id="customDateWrapper" style="display:none;">
+                    <div class="search-field search-field-date hidden" id="customDateWrapper">
                         <input type="date" id="customStart">
                     </div>
 
-                    <div class="search-field search-field-date" id="customDateWrapperEnd" style="display:none;">
+                    <div class="search-field search-field-date hidden" id="customDateWrapperEnd">
                         <input type="date" id="customEnd">
                     </div>
 
@@ -183,7 +185,7 @@ if ($q !== '' || ($startDate && $endDate)) {
                                                 <?= htmlspecialchars($row['citizen_id']) ?>
                                             </a>
                                         <?php else: ?>
-                                            <span style="color:#9ca3af;">-</span>
+                                            <span class="muted-placeholder">-</span>
                                         <?php endif; ?>
                                     </td>
                                     <td><?= htmlspecialchars($row['consumer_name']) ?></td>
@@ -205,7 +207,7 @@ if ($q !== '' || ($startDate && $endDate)) {
                             <th></th>
                             <th></th>
                             <th></th>
-                            <th style="text-align:right;">TOTAL</th>
+                            <th class="table-align-right">TOTAL</th>
                             <th></th>
                             <th></th>
                             <th></th>
@@ -222,15 +224,23 @@ if ($q !== '' || ($startDate && $endDate)) {
 <!-- ================================================
      MODAL IDENTITY
      ================================================ -->
-<div id="identityModal" class="modal-overlay" style="display:none;">
-    <div class="modal-card">
-        <div class="modal-header">
-            <strong>Data Konsumen</strong>
-            <button onclick="closeIdentityModal()" type="button">✕</button>
+<div id="identityModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Data Konsumen</div>
+            <button type="button" class="modal-close-btn" onclick="closeIdentityModal()" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
         </div>
 
-        <div id="identityContent" class="modal-body">
-            <p style="color:#9ca3af;">Memuat data...</p>
+        <div id="identityContent" class="modal-content">
+            <p class="muted-placeholder">Memuat data...</p>
+        </div>
+
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary" onclick="closeIdentityModal()">Tutup</button>
+            </div>
         </div>
     </div>
 </div>
@@ -238,10 +248,13 @@ if ($q !== '' || ($startDate && $endDate)) {
 <!-- =========================
 MODAL IMPORT KONSUMEN (EMS)
 ========================= -->
-<div id="importModal" class="ems-modal-overlay" style="display:none;">
-    <div class="ems-modal-card" style="max-width:520px;">
+<div id="importModal" class="ems-modal-overlay hidden">
+    <div class="ems-modal-card modal-frame-md">
 
-        <h4>📥 Import Data Transaksi</h4>
+        <h4 class="inline-flex items-center gap-2">
+            <?= ems_icon('arrow-up-tray', 'h-5 w-5') ?>
+            <span>Import Data Transaksi</span>
+        </h4>
 
         <form id="importForm" enctype="multipart/form-data">
 
@@ -275,7 +288,7 @@ MODAL IMPORT KONSUMEN (EMS)
             </div>
 
             <!-- PROGRESS -->
-            <div id="importProgress" class="ems-import-progress" style="display:none;">
+            <div id="importProgress" class="ems-import-progress hidden">
                 <div class="ems-spinner"></div>
                 <p>Mengupload dan memproses data...</p>
             </div>
@@ -413,7 +426,7 @@ MODAL IMPORT KONSUMEN (EMS)
                     medicSuggestions.innerHTML = data.medics.map(m => `
                         <div class="medic-suggestion-item" onclick="selectMedic('${m.full_name}', '${m.position}')">
                             <strong>${m.full_name}</strong>
-                            <div style="font-size:12px;color:#64748b;">${m.position}</div>
+                            <div class="meta-text-xs">${m.position}</div>
                         </div>
                     `).join('');
                     medicSuggestions.style.display = 'block';
@@ -469,15 +482,15 @@ MODAL IMPORT KONSUMEN (EMS)
             const result = await res.json();
 
             if (result.success) {
-                alert(`✅ Berhasil import ${result.imported} transaksi!`);
+                alert(`Berhasil import ${result.imported} transaksi!`);
                 closeImportModal();
                 location.reload();
             } else {
-                alert('❌ Error: ' + (result.message || 'Import gagal'));
+                alert('Error: ' + (result.message || 'Import gagal'));
             }
         } catch (error) {
             console.error('Import error:', error);
-            alert('❌ Terjadi kesalahan saat import data');
+            alert('Terjadi kesalahan saat import data');
         } finally {
             document.getElementById('importProgress').style.display = 'none';
             document.getElementById('importBtn').disabled = false;
@@ -556,8 +569,10 @@ MODAL IMPORT KONSUMEN (EMS)
     function openIdentityModal(identityId) {
         const modal = document.getElementById('identityModal');
         const content = document.getElementById('identityContent');
+        modal.classList.remove('hidden');
         modal.style.display = 'flex';
-        content.innerHTML = '<p style="color:#9ca3af;">Memuat data...</p>';
+        document.body.classList.add('modal-open');
+        content.innerHTML = '<p class="muted-placeholder">Memuat data...</p>';
 
         fetch('/ajax/get_identity_detail.php?id=' + encodeURIComponent(identityId))
             .then(res => res.text())
@@ -566,12 +581,16 @@ MODAL IMPORT KONSUMEN (EMS)
             })
             .catch(err => {
                 console.error('Error loading identity:', err);
-                content.innerHTML = '<p style="color:#ef4444;">Gagal memuat data.</p>';
+                content.innerHTML = '<p class="text-sm text-red-500">Gagal memuat data.</p>';
             });
     }
 
     function closeIdentityModal() {
-        document.getElementById('identityModal').style.display = 'none';
+        const modal = document.getElementById('identityModal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
     }
 
     document.addEventListener('click', function(e) {
@@ -610,7 +629,7 @@ MODAL IMPORT KONSUMEN (EMS)
                     [1, 'desc']
                 ],
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 },
                 searching: false,
                 footerCallback: function(row, data, start, end, display) {

@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../auth/csrf.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
@@ -31,9 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) 
         exit('Invalid applicant');
     }
 
-    // 🔒 HARD CHECK JUMLAH HR
     $stmt = $pdo->prepare("
-    SELECT COUNT(*) 
+    SELECT COUNT(*)
         FROM (
             SELECT hr_id
             FROM applicant_interview_scores
@@ -44,14 +44,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) 
     $stmt->execute([$applicantId]);
     $totalHr = (int)$stmt->fetchColumn();
 
-
     if ($totalHr < 2) {
-        // ⛔ STOP TOTAL – TIDAK ADA UPDATE
         header('Location: candidates.php?error=min_hr');
         exit;
     }
 
-    // ✅ BOLEH LANJUT
     $stmt = $pdo->prepare("
         UPDATE medical_applicants
         SET status = 'final_review'
@@ -74,14 +71,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     }
 
     $applicantId = (int)($_POST['applicant_id'] ?? 0);
-    $decision    = $_POST['ai_decision'] ?? '';
+    $decision = $_POST['ai_decision'] ?? '';
 
     if ($applicantId <= 0 || !in_array($decision, ['proceed', 'reject'], true)) {
         exit('Invalid request');
     }
 
     if ($decision === 'proceed') {
-        // lanjut ke interview
         $stmt = $pdo->prepare("
             UPDATE medical_applicants
             SET status = 'interview'
@@ -92,11 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     }
 
     if ($decision === 'reject') {
-
         $pdo->beginTransaction();
 
         try {
-            // 1️⃣ Update status kandidat
             $stmt = $pdo->prepare("
             UPDATE medical_applicants
             SET status = 'rejected',
@@ -106,7 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
         ");
             $stmt->execute([$applicantId]);
 
-            // 2️⃣ Ambil data AI
             $stmt = $pdo->prepare("
             SELECT score_total
             FROM ai_test_results
@@ -117,7 +110,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
 
             $aiScore = (float)($ai['score_total'] ?? 0);
 
-            // 3️⃣ Simpan keputusan akhir OTOMATIS
             $stmt = $pdo->prepare("
             INSERT INTO applicant_final_decisions
             (
@@ -149,45 +141,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     exit;
 }
 
-// Ambil kandidat + hasil AI (jika ada)
 $candidates = $pdo->query("
-    SELECT 
+    SELECT
         m.id,
         m.ic_name,
         m.created_at,
         m.status,
         m.rejection_stage,
-
         r.score_total AS ai_score,
         r.decision   AS ai_decision,
-
         ir.average_score   AS interview_score,
         ir.ml_confidence   AS confidence,
         ir.is_locked       AS interview_locked,
-
         fd.final_result,
-
         (
             SELECT COUNT(DISTINCT s.hr_id)
             FROM applicant_interview_scores s
             WHERE s.applicant_id = m.id
         ) AS total_hr,
-
         (
             SELECT GROUP_CONCAT(DISTINCT u.full_name ORDER BY u.full_name SEPARATOR ', ')
             FROM applicant_interview_scores s
             JOIN user_rh u ON u.id = s.hr_id
             WHERE s.applicant_id = m.id
         ) AS interviewers
-
     FROM medical_applicants m
-    LEFT JOIN ai_test_results r 
+    LEFT JOIN ai_test_results r
         ON r.applicant_id = m.id
     LEFT JOIN applicant_interview_results ir
         ON ir.applicant_id = m.id
     LEFT JOIN applicant_final_decisions fd
         ON fd.applicant_id = m.id
-
     ORDER BY m.created_at DESC
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -197,10 +181,9 @@ $candidates = $pdo->query("
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:1100px;margin:auto;">
-
-        <h1 class="gradient-text">Daftar Calon Kandidat</h1>
-        <p class="text-muted">Monitoring hasil rekrutmen dan penilaian AI</p>
+    <div class="page page-shell-md">
+        <h1 class="page-title">Daftar Calon Kandidat</h1>
+        <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
 
         <div class="card">
             <div class="card-header">Calon Kandidat</div>
@@ -225,9 +208,8 @@ $candidates = $pdo->query("
                         <?php foreach ($candidates as $i => $c): ?>
                             <?php
                             $interviewScore = (float)($c['interview_score'] ?? 0);
-                            $aiScore        = (float)($c['ai_score'] ?? 0);
-                            $confidence     = (float)($c['confidence'] ?? 0);
-
+                            $aiScore = (float)($c['ai_score'] ?? 0);
+                            $confidence = (float)($c['confidence'] ?? 0);
                             $combinedScore = '-';
 
                             if ((int)($c['interview_locked'] ?? 0) === 1) {
@@ -238,6 +220,27 @@ $candidates = $pdo->query("
                                     2
                                 );
                             }
+
+                            switch ($c['status']) {
+                                case 'ai_completed':
+                                    $statusBadge = '<span class="badge-warning">Menunggu</span>';
+                                    break;
+                                case 'interview':
+                                    $statusBadge = '<span class="badge-info">Interview</span>';
+                                    break;
+                                case 'final_review':
+                                    $statusBadge = '<span class="badge-info">Final Review</span>';
+                                    break;
+                                case 'accepted':
+                                    $statusBadge = '<span class="badge-success">Diterima</span>';
+                                    break;
+                                case 'rejected':
+                                    $statusBadge = '<span class="badge-danger">Ditolak</span>';
+                                    break;
+                                default:
+                                    $statusBadge = '<span class="badge badge-secondary">' . htmlspecialchars(strtoupper($c['status'])) . '</span>';
+                                    break;
+                            }
                             ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
@@ -247,76 +250,20 @@ $candidates = $pdo->query("
                                             <?= htmlspecialchars($c['ic_name']) ?>
                                         </a>
                                     </strong>
-                                    <div style="font-size:12px;color:#64748b;">
+                                    <div class="meta-text">
                                         Daftar: <?= date('d M Y', strtotime($c['created_at'])) ?>
                                     </div>
                                 </td>
-                                <td>
-                                    <?php
-                                    switch ($c['status']) {
-                                        case 'ai_completed':
-                                            echo '<span class="status-box pending">
-                                                    <span class="icon">⏳</span>
-                                                    PENDING
-                                                </span>';
-
-                                            break;
-
-                                        case 'interview':
-                                            echo '<span class="status-box pending">
-                                                    <span class="icon">🎤</span>
-                                                    INTERVIEW
-                                                </span>';
-                                            break;
-
-                                        case 'final_review':
-                                            echo '<span class="status-box pending">
-                                                    <span class="icon">🧠</span>
-                                                    FINAL REVIEW
-                                                </span>';
-                                            break;
-
-                                        case 'accepted':
-                                            echo '<span class="status-box verified">
-                                                    <span class="icon">✅</span>
-                                                    DITERIMA
-                                                </span>';
-                                            break;
-
-                                        case 'rejected':
-                                            echo '<span class="status-box verified" style="background:rgba(239,68,68,.14);color:#991b1b;border-color:rgba(239,68,68,.4)">
-                                                    <span class="icon">❌</span>
-                                                    DITOLAK
-                                                </span>';
-                                            break;
-
-                                        default:
-                                            echo '<span class="status-box">
-                                                ' . htmlspecialchars(strtoupper($c['status'])) . '
-                                            </span>';
-                                    }
-                                    ?>
-                                </td>
-
+                                <td><?= $statusBadge ?></td>
                                 <td><?= $aiScore ?: '-' ?></td>
-
                                 <td><?= $interviewScore ?: '-' ?></td>
-
-                                <td>
-                                    <?= $confidence ? $confidence . '%' : '-' ?>
-                                </td>
-
-                                <td>
-                                    <strong><?= $combinedScore ?></strong>
-                                </td>
-
-                                <td style="font-size:12px;color:#334155;line-height:1.4;">
+                                <td><?= $confidence ? $confidence . '%' : '-' ?></td>
+                                <td><strong><?= $combinedScore ?></strong></td>
+                                <td class="text-sm leading-5 text-slate-700">
                                     <?php if ($c['interviewers']): ?>
                                         <?= htmlspecialchars($c['interviewers']) ?>
                                         <?php if ((int)$c['total_hr'] > 1): ?>
-                                            <div style="font-size:11px;color:#64748b;">
-                                                (<?= (int)$c['total_hr'] ?> Orang)
-                                            </div>
+                                            <div class="meta-text">(<?= (int)$c['total_hr'] ?> Orang)</div>
                                         <?php endif; ?>
                                     <?php else: ?>
                                         -
@@ -333,119 +280,89 @@ $candidates = $pdo->query("
                                         </span>
                                     <?php endif; ?>
                                 </td>
-
-                                <td style="white-space:nowrap;">
-
+                                <td class="whitespace-nowrap">
                                     <?php if ($c['status'] === 'ai_completed'): ?>
-
-                                        <!-- AI SELESAI: PILIHAN LANJUT ATAU TOLAK -->
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="inline">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="proceed">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit"
-                                                class="btn btn-primary"
-                                                style="margin-right:4px;"
-                                                onclick="return confirm('Lanjutkan ke tahap wawancara?')">
-                                                ➡️ Lanjut Wawancara
+                                            <button type="submit" class="btn btn-primary" onclick="return confirm('Lanjutkan ke tahap wawancara?')">
+                                                <?= ems_icon('arrow-right', 'h-4 w-4') ?>
+                                                <span>Lanjut Wawancara</span>
                                             </button>
                                         </form>
 
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="inline">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="reject">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit"
-                                                class="btn btn-danger"
-                                                onclick="return confirm('Tolak kandidat tanpa proses wawancara?')">
-                                                ❌ Tidak Diterima
+                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')">
+                                                <?= ems_icon('x-mark', 'h-4 w-4') ?>
+                                                <span>Tidak Diterima</span>
                                             </button>
                                         </form>
-
                                     <?php endif; ?>
 
                                     <?php if (in_array($c['status'], ['interview'], true)): ?>
-
-                                        <!-- INTERVIEW MULTI-HR -->
-                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>"
-                                            class="btn btn-primary"
-                                            style="margin-right:4px;">
-                                            Interview
+                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn btn-primary">
+                                            <?= ems_icon('microphone', 'h-4 w-4') ?>
+                                            <span>Interview</span>
                                         </a>
-
                                     <?php endif; ?>
 
                                     <?php if ($c['status'] === 'interview'): ?>
-
-                                        <!-- SELESAI INTERVIEW -->
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="inline">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="finish_interview" value="1">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit"
-                                                class="btn-warning btn-finish-interview"
-                                                style="margin-right:4px;"
-                                                data-total-hr="<?= (int)$c['total_hr'] ?>">
+                                            <button type="submit" class="btn-warning btn-finish-interview" data-total-hr="<?= (int)$c['total_hr'] ?>">
                                                 Selesai
                                             </button>
                                         </form>
-
                                     <?php endif; ?>
 
                                     <?php if ($c['status'] === 'final_review' || in_array($c['status'], ['accepted', 'rejected'], true)): ?>
-
-                                        <!-- DECISION (MANAGER) -->
-                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>"
-                                            class="btn btn-success"
-                                            style="margin-right:4px;">
-                                            Decision
+                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn btn-success">
+                                            <?= ems_icon('check-badge', 'h-4 w-4') ?>
+                                            <span>Keputusan</span>
                                         </a>
-
                                     <?php endif; ?>
-
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
-
         </div>
     </div>
 </section>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-
         document.addEventListener('submit', function(e) {
-
             const form = e.target;
             const button = form.querySelector('.btn-finish-interview');
 
-            if (!button) return; // bukan form "Selesai"
+            if (!button) return;
 
             const totalHr = parseInt(button.dataset.totalHr || '0', 10);
 
             if (totalHr < 2) {
-                e.preventDefault(); // ⛔ STOP TOTAL
-
+                e.preventDefault();
                 alert(
-                    '⛔ Interview belum dapat diselesaikan.\n\n' +
+                    'Interview belum dapat diselesaikan.\n\n' +
                     'Penilaian baru diberikan oleh ' + totalHr + ' HR.\n' +
                     'Minimal diperlukan 2 HR.\n\n' +
                     'Silakan tunggu HR lain memberikan penilaian.'
                 );
-
                 return false;
             }
 
-            // HR sudah cukup → minta konfirmasi
             if (!confirm('Tandai interview selesai?')) {
                 e.preventDefault();
                 return false;
             }
-
-        }, true); // ⬅️ CAPTURE MODE (PENTING!)
+        }, true);
     });
 </script>
 
@@ -454,10 +371,10 @@ $candidates = $pdo->query("
         if (window.jQuery && jQuery.fn.DataTable) {
             jQuery('#candidateTable').DataTable({
                 pageLength: 10,
-                scrollX: true, // ⬅️ INI PENTING
-                autoWidth: false, // ⬅️ BIAR CSS YANG NGATUR
+                scrollX: true,
+                autoWidth: false,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }

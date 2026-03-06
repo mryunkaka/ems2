@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
@@ -8,6 +8,7 @@ require_once __DIR__ . '/../actions/interview_finalize.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/../config/error_logger.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /* ===============================
    ROLE GUARD
@@ -77,9 +78,9 @@ $systemResult = 'tidak_lolos';
 
 if ($interviewResult && (int)$interviewResult['is_locked'] === 1) {
 
-    $interviewScore = (float)$interviewResult['average_score'];   // 0–100
-    $aiScore        = (float)$ai['score_total'];                  // 0–100
-    $confidence     = (float)$interviewResult['ml_confidence'];   // 0–100
+    $interviewScore = (float)$interviewResult['average_score'];   // 0-100
+    $aiScore        = (float)$ai['score_total'];                  // 0-100
+    $confidence     = (float)$interviewResult['ml_confidence'];   // 0-100
 
     // COMBINED SCORE (FINAL)
     $combinedScore = round(
@@ -126,7 +127,7 @@ $stmt->execute([$applicantId]);
 $existingDecision = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if ($existingDecision && $candidate['rejection_stage'] === 'ai') {
-    // ini auto decision → tidak perlu form
+    // ini auto decision -> tidak perlu form
 }
 
 /* ===============================
@@ -220,9 +221,9 @@ if (
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:1000px;margin:auto;">
+    <div class="page page-shell-md">
 
-        <h1 class="gradient-text">Keputusan Akhir Kandidat</h1>
+        <h1 class="page-title">Keputusan Akhir Kandidat</h1>
 
         <?php
         // ===============================
@@ -243,20 +244,20 @@ if (
         <div class="card">
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong>
 
-            <div style="font-size:13px;color:#64748b;line-height:1.7;margin-top:6px;">
+            <div class="mt-1.5 text-[13px] leading-7 text-slate-500">
 
                 <strong>Test (Psychotest)</strong><br>
                 Skor: <strong><?= $aiScore ?></strong>
-                <span style="color:#94a3b8;">(Bobot 30%)</span><br>
+                <span class="text-slate-400">(Bobot 30%)</span><br>
                 Rekomendasi: <strong><?= strtoupper($aiRecommendation) ?></strong>
 
                 <br><br>
 
                 <strong>Interview HR & Recruitment</strong><br>
                 Nilai Akhir: <strong><?= $interviewScore ?></strong>
-                <span style="color:#94a3b8;">(Bobot 60%)</span><br>
+                <span class="text-slate-400">(Bobot 60%)</span><br>
                 Grade: <?= strtoupper(str_replace('_', ' ', $interviewResult['final_grade'] ?? '-')) ?><br>
-                Confidence:
+                Konsistensi:
                 <strong><?= $confidence ?>%</strong>
 
                 <span class="ui-tooltip">?
@@ -269,18 +270,18 @@ if (
                     </span>
                 </span>
 
-                <span style="color:#94a3b8;">(Bobot 10%)</span>
+                <span class="text-slate-400">(Bobot 10%)</span>
 
-                <hr style="margin:12px 0;border:none;border-top:1px dashed #e5e7eb;">
+                <hr class="my-3 border-0 border-t border-dashed border-slate-200">
 
                 <strong>Skor Gabungan Sistem</strong><br>
-                <span style="font-size:18px;font-weight:800;color:#0f172a;">
+                <span class="text-lg font-extrabold text-slate-900">
                     <?= $combinedScore ?>
                 </span>
-                <span style="font-size:12px;color:#94a3b8;">/ 100</span>
+                <span class="text-xs text-slate-400">/ 100</span>
 
-                <div style="margin-top:4px;font-size:12px;color:#64748b;">
-                    (Interview 60% + Test 30% + Confidence 10%)
+                <div class="mt-1 text-xs text-slate-500">
+                    (Interview 60% + Test 30% + Konsistensi 10%)
                 </div>
 
             </div>
@@ -312,7 +313,7 @@ if (
                 </p>
 
                 <?php if ((int)$existingDecision['overridden'] === 1): ?>
-                    <div style="margin-top:10px;padding:10px;background:#fff7ed;border-left:4px solid #f97316;border-radius:6px;">
+                    <div class="mt-2.5 rounded-lg border-l-4 border-amber-500 bg-amber-50 p-2.5 text-sm text-amber-900">
                         <strong>Override Keputusan Sistem</strong><br>
                         <?= nl2br(htmlspecialchars($existingDecision['override_reason'])) ?>
                     </div>
@@ -332,7 +333,7 @@ if (
                     <button name="lock_interview"
                         class="btn btn-warning"
                         onclick="return confirm('Kunci interview? Nilai HR tidak dapat diubah.')">
-                        🔒 Kunci Interview
+                        <?= ems_icon('lock-closed', 'h-4 w-4') ?> <span>Kunci Interview</span>
                     </button>
                 </form>
             <?php else: ?>
@@ -342,7 +343,7 @@ if (
                     <h3>Form Keputusan Akhir</h3>
 
                     <label>Keputusan Sistem (Otomatis)</label>
-                    <div style="margin-bottom:12px;">
+                    <div class="mb-3">
                         <span class="badge badge-<?= $systemResult === 'lolos' ? 'success' : 'danger' ?>">
                             <?= strtoupper($systemResult) ?>
                         </span>
@@ -350,25 +351,26 @@ if (
 
                     <input type="hidden" name="system_result" value="<?= $systemResult ?>">
 
-                    <label>
+                    <label class="checkbox-label">
                         <input type="checkbox" name="override" id="overrideToggle">
                         Override Keputusan Sistem
                     </label>
 
-                    <div id="overrideBox" style="display:none;margin-top:8px;">
+                    <div id="overrideBox" class="hidden mt-2">
                         <label>Alasan Override <span style="color:red">*</span></label>
                         <textarea name="override_reason" rows="3"></textarea>
                     </div>
 
-                    <button type="submit" name="submit_decision" class="btn btn-primary" style="margin-top:14px;">
+                    <button type="submit" name="submit_decision" class="btn btn-primary mt-3.5">
                         Simpan Keputusan Final
                     </button>
                 </form>
 
                 <script>
                     document.getElementById('overrideToggle')?.addEventListener('change', function() {
-                        document.getElementById('overrideBox').style.display =
-                            this.checked ? 'block' : 'none';
+                        const box = document.getElementById('overrideBox');
+                        if (!box) return;
+                        box.classList.toggle('hidden', !this.checked);
                     });
                 </script>
 

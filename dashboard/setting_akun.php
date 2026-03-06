@@ -10,6 +10,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -81,9 +82,9 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:640px;margin:auto;">
+    <div class="page page-shell-sm">
 
-        <h1>⚙️ Setting Akun</h1>
+        <h1 class="page-title flex items-center gap-3"><?= ems_icon('cog-6-tooth', 'h-7 w-7 text-primary') ?> Setting Akun</h1>
 
         <!-- ===============================
              NOTIFIKASI (SAMA DENGAN REKAP FARMASI)
@@ -122,10 +123,10 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                             max="26"
                             required
                             value="<?= htmlspecialchars($medicBatch) ?>"
-                            <?= $batchLocked ? 'disabled style="background:#f3f3f3;cursor:not-allowed;"' : '' ?>>
+                            <?= $batchLocked ? 'disabled class="bg-slate-100 cursor-not-allowed"' : '' ?>>
                         <?php if ($batchLocked): ?>
                             <small class="hint-locked">
-                                🔒 Batch terkunci karena Kode Medis telah dibuat
+                                Batch terkunci karena Kode Medis telah dibuat
                             </small>
                         <?php endif; ?>
                     </div>
@@ -140,9 +141,6 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                             name="tanggal_masuk"
                             value="<?= htmlspecialchars($tanggalMasuk) ?>"
                             required>
-                        <small class="hint-info">
-                            📅 Tanggal Anda join ke <strong>Rumah Sakit Roxwood</strong>
-                        </small>
                     </div>
                 </div>
 
@@ -181,9 +179,9 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                             pattern="[A-Z0-9]+"
                             title="Hanya huruf BESAR dan angka, tanpa spasi"
                             value="<?= htmlspecialchars($citizenId) ?>"
-                            style="text-transform:uppercase;">
+                            class="uppercase">
                         <small class="hint-warning">
-                            ⚠️ Format: <strong>HURUF BESAR + ANGKA</strong>, tanpa spasi
+                            Format: <strong>HURUF BESAR + ANGKA</strong>, tanpa spasi
                         </small>
                     </div>
 
@@ -192,10 +190,10 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                         <select name="jenis_kelamin" required>
                             <option value="">-- Pilih --</option>
                             <option value="Laki-laki" <?= $jenisKelamin === 'Laki-laki' ? 'selected' : '' ?>>
-                                👨 Laki-laki
+                                Laki-laki
                             </option>
                             <option value="Perempuan" <?= $jenisKelamin === 'Perempuan' ? 'selected' : '' ?>>
-                                👩 Perempuan
+                                Perempuan
                             </option>
                         </select>
                     </div>
@@ -211,7 +209,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                         placeholder="Contoh: 8123456789"
                         value="<?= htmlspecialchars($noHpIc) ?>">
                     <small class="hint-info">
-                        📱 Nomor HP yang terdaftar di sistem IC
+                        Nomor HP yang terdaftar di sistem IC
                     </small>
                 </div>
 
@@ -228,7 +226,7 @@ DOKUMEN PENDUKUNG
 
                             <?php if (!empty($path)): ?>
                                 <div class="doc-status-badge">
-                                    <span class="badge-success-mini">✔ Sudah diunggah</span>
+                                    <span class="badge-success-mini">Sudah diunggah</span>
                                     <a href="#"
                                         class="btn-link btn-preview-doc"
                                         data-src="/<?= htmlspecialchars($path) ?>"
@@ -243,7 +241,7 @@ DOKUMEN PENDUKUNG
 
                         <div class="doc-upload-input">
                             <label for="<?= htmlspecialchars($name) ?>" class="file-upload-label">
-                                <span class="file-icon">📁</span>
+                                <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih file</strong>
                                     <small>PNG atau JPG</small>
@@ -253,7 +251,7 @@ DOKUMEN PENDUKUNG
                                 id="<?= htmlspecialchars($name) ?>"
                                 name="<?= htmlspecialchars($name) ?>"
                                 accept="image/png,image/jpeg"
-                                style="display:none;">
+                                class="hidden">
                             <div class="file-selected-name" data-for="<?= htmlspecialchars($name) ?>"></div>
                         </div>
 
@@ -265,107 +263,107 @@ DOKUMEN PENDUKUNG
                 }
                 ?>
 
-	                <hr class="section-divider">
-	                <h3 class="section-form-title">Dokumen Pendukung</h3>
-	                <p class="text-muted">Unggah sertifikat (PNG / JPG)</p>
+                <hr class="section-divider">
+                <h3 class="section-form-title">Dokumen Pendukung</h3>
+                <p class="text-muted">Unggah sertifikat (PNG / JPG)</p>
 
-	                <?php
-	                renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli']);
-	                renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi']);
-	                ?>
+                <?php
+                renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli']);
+                renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi']);
+                ?>
 
-	                <div class="doc-upload-wrapper" style="border-style:dashed;">
-	                    <div class="doc-upload-header" style="align-items:flex-start;flex-direction:column;gap:6px;">
-	                        <label class="doc-label">Sertifikat Medical Academy</label>
-	                        <small class="text-muted" style="margin:0;">
-	                            Nama dokumen diisi sendiri. Bisa upload banyak sertifikat academy (paramedic, co-ass, operasi plastik, dll).
-	                        </small>
-	                    </div>
+                <div class="doc-upload-wrapper doc-upload-dashed">
+                    <div class="doc-upload-header doc-upload-header-stack">
+                        <label class="doc-label">Sertifikat Medical Academy</label>
+                        <small class="text-muted doc-upload-meta">
+                            Nama dokumen diisi sendiri. Bisa upload banyak sertifikat academy (paramedic, co-ass, operasi plastik, dll).
+                        </small>
+                    </div>
 
-	                    <div id="academyDocsContainer" style="display:flex;flex-direction:column;gap:12px;">
-	                        <?php if (empty($academyDocs)): ?>
-	                            <div class="academy-doc-row" data-row="academy">
-	                                <input type="hidden" name="academy_doc_id[]" value="">
+                    <div id="academyDocsContainer" class="academy-list">
+                        <?php if (empty($academyDocs)): ?>
+                            <div class="academy-doc-row" data-row="academy">
+                                <input type="hidden" name="academy_doc_id[]" value="">
 
-	                                <div class="row-form-2" style="margin:0;">
-	                                    <div>
-	                                        <label>Nama Sertifikat Academy</label>
-	                                        <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Academy Paramedic">
-	                                    </div>
-	                                    <div>
-	                                        <label>File</label>
-	                                        <div class="doc-upload-input" style="margin:0;">
-	                                            <label for="academy_file_new_0" class="file-upload-label">
-	                                                <span class="file-icon">📁</span>
-	                                                <span class="file-text">
-	                                                    <strong>Pilih file</strong>
-	                                                    <small>PNG atau JPG</small>
-	                                                </span>
-	                                            </label>
-	                                            <input type="file"
-	                                                id="academy_file_new_0"
-	                                                name="academy_doc_file[]"
-	                                                accept="image/png,image/jpeg"
-	                                                style="display:none;">
-	                                            <div class="file-selected-name" data-for="academy_file_new_0"></div>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	                            </div>
-	                        <?php else: ?>
-	                            <?php foreach ($academyDocs as $idx => $ad): ?>
-	                                <div class="academy-doc-row" data-row="academy">
-	                                    <input type="hidden" name="academy_doc_id[]" value="<?= htmlspecialchars($ad['id'] ?? '') ?>">
+                                <div class="row-form-2 academy-grid">
+                                    <div>
+                                        <label>Nama Sertifikat Academy</label>
+                                        <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Academy Paramedic">
+                                    </div>
+                                    <div>
+                                        <label>File</label>
+                                        <div class="doc-upload-input doc-upload-input-reset">
+                                            <label for="academy_file_new_0" class="file-upload-label">
+                                                <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                                <span class="file-text">
+                                                    <strong>Pilih file</strong>
+                                                    <small>PNG atau JPG</small>
+                                                </span>
+                                            </label>
+                                            <input type="file"
+                                                id="academy_file_new_0"
+                                                name="academy_doc_file[]"
+                                                accept="image/png,image/jpeg"
+                                                class="hidden">
+                                            <div class="file-selected-name" data-for="academy_file_new_0"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <?php foreach ($academyDocs as $idx => $ad): ?>
+                                <div class="academy-doc-row" data-row="academy">
+                                    <input type="hidden" name="academy_doc_id[]" value="<?= htmlspecialchars($ad['id'] ?? '') ?>">
 
-	                                    <div class="row-form-2" style="margin:0;">
-	                                        <div>
-	                                            <label>Nama Sertifikat Academy</label>
-	                                            <input type="text"
-	                                                name="academy_doc_name[]"
-	                                                value="<?= htmlspecialchars($ad['name'] ?? '') ?>"
-	                                                placeholder="Contoh: Sertifikat Academy Paramedic">
-	                                            <div style="margin-top:6px;">
-	                                                <span class="badge-success-mini">✔ Sudah diunggah</span>
-	                                                <a href="#"
-	                                                    class="btn-link btn-preview-doc"
-	                                                    data-src="/<?= htmlspecialchars($ad['path'] ?? '') ?>"
-	                                                    data-title="<?= htmlspecialchars($ad['name'] ?? 'Sertifikat Academy') ?>">
-	                                                    Lihat dokumen
-	                                                </a>
-	                                            </div>
-	                                        </div>
+                                    <div class="row-form-2 academy-grid">
+                                        <div>
+                                            <label>Nama Sertifikat Academy</label>
+                                            <input type="text"
+                                                name="academy_doc_name[]"
+                                                value="<?= htmlspecialchars($ad['name'] ?? '') ?>"
+                                                placeholder="Contoh: Sertifikat Academy Paramedic">
+                                            <div class="academy-doc-preview">
+                                                <span class="badge-success-mini">Sudah diunggah</span>
+                                                <a href="#"
+                                                    class="btn-link btn-preview-doc"
+                                                    data-src="/<?= htmlspecialchars($ad['path'] ?? '') ?>"
+                                                    data-title="<?= htmlspecialchars($ad['name'] ?? 'Sertifikat Academy') ?>">
+                                                    Lihat dokumen
+                                                </a>
+                                            </div>
+                                        </div>
 
-	                                        <div>
-	                                            <label>Ganti File (opsional)</label>
-	                                            <div class="doc-upload-input" style="margin:0;">
-	                                                <label for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>" class="file-upload-label">
-	                                                    <span class="file-icon">📁</span>
-	                                                    <span class="file-text">
-	                                                        <strong>Pilih file</strong>
-	                                                        <small>PNG atau JPG</small>
-	                                                    </span>
-	                                                </label>
-	                                                <input type="file"
-	                                                    id="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"
-	                                                    name="academy_doc_file[]"
-	                                                    accept="image/png,image/jpeg"
-	                                                    style="display:none;">
-	                                                <div class="file-selected-name" data-for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"></div>
-	                                            </div>
-	                                            <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	                            <?php endforeach; ?>
-	                        <?php endif; ?>
-	                    </div>
+                                        <div>
+                                            <label>Ganti File (opsional)</label>
+                                            <div class="doc-upload-input doc-upload-input-reset">
+                                                <label for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>" class="file-upload-label">
+                                                    <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                                    <span class="file-text">
+                                                        <strong>Pilih file</strong>
+                                                        <small>PNG atau JPG</small>
+                                                    </span>
+                                                </label>
+                                                <input type="file"
+                                                    id="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"
+                                                    name="academy_doc_file[]"
+                                                    accept="image/png,image/jpeg"
+                                                    class="hidden">
+                                                <div class="file-selected-name" data-for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"></div>
+                                            </div>
+                                            <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
 
-	                    <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-	                        <button type="button" id="btnAddAcademyDoc" class="btn-secondary" style="padding:8px 10px;">
-	                            ➕ Tambah Sertifikat Academy
-	                        </button>
-	                    </div>
-	                </div>
+                    <div class="action-row-end">
+                        <button type="button" id="btnAddAcademyDoc" class="btn-secondary button-compact">
+                            <?= ems_icon('plus', 'h-4 w-4') ?> Tambah Sertifikat Academy
+                        </button>
+                    </div>
+                </div>
 
                 <!-- (sisanya tetap sama sampai bagian PIN) -->
 
@@ -376,7 +374,7 @@ DOKUMEN PENDUKUNG
                 <h3 class="section-form-title">Keamanan Akun</h3>
 
                 <div class="info-box">
-                    <span class="info-icon">ℹ️</span>
+                    <span class="info-icon"><?= ems_icon('exclamation-triangle', 'h-5 w-5') ?></span>
                     <span>Kosongkan semua field PIN jika tidak ingin mengubah password</span>
                 </div>
 
@@ -418,7 +416,7 @@ DOKUMEN PENDUKUNG
                 =============================== -->
                 <div class="form-submit-wrapper">
                     <button type="submit" class="btn-primary btn-submit">
-                        <span>💾</span>
+                        <?= ems_icon('check-circle', 'h-5 w-5') ?>
                         <span>Simpan Perubahan</span>
                     </button>
                 </div>
@@ -427,100 +425,72 @@ DOKUMEN PENDUKUNG
         </div>
 
     </div>
-    <!-- ======================================
-     MODAL PREVIEW DOKUMEN
-     ====================================== -->
-    <div id="docPreviewModal" class="modal-overlay" style="display:none;">
-        <div class="modal-card" style="max-width:900px;">
+    <script>
+        // Show selected filename (delegated: support input dinamis)
+        document.addEventListener('change', function(e) {
+            const input = e.target;
+            if (!input || input.tagName !== 'INPUT' || input.type !== 'file') return;
 
-            <!-- HEADER -->
-            <div class="modal-header">
-                <strong id="docPreviewTitle">📄 Preview Dokumen</strong>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <button type="button" class="zoom-control-btn" id="docZoomOut" title="Perkecil">➖</button>
-                    <button type="button" class="zoom-control-btn" id="docZoomIn" title="Perbesar">➕</button>
-                    <button type="button" class="zoom-control-btn" id="docZoomReset" title="Reset">🔄</button>
-                    <button type="button" class="zoom-control-btn" id="docReload" title="Reload">⟳</button>
-                    <button type="button" onclick="closeDocModal()">✕</button>
-                </div>
-            </div>
+            const nameDisplay = document.querySelector('.file-selected-name[data-for="' + input.id + '"]');
+            if (!nameDisplay) return;
 
-            <!-- BODY -->
-            <div class="modal-body" style="background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:60vh;">
-                <img id="docPreviewImage"
-                    src=""
-                    alt="Dokumen"
-                    style="max-width:100%;max-height:75vh;object-fit:contain;transition:transform 0.2s ease;">
-            </div>
-
-        </div>
-    </div>
-	    <script>
-	        // Show selected filename (delegated: support input dinamis)
-	        document.addEventListener('change', function(e) {
-	            const input = e.target;
-	            if (!input || input.tagName !== 'INPUT' || input.type !== 'file') return;
-
-	            const nameDisplay = document.querySelector('.file-selected-name[data-for="' + input.id + '"]');
-	            if (!nameDisplay) return;
-
-	            if (input.files && input.files.length > 0) {
-	                const fileName = input.files[0].name;
-	                const fileSize = (input.files[0].size / 1024).toFixed(1);
-	                nameDisplay.innerHTML = `
+            if (input.files && input.files.length > 0) {
+                const fileName = input.files[0].name;
+                const fileSize = (input.files[0].size / 1024).toFixed(1);
+                nameDisplay.innerHTML = `
 	                    <span class="selected-file-info">
 	                        <strong>${fileName}</strong>
 	                        <small>${fileSize} KB</small>
 	                    </span>
 	                `;
-	                nameDisplay.style.display = 'flex';
-	            } else {
-	                nameDisplay.style.display = 'none';
-	            }
-	        });
-	    </script>
+                nameDisplay.style.display = 'flex';
+            } else {
+                nameDisplay.style.display = 'none';
+            }
+        });
+    </script>
 
-	    <script>
-	        document.addEventListener('DOMContentLoaded', function() {
-	            const btn = document.getElementById('btnAddAcademyDoc');
-	            const container = document.getElementById('academyDocsContainer');
-	            if (!btn || !container) return;
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('btnAddAcademyDoc');
+            const container = document.getElementById('academyDocsContainer');
+            if (!btn || !container) return;
 
-	            let newIndex = 1;
+            let newIndex = 1;
 
-	            btn.addEventListener('click', function() {
-	                const id = 'academy_file_new_' + newIndex++;
-	                const row = document.createElement('div');
-	                row.className = 'academy-doc-row';
-	                row.setAttribute('data-row', 'academy');
-	                row.innerHTML = `
+            btn.addEventListener('click', function() {
+                const id = 'academy_file_new_' + newIndex++;
+                const row = document.createElement('div');
+                row.className = 'academy-doc-row';
+                row.setAttribute('data-row', 'academy');
+                row.innerHTML = `
 	                    <input type="hidden" name="academy_doc_id[]" value="">
-	                    <div class="row-form-2" style="margin:0;">
+	                    <div class="row-form-2 academy-grid">
 	                        <div>
 	                            <label>Nama Sertifikat Academy</label>
 	                            <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Academy Co-ass">
 	                        </div>
 	                        <div>
 	                            <label>File</label>
-	                            <div class="doc-upload-input" style="margin:0;">
+	                            <div class="doc-upload-input doc-upload-input-reset">
 	                                <label for="${id}" class="file-upload-label">
-	                                    <span class="file-icon">📁</span>
+	                                    <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
 	                                    <span class="file-text">
 	                                        <strong>Pilih file</strong>
 	                                        <small>PNG atau JPG</small>
 	                                    </span>
 	                                </label>
-	                                <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" style="display:none;">
+	                                <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" class="hidden">
 	                                <div class="file-selected-name" data-for="${id}"></div>
 	                            </div>
 	                        </div>
 	                    </div>
 	                `;
 
-	                container.appendChild(row);
-	            });
-	        });
-	    </script>
+                container.appendChild(row);
+            });
+        });
+    </script>
 </section>
 
 <script>
@@ -539,74 +509,6 @@ DOKUMEN PENDUKUNG
                 }, 600);
             });
         }, 5000); // 5 detik
-    });
-</script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const modal = document.getElementById('docPreviewModal');
-        const img = document.getElementById('docPreviewImage');
-        const titleEl = document.getElementById('docPreviewTitle');
-
-        let scale = 1;
-        let currentSrc = '';
-
-        // OPEN MODAL
-        document.body.addEventListener('click', function(e) {
-            const btn = e.target.closest('.btn-preview-doc');
-            if (!btn) return;
-
-            e.preventDefault();
-
-            currentSrc = btn.dataset.src;
-            img.src = currentSrc;
-            titleEl.textContent = '📄 ' + (btn.dataset.title || 'Dokumen');
-
-            scale = 1;
-            img.style.transform = 'scale(1)';
-
-            modal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
-
-        // CLOSE MODAL
-        window.closeDocModal = function() {
-            modal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-            img.src = '';
-            scale = 1;
-        };
-
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) closeDocModal();
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && modal.style.display === 'flex') {
-                closeDocModal();
-            }
-        });
-
-        // ZOOM CONTROLS
-        document.getElementById('docZoomIn').onclick = () => {
-            scale = Math.min(scale + 0.2, 3);
-            img.style.transform = `scale(${scale})`;
-        };
-
-        document.getElementById('docZoomOut').onclick = () => {
-            scale = Math.max(scale - 0.2, 0.5);
-            img.style.transform = `scale(${scale})`;
-        };
-
-        document.getElementById('docZoomReset').onclick = () => {
-            scale = 1;
-            img.style.transform = 'scale(1)';
-        };
-
-        document.getElementById('docReload').onclick = () => {
-            if (!currentSrc) return;
-            img.src = currentSrc + '?v=' + Date.now();
-        };
     });
 </script>
 
@@ -633,7 +535,7 @@ DOKUMEN PENDUKUNG
                 // Validasi: tidak boleh kosong
                 if (value === '') {
                     e.preventDefault();
-                    alert('❌ Citizen ID wajib diisi');
+                    alert('Citizen ID wajib diisi');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -641,7 +543,7 @@ DOKUMEN PENDUKUNG
                 // Validasi: tidak boleh ada spasi
                 if (/\s/.test(value)) {
                     e.preventDefault();
-                    alert('❌ Citizen ID tidak boleh mengandung spasi');
+                    alert('Citizen ID tidak boleh mengandung spasi');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -649,7 +551,7 @@ DOKUMEN PENDUKUNG
                 // Validasi: harus ada minimal 1 angka
                 if (!/\d/.test(value)) {
                     e.preventDefault();
-                    alert('❌ Citizen ID harus mengandung minimal 1 angka');
+                    alert('Citizen ID harus mengandung minimal 1 angka');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -657,7 +559,7 @@ DOKUMEN PENDUKUNG
                 // Validasi: harus ada minimal 1 huruf
                 if (!/[A-Z]/i.test(value)) {
                     e.preventDefault();
-                    alert('❌ Citizen ID harus mengandung minimal 1 huruf');
+                    alert('Citizen ID harus mengandung minimal 1 huruf');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -665,7 +567,7 @@ DOKUMEN PENDUKUNG
                 // Validasi: panjang minimal 6 karakter
                 if (value.length < 6) {
                     e.preventDefault();
-                    alert('❌ Citizen ID minimal 6 karakter');
+                    alert('Citizen ID minimal 6 karakter');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -678,7 +580,7 @@ DOKUMEN PENDUKUNG
 
                     if (value.toUpperCase() === cleanedFullName) {
                         e.preventDefault();
-                        alert('❌ Citizen ID tidak boleh sama dengan Nama Medis!\n\nContoh Citizen ID yang benar: RH39IQLC');
+                        alert('Citizen ID tidak boleh sama dengan Nama Medis.\n\nContoh Citizen ID yang benar: RH39IQLC');
                         citizenIdInput.focus();
                         return false;
                     }
@@ -687,14 +589,14 @@ DOKUMEN PENDUKUNG
                 // Validasi: tidak boleh hanya huruf saja atau angka saja
                 if (/^[A-Z]+$/.test(value)) {
                     e.preventDefault();
-                    alert('❌ Citizen ID tidak boleh hanya huruf saja.\n\nHarus kombinasi huruf BESAR dan angka.');
+                    alert('Citizen ID tidak boleh hanya huruf saja.\n\nHarus kombinasi huruf BESAR dan angka.');
                     citizenIdInput.focus();
                     return false;
                 }
 
                 if (/^[0-9]+$/.test(value)) {
                     e.preventDefault();
-                    alert('❌ Citizen ID tidak boleh hanya angka saja.\n\nHarus kombinasi huruf BESAR dan angka.');
+                    alert('Citizen ID tidak boleh hanya angka saja.\n\nHarus kombinasi huruf BESAR dan angka.');
                     citizenIdInput.focus();
                     return false;
                 }
@@ -723,21 +625,21 @@ DOKUMEN PENDUKUNG
                     // Validasi: semua field PIN harus diisi
                     if (oldPin === '') {
                         e.preventDefault();
-                        alert('❌ PIN Lama wajib diisi jika ingin mengganti PIN');
+                        alert('PIN Lama wajib diisi jika ingin mengganti PIN');
                         oldPinInput.focus();
                         return false;
                     }
 
                     if (newPin === '') {
                         e.preventDefault();
-                        alert('❌ PIN Baru wajib diisi jika ingin mengganti PIN');
+                        alert('PIN Baru wajib diisi jika ingin mengganti PIN');
                         newPinInput.focus();
                         return false;
                     }
 
                     if (confirmPin === '') {
                         e.preventDefault();
-                        alert('❌ Konfirmasi PIN wajib diisi jika ingin mengganti PIN');
+                        alert('Konfirmasi PIN wajib diisi jika ingin mengganti PIN');
                         confirmPinInput.focus();
                         return false;
                     }
@@ -745,14 +647,14 @@ DOKUMEN PENDUKUNG
                     // Validasi: PIN harus 4 digit
                     if (oldPin.length !== 4 || !/^\d{4}$/.test(oldPin)) {
                         e.preventDefault();
-                        alert('❌ PIN Lama harus 4 digit angka');
+                        alert('PIN Lama harus 4 digit angka');
                         oldPinInput.focus();
                         return false;
                     }
 
                     if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
                         e.preventDefault();
-                        alert('❌ PIN Baru harus 4 digit angka');
+                        alert('PIN Baru harus 4 digit angka');
                         newPinInput.focus();
                         return false;
                     }
@@ -760,7 +662,7 @@ DOKUMEN PENDUKUNG
                     // Validasi: PIN baru dan konfirmasi harus sama
                     if (newPin !== confirmPin) {
                         e.preventDefault();
-                        alert('❌ PIN Baru dan Konfirmasi PIN tidak sama');
+                        alert('PIN Baru dan Konfirmasi PIN tidak sama');
                         confirmPinInput.focus();
                         return false;
                     }
@@ -768,7 +670,7 @@ DOKUMEN PENDUKUNG
                     // Validasi: PIN baru tidak boleh sama dengan PIN lama
                     if (oldPin === newPin) {
                         e.preventDefault();
-                        alert('❌ PIN Baru tidak boleh sama dengan PIN Lama');
+                        alert('PIN Baru tidak boleh sama dengan PIN Lama');
                         newPinInput.focus();
                         return false;
                     }

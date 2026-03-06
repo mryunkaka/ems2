@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 // =======================================
 // ERROR LOG CONFIG (PRODUCTION SAFE)
@@ -32,6 +32,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 // ===============================
 // HARD GUARD date_range (WAJIB DI HOSTING)
@@ -57,11 +58,11 @@ $medicJabatan = $user['position'] ?? '';
 $medicRole    = $user['role'] ?? '';
 
 // ===============================
-// 🔐 VALIDASI AKSES REKAP FARMASI
+// VALIDASI AKSES REKAP FARMASI
 // ===============================
 // aturan:
-// - trainee ❌ tidak boleh
-// - selain trainee ✅ boleh
+// - trainee tidak boleh
+// - selain trainee boleh
 
 $position = strtolower(trim($medicJabatan));
 
@@ -69,14 +70,14 @@ if ($position === 'trainee') {
     http_response_code(403);
     include __DIR__ . '/../partials/header.php';
 ?>
-    <div class="card" style="max-width:600px;margin:80px auto;text-align:center;">
-        <h3 style="margin-bottom:10px;">🚫 Akses Ditolak</h3>
-        <p style="color:#6b7280;font-size:14px;">
+    <div class="card access-card">
+        <h3 class="access-title">Akses Ditolak</h3>
+        <p class="access-copy">
             Akun dengan posisi <strong>Trainee</strong>
             tidak diperbolehkan mengakses
             <strong>Rekap Farmasi</strong>.
         </p>
-        <a href="/dashboard/index.php" class="btn-secondary" style="margin-top:12px;">
+        <a href="/dashboard/index.php" class="btn-secondary top-spaced-button">
             Kembali ke Dashboard
         </a>
     </div>
@@ -206,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messages[] = "{$deleted} transaksi berhasil dihapus (sesuai hak akses Anda).";
 
                         /* =====================================================
-                           📌 LOG ACTIVITY (HAPUS TRANSAKSI)
+                           LOG ACTIVITY (HAPUS TRANSAKSI)
                            ===================================================== */
                         try {
                             $description = "Menghapus {$deleted} transaksi";
@@ -240,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 3) Tambah transaksi penjualan (bisa beberapa paket sekaligus)
     if ($action === 'add_sale') {
         // ===============================
-        // ⏱️ COOLDOWN ANTI-SPAM (SERVER - SESSION BASED)
+        // COOLDOWN ANTI-SPAM (SERVER - SESSION BASED)
         // ===============================
         $nowTs = time();
 
@@ -253,13 +254,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $diffSeconds = $nowTs - (int)$_SESSION['last_tx_ts'];
 
         // Cooldown FIXED 10 detik (ANTI SPAM KLIK)
-        // ⛔ ini BUKAN fairness dan BUKAN limit harian
+        // ini BUKAN fairness dan BUKAN limit harian
         if ($diffSeconds < 10) {
             $remain = 10 - $diffSeconds;
-            $errors[] = "⏳ Mohon tunggu {$remain} detik sebelum input transaksi berikutnya.";
+            $errors[] = "Mohon tunggu {$remain} detik sebelum input transaksi berikutnya.";
         }
 
-        // ⛔ BLOK JIKA MEDIS OFFLINE
+        // BLOK JIKA MEDIS OFFLINE
         $stmtStatus = $pdo->prepare("
             SELECT status
             FROM user_farmasi_status
@@ -279,7 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             empty($_SESSION['tx_token']) ||
             !hash_equals($_SESSION['tx_token'], $postedToken)
         ) {
-            $errors[] = '⚠️ Permintaan tidak valid atau sudah diproses.';
+            $errors[] = 'Permintaan tidak valid atau sudah diproses.';
         } else {
 
             unset($_SESSION['tx_token']);
@@ -402,15 +403,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $overLimit = false;
 
                     if ($newBandage > $maxBandage) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
+                        $warnings[] = "{$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
                         $overLimit = true;
                     }
                     if ($newIfaks > $maxIfaks) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
+                        $warnings[] = "{$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
                         $overLimit = true;
                     }
                     if ($newPain > $maxPain) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
+                        $warnings[] = "{$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
                         $overLimit = true;
                     }
 
@@ -446,7 +447,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($merged > 0) {
-                        $warnings[] = "🔁 {$merged} transaksi lama digabung ke {$consumerName}.";
+                        $warnings[] = "{$merged} transaksi lama digabung ke {$consumerName}.";
                     }
                 }
 
@@ -483,7 +484,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         if ($current && ((int)$current['total'] - (int)$lowest['total']) >= 10) {
                             $warnings[] =
-                                '⚠️ Distribusi transaksi tidak seimbang. ' .
+                                'Distribusi transaksi tidak seimbang. ' .
                                 'Pertimbangkan mengarahkan konsumen ke petugas medis lain.';
                         }
                     }
@@ -556,10 +557,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         /* =====================================================
-                           📌 LOG ACTIVITY (TRANSAKSI BARU)
+                           LOG ACTIVITY (TRANSAKSI BARU)
                            ===================================================== */
                         try {
-                            // ✅ HITUNG TOTAL DARI DATA YANG SUDAH ADA
+                            // Hitung total dari data yang sudah ada
                             $logTotalBandage = 0;
                             $logTotalIfaks = 0;
                             $logTotalPain = 0;
@@ -622,7 +623,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $stmtStatus->execute([$userId]);
 
                             // ======================================================
-                            // 🔥 FIX UTAMA: PASTIKAN SESSION FARMASI AKTIF
+                            // FIX UTAMA: PASTIKAN SESSION FARMASI AKTIF
                             // ======================================================
                             $stmtCheckSession = $pdo->prepare("
                                 SELECT id
@@ -651,7 +652,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         // ===============================
-                        // ⏱️ UPDATE COOLDOWN TIMESTAMP
+                        // UPDATE COOLDOWN TIMESTAMP
                         // ===============================
                         $_SESSION['last_tx_ts'] = time();
 
@@ -659,7 +660,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $clearFormNextLoad = true;
                     } catch (PDOException $e) {
                         if ($e->getCode() === '23000') {
-                            $warnings[] = '⚠️ Transaksi ini sudah pernah diproses.';
+                            $warnings[] = 'Transaksi ini sudah pernah diproses.';
                         } else {
                             app_log($e->getMessage());
                             $errors[] = 'Terjadi kesalahan sistem saat menyimpan transaksi.';
@@ -769,7 +770,7 @@ $stmtOnlineMedics = $pdo->query("
         COALESCE(SUM(s.price),0) AS total_pendapatan,
         FLOOR(COALESCE(SUM(s.price),0) * 0.4) AS bonus_40,
         
-        -- ➕ TAMBAHAN: HITUNG TRANSAKSI MINGGU INI
+        -- TAMBAHAN: HITUNG TRANSAKSI MINGGU INI
         (SELECT COUNT(*)
          FROM sales
          WHERE medic_user_id = ufs.user_id
@@ -777,7 +778,7 @@ $stmtOnlineMedics = $pdo->query("
            AND created_at <  DATE_FORMAT(NOW(), '%Y-%m-%d 23:59:59') + INTERVAL (6 - WEEKDAY(NOW())) DAY
         ) AS weekly_transaksi,
         
-        -- ➕ TAMBAHAN: HITUNG JAM ONLINE MINGGU INI
+        -- TAMBAHAN: HITUNG JAM ONLINE MINGGU INI
         (SELECT COALESCE(SUM(duration_seconds), 0)
          FROM user_farmasi_sessions
          WHERE user_id = ufs.user_id
@@ -798,7 +799,7 @@ $stmtOnlineMedics = $pdo->query("
 
 $onlineMedics = $stmtOnlineMedics->fetchAll(PDO::FETCH_ASSOC);
 
-// ➕ FORMAT DURASI UNTUK TAMPILAN
+// FORMAT DURASI UNTUK TAMPILAN
 foreach ($onlineMedics as &$m) {
     $seconds = (int)($m['weekly_online_seconds'] ?? 0);
     $hours = floor($seconds / 3600);
@@ -826,7 +827,7 @@ if (!empty($onlineMedics) && !empty($_SESSION['user_rh']['id'])) {
         }
     }
 
-    // 🔒 VALIDASI KETAT
+    // VALIDASI KETAT
     if (
         $currentMedic &&
         $lowestMedic &&
@@ -835,7 +836,7 @@ if (!empty($onlineMedics) && !empty($_SESSION['user_rh']['id'])) {
         $diff = (int)$currentMedic['total_transaksi']
             - (int)$lowestMedic['total_transaksi'];
 
-        // 🔑 HARUS BENAR-BENAR ≥ 5
+        // HARUS BENAR-BENAR >= 5
         // if ($diff >= 15) {
         //     $FAIRNESS_REDIRECT = [
         //         'medic_name'       => $lowestMedic['medic_name'],
@@ -1006,51 +1007,11 @@ include __DIR__ . '/../partials/sidebar.php';
 ?>
 <section class="content">
     <!-- ===== CONTENT ===== -->
-    <div class="page" style="max-width:1200px;margin:auto;">
+    <div class="page page-shell">
 
-        <!-- NOTIFIKASI MENGAMBANG -->
-        <div class="activity-feed-container">
+	        <h1 class="page-title">Rekap Farmasi EMS</h1>
 
-            <audio id="activitySound" preload="auto">
-                <source src="/assets/sound/activity.mp3" type="audio/mpeg">
-            </audio>
-
-            <div class="activity-feed-card">
-
-                <!-- HEADER -->
-                <div class="activity-feed-header">
-                    <span class="activity-feed-title">📌 Activity</span>
-
-                    <!-- 🔊 TOMBOL MUTE (CLASS BARU, TIDAK GANGGU) -->
-                    <button
-                        id="btnToggleActivitySound"
-                        class="activity-sound-btn"
-                        title="Matikan suara activity"
-                        aria-label="Toggle suara activity">
-                        🔊
-                    </button>
-
-                    <!-- ❌ TOMBOL CLOSE (ASLI, TIDAK DIUBAH) -->
-                    <button
-                        id="btnCloseActivity"
-                        class="activity-feed-close"
-                        title="Tutup Activity"
-                        aria-label="Tutup Activity">
-                        ✖
-                    </button>
-                </div>
-
-                <!-- LIST -->
-                <div class="activity-feed-list" id="activityFeedList"></div>
-
-            </div>
-        </div>
-
-        <h1>Rekap Farmasi EMS</h1>
-
-        <div id="localClock" style="font-size:13px;color:#9ca3af;margin-bottom:6px;"></div>
-
-        <p style="font-size:13px;color:#9ca3af;margin-bottom:16px;">
+        <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
         </p>
 
@@ -1065,88 +1026,13 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
         <?php endforeach; ?>
 
-        <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
-
-        <?php if ($medicName): ?>
-            <div class="card card-online-medics">
-                <div class="card-header">
-                    👨‍⚕️ Medis Online Hari Ini
-                    <span id="totalMedicsBadge"
-                        style="
-                            margin-left:8px;
-                            padding:2px 8px;
-                            border-radius:999px;
-                            background:#dcfce7;
-                            color:#166534;
-                            font-size:12px;
-                            font-weight:700;
-                        ">
-                        0 orang
-                    </span>
-                    <small style="display:block;font-weight:500;color:#64748b;margin-top:4px;">
-                        (prioritas penjualan paling sedikit di sortir paling atas)
-                    </small>
-                </div>
-
-                <div class="online-medics-list" id="onlineMedicsContainer">
-
-                    <?php if (empty($onlineMedics)): ?>
-
-                        <p style="font-size:13px;color:#64748b;">
-                            Tidak ada medis yang sedang online.
-                        </p>
-
-                    <?php else: ?>
-
-                        <?php foreach ($onlineMedics as $m): ?>
-                            <div class="online-medic-row">
-                                <div class="medic-main">
-                                    <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
-
-                                    <span class="weekly-badge">
-                                        Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx
-                                    </span>
-
-                                    <span class="weekly-online"
-                                        data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
-                                        data-user-id="<?= (int)$m['user_id'] ?>">
-                                        ⏱️ Online: <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
-                                    </span>
-
-                                    <div class="medic-role">
-                                        <?= htmlspecialchars($m['medic_jabatan']) ?>
-                                    </div>
-
-                                    <!-- 🔴 FORCE OFFLINE BUTTON -->
-                                    <button
-                                        class="btn-force-offline"
-                                        data-user-id="<?= (int)$m['user_id'] ?>"
-                                        data-name="<?= htmlspecialchars($m['medic_name']) ?>"
-                                        data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
-                                        🛑 Force Offline
-                                    </button>
-                                </div>
-
-                                <div class="medic-stats">
-                                    <div class="tx"><?= (int)$m['total_transaksi'] ?> trx</div>
-                                    <div class="amount"><?= dollar((int)$m['total_pendapatan']) ?></div>
-                                    <div class="bonus" style="font-size:12px;color:#16a34a;">
-                                        Bonus: <?= dollar((int)$m['bonus_40']) ?>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-
-                    <?php endif; ?>
-
-                </div>
-
-            </div>
-
-            <!-- Card Input Transaksi -->
-            <div class="card">
-                <div class="card-header card-header-actions card-header-flex">
-                    <div class="card-header-actions-title">
+	        <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
+	
+	        <?php if ($medicName): ?>
+	            <!-- Card Input Transaksi -->
+	            <div class="card">
+	                <div class="card-header card-header-actions card-header-flex">
+	                    <div class="card-header-actions-title">
                         Input Transaksi Baru
                     </div>
                 </div>
@@ -1174,8 +1060,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="medic-status">
                             <span id="farmasiStatusBadge"
                                 data-status="<?= $isOnline ? 'online' : 'offline' ?>"
-                                class="status-badge <?= $isOnline ? 'status-online' : 'status-offline' ?>"
-                                style="cursor:pointer;"
+                                class="status-badge <?= $isOnline ? 'status-online' : 'status-offline' ?> status-clickable"
                                 title="Klik untuk ubah status">
                                 <span class="dot"></span>
                                 <span id="farmasiStatusText">
@@ -1186,60 +1071,30 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
 
                     <!-- <div id="dailyNotice" class="info-notice">
-                        <strong>ℹ️ Informasi:</strong><br>
+                        <strong>Informasi:</strong><br>
                         <strong>1 konsumen / pasien hanya diperbolehkan melakukan 1 transaksi dalam 1 hari.</strong><br>
                         Jika pasien menyatakan belum pernah membeli hari ini,
                         <em>kemungkinan nama pasien telah digunakan oleh temannya atau orang lain</em>.
                         Mohon lakukan konfirmasi berdasarkan
                         <a href="/dashboard/konsumen.php"
                             target="_blank"
-                            style="color:#b45309;font-weight:600;text-decoration:underline;">
+                            class="info-link">
                             riwayat transaksi
                         </a>
                         yang ditampilkan oleh sistem.
                     </div> -->
                 <?php endif; ?>
 
-                <!-- ⏱️ NOTICE COOLDOWN GLOBAL (REALTIME) -->
-                <div id="cooldownNotice"
-                    style="
-                        display:none;
-                        margin:10px 0;
-                        padding:12px;
-                        border-radius:10px;
-                        background:#eff6ff;
-                        border:1px solid #93c5fd;
-                        font-size:14px;
-                        color:#1e3a8a;
-                    ">
+                <!-- NOTICE COOLDOWN GLOBAL (REALTIME) -->
+                <div id="cooldownNotice" class="notice-box notice-info">
                 </div>
 
-                <!-- 🔴 NOTICE FAIRNESS (GLOBAL, TIDAK TERPENGARUH INPUT) -->
-                <div id="fairnessNotice"
-                    style="
-                        display:none;
-                        margin:10px 0;
-                        padding:12px;
-                        border-radius:10px;
-                        background:#fff7ed;
-                        border:1px solid #fdba74;
-                        font-size:14px;
-                        color:#9a3412;
-                    ">
+                <!-- NOTICE FAIRNESS (GLOBAL, TIDAK TERPENGARUH INPUT) -->
+                <div id="fairnessNotice" class="notice-box notice-warning">
                 </div>
 
-                <!-- 🚫 NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT NAMA) -->
-                <div id="consumerNotice"
-                    style="
-                        display:none;
-                        margin:10px 0;
-                        padding:12px;
-                        border-radius:10px;
-                        background:#fef2f2;
-                        border:1px solid #fecaca;
-                        font-size:14px;
-                        color:#7f1d1d;
-                    ">
+                <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT NAMA) -->
+                <div id="consumerNotice" class="notice-box notice-danger">
                 </div>
 
                 <?php
@@ -1263,13 +1118,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <label>Nama Konsumen</label>
                             <!-- <input type="text" name="consumer_name" list="consumer-list" required> -->
                             <input type="text" name="consumer_name" id="consumerNameInput" list="consumer-list" required>
-                            <div id="similarConsumerBox"
-                                style="display:none;margin-top:6px;
-                                background:#fff7ed;
-                                border:1px solid #fdba74;
-                                border-radius:10px;
-                                padding:10px;
-                                font-size:13px;">
+                            <div id="similarConsumerBox" class="consumer-similar-box">
                             </div>
                             <datalist id="consumer-list">
                                 <?php foreach ($consumerNames as $cn): ?>
@@ -1346,27 +1195,136 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="total-amount" id="totalPriceDisplay">$ 0</div>
                     </div>
 
-                    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <div class="action-row-wrap">
                         <button type="button" id="btnSubmit" class="btn-success" onclick="handleSaveClick();">
                             Simpan Transaksi
                         </button>
 
                         <!-- Tombol CLEAR untuk menghapus inputan yang lengket -->
                         <button type="button" class="btn-secondary" onclick="clearFormInputs();">
-                            Clear
+                            Bersihkan
                         </button>
                     </div>
-                </form>
+	                </form>
 
-            </div>
+	            </div>
 
-            <!-- TOTAL TRANSAKSI HARI INI -->
-            <div class="card">
-                <h3 style="font-size:15px;margin:8px 0;">
-                    📊 Total Transaksi Hari Ini
+	            <!-- Aktivitas + Medis Online (fokus setelah input) -->
+	            <div class="farmasi-side-grid">
+	                <div class="activity-feed-container">
+
+	                    <audio id="activitySound" preload="auto">
+	                        <source src="/assets/sound/activity.mp3" type="audio/mpeg">
+	                    </audio>
+
+	                    <div class="activity-feed-card">
+
+	                        <!-- HEADER -->
+	                        <div class="activity-feed-header">
+	                            <span class="activity-feed-title"><?= ems_icon('document-text', 'h-4 w-4 text-primary') ?> Aktivitas</span>
+
+	                            <div class="flex items-center gap-2">
+	                                <button
+	                                    id="btnToggleActivitySound"
+	                                    class="activity-sound-btn"
+	                                    title="Matikan suara activity"
+	                                    aria-label="Toggle suara activity">
+	                                    <?= ems_icon('bell', 'h-4 w-4') ?>
+	                                    <span class="text-[11px] font-bold" data-sound-label>On</span>
+	                                </button>
+
+	                                <button
+	                                    id="btnCloseActivity"
+	                                    class="activity-feed-close"
+	                                    title="Tutup Activity"
+	                                    aria-label="Tutup Activity">
+	                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
+	                                </button>
+	                            </div>
+	                        </div>
+
+	                        <div class="activity-feed-list" id="activityFeedList"></div>
+
+	                    </div>
+	                </div>
+
+	                <div class="card card-online-medics">
+	                    <div class="card-header-between">
+	                        <div class="flex min-w-0 flex-wrap items-center gap-2">
+	                            <?= ems_icon('user-group', 'h-5 w-5 text-primary') ?>
+	                            <span class="font-semibold text-text">Medis Online Hari Ini</span>
+	                            <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
+	                        </div>
+	                        <small class="card-subnote hidden md:block">
+	                            (prioritas penjualan paling sedikit di sortir paling atas)
+	                        </small>
+	                    </div>
+	                    <div class="meta-text-xs md:hidden">
+	                        (prioritas penjualan paling sedikit di sortir paling atas)
+	                    </div>
+
+	                    <div class="online-medics-list" id="onlineMedicsContainer">
+
+	                        <?php if (empty($onlineMedics)): ?>
+
+	                            <p class="meta-text">
+	                                Tidak ada medis yang sedang online.
+	                            </p>
+
+	                        <?php else: ?>
+
+	                            <?php foreach ($onlineMedics as $m): ?>
+	                                <div class="online-medic-row">
+	                                    <div class="medic-main">
+	                                        <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
+
+	                                        <span class="weekly-badge">
+	                                            Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx
+	                                        </span>
+
+	                                        <span class="weekly-online"
+	                                            data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
+	                                            data-user-id="<?= (int)$m['user_id'] ?>">
+	                                            Online: <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
+	                                        </span>
+
+	                                        <div class="medic-role">
+	                                            <?= htmlspecialchars($m['medic_jabatan']) ?>
+	                                        </div>
+
+	                                        <button
+	                                            class="btn-force-offline"
+	                                            data-user-id="<?= (int)$m['user_id'] ?>"
+	                                            data-name="<?= htmlspecialchars($m['medic_name']) ?>"
+	                                            data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
+	                                            <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
+	                                        </button>
+	                                    </div>
+
+	                                    <div class="medic-stats">
+	                                        <div class="tx"><?= (int)$m['total_transaksi'] ?> trx</div>
+	                                        <div class="amount"><?= dollar((int)$m['total_pendapatan']) ?></div>
+	                                        <div class="bonus text-success-xs">
+	                                            Bonus: <?= dollar((int)$m['bonus_40']) ?>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	                            <?php endforeach; ?>
+
+	                        <?php endif; ?>
+
+	                    </div>
+
+	                </div>
+	            </div>
+
+	            <!-- TOTAL TRANSAKSI HARI INI -->
+	            <div class="card">
+	                <h3 class="section-title-compact">
+	                    <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
                 </h3>
 
-                <p style="font-size:13px;color:#9ca3af;margin-top:0;margin-bottom:10px;">
+                <p class="muted-copy-tight">
                     Rekap otomatis <strong>khusus hari ini</strong> (reset setiap pergantian tanggal).
                 </p>
 
@@ -1390,7 +1348,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </table>
                     </div>
                 <?php else: ?>
-                    <p style="font-size:13px;color:#9ca3af;">
+                    <p class="empty-copy">
                         Belum ada transaksi hari ini.
                     </p>
                 <?php endif; ?>
@@ -1401,7 +1359,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-header">Filter Tanggal & Transaksi</div>
 
                 <!-- Form Filter (GET) -->
-                <form method="get" style="margin-bottom:10px;">
+                <form method="get" class="mb-2.5">
                     <div class="row-form-2">
                         <div class="col">
                             <label>Rentang Tanggal</label>
@@ -1447,25 +1405,25 @@ include __DIR__ . '/../partials/sidebar.php';
                         <input type="hidden" name="show_all" value="1">
                     <?php endif; ?>
 
-                    <div style="margin-top:8px;">
+                    <div class="mt-2">
                         <button type="submit" class="btn-secondary">Terapkan Filter</button>
                     </div>
                 </form>
 
-                <p style="font-size:13px;color:#9ca3af;margin-top:0;">
+                <p class="muted-copy-tight">
                     Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
                 </p>
             </div>
 
             <!-- Rekapan Bonus Medis (berdasarkan filter tanggal) -->
             <div class="card">
-                <h3 style="font-size:15px;margin:8px 0;">Rekapan Bonus Medis (berdasarkan filter tanggal)</h3>
-                <p style="font-size:13px;color:#9ca3af;margin-top:0;margin-bottom:8px;">
+                <h3 class="section-title-compact">Rekapan Bonus Medis (berdasarkan filter tanggal)</h3>
+                <p class="muted-copy-tight">
                     Ditampilkan berdasarkan <strong>petugas medis yang sedang aktif</strong> pada rentang tanggal aktif.
                 </p>
 
                 <?php if ($singleMedicStats): ?>
-                    <div class="table-wrapper table-wrapper-sm" style="margin-bottom:12px;">
+                    <div class="table-wrapper table-wrapper-sm table-section-spacer">
                         <table class="table-custom">
                             <thead>
                                 <tr>
@@ -1492,7 +1450,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </table>
                     </div>
                 <?php else: ?>
-                    <p style="font-size:13px;color:#9ca3af;margin-bottom:12px;">
+                    <p class="empty-copy mb-3">
                         Belum ada data untuk petugas medis aktif pada rentang tanggal yang dipilih.
                     </p>
                 <?php endif; ?>
@@ -1500,10 +1458,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
             <!-- Tabel Transaksi dengan DataTables + checkbox -->
             <div class="card">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0;">
+                <div class="switcher-bar">
                     <div>
-                        <h3 style="font-size:15px;margin:0;">Transaksi (sesuai filter)</h3>
-                        <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
+                        <h3 class="section-title-tight">Transaksi (sesuai filter)</h3>
+                        <div class="switcher-caption">
                             <?php if ($showAll): ?>
                                 Mode: <strong>Semua medis</strong>
                             <?php else: ?>
@@ -1512,7 +1470,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
 
-                    <form method="get" style="margin:0;display:flex;gap:6px;align-items:center;">
+                    <form method="get" class="switcher-form">
                         <!-- bawa filter range yang sedang aktif -->
                         <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
                         <?php if ($range === 'custom'): ?>
@@ -1536,7 +1494,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
 
                 <?php if (!$filteredSales): ?>
-                    <p style="font-size:13px;color:#9ca3af;">Belum ada transaksi pada rentang ini.</p>
+                    <p class="empty-copy">Belum ada transaksi pada rentang ini.</p>
                 <?php else: ?>
                     <form method="post" id="bulkDeleteForm" onsubmit="return confirmBulkDelete();">
                         <input type="hidden" name="action" value="delete_selected">
@@ -1544,7 +1502,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <table id="salesTable">
                                 <thead>
                                     <tr>
-                                        <th style="width:32px;text-align:center;">
+                                        <th class="checkbox-col">
                                             <input type="checkbox" id="selectAll">
                                         </th>
                                         <th>Waktu</th>
@@ -1561,7 +1519,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </thead>
                                 <tfoot>
                                     <tr>
-                                        <th colspan="6" style="text-align:right;">TOTAL</th>
+                                        <th colspan="6" class="table-align-right">TOTAL</th>
                                         <th></th>
                                         <th></th>
                                         <th></th>
@@ -1573,14 +1531,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <?php foreach ($filteredSales as $s): ?>
                                         <?php $bonus = (int)floor(((int)$s['price']) * 0.4); ?>
                                         <tr>
-                                            <td style="text-align:center;">
+                                            <td class="table-align-center">
                                                 <?php if ($medicName && $s['medic_name'] === $medicName): ?>
                                                     <input type="checkbox"
                                                         class="row-check"
                                                         name="sale_ids[]"
                                                         value="<?= (int)$s['id'] ?>">
                                                 <?php else: ?>
-                                                    <span style="font-size:11px;color:#6b7280;">-</span>
+                                                    <span class="switcher-caption">-</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td data-order="<?= strtotime($s['created_at']) ?>">
@@ -1601,11 +1559,11 @@ include __DIR__ . '/../partials/sidebar.php';
                             </table>
                         </div>
 
-                        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <div class="action-row-wrap">
                             <button type="submit" class="btn-danger" id="btnBulkDelete" disabled>
                                 Hapus Data Terpilih
                             </button>
-                            <small style="color:#9ca3af;">
+                            <small class="muted-copy">
                                 Checklist baris yang ingin dihapus. Hanya transaksi milik Anda yang akan dihapus.
                             </small>
                         </div>
@@ -1615,7 +1573,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php else: ?>
             <!-- Kalau tidak ada petugas, info kecil saja -->
-            <p style="font-size:13px;color:#9ca3af;">
+            <p class="empty-copy">
                 Silakan set <strong>Petugas Medis Aktif</strong> terlebih dahulu untuk dapat input transaksi dan melihat rekap.
             </p>
         <?php endif; ?>
@@ -1625,32 +1583,23 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- =========================
      MODAL FORCE OFFLINE (EMS)
      ========================= -->
-    <div id="emsForceModal" class="ems-modal-overlay" style="display:none;">
+    <div id="emsForceModal" class="ems-modal-overlay hidden">
         <div class="ems-modal-card">
-            <h4>🚫 Force Offline Medis</h4>
+            <h4>Force Offline Medis</h4>
 
             <p id="emsForceDesc">
                 Anda akan memaksa petugas medis menjadi <strong>OFFLINE</strong>.
             </p>
 
-            <div style="text-align:left;margin-bottom:18px;">
-                <label for="emsForceReason" style="font-size:13px;font-weight:700;">
+            <div class="force-offline-body">
+                <label for="emsForceReason" class="force-offline-label">
                     Alasan Force Offline
                 </label>
                 <textarea id="emsForceReason"
                     placeholder="Contoh: sudah tidak duty / tidak berada di kota"
-                    style="
-                    width:100%;
-                    min-height:80px;
-                    margin-top:6px;
-                    padding:10px 12px;
-                    border-radius:12px;
-                    border:1px solid #cbd5e1;
-                    font-size:14px;
-                    resize:vertical;
-                "></textarea>
+                    class="force-offline-textarea"></textarea>
 
-                <small style="display:block;margin-top:4px;color:#94a3b8;">
+                <small class="force-offline-hint">
                     Minimal 5 karakter
                 </small>
             </div>
@@ -1846,7 +1795,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         // ===============================
-        // 🚫 CONSUMER NOTICE (LOKAL)
+        // Consumer notice (lokal)
         // ===============================
         function showConsumerNotice(html) {
             const box = document.getElementById('consumerNotice');
@@ -1869,7 +1818,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function recalcTotals() {
-            // ⛔ Fairness hanya mengunci submit, bukan logic input
+            // Fairness hanya mengunci submit, bukan logic input
             const fairnessLocked = FAIRNESS_STATE.locked;
 
             // Kumpulkan ID paket yang dipilih
@@ -1941,7 +1890,7 @@ include __DIR__ . '/../partials/sidebar.php';
             let alreadyBoughtToday = false;
 
             if (!cname || cname.length < 3) {
-                clearConsumerNotice(); // 🔥 HANYA consumer
+                clearConsumerNotice(); // HANYA consumer
                 IS_OVER_LIMIT = false;
                 return;
             } else {
@@ -1957,7 +1906,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 let html = '';
 
-                html += '🚫 <strong>' + escapeHtml(cname) + '</strong> ';
+                html += '<strong>' + escapeHtml(cname) + '</strong> ';
                 html += 'sudah melakukan <strong>1 transaksi hari ini</strong>.<br>';
                 html += 'Transaksi tambahan <strong>tidak diperbolehkan</strong>.<br><br>';
 
@@ -1965,16 +1914,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 // DETAIL TRANSAKSI HARI INI
                 // ===============================
                 html += '<strong>Detail pembelian hari ini:</strong>';
-                html += '<ul style="margin-top:6px;padding-left:18px;">';
+                html += '<ul class="notice-detail-list">';
 
                 detail.forEach(function(d) {
                     const waktu = d.time ? d.time : '-';
 
-                    html += '<li style="margin-bottom:6px;">' +
-                        '📦 <strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
+                    html += '<li class="notice-detail-item">' +
+                        '<strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
                         '<small>' +
-                        '🕒 ' + escapeHtml(waktu) +
-                        ' &nbsp;|&nbsp; 👨‍⚕️ ' + escapeHtml(d.medic || '-') +
+                        'Waktu: ' + escapeHtml(waktu) +
+                        ' &nbsp;|&nbsp; Medis: ' + escapeHtml(d.medic || '-') +
                         '</small>' +
                         '</li>';
                 });
@@ -1984,7 +1933,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 // ===============================
                 // INFO TAMBAHAN & ATURAN SISTEM
                 // ===============================
-                html += '<small style="display:block;margin-top:6px;">';
+                html += '<small class="notice-detail-help">';
                 html += 'Silakan konfirmasi ke konsumen bahwa pembelian telah dilakukan ';
                 html += 'pada waktu dan petugas medis yang tercantum di atas.<br><br>';
 
@@ -2023,7 +1972,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 // TAMPILKAN NOTICE KONSUMEN
                 // ===============================
                 showConsumerNotice(html);
-                return; // ⛔ STOP — tidak lanjut ke proses lain
+                return; // STOP: tidak lanjut ke proses lain
             }
         }
 
@@ -2090,25 +2039,25 @@ include __DIR__ . '/../partials/sidebar.php';
             const forceOverInput = document.getElementById('force_overlimit');
 
             // if (FAIRNESS_STATE.locked) {
-            //     alert('⚠️ Transaksi diblokir oleh sistem fairness.');
+            //     alert('Transaksi diblokir oleh sistem fairness.');
             //     return;
             // }
 
             // ===============================
-            // ⏱️ COOLDOWN CLIENT (UX SAJA)
+            // COOLDOWN CLIENT (UX SAJA)
             // ===============================
             if (window.__lastSubmitAt) {
                 const now = Date.now();
                 const diff = Math.floor((now - window.__lastSubmitAt) / 1000);
 
                 if (diff < 60) {
-                    alert(`⏳ Mohon tunggu ${60 - diff} detik sebelum transaksi berikutnya.`);
+                    alert(`Mohon tunggu ${60 - diff} detik sebelum transaksi berikutnya.`);
                     return;
                 }
             }
 
             if (CONSUMER_LOCK) {
-                alert('🚫 Konsumen ini sudah melakukan transaksi hari ini.');
+                alert('Konsumen ini sudah melakukan transaksi hari ini.');
                 return;
             }
 
@@ -2121,7 +2070,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             if (IS_OVER_LIMIT) {
                 // Kasus: kalau disimpan, dia akan MELEBIHI batas harian
-                msg += "⚠️ Orang ini telah mencapai / akan melewati batas maksimal pembelian harian.\n\n";
+                msg += "Orang ini telah mencapai atau akan melewati batas maksimal pembelian harian.\n\n";
 
                 if (cname) {
                     msg += "Nama konsumen: " + cname + "\n\n" +
@@ -2202,8 +2151,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const offsetMinutes = -date.getTimezoneOffset();
 
             if (offsetMinutes === 7 * 60) return 'WIB (UTC+7)';
-            if (offsetMinutes === 8 * 60) return 'WITA (UTC+8)';
-            if (offsetMinutes === 9 * 60) return 'WIT (UTC+9)';
+            if (offsetMinutes === 8 * 60) return 'WIB (UTC+7)';
+            if (offsetMinutes === 9 * 60) return 'WIB (UTC+7)';
 
             // Jika di luar Indonesia, fallback ke label umum
             return 'Zona waktu lokal';
@@ -2315,7 +2264,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         [1, 'desc']
                     ],
                     language: {
-                        url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json"
+                        url: "/assets/design/js/datatables-id.json"
                     },
                     footerCallback: function(row, data, start, end, display) {
                         let api = this.api();
@@ -2399,7 +2348,7 @@ include __DIR__ . '/../partials/sidebar.php';
             const totalBadge = document.getElementById('totalMedicsBadge');
             if (!container || !totalBadge) return;
 
-            // ⏱️ STATE GLOBAL (JANGAN RESET SETIAP RENDER)
+            // STATE GLOBAL (JANGAN RESET SETIAP RENDER)
             let baseTimestamp = {};
             let lastDataHash = '';
 
@@ -2443,7 +2392,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 updateTotal(data.length);
 
                 if (!data.length) {
-                    container.innerHTML = '<p style="font-size:13px;color:#64748b;">Tidak ada medis yang sedang online.</p>';
+                    container.innerHTML = '<p class="meta-text">Tidak ada medis yang sedang online.</p>';
                     return;
                 }
 
@@ -2455,20 +2404,20 @@ include __DIR__ . '/../partials/sidebar.php';
                     <strong>${escapeHtml(m.medic_name)}</strong>
                     <span class="weekly-badge">Minggu ini: ${m.weekly_transaksi} trx</span>
                     <span class="weekly-online" data-seconds="${m.weekly_online_seconds}" data-user-id="${m.user_id}">
-                        ⏱️ Online: ${m.weekly_online_text}
+                        Online: ${m.weekly_online_text}
                     </span>
                     <div class="medic-role">${escapeHtml(m.medic_jabatan)}</div>
                     <button class="btn-force-offline"
                         data-user-id="${m.user_id}"
                         data-name="${escapeHtml(m.medic_name)}"
                         data-jabatan="${escapeHtml(m.medic_jabatan)}">
-                        🛑 Force Offline
+                        Force Offline
                     </button>
                 </div>
                 <div class="medic-stats">
                     <div class="tx">${m.total_transaksi} trx</div>
                     <div class="amount">$ ${Number(m.total_pendapatan).toLocaleString()}</div>
-                    <div class="bonus" style="font-size:12px;color:#16a34a;">
+                    <div class="bonus text-success-xs">
                         Bonus: $ ${Number(m.bonus_40).toLocaleString()}
                     </div>
                 </div>
@@ -2503,7 +2452,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     const minutes = Math.floor((totalSeconds % 3600) / 60);
                     const seconds = totalSeconds % 60;
 
-                    span.textContent = `⏱️ Online: ${hours}j ${minutes}m ${seconds}d`;
+                    span.textContent = `Online: ${hours}j ${minutes}m ${seconds}d`;
                 });
             }
 
@@ -2522,10 +2471,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             }
 
-            // ⏱️ TIMER UPDATE (SETIAP 1 DETIK, INDEPENDEN)
+            // TIMER UPDATE (SETIAP 1 DETIK, INDEPENDEN)
             setInterval(updateOnlineDurations, 1000);
 
-            // ⏱️ FETCH DATA (SETIAP 1 DETIK)
+            // FETCH DATA (SETIAP 1 DETIK)
             fetchMedics();
             setInterval(fetchMedics, 1000);
         })();
@@ -2554,11 +2503,11 @@ include __DIR__ . '/../partials/sidebar.php';
             // ICON MAPPING
             // ===============================
             const ACTIVITY_ICONS = {
-                'transaction': '💰',
-                'online': '🟢',
-                'offline': '⚫',
-                'force_offline': '🛑',
-                'delete': '🗑️'
+                'transaction': 'TRX',
+                'online': 'ON',
+                'offline': 'OFF',
+                'force_offline': 'FORCE',
+                'delete': 'DEL'
             };
 
             // ===============================
@@ -2602,7 +2551,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 item.innerHTML = `
             <div class="${iconClass}">
-                ${ACTIVITY_ICONS[data.type] || '📌'}
+                ${ACTIVITY_ICONS[data.type] || 'LOG'}
             </div>
             <div class="activity-content">
                 <div class="activity-medic">${escapeHtml(data.medic_name)}</div>
@@ -2638,7 +2587,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 const newestId = newActivities[0].id;
 
-                // 🔔 BUNYI HANYA JIKA ADA ACTIVITY BARU
+                // BUNYI HANYA JIKA ADA ACTIVITY BARU
                 if (!isFirstLoad && lastActivityId !== null && newestId > lastActivityId) {
                     playSound();
                 }
@@ -2658,11 +2607,11 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }
 
-            // ⛔ Jika user sudah menutup activity (session-based)
+            // Jika user sudah menutup activity (session-based)
             if (sessionStorage.getItem(ACTIVITY_CLOSED_KEY) === '1') {
                 const wrapper = document.querySelector('.activity-feed-container');
                 if (wrapper) wrapper.style.display = 'none';
-                return; // 🔥 STOP: tidak fetch, tidak render, tidak bunyi
+                return; // STOP: tidak fetch, tidak render, tidak bunyi
             }
 
             // ===============================
@@ -2705,7 +2654,7 @@ include __DIR__ . '/../partials/sidebar.php';
             fetchActivities(); // Fetch pertama kali
             setInterval(fetchActivities, 3000); // Fetch data baru setiap 3 detik
 
-            // ⏱️ UPDATE TIME SETIAP 10 DETIK
+            // UPDATE TIME SETIAP 10 DETIK
             setInterval(updateAllTimes, 10000);
 
             const btnClose = document.getElementById('btnCloseActivity');
@@ -2728,14 +2677,15 @@ include __DIR__ . '/../partials/sidebar.php';
         document.addEventListener('DOMContentLoaded', () => {
             const audio = document.getElementById('activitySound');
             const btn = document.getElementById('btnToggleActivitySound');
+            const label = btn ? btn.querySelector('[data-sound-label]') : null;
 
-            if (!audio || !btn) return;
+            if (!audio || !btn || !label) return;
 
             let muted = localStorage.getItem('activity_sound_muted') === '1';
 
             function syncUI() {
                 audio.muted = muted;
-                btn.textContent = muted ? '🔇' : '🔊';
+                label.textContent = muted ? 'Off' : 'On';
                 btn.classList.toggle('is-muted', muted);
                 btn.title = muted ? 'Aktifkan suara activity' : 'Matikan suara activity';
             }
@@ -2774,14 +2724,14 @@ include __DIR__ . '/../partials/sidebar.php';
             .then(text => {
                 if (text.startsWith('OK|')) {
                     const count = text.split('|')[1];
-                    alert(`✅ Berhasil!\n${count} transaksi diperbaiki.`);
+                    alert(`Berhasil.\n${count} transaksi diperbaiki.`);
                     location.reload();
                 } else {
-                    alert('❌ Gagal:\n' + text);
+                    alert('Gagal:\n' + text);
                 }
             })
             .catch(err => {
-                alert('❌ Error koneksi');
+                alert('Error koneksi');
                 console.error(err);
             });
     }
@@ -2842,7 +2792,7 @@ include __DIR__ . '/../partials/sidebar.php';
             }
         }
 
-        // ⏱️ Cek setiap 5 detik (aman & ringan)
+        // Cek setiap 5 detik (aman & ringan)
         checkStatus();
         setInterval(checkStatus, 5000);
     })();
@@ -2867,18 +2817,18 @@ include __DIR__ . '/../partials/sidebar.php';
                 const blocked = !!data.blocked;
                 const threshold = parseInt(data.threshold || 10, 10);
 
-                // 🔒 STATE KEY HARUS TERMASUK STATUS USER
+                // STATE KEY HARUS TERMASUK STATUS USER
                 const stateKey = blocked + ':' + selisih + ':' + data.user_status;
                 if (stateKey === lastState) return;
                 lastState = stateKey;
 
                 // ===============================
-                // ⛔ USER OFFLINE → TAMPILKAN NOTICE
+                // USER OFFLINE: TAMPILKAN NOTICE
                 // ===============================
                 if (data.user_status === 'offline') {
 
                     showFairnessNotice(`
-                        🚫 <strong>Status Anda OFFLINE</strong><br><br>
+                        <strong>Status Anda OFFLINE</strong><br><br>
                         Anda tidak dapat melakukan transaksi selama status OFFLINE.<br>
                         Silakan Klik Tombol <strong>OFFLINE</strong> untuk merubah status menjadi <strong>ONLINE</strong> untuk melanjutkan.
                     `);
@@ -2887,18 +2837,18 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
 
                 // ===============================
-                // ✅ USER ONLINE → PASTIKAN NOTICE OFFLINE HILANG
+                // User online: pastikan notice offline hilang
                 // ===============================
                 clearFairnessNotice();
 
                 // ===============================
-                // 🔴 HARD LOCK (FAIRNESS BLOCK)
+                // HARD LOCK (FAIRNESS BLOCK)
                 // ===============================
                 if (blocked) {
                     //     showFairnessNotice(`
-                    //     ⚠️ <strong>Distribusi transaksi tidak seimbang</strong><br><br>
+                    //     <strong>Distribusi transaksi tidak seimbang</strong><br><br>
                     //     Anda memiliki <strong>${selisih}</strong> transaksi lebih banyak.<br><br>
-                    //     👨‍⚕️ <strong>Silakan arahkan konsumen ke:</strong><br>
+                    //     [Dokter] <strong>Silakan arahkan konsumen ke:</strong><br>
                     //     <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
                     //     <small>
                     //         ${escapeHtml(data.medic_jabatan || '-')}
@@ -2909,7 +2859,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
 
                 // // ===============================
-                // // 🟡 EARLY WARNING (BELUM LOCK)
+                // // EARLY WARNING (BELUM LOCK)
                 // // ===============================
                 // if (!blocked && selisih > 0) {
 
@@ -2933,10 +2883,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 // if (selisih >= threshold) {
                 //     const box = document.getElementById('fairnessNotice');
                 //     box.innerHTML = `
-                //         ⚠️ <strong>Distribusi transaksi tidak seimbang</strong><br>
+                //         <strong>Distribusi transaksi tidak seimbang</strong><br>
                 //         Selisih transaksi Anda saat ini:
                 //         <strong>${selisih}</strong>.<br><br>
-                //         👨‍⚕️ Medis dengan transaksi paling sedikit:<br>
+                //         [Dokter] Medis dengan transaksi paling sedikit:<br>
                 //         <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
                 //         <small>${escapeHtml(data.medic_jabatan || '-')}</small>
                 //     `;
@@ -2945,7 +2895,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 // }
 
                 // ===============================
-                // 🟢 AMAN TOTAL (SELISIH = 0)
+                // AMAN TOTAL (SELISIH = 0)
                 // ===============================
                 clearFairnessNotice();
 
@@ -2978,7 +2928,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
                 const data = await res.json();
 
-                // ❌ Tidak aktif → pastikan bersih
+                // Tidak aktif: pastikan bersih
                 if (!data.active) {
                     box.style.display = 'none';
                     box.innerHTML = '';
@@ -2992,14 +2942,14 @@ include __DIR__ . '/../partials/sidebar.php';
                     return;
                 }
 
-                // ✅ Aktif → hanya untuk USER INI
+                // Aktif: hanya untuk user ini
                 btn.disabled = true;
                 btn.classList.add('btn-disabled');
 
                 const remain = parseInt(data.remain || 0, 10);
 
                 box.innerHTML = `
-                ⏳ <strong>Cooldown transaksi</strong><br>
+                <strong>Cooldown transaksi</strong><br>
                 Anda baru saja menyimpan transaksi.<br>
                 Silakan tunggu <strong>${remain} detik</strong>
                 sebelum transaksi berikutnya.
@@ -3036,11 +2986,11 @@ include __DIR__ . '/../partials/sidebar.php';
             // ==========================
             const message =
                 next === 'offline' ?
-                "⚠️ Apakah Anda yakin ingin OFFLINE?\n\nAnda tidak akan menerima transaksi farmasi." :
-                "✅ Apakah Anda yakin ingin ONLINE?\n\nAnda akan mulai menerima transaksi farmasi.";
+                "Apakah Anda yakin ingin OFFLINE?\n\nAnda tidak akan menerima transaksi farmasi." :
+                "Apakah Anda yakin ingin ONLINE?\n\nAnda akan mulai menerima transaksi farmasi.";
 
             if (!confirm(message)) {
-                return; // ❌ batal
+                return; // batal
             }
 
             isBusy = true;
@@ -3078,7 +3028,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
 
             } catch (e) {
-                alert('❌ Koneksi ke server gagal');
+                alert('Koneksi ke server gagal');
                 console.error(e);
             }
 
@@ -3091,7 +3041,7 @@ include __DIR__ . '/../partials/sidebar.php';
     (function() {
         let targetUserId = null;
         let targetName = null;
-        let targetJabatan = null; // ➕ TAMBAHAN (TIDAK MENGGANGGU YANG LAIN)
+        let targetJabatan = null; // TAMBAHAN (TIDAK MENGGANGGU YANG LAIN)
 
         const modal = document.getElementById('emsForceModal');
         const desc = document.getElementById('emsForceDesc');
@@ -3107,7 +3057,7 @@ include __DIR__ . '/../partials/sidebar.php';
             desc.innerHTML =
                 `Nama Medis: <strong>${name}</strong><br>` +
                 `Jabatan: <strong>${jabatan}</strong><br>` +
-                `Status akan diubah menjadi <strong style="color:#dc2626;">OFFLINE</strong>.`;
+                `Status akan diubah menjadi <strong class="text-danger-strong">OFFLINE</strong>.`;
 
             reasonInput.value = '';
             modal.style.display = 'flex';
@@ -3132,7 +3082,7 @@ include __DIR__ . '/../partials/sidebar.php';
             openModal(
                 btn.dataset.userId,
                 btn.dataset.name,
-                btn.dataset.jabatan // ➕ AMBIL JABATAN
+                btn.dataset.jabatan // AMBIL JABATAN
             );
         });
 
@@ -3149,7 +3099,7 @@ include __DIR__ . '/../partials/sidebar.php';
             const reason = reasonInput.value.trim();
 
             if (reason.length < 5) {
-                alert('❌ Alasan wajib diisi (min. 5 karakter)');
+                alert('Alasan wajib diisi (min. 5 karakter)');
                 reasonInput.focus();
                 return;
             }
@@ -3179,11 +3129,11 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
 
                 closeModal();
-                alert(`✅ berhasil di-FORCE OFFLINE`);
+                alert('Berhasil di-force offline');
 
             } catch (err) {
                 console.error(err);
-                alert('❌ Koneksi server gagal');
+                alert('Koneksi server gagal');
             }
 
             btnConfirm.textContent = 'Force Offline';

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $shouldClearForm = !empty($_SESSION['clear_form'] ?? false);
 unset($_SESSION['clear_form']);
@@ -186,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Jenis layanan tidak valid';
     }
 
-    // 🔴 DEFAULT WAJIB
+    // DEFAULT WAJIB
     if ($serviceType === 'Treatment') {
         $medicineUsage = 'Bandage 1 pcs';
         if ($isGunshot) {
@@ -206,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 🔴 TAMBAHAN DARI CHECKBOX
+    // TAMBAHAN DARI CHECKBOX
     if (is_array($meds) && count($meds) > 0) {
         $list = [];
 
@@ -569,10 +570,10 @@ include __DIR__ . '/../partials/sidebar.php';
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto">
+    <div class="page page-shell">
 
-        <h1>Input Layanan Medis EMS</h1>
-        <p class="text-muted">Sesuai Regulasi Roxwood Hospital</p>
+        <h1 class="page-title">Input Layanan Medis EMS</h1>
+        <p class="page-subtitle">Sesuai Regulasi Roxwood Hospital</p>
 
         <?php foreach ($messages as $m): ?>
             <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>
@@ -599,17 +600,17 @@ include __DIR__ . '/../partials/sidebar.php';
                     <option value="Plastik">Operasi Plastik</option>
                 </select>
 
-                <div id="detailSection">
-                    <label>Detail Layanan</label>
-                    <select name="service_detail" id="serviceDetail" disabled>
-                        <option value="">-- Pilih Jenis Layanan Terlebih Dahulu --</option>
-                    </select>
-                    <small id="detailHint" class="text-muted">
-                        Silahkan pilih jenis layanan terlebih dahulu
-                    </small>
-                </div>
+	                <div id="detailSection" class="space-y-2">
+	                    <label>Detail Layanan</label>
+	                    <select name="service_detail" id="serviceDetail" disabled>
+	                        <option value="">-- Pilih Jenis Layanan Terlebih Dahulu --</option>
+	                    </select>
+	                    <small id="detailHint" class="text-muted">
+	                        Silahkan pilih jenis layanan terlebih dahulu
+	                    </small>
+	                </div>
 
-                <div id="operasiTingkatSection" style="display:none">
+                <div id="operasiTingkatSection" class="hidden">
                     <label>Tingkat Operasi</label>
                     <select name="operasi_tingkat" id="operasiTingkat">
                         <option value="">-- Pilih Tingkat --</option>
@@ -617,52 +618,79 @@ include __DIR__ . '/../partials/sidebar.php';
                         <option value="Sedang">Sedang</option>
                         <option value="Berat">Berat</option>
                     </select>
-                </div>
+	                </div>
 
-                <!-- ================= OBAT (KHUSUS PINGSAN & TREATMENT) ================= -->
-                <div id="medicineSection" style="display:none">
+	                <!-- ================= OBAT (KHUSUS PINGSAN & TREATMENT) ================= -->
+	                <div id="medicineSection" class="hidden mt-4">
+	                    <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+	                        <div class="subsection-title">Kondisi Luka</div>
 
-                    <!-- ================= KONDISI LUKA ================= -->
-                    <label style="margin-top:6px">
-                        <input type="checkbox" id="isGunshot" name="is_gunshot" value="1">
-                        Luka tembak / peluru
-                    </label>
+	                    <!-- ================= KONDISI LUKA ================= -->
+	                        <label class="checkbox-label form-gap rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                            <input type="checkbox" id="isGunshot" name="is_gunshot" value="1">
+	                            <span class="font-medium text-slate-800">Luka tembak / peluru</span>
+	                        </label>
 
-                    <small class="text-muted">
-                        Jika dicentang, biaya obat menjadi
-                        <strong>$<?= number_format($priceBleedingPeluru) ?> / item</strong>
-                    </small>
+	                        <small class="text-muted">
+	                            Jika dicentang, biaya obat menjadi
+	                            <strong>$<?= number_format($priceBleedingPeluru) ?> / item</strong>
+	                        </small>
 
-                    <hr>
+	                        <hr class="my-4 border-slate-200">
 
-                    <label>Area Luka / Obat Digunakan</label>
+	                        <div class="subsection-title">Area Luka / Obat Digunakan</div>
 
-                    <div class="row-form-2">
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Gauze" value="Head"> Head (Gauze)</label>
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Gauze" value="Body"> Body (Gauze)</label>
+	                        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Gauze" value="Head">
+	                                <span>Head (Gauze)</span>
+	                            </label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Gauze" value="Body">
+	                                <span>Body (Gauze)</span>
+	                            </label>
 
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Iodine" value="Left Arm"> Left Arm (Iodine)</label>
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Iodine" value="Right Arm"> Right Arm (Iodine)</label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Iodine" value="Left Arm">
+	                                <span>Left Arm (Iodine)</span>
+	                            </label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Iodine" value="Right Arm">
+	                                <span>Right Arm (Iodine)</span>
+	                            </label>
 
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Left Leg"> Left Leg (Syringe)</label>
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Right Leg"> Right Leg (Syringe)</label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Left Leg">
+	                                <span>Left Leg (Syringe)</span>
+	                            </label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Right Leg">
+	                                <span>Right Leg (Syringe)</span>
+	                            </label>
 
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Left Foot"> Left Foot (Syringe)</label>
-                        <label><input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Right Foot"> Right Foot (Syringe)</label>
-                    </div>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Left Foot">
+	                                <span>Left Foot (Syringe)</span>
+	                            </label>
+	                            <label class="checkbox-label rounded-xl border border-slate-200 bg-white px-3 py-2 hover:bg-sky-50/60">
+	                                <input type="checkbox" name="meds[]" class="med-check" data-med="Syringe" value="Right Foot">
+	                                <span>Right Foot (Syringe)</span>
+	                            </label>
+	                        </div>
 
-                    <small class="text-muted">
-                        Setiap area menggunakan 1 obat
-                        (<strong>$<?= number_format($priceBleedingNormal) ?> / item</strong>)
-                    </small>
-                </div>
+	                        <small class="mt-3 block text-sm text-slate-500">
+	                            Setiap area menggunakan 1 obat
+	                            (<strong>$<?= number_format($priceBleedingNormal) ?> / item</strong>)
+	                        </small>
+	                    </div>
+	                </div>
 
                 <div id="patientSection">
                     <label>Nama Pasien</label>
                     <input type="text" name="patient_name">
                 </div>
 
-                <div id="dpjpSection" style="display:none">
+                <div id="dpjpSection" class="hidden">
 
                     <label>DPJP / Dokter Penanggung Jawab</label>
                     <select name="dpjp_name" id="dpjpName">
@@ -688,7 +716,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div id="teamInputs"></div>
 
                 <!-- ================= PEMBAGIAN OPERASI ================= -->
-                <div id="splitOperasi" style="display:none" class="card" style="margin-top:12px">
+                <div id="splitOperasi" class="card hidden mt-3">
                     <div class="card-header">Pembagian Operasi</div>
 
                     <div class="row-form-2">
@@ -724,7 +752,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         Co-ass / Paramedic / lainnya
                     </small>
 
-                    <div style="margin-top:8px">
+                    <div class="mt-2">
                         <strong>Per Tim</strong>
                         <div id="teamPerPerson">$0</div>
                     </div>
@@ -760,22 +788,24 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="hidden" name="price" id="price">
                 <input type="hidden" name="total" id="total">
 
-                <div class="total-display">
-                    <div class="total-display-label">Total Biaya</div>
-                    <div class="total-amount" id="totalDisplay">$0</div>
-                </div>
+	                <div class="total-display">
+	                    <div class="total-display-label">Total Biaya</div>
+	                    <div class="total-amount" id="totalDisplay">$0</div>
+	                </div>
+	
+	                <div class="mt-4 flex flex-wrap gap-3">
+	                    <button type="submit" class="btn-success">Simpan</button>
+	                    <button type="button" class="btn-secondary" onclick="clearEmsForm()">
+	                        Bersihkan
+	                    </button>
+	                </div>
 
-                <button type="submit" class="btn-success">Simpan</button>
-                <button type="button" class="btn-secondary" onclick="clearEmsForm()">
-                    Clear
-                </button>
-
-            </form>
-        </div>
+	            </form>
+	        </div>
 
         <!-- ================= REKAP ================= -->
         <div class="card">
-            <form method="get" style="margin-bottom:10px;">
+            <form method="get" class="mb-2.5">
                 <div class="row-form-2">
                     <div class="col">
                         <label>Rentang Tanggal</label>
@@ -813,28 +843,29 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </div>
 
-                <button type="submit" class="btn-secondary" style="margin-top:8px">
+                <button type="submit" class="btn-secondary mt-2">
                     Terapkan Filter
                 </button>
             </form>
 
-            <p class="text-muted" style="font-size:13px;">
+            <p class="text-muted text-sm">
                 Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
             </p>
         </div>
 
         <div class="card">
-            <h3 style="font-size:15px;margin:14px 0 6px;">
+            <h3 class="section-title mt-3.5 mb-1.5">
                 Rekapan Medis (Pemakaian & Keuangan)
             </h3>
 
-            <p style="font-size:13px;color:#9ca3af;margin-top:0;margin-bottom:16px;">
+            <p class="section-intro">
                 Berdasarkan <strong>petugas medis aktif</strong> dan <strong>rentang tanggal</strong>
             </p>
 
             <!-- TABEL 1: Item Medis -->
-            <h4 style="font-size:13px;font-weight:700;color:#0f172a;margin:12px 0 8px;">
-                📋 Item Medis Digunakan
+            <h4 class="subsection-title">
+                <?= ems_icon('clipboard-document-list', 'h-4 w-4 inline-block align-text-bottom') ?>
+                <span>Item Medis Digunakan</span>
             </h4>
 
             <div class="table-wrapper table-wrapper-sm">
@@ -871,8 +902,9 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <!-- TABEL 2: Keuangan -->
-            <h4 style="font-size:13px;font-weight:700;color:#0f172a;margin:20px 0 8px;">
-                💰 Ringkasan Keuangan
+            <h4 class="subsection-title mt-5">
+                <?= ems_icon('banknotes', 'h-4 w-4 inline-block align-text-bottom') ?>
+                <span>Ringkasan Keuangan</span>
             </h4>
 
             <div class="table-wrapper table-wrapper-sm">
@@ -892,9 +924,9 @@ include __DIR__ . '/../partials/sidebar.php';
                             <td>Cash</td>
                             <td>$<?= number_format($rekapMedis['cash']) ?></td>
                         </tr>
-                        <tr style="background:rgba(14,165,233,0.08);font-weight:700;">
-                            <td style="color:#0284c7;">Total</td>
-                            <td style="color:#0284c7;">$<?= number_format($rekapMedis['total']) ?></td>
+                        <tr class="soft-total-row">
+                            <td class="soft-total-text">Total</td>
+                            <td class="soft-total-text">$<?= number_format($rekapMedis['total']) ?></td>
                         </tr>
                     </tbody>
                 </table>
@@ -916,7 +948,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <table id="rekapTable" class="table-custom">
                         <thead>
                             <tr>
-                                <th style="width:32px;text-align:center;">
+                                <th class="checkbox-col">
                                     <input type="checkbox" id="checkAll">
                                 </th>
                                 <th>Waktu</th>
@@ -931,7 +963,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <tbody>
                             <?php foreach ($rows as $r): ?>
                                 <tr>
-                                    <td style="text-align:center;">
+                                    <td class="table-align-center">
                                         <input
                                             type="checkbox"
                                             class="row-check"
@@ -952,7 +984,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                         <tfoot>
                             <tr>
-                                <th colspan="6" style="text-align:right;">
+                                <th colspan="6" class="table-align-right">
                                     TOTAL (data yang tampil):
                                 </th>
                                 <th id="rekapTotalFooter">$0</th>
@@ -962,14 +994,15 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
             </form>
             <br>
-            <!-- 🔴 TOMBOL DI HEADER (SAMA DENGAN REKAP FARMASI) -->
+            <!-- TOMBOL DI HEADER (SAMA DENGAN REKAP FARMASI) -->
             <button
                 type="submit"
                 form="bulkDeleteForm"
                 id="btnDeleteSelected"
                 class="btn-danger"
                 disabled>
-                🗑 Hapus Terpilih
+                <?= ems_icon('trash', 'h-4 w-4') ?>
+                <span>Hapus Terpilih</span>
             </button>
         </div>
 
@@ -981,14 +1014,22 @@ include __DIR__ . '/../partials/sidebar.php';
    SCRIPT 1: CORE FUNCTIONALITY
    ===================================================== */
     let calculate;
-    let previewPrice; // ✅ DECLARE DI GLOBAL
-    let isRestoring = false; // ✅ FLAG UNTUK PREVENT CONFLICT
+    let previewPrice; // Declare in global scope
+    let isRestoring = false; // Flag to prevent conflict
 
     document.addEventListener('DOMContentLoaded', () => {
 
         /* ========= HELPER ========= */
-        const hide = el => el.style.display = 'none';
-        const show = el => el.style.display = 'block';
+	        const hide = (el) => {
+	            if (!el) return;
+	            el.classList.add('hidden');
+	            el.style.display = 'none';
+	        };
+	        const show = (el) => {
+	            if (!el) return;
+	            el.classList.remove('hidden');
+	            el.style.display = 'block';
+	        };
 
         const detailSection = document.getElementById('detailSection');
 
@@ -1121,7 +1162,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const currentLocation = locationInput.value;
 
-            // 🔥 JANGAN UNCHECK SAAT RESTORING
+            // JANGAN UNCHECK SAAT RESTORING
             if (!isRestoring) {
                 medicineChecks.forEach(cb => cb.checked = false);
             }
@@ -1311,11 +1352,11 @@ include __DIR__ . '/../partials/sidebar.php';
 
         calculate = previewPrice;
 
-        // ✅ EVENT LISTENERS (HANYA UNTUK NON-CHECKBOX)
+        // Event listeners (hanya untuk non-checkbox)
         operasiTingkat.addEventListener('change', previewPrice);
         qtyEl.addEventListener('input', previewPrice);
 
-        // ✅ AUTO-HIDE ALERT
+        // Auto-hide alert
         setTimeout(() => {
             document.querySelectorAll('.alert').forEach(el => {
                 el.style.transition = 'opacity 0.5s';
@@ -1346,7 +1387,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         /* ===== SAVE FORM ===== */
         function saveForm() {
-            // ✅ JANGAN SAVE SAAT RESTORING
+            // Jangan save saat restoring
             if (isRestoring) return;
 
             const data = {};
@@ -1368,7 +1409,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             });
 
-            console.log('💾 Saving:', data);
+            console.log('Saving:', data);
             localStorage.setItem(EMS_STORAGE_KEY, JSON.stringify(data));
         }
 
@@ -1376,13 +1417,13 @@ include __DIR__ . '/../partials/sidebar.php';
         function restoreForm() {
             const raw = localStorage.getItem(EMS_STORAGE_KEY);
             if (!raw) {
-                console.log('📭 No saved data');
+                console.log('No saved data');
                 return;
             }
 
-            isRestoring = true; // ✅ SET FLAG
+            isRestoring = true; // Set flag
             const data = JSON.parse(raw);
-            console.log('📂 Restoring:', data);
+            console.log('Restoring:', data);
 
             // 1️⃣ Restore input biasa
             Object.entries(data).forEach(([name, value]) => {
@@ -1396,7 +1437,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 if (fields[0].type === 'checkbox') {
                     if (name === 'is_gunshot') {
                         fields[0].checked = value === '1';
-                        console.log(`✅ Restored is_gunshot: ${value === '1'}`);
+                        console.log(`Restored is_gunshot: ${value === '1'}`);
                     }
                 } else {
                     fields[0].value = value;
@@ -1425,7 +1466,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         document.querySelectorAll('.med-check').forEach(cb => {
                             cb.checked = data.meds.includes(cb.value);
                             if (cb.checked) {
-                                console.log(`✅ Restored: ${cb.value}`);
+                                console.log(`Restored: ${cb.value}`);
                             }
                         });
                     }
@@ -1435,7 +1476,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         if (typeof previewPrice === 'function') {
                             previewPrice();
                         }
-                        isRestoring = false; // ✅ UNSET FLAG
+                        isRestoring = false; // Unset flag
                     }, 150);
 
                 }, 350);
@@ -1447,10 +1488,10 @@ include __DIR__ . '/../partials/sidebar.php';
         /* ===== ATTACH EVENT LISTENERS ===== */
         function attachEventListeners() {
 
-            // ✅ Checkbox area luka
+            // Checkbox area luka
             document.querySelectorAll('.med-check').forEach(cb => {
                 cb.addEventListener('change', function() {
-                    console.log(`🔘 ${this.value} = ${this.checked}`);
+                    console.log(`[toggle] ${this.value} = ${this.checked}`);
                     saveForm();
                     if (typeof previewPrice === 'function') {
                         previewPrice();
@@ -1458,11 +1499,11 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             });
 
-            // ✅ Checkbox gunshot
+            // Checkbox gunshot
             const isGunshotEl = document.getElementById('isGunshot');
             if (isGunshotEl) {
                 isGunshotEl.addEventListener('change', function() {
-                    console.log(`🔫 Gunshot = ${this.checked}`);
+                    console.log(`[gunshot] = ${this.checked}`);
                     saveForm();
                     if (typeof previewPrice === 'function') {
                         previewPrice();
@@ -1470,14 +1511,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }
 
-            // ✅ Auto-save untuk input/select
+            // Auto-save untuk input/select
             form.addEventListener('input', saveForm);
             form.addEventListener('change', saveForm);
         }
 
         /* ===== CLEAR FORM ===== */
         window.clearEmsForm = function() {
-            console.log('🗑️ Clearing...');
+            console.log('Clearing form...');
             localStorage.removeItem(EMS_STORAGE_KEY);
             form.reset();
 
@@ -1503,10 +1544,10 @@ include __DIR__ . '/../partials/sidebar.php';
         /* ===== INIT ===== */
         if (SHOULD_CLEAR_FORM) {
             localStorage.removeItem(EMS_STORAGE_KEY);
-            console.log('🧹 Cleared by server');
+            console.log('Cleared by server');
         }
 
-        // ✅ TIMING YANG BENAR
+        // Timing yang benar
         setTimeout(() => {
             if (!SHOULD_CLEAR_FORM) {
                 restoreForm();
@@ -1535,7 +1576,7 @@ include __DIR__ . '/../partials/sidebar.php';
             ],
             pageLength: 10,
             language: {
-                url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                url: '/assets/design/js/datatables-id.json'
             },
             footerCallback: function() {
                 let api = this.api();

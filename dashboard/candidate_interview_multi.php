@@ -158,9 +158,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:900px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1 class="gradient-text">Interview Kandidat</h1>
+	        <h1 class="page-title">Interview Kandidat</h1>
 
         <div class="card">
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong><br>

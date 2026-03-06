@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -162,17 +163,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Daftar Event</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- EMS CSS -->
-    <link rel="stylesheet" href="../assets/css/app.css">
-    <link rel="stylesheet" href="../assets/css/components.css">
+    <link rel="stylesheet" href="/assets/design/tailwind/build.css">
 </head>
 
-<body>
+<body class="bg-background">
 
-    <div class="page" style="max-width:560px;margin:auto;">
+    <div class="login-wrapper">
+	    <div class="page page-shell">
 
-        <h1 class="gradient-text">Daftar Event</h1>
-        <p class="text-muted">Pendaftaran terbuka tanpa login</p>
+        <h1 class="page-title">Daftar Event</h1>
+        <p class="page-subtitle">Pendaftaran terbuka tanpa login</p>
 
         <?php foreach ($messages as $m): ?>
             <div class="alert alert-success"><?= htmlspecialchars($m) ?></div>
@@ -203,7 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <p class="text-muted">
                 <?= $hari ?>, <?= $dt->format('d M Y') ?>
-                • <?= htmlspecialchars($event['lokasi'] ?? '-') ?>
+                &bull; <?= htmlspecialchars($event['lokasi'] ?? '-') ?>
             </p>
 
             <div class="info-notice">
@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         type="text"
                         name="nama_lengkap"
                         id="namaInput"
-                        placeholder="Ketik nama…"
+                        placeholder="Ketik nama..."
                         required>
 
                     <!-- DROPDOWN AUTOCOMPLETE -->
@@ -255,8 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="form-submit-wrapper">
-                    <button class="btn btn-success btn-submit">
-                        Daftar Event
+                    <button class="btn btn-success btn-submit"><?= ems_icon('check-circle', 'h-5 w-5') ?> Daftar Event
                     </button>
                 </div>
 
@@ -308,7 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="consumer-search-name">${user.full_name}</div>
                     <div class="consumer-search-meta">
                         <span>${user.position ?? '-'}</span>
-                        <span class="dot">•</span>
+                        <span class="dot">&bull;</span>
                         <span>Batch ${user.batch ?? '-'}</span>
                     </div>
                 `;
@@ -342,6 +341,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         </div>
 
+    </div>
     </div>
 
 </body>

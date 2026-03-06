@@ -1,10 +1,11 @@
-<?php
+﻿<?php
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pushConfig = require __DIR__ . '/../config/push.php';
 
@@ -37,7 +38,7 @@ if ($userId) {
         $stmt->execute([$userId]);
         $notif = $stmt->fetch(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
-        // 🔒 JANGAN MATIKAN HALAMAN KARENA NOTIF
+        // Jangan matikan halaman karena notif
         // optional: log error
         // error_log($e->getMessage());
         $notif = null;
@@ -55,56 +56,48 @@ if ($userId) {
 
     <link rel="icon" type="image/png" href="/assets/logo.png">
     <link rel="apple-touch-icon" href="/assets/logo.png">
-
-    <!-- MODERN EMS CSS -->
-    <link rel="stylesheet" href="/assets/css/app.css">
-    <link rel="stylesheet" href="/assets/css/layout.css">
-    <link rel="stylesheet" href="/assets/css/components.css">
-    <link rel="stylesheet" href="/assets/css/responsive.css">
-
-    <!-- DataTables (boleh, aman) -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
-    <link rel="stylesheet"
-        href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+    <link rel="stylesheet" href="/assets/vendor/datatables/dataTables.dataTables.min.css">
+    <link rel="stylesheet" href="/assets/vendor/datatables/buttons.dataTables.min.css">
+    <link rel="stylesheet" href="/assets/vendor/photoswipe/photoswipe.css">
+    <link rel="stylesheet" href="/assets/design/tailwind/build.css">
+    <script defer src="/assets/vendor/alpine/alpine.min.js"></script>
 
 </head>
 
-<body>
+<body x-data>
     <audio id="inboxSound" preload="auto">
         <source src="/assets/sound/notification.mp3" type="audio/mpeg">
     </audio>
 
-    <div class="ems-app">
-        <header class="topbar">
-            <!-- KIRI -->
-            <button id="menuToggle" class="menu-btn">☰</button>
-
-            <div class="topbar-brand">
-                <img src="/assets/logo.png" alt="EMS Logo" class="topbar-logo">
-                <div class="topbar-text">
-                    <div class="topbar-title">Roxwood Hospital</div>
-                    <div class="topbar-subtitle">Emergency Medical System</div>
-                </div>
-            </div>
-
-            <!-- KANAN (INBOX) -->
-            <div class="topbar-actions">
-                <div class="notif-wrapper">
-                    <button id="enableNotif" class="notif-btn" title="Aktifkan Notifikasi">
-                        🔔
-                        <span class="notif-indicator hidden"></span>
-                    </button>
-                </div>
-
-                <div class="inbox-wrapper">
-                    <button id="inboxBtn" class="inbox-btn">
-                        📥
-                        <span id="inboxBadge" class="inbox-badge">0</span>
-                    </button>
-
-                    <div id="inboxDropdown" class="inbox-dropdown hidden">
-                        <div class="inbox-header">Inbox</div>
-                        <ul id="inboxList"></ul>
+	    <div class="ems-app">
+	        <header class="topbar">
+	            <div class="topbar-left">
+	                <button id="menuToggle" class="menu-btn" type="button" aria-label="Buka navigasi"><?= ems_icon('bars-3', 'h-7 w-7', '2.2') ?></button>
+	
+	                <div class="topbar-brand">
+	                    <img src="/assets/logo.png" alt="EMS Logo" class="topbar-logo">
+	                    <div class="topbar-text">
+	                        <div class="topbar-title">Roxwood Hospital</div>
+	                        <div class="topbar-subtitle">Emergency Medical System</div>
+	                    </div>
+	                </div>
+	            </div>
+	
+	            <div class="topbar-actions">
+                    <div id="topbarClock" class="topbar-clock" aria-label="Waktu WIB">
+                        <div class="topbar-clock-date" data-clock-date></div>
+                        <div class="topbar-clock-time" data-clock-time></div>
+                    </div>
+	                <div class="notif-wrapper">
+	                    <button id="enableNotif" class="notif-btn" title="Aktifkan Notifikasi" type="button"><?= ems_icon('bell', 'h-7 w-7', '2.2') ?><span class="notif-indicator hidden"></span></button>
+	                </div>
+	
+	                <div class="inbox-wrapper">
+	                    <button id="inboxBtn" class="inbox-btn" type="button" aria-label="Buka kotak masuk"><?= ems_icon('inbox', 'h-7 w-7', '2.2') ?><span id="inboxBadge" class="inbox-badge">0</span></button>
+	
+	                    <div id="inboxDropdown" class="inbox-dropdown hidden">
+	                        <div class="inbox-header">Kotak Masuk</div>
+	                        <ul id="inboxList"></ul>
                     </div>
                 </div>
             </div>
@@ -117,7 +110,7 @@ if ($userId) {
                 <p id="modalMessage"></p>
 
                 <div class="inbox-modal-actions">
-                    <button onclick="closeInboxModal()">Cancel</button>
+                    <button onclick="closeInboxModal()" type="button" class="btn-secondary">Batal</button>
                     <button onclick="deleteInbox()" class="btn-danger">Hapus</button>
                 </div>
             </div>
@@ -174,7 +167,7 @@ if ($userId) {
             // =========================
             function showOnlineModal(message, remainingSeconds) {
 
-                // 🛑 Jika modal sudah aktif → jangan buat ulang
+                // Jika modal sudah aktif: jangan buat ulang
                 if (onlineModalActive) return;
 
                 onlineModalActive = true;
@@ -201,7 +194,7 @@ if ($userId) {
                         text-align:center;
                         box-shadow:0 20px 40px rgba(0,0,0,.3);
                     ">
-                        <h3>⏱️ Konfirmasi Status Farmasi</h3>
+                        <h3>Konfirmasi Status Farmasi</h3>
                         <p>${message}</p>
                         <p style="font-size:13px;color:#6b7280">
                             Akan otomatis offline dalam
@@ -221,7 +214,7 @@ if ($userId) {
 
                 document.body.appendChild(modal);
 
-                // ⏱️ START COUNTDOWN (INI YANG SEBELUMNYA ERROR)
+                // START COUNTDOWN (INI YANG SEBELUMNYA ERROR)
                 startCountdownFromSeconds(remainingSeconds);
             }
 
@@ -306,7 +299,7 @@ if ($userId) {
 
                     /*
                     |-------------------------------------------------
-                    | 🔥 JIKA USER SUDAH OFFLINE → PAKSA HAPUS MODAL
+                    | Jika user sudah offline: paksa hapus modal
                     |-------------------------------------------------
                     */
                     if (notif.status && notif.status === 'offline') {
@@ -330,7 +323,7 @@ if ($userId) {
                 }
             }
 
-            // 🔁 POLLING AMAN (backoff jika server tidak bisa diakses)
+            // Polling aman (backoff jika server tidak bisa diakses)
             let farmasiNotifFailCount = 0;
             let farmasiNotifInFlight = false;
 
@@ -383,9 +376,9 @@ if ($userId) {
             });
         </script>
         <script>
-            /* ======================================================
-   HEARTBEAT — GLOBAL ACTIVITY TRACKER
-   ====================================================== */
+	            /* ======================================================
+	   HEARTBEAT - GLOBAL ACTIVITY TRACKER
+	   ====================================================== */
 
             let heartbeatTimer = null;
 
@@ -402,11 +395,11 @@ if ($userId) {
 
                     const data = await res.json();
 
-                    // 🔥 JIKA USER SUDAH OFFLINE
+                    // Jika user sudah offline
                     if (!data.active) {
                         stopHeartbeat();
 
-                        // ⛔ HAPUS MODAL KONFIRMASI JIKA MASIH ADA
+                        // Hapus modal konfirmasi jika masih ada
                         removeModal();
                     }
 
@@ -421,7 +414,7 @@ if ($userId) {
             function startHeartbeat() {
                 if (heartbeatTimer) return;
 
-                // 🔁 setiap 20 detik (aman & ringan)
+                // Setiap 15 detik (aman dan ringan)
                 heartbeatTimer = setInterval(sendHeartbeat, 15000);
             }
 
@@ -448,13 +441,17 @@ if ($userId) {
             const inboxList = document.getElementById('inboxList');
             const inboxBadge = document.getElementById('inboxBadge');
 
-            inboxBtn.addEventListener('click', () => {
-                inboxDropdown.classList.toggle('hidden');
-                loadInbox();
-            });
+            if (inboxBtn && inboxDropdown && inboxList && inboxBadge) {
+                inboxBtn.addEventListener('click', () => {
+                    inboxDropdown.classList.toggle('hidden');
+                    loadInbox();
+                });
+            }
 
             async function loadInbox() {
                 const data = await safeFetchJSON('/actions/get_inbox.php');
+                if (!inboxList || !inboxBadge) return;
+
                 if (!data) {
                     inboxList.innerHTML = '<li style="padding:12px;color:#888">Inbox tidak bisa dimuat</li>';
                     return;
@@ -539,14 +536,14 @@ if ($userId) {
                     inboxBadge.textContent = data.unread;
                     inboxBadge.style.display = data.unread > 0 ? 'inline-block' : 'none';
 
-                    // 🔔 Jika ada inbox BARU
+                    // Jika ada inbox baru
                     if (data.unread > lastUnreadCount) {
                         onNewInbox(data.unread - lastUnreadCount);
                     }
 
                     lastUnreadCount = data.unread;
 
-                    // Jika dropdown sedang terbuka → refresh list
+	                    // Jika dropdown sedang terbuka -> refresh list
                     if (!inboxDropdown.classList.contains('hidden')) {
                         renderInboxList(data.items);
                     }
@@ -588,7 +585,7 @@ if ($userId) {
                 inboxBadge.classList.add('pulse');
                 setTimeout(() => inboxBadge.classList.remove('pulse'), 800);
 
-                // 🔊 Bunyi notif (optional)
+                // Bunyi notif (opsional)
                 playInboxSound();
             }
 
@@ -636,14 +633,14 @@ if ($userId) {
                         inboxBadge.textContent = data.unread;
                         inboxBadge.style.display = data.unread > 0 ? 'inline-block' : 'none';
 
-                        // ✅ Jika ada inbox BARU
+                        // Jika ada inbox baru
                         if (data.unread > lastUnreadCount) {
                             onNewInbox(data.unread - lastUnreadCount);
                         }
 
                         lastUnreadCount = data.unread;
 
-                        // Jika dropdown sedang terbuka → refresh list
+	                        // Jika dropdown sedang terbuka -> refresh list
                         if (!inboxDropdown.classList.contains('hidden')) {
                             renderInboxList(data.items);
                         }
@@ -698,13 +695,15 @@ if ($userId) {
             document.addEventListener('DOMContentLoaded', () => {
                 const btn = document.getElementById('enableNotif');
                 if (!btn) {
-                    console.error('❌ Tombol enableNotif tidak ditemukan');
+                    console.warn('Tombol enableNotif tidak ditemukan');
                     return;
                 }
 
                 btn.addEventListener('click', () => {
-                    console.log('🔔 Enable notif diklik');
+                    console.log('Enable notif diklik');
                     initPush();
                 });
             });
         </script>
+
+

@@ -1,0 +1,18 @@
+- [x] scan project pages
+- [x] audit css
+- [x] extract design tokens
+- [x] install tailwind
+- [x] configure tailwind tokens
+- [x] build shell asset structure
+- [x] localize frontend vendor assets
+- [x] build layout components
+- [x] build card component
+- [x] build button component
+- [x] build table component
+- [x] build form components
+- [x] convert layout partials
+- [ ] convert all dashboard pages
+- [ ] convert standalone public event form
+- [ ] replace remaining emoji UI in dashboard views
+- [ ] normalize inline styles in migrated dashboard pages
+- [ ] final smoke test

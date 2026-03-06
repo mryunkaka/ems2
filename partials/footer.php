@@ -3,17 +3,18 @@
 </div>
 
 <script src="/assets/js/app.js"></script>
-
-	<!-- jQuery & DataTables -->
-	<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-	<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-	<!-- DataTables Buttons (harus setelah jQuery + DataTables) -->
-	<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-	<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-	<!-- Chart.js -->
-	<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-	<script>
-	    (function realtimeSessionCheck() {
+<script src="/assets/design/js/app-shell.js"></script>
+<script src="/assets/vendor/photoswipe/photoswipe.umd.min.js"></script>
+<script src="/assets/vendor/photoswipe/photoswipe-lightbox.umd.min.js"></script>
+<script src="/assets/design/js/photoswipe-init.js"></script>
+<script src="/assets/vendor/jquery/jquery.min.js"></script>
+<script src="/assets/vendor/datatables/dataTables.min.js"></script>
+<script src="/assets/vendor/jszip/jszip.min.js"></script>
+<script src="/assets/vendor/datatables/dataTables.buttons.min.js"></script>
+<script src="/assets/vendor/datatables/buttons.html5.min.js"></script>
+<script src="/assets/vendor/chartjs/chart.umd.js"></script>
+<script>
+    (function realtimeSessionCheck() {
 	        let timer = null;
 	        let failCount = 0;
 	        let inFlight = false;
@@ -132,3 +133,4 @@
 </body>
 
 </html>
+

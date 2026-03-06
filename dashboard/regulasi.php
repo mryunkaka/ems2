@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
@@ -125,16 +125,16 @@ include __DIR__ . '/../partials/sidebar.php';
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto">
+    <div class="page page-shell">
 
-        <h1>Regulasi EMS</h1>
-        <p class="text-muted">Manajemen paket & regulasi medis</p>
+	        <h1 class="page-title">Regulasi EMS</h1>
+	        <p class="page-subtitle">Manajemen paket & regulasi medis</p>
 
         <div id="ajaxAlert"></div>
 
         <!-- ================= PACKAGES ================= -->
         <div class="card">
-            <div class="card-header">📦 Packages</div>
+            <div class="card-header">Paket</div>
 
             <div class="table-wrapper">
                 <table id="packageTable" class="table-custom">
@@ -174,7 +174,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <!-- ================= MEDICAL REGULATIONS ================= -->
         <div class="card">
-            <div class="card-header">📜 Medical Regulations</div>
+            <div class="card-header">Regulasi Medis</div>
 
             <div class="table-wrapper">
                 <table id="regTable" class="table-custom">
@@ -227,15 +227,21 @@ include __DIR__ . '/../partials/sidebar.php';
 <!-- ===============================
      MODAL EDIT PACKAGE
      =============================== -->
-<div id="editPackageModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Edit Package</h3>
+<div id="editPackageModal" class="modal-overlay hidden">
+	    <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title">Ubah Paket</div>
+                <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
 
-        <form id="editPackageForm" class="form">
+        <form id="editPackageForm" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="update_package">
             <input type="hidden" name="id" id="pkgId">
 
-            <label>Nama</label>
+	            <label>Nama</label>
             <input type="text" name="name" id="pkgName" required>
 
             <label>Bandage</label>
@@ -250,22 +256,32 @@ include __DIR__ . '/../partials/sidebar.php';
             <label>Harga</label>
             <input type="number" name="price" id="pkgPrice" min="0" required>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan</button>
             </div>
-        </form>
-    </div>
-</div>
+
+            <div class="modal-foot">
+	            <div class="modal-actions">
+	                <button type="button" class="btn-secondary btn-cancel">Batal</button>
+	                <button type="submit" class="btn-success">Simpan</button>
+	            </div>
+            </div>
+	        </form>
+	    </div>
+	</div>
 
 <!-- ===============================
      MODAL EDIT REGULATION
      =============================== -->
-<div id="editRegModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Edit Regulasi Medis</h3>
+<div id="editRegModal" class="modal-overlay hidden">
+	    <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title">Ubah Regulasi Medis</div>
+                <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
 
-        <form id="editRegForm" class="form">
+        <form id="editRegForm" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="update_regulation">
             <input type="hidden" name="id" id="regId">
 
@@ -278,7 +294,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <label>Lokasi</label>
             <input type="text" name="location" id="regLocation">
 
-            <label>Price Type</label>
+	            <label>Tipe Harga</label>
             <select name="price_type" id="regPriceType">
                 <option value="FIXED">FIXED</option>
                 <option value="RANGE">RANGE</option>
@@ -290,7 +306,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <label>Harga Max</label>
             <input type="number" name="price_max" id="regMax" min="0" required>
 
-            <label>Payment</label>
+	            <label>Pembayaran</label>
             <select name="payment_type" id="regPayment">
                 <option value="CASH">CASH</option>
                 <option value="INVOICE">INVOICE</option>
@@ -303,13 +319,17 @@ include __DIR__ . '/../partials/sidebar.php';
             <label>Catatan</label>
             <textarea name="notes" id="regNotes"></textarea>
 
-            <label>
+            <label class="checkbox-label checkbox-pill">
                 <input type="checkbox" name="is_active" id="regActive"> Aktif
             </label>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-primary">Simpan</button>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan</button>
+                </div>
             </div>
         </form>
     </div>
@@ -326,23 +346,23 @@ include __DIR__ . '/../partials/sidebar.php';
         const packageTable = jQuery('#packageTable').DataTable({
             pageLength: 10,
             language: {
-                url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                url: '/assets/design/js/datatables-id.json'
             }
         });
 
         const regTable = jQuery('#regTable').DataTable({
             pageLength: 10,
             language: {
-                url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                url: '/assets/design/js/datatables-id.json'
             }
         });
 
         /* ===============================
            OPEN PACKAGE MODAL
            =============================== */
-        document.body.addEventListener('click', function(e) {
-            const btn = e.target.closest('.btn-edit-package');
-            if (!btn) return;
+	        document.body.addEventListener('click', function(e) {
+	            const btn = e.target.closest('.btn-edit-package');
+	            if (!btn) return;
 
             const row = btn.closest('tr');
             activeRow = packageTable.row(row);
@@ -351,12 +371,13 @@ include __DIR__ . '/../partials/sidebar.php';
             pkgName.value = row.dataset.name;
             pkgBandage.value = row.dataset.bandage;
             pkgIfaks.value = row.dataset.ifaks;
-            pkgPainkiller.value = row.dataset.painkiller;
-            pkgPrice.value = row.dataset.price;
+	            pkgPainkiller.value = row.dataset.painkiller;
+	            pkgPrice.value = row.dataset.price;
 
-            editPackageModal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
+	            editPackageModal.classList.remove('hidden');
+	            editPackageModal.style.display = 'flex';
+	            document.body.classList.add('modal-open');
+	        });
 
         /* ===============================
            OPEN REGULATION MODAL
@@ -377,22 +398,25 @@ include __DIR__ . '/../partials/sidebar.php';
             regMax.value = row.dataset.max;
             regPayment.value = row.dataset.payment;
             regDuration.value = row.dataset.duration || '';
-            regNotes.value = row.dataset.notes || '';
-            regActive.checked = row.dataset.active === '1';
+	            regNotes.value = row.dataset.notes || '';
+	            regActive.checked = row.dataset.active === '1';
 
-            editRegModal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
+	            editRegModal.classList.remove('hidden');
+	            editRegModal.style.display = 'flex';
+	            document.body.classList.add('modal-open');
+	        });
 
         /* ===============================
            CLOSE MODAL
            =============================== */
-        function closeModal() {
-            editPackageModal.style.display = 'none';
-            editRegModal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-            activeRow = null;
-        }
+	        function closeModal() {
+	            editPackageModal.style.display = 'none';
+	            editPackageModal.classList.add('hidden');
+	            editRegModal.style.display = 'none';
+	            editRegModal.classList.add('hidden');
+	            document.body.classList.remove('modal-open');
+	            activeRow = null;
+	        }
 
         document.body.addEventListener('click', function(e) {
             if (
@@ -421,7 +445,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 .then(r => {
 
                     if (!r.success) {
-                        showAlert('error', '❌ ' + (r.message || 'Gagal menyimpan data'));
+                        showAlert('error', r.message || 'Gagal menyimpan data');
                         return;
                     }
 
@@ -444,11 +468,11 @@ include __DIR__ . '/../partials/sidebar.php';
                         '<button class="btn-secondary btn-edit-package">Edit</button>'
                     ]).draw(false);
 
-                    showAlert('success', '✅ Data package berhasil diperbarui', 'ajaxAlert');
+                    showAlert('success', 'Data package berhasil diperbarui', 'ajaxAlert');
                     closeModal();
                 })
                 .catch(err => {
-                    showAlert('error', '❌ Terjadi kesalahan: ' + err.message);
+                    showAlert('error', 'Terjadi kesalahan: ' + err.message);
                 });
         });
 
@@ -466,7 +490,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 .then(r => {
 
                     if (!r.success) {
-                        showAlert('error', '❌ ' + (r.message || 'Gagal menyimpan data'));
+                        showAlert('error', r.message || 'Gagal menyimpan data');
                         return;
                     }
 
@@ -503,12 +527,12 @@ include __DIR__ . '/../partials/sidebar.php';
                         '<button class="btn-secondary btn-edit-reg">Edit</button>'
                     ]).draw(false);
 
-                    showAlert('success', '✅ Data regulasi berhasil diperbarui', 'regAlert');
+                    showAlert('success', 'Data regulasi berhasil diperbarui', 'regAlert');
 
                     closeModal();
                 })
                 .catch(err => {
-                    showAlert('error', '❌ Terjadi kesalahan: ' + err.message);
+                    showAlert('error', 'Terjadi kesalahan: ' + err.message);
                 });
         });
     });

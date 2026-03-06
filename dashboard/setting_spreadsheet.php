@@ -68,10 +68,10 @@ $sheetEditUrl = ($sheetConfig['spreadsheet_id'] && $sheetConfig['sheet_gid'])
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
-        <h1>Setting Spreadsheet</h1>
+    <div class="page page-shell">
+        <h1 class="page-title">Setting Spreadsheet</h1>
 
-        <p style="font-size:13px;color:#9ca3af;">
+        <p class="page-subtitle">
             Digunakan untuk import data Google Sheets (CSV).
         </p>
 

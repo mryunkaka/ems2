@@ -1,9 +1,10 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
-    exit('<p style="color:#ef4444;text-align:center;padding:20px;">Identity ID tidak valid.</p>');
+    exit('<p class="p-5 text-center text-sm text-rose-600">Identity ID tidak valid.</p>');
 }
 
 /* ===============================
@@ -19,7 +20,7 @@ $stmtMaster->execute([':id' => $id]);
 $master = $stmtMaster->fetch(PDO::FETCH_ASSOC);
 
 if (!$master) {
-    exit('<p style="color:#ef4444;text-align:center;padding:20px;">Data konsumen tidak ditemukan.</p>');
+    exit('<p class="p-5 text-center text-sm text-rose-600">Data konsumen tidak ditemukan.</p>');
 }
 
 /* ===============================
@@ -52,11 +53,6 @@ $versions = $stmtVersions->fetchAll(PDO::FETCH_ASSOC);
         display: flex;
         align-items: center;
         gap: 8px;
-    }
-
-    .identity-section-title::before {
-        content: "📋";
-        font-size: 20px;
     }
 
     .history-count-badge {
@@ -234,7 +230,8 @@ function identityImageUrl(?string $path): ?string
     <!-- ================= DATA AKTIF ================= -->
     <div>
         <div class="identity-section-title">
-            Data Aktif
+            <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+            <span>Data Aktif</span>
         </div>
 
         <div class="identity-card-container">
@@ -251,7 +248,12 @@ function identityImageUrl(?string $path): ?string
                         alt="KTP <?= htmlspecialchars($master['first_name'] . ' ' . $master['last_name']) ?>"
                         title="Klik untuk memperbesar">
                 <?php else: ?>
-                    <div class="identity-no-photo">📷 Tidak ada foto</div>
+                    <div class="identity-no-photo">
+                        <span class="inline-flex items-center gap-2">
+                            <?= ems_icon('document-text', 'h-5 w-5') ?>
+                            <span>Tidak ada foto</span>
+                        </span>
+                    </div>
                 <?php endif; ?>
 
                 <div class="identity-details">
@@ -284,7 +286,8 @@ function identityImageUrl(?string $path): ?string
     <?php if (!empty($versions)): ?>
         <div>
             <div class="identity-section-title">
-                Riwayat Perubahan
+                <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+                <span>Riwayat Perubahan</span>
                 <span class="history-count-badge"><?= count($versions) ?></span>
             </div>
 
@@ -303,7 +306,12 @@ function identityImageUrl(?string $path): ?string
                                 alt="KTP <?= htmlspecialchars($v['first_name'] . ' ' . $v['last_name']) ?> (Riwayat)"
                                 title="Klik untuk memperbesar">
                         <?php else: ?>
-                            <div class="identity-no-photo">📷 Tidak ada foto</div>
+                            <div class="identity-no-photo">
+                                <span class="inline-flex items-center gap-2">
+                                    <?= ems_icon('document-text', 'h-5 w-5') ?>
+                                    <span>Tidak ada foto</span>
+                                </span>
+                            </div>
                         <?php endif; ?>
 
                         <div class="identity-details">

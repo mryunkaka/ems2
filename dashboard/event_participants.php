@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /* ===============================
    ROLE GUARD (MANAGER ONLY)
@@ -74,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_group'])) {
     }
 
     /* ===============================
-       🔥 RESET KELOMPOK LAMA (JIKA ADA)
+       RESET KELOMPOK LAMA (JIKA ADA)
        =============================== */
     $pdo->beginTransaction();
 
@@ -235,31 +236,16 @@ $pageTitle = 'Peserta Event';
 <?php include __DIR__ . '/../partials/header.php'; ?>
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
-<style>
-    .radio-group {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px
-    }
-
-    .radio-group label {
-        background: #f1f5f9;
-        padding: 6px 10px;
-        border-radius: 6px;
-        cursor: pointer
-    }
-</style>
-
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1 class="gradient-text">Peserta Event</h1>
-        <p class="text-muted"><?= htmlspecialchars((string)($event['nama_event'] ?? '')) ?></p>
+        <h1 class="page-title">Peserta Event</h1>
+        <p class="page-subtitle"><?= htmlspecialchars((string)($event['nama_event'] ?? '')) ?></p>
 
         <div class="card">
             <div class="card-header">
                 Daftar Peserta Pendaftaran
-                <span style="float:right;font-weight:normal;">
+                <span class="header-meta">
                     Total: <strong><?= count($participants) ?></strong> orang
                 </span>
             </div>
@@ -320,8 +306,8 @@ $pageTitle = 'Peserta Event';
                         <?php endfor; ?>
                     </div>
 
-                    <button type="submit" name="generate_group" class="btn-success" style="margin-top:12px;">
-                        🎲 Generate Kelompok
+                    <button type="submit" name="generate_group" class="btn-success mt-3">
+                        <?= ems_icon('users', 'h-4 w-4') ?> <span>Generate Kelompok</span>
                     </button>
 
                 </form>
@@ -329,28 +315,18 @@ $pageTitle = 'Peserta Event';
         </div>
 
         <?php if (!empty($dbGroups)): ?>
-            <div style="
-        margin:20px 0;
-        display:flex;
-        justify-content:flex-end;
-    ">
-                <div style="
-            background:#f8fafc;
-            padding:8px 12px;
-            border-radius:8px;
-            box-shadow:0 1px 2px rgba(0,0,0,0.05);
-        ">
+            <div class="export-panel">
+                <div class="export-panel-box">
                     <button id="btnExportGroupText"
-                        class="btn-secondary"
-                        style="display:flex;align-items:center;gap:6px;">
-                        📄 Export Kelompok
+                        class="btn-secondary">
+                        <?= ems_icon('document-text', 'h-4 w-4') ?> <span>Export Kelompok</span>
                     </button>
                 </div>
             </div>
         <?php endif; ?>
 
         <?php foreach ($dbGroups as $groupName => $members): ?>
-            <div class="card" style="margin-top:20px;">
+            <div class="card card-section">
                 <div class="card-header"><?= $groupName ?></div>
                 <div class="table-wrapper">
                     <table class="table-custom">
@@ -379,7 +355,7 @@ $pageTitle = 'Peserta Event';
             </div>
         <?php endforeach; ?>
 
-        <a href="event_manage.php" class="btn-secondary" style="margin-top:16px;">⬅ Kembali</a>
+        <a href="event_manage.php" class="btn-secondary mt-4"><?= ems_icon('arrow-left', 'h-4 w-4') ?> <span>Kembali</span></a>
 
     </div>
 </section>
@@ -402,7 +378,7 @@ $pageTitle = 'Peserta Event';
                 ], // Waktu daftar DESC
 
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 },
 
                 columnDefs: [{
@@ -422,7 +398,7 @@ $pageTitle = 'Peserta Event';
             });
 
         } else {
-            console.warn('❌ DataTables atau jQuery belum ter-load');
+            console.warn('DataTables atau jQuery belum ter-load');
         }
 
     });

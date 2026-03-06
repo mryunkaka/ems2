@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 
 /* ===============================
@@ -699,7 +699,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             padding: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
             margin: 0 auto 20px auto;
-            /* 👈 PENTING: margin bottom untuk spacing */
+            /* Penting: margin bottom untuk spacing */
             position: relative;
         }
 
@@ -1226,7 +1226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
             .form-group {
                 margin-bottom: 12px;
-                /* 👈 KURANGI SPACING */
+                /* Kurangi spacing */
             }
 
             .form-row {
@@ -1275,22 +1275,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     <div class="ocr-container">
         <!-- Header -->
         <div class="ocr-header">
-            <div class="ocr-icon">📷</div>
-            <h1 class="ocr-title">Identity OCR Scanner</h1>
-            <p class="ocr-subtitle">Scan your identity document automatically</p>
+            <div class="ocr-icon">ID</div>
+            <h1 class="ocr-title">Pemindai OCR Identitas</h1>
+            <p class="ocr-subtitle">Pindai dokumen identitas secara otomatis</p>
         </div>
 
         <!-- Upload Area -->
         <label for="img" class="upload-area" id="uploadArea">
             <div class="upload-content">
                 <div class="upload-icon-wrapper">
-                    <div class="upload-icon">📸</div>
+                    <div class="upload-icon">+</div>
                 </div>
                 <div class="upload-text-wrapper">
-                    <span class="upload-text">Click to capture or upload</span>
-                    <div class="upload-hint">Supports JPG, PNG • Max 5MB</div>
+                    <span class="upload-text">Klik untuk memotret atau unggah</span>
+                    <div class="upload-hint">Format JPG atau PNG, maksimal 5MB</div>
                 </div>
-                <button type="button" class="upload-button">Choose File / Take Photo</button>
+                <button type="button" class="upload-button">Pilih File / Ambil Foto</button>
             </div>
             <input
                 type="file"
@@ -1303,14 +1303,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         <!-- Loading -->
         <div class="loading-area" id="loading">
             <div class="loading-spinner"></div>
-            <span class="loading-text">Scanning identity document...</span>
+            <span class="loading-text">Memindai dokumen identitas...</span>
         </div>
 
         <!-- Error -->
         <div class="error-area" id="error">
             <div class="error-title">
-                <span>❌</span>
-                <span>Scan Failed</span>
+                <span>Gagal</span>
+                <span>Pemindaian Gagal</span>
             </div>
             <div class="error-message" id="errorMessage"></div>
         </div>
@@ -1318,15 +1318,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         <!-- Success Info -->
         <div class="info-area" id="info">
             <div class="info-title">
-                <span>✅</span>
-                <span>Scan Successful</span>
+                <span>Berhasil</span>
+                <span>Pemindaian Berhasil</span>
             </div>
             <div class="info-item" id="infoMessage"></div>
         </div>
 
         <!-- Preview -->
         <div class="preview-area" id="previewArea">
-            <div class="preview-label">Scanned Image</div>
+            <div class="preview-label">Gambar Hasil Pindai</div>
             <img id="preview" alt="Preview">
         </div>
 
@@ -1384,12 +1384,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
         <!-- Tombol Simpan -->
         <button type="button" id="saveBtn" class="save-button" style="display: none;">
-            💾 Simpan Data
+            Simpan Data
         </button>
 
         <!-- Tombol Reset (Tambahan) -->
         <button type="button" id="resetBtn" class="reset-button" style="display: none;">
-            🔄 Scan Ulang
+            Pindai Ulang
         </button>
     </div>
 
@@ -1517,7 +1517,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         function showOCRError(errorMsg) {
             error.classList.add('show');
             errorMessage.innerHTML = `
-        <strong>❌ OCR Gagal:</strong><br>
+        <strong>OCR gagal:</strong><br>
         ${errorMsg}<br><br>
         <button onclick="retryOCR()" style="
             padding: 8px 16px;
@@ -1528,7 +1528,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             cursor: pointer;
             font-weight: 600;
             margin-right: 8px;
-        ">🔄 Scan Ulang (Foto Sama)</button>
+        ">Pindai Ulang (Foto Sama)</button>
         <button onclick="fillManually()" style="
             padding: 8px 16px;
             background: #3b82f6;
@@ -1537,7 +1537,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
-        ">✍️ Isi Manual</button>
+        ">Isi Manual</button>
     `;
 
             // Show reset button
@@ -1547,7 +1547,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         function retryOCR() {
             const stored = loadFromLocalStorage();
             if (!stored || !stored.image) {
-                alert('❌ Foto tidak ditemukan, silakan upload ulang');
+                alert('Foto tidak ditemukan, silakan upload ulang');
                 return;
             }
 
@@ -1561,7 +1561,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     performOCR(file);
                 })
                 .catch(err => {
-                    alert('❌ Gagal memuat foto: ' + err.message);
+                    alert('Gagal memuat foto: ' + err.message);
                 });
         }
 
@@ -1620,7 +1620,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         loading.classList.remove('show');
 
                         if (d.error) {
-                            alert('❌ Gagal menyimpan foto: ' + d.error);
+                            alert('Gagal menyimpan foto: ' + d.error);
                             return;
                         }
 
@@ -1640,8 +1640,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         error.classList.remove('show');
                         info.classList.add('show');
                         infoMessage.innerHTML = `
-                    ⚠️ Silakan isi data secara manual berdasarkan foto KTP<br>
-                    📷 Klik foto untuk memperbesar jika tidak jelas
+                    Silakan isi data secara manual berdasarkan foto KTP<br>
+                    Klik foto untuk memperbesar jika tidak jelas
                 `;
 
                         // Show save button
@@ -1653,10 +1653,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     })
                     .catch(err => {
                         loading.classList.remove('show');
-                        alert('❌ Gagal upload foto: ' + err.message);
+                        alert('Gagal upload foto: ' + err.message);
                     });
             } else {
-                alert('❌ Foto tidak ditemukan di localStorage');
+                alert('Foto tidak ditemukan di localStorage');
             }
         }
 
@@ -1763,7 +1763,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         // CASE 1: DATA SAMA PERSIS - AUTO CLOSE
                         // ========================================
                         info.classList.add('show');
-                        infoMessage.innerHTML = `✅ ${d.message}<br>📦 Identity ID: ${d.identity_id}<br>🔒 Data sudah ada, tidak perlu upload ulang`;
+                        infoMessage.innerHTML = `${d.message}<br>ID Identitas: ${d.identity_id}<br>Data sudah ada, tidak perlu upload ulang`;
 
                         // HAPUS TEMP FILE (PENTING)
                         deleteTempFile(tempFileInput.value);
@@ -1785,7 +1785,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                             }, '*');
                         }
 
-                        alert('✅ Data sudah ada dan identik!\nIdentity ID: ' + d.identity_id);
+                        alert('Data sudah ada dan identik!\nIdentity ID: ' + d.identity_id);
 
                         setTimeout(() => {
                             if (window.parent && window.parent !== window) {
@@ -1801,7 +1801,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         // ========================================
                         error.classList.add('show');
                         errorMessage.innerHTML = `
-                    <strong>⚠️ ${d.message}</strong><br><br>
+                    <strong>${d.message}</strong><br><br>
                     <strong>Data Lama:</strong><br>
                     Nama: ${d.old_data.first_name} ${d.old_data.last_name}<br>
                     DOB: ${d.old_data.dob || '-'}<br>
@@ -1841,7 +1841,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         // ========================================
         function showEditForm(message) {
             info.classList.add('show');
-            infoMessage.innerHTML = `📦 Compressed: ${document.querySelector('[name="citizen_id"]').value ? 'Ready' : 'N/A'}<br>⚠️ ${message}`;
+            infoMessage.innerHTML = `Status kompresi: ${document.querySelector('[name="citizen_id"]').value ? 'Siap' : 'Belum ada'}<br>Perhatian: ${message}`;
 
             // Show buttons
             saveBtn.style.display = 'block';
@@ -1863,26 +1863,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             const lastName = document.querySelector('[name="last_name"]').value.trim();
 
             if (!citizenId) {
-                alert('❌ Citizen ID tidak boleh kosong');
+                alert('Citizen ID tidak boleh kosong');
                 document.querySelector('[name="citizen_id"]').focus();
                 return;
             }
 
             if (!firstName) {
-                alert('❌ First Name tidak boleh kosong');
+                alert('First Name tidak boleh kosong');
                 document.querySelector('[name="first_name"]').focus();
                 return;
             }
 
             if (!lastName) {
-                alert('❌ Last Name tidak boleh kosong');
+                alert('Last Name tidak boleh kosong');
                 document.querySelector('[name="last_name"]').focus();
                 return;
             }
 
             const tempFile = tempFileInput.value;
             if (!tempFile) {
-                alert('❌ File tidak ditemukan, silakan upload ulang');
+                alert('File tidak ditemukan, silakan upload ulang');
                 return;
             }
 
@@ -1891,7 +1891,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             if (reason === 'custom') {
                 reason = customReasonInput.value.trim();
                 if (!reason) {
-                    alert('❌ Alasan custom tidak boleh kosong');
+                    alert('Alasan custom tidak boleh kosong');
                     customReasonInput.focus();
                     return;
                 }
@@ -1899,7 +1899,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
             // Disable button
             saveBtn.disabled = true;
-            saveBtn.textContent = '⏳ Menyimpan...';
+            saveBtn.textContent = 'Menyimpan...';
 
             // Prepare data
             const fd = new FormData();
@@ -1920,15 +1920,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 .then(r => r.json())
                 .then(d => {
                     if (d.error) {
-                        alert('❌ ' + d.error);
+                        alert(d.error);
                         saveBtn.disabled = false;
-                        saveBtn.textContent = '💾 Simpan Data';
+                        saveBtn.textContent = 'Simpan Data';
                         return;
                     }
 
                     // Success
                     info.classList.add('show');
-                    infoMessage.innerHTML = `✅ ${d.message}<br>📦 Identity ID: ${d.identity_id}<br>📝 Version ID: ${d.version_id}`;
+                    infoMessage.innerHTML = `${d.message}<br>ID Identitas: ${d.identity_id}<br>ID Versi: ${d.version_id}`;
 
                     // Update preview dengan gambar yang sudah tersimpan
                     if (d.image_path) {
@@ -1947,7 +1947,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         }, '*');
                     }
 
-                    alert('✅ Data berhasil disimpan!');
+                    alert('Data berhasil disimpan!');
 
                     // CLEAR LOCALSTORAGE
                     clearLocalStorage();
@@ -1955,7 +1955,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     // Reset form
                     saveBtn.style.display = 'none';
                     saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 Simpan Data';
+                    saveBtn.textContent = 'Simpan Data';
 
                     // Make inputs readonly again
                     document.querySelectorAll('.form-input').forEach(input => {
@@ -1965,9 +1965,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     });
                 })
                 .catch(err => {
-                    alert('❌ Error: ' + err.message);
+                    alert('Error: ' + err.message);
                     saveBtn.disabled = false;
-                    saveBtn.textContent = '💾 Simpan Data';
+                    saveBtn.textContent = 'Simpan Data';
                 });
         });
 

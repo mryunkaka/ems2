@@ -97,13 +97,13 @@ $pageTitle = 'Detail Kandidat';
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:1100px;margin:auto;">
+    <div class="page page-shell-md">
 
-        <h1 class="gradient-text">Detail Kandidat</h1>
+        <h1 class="page-title">Detail Kandidat</h1>
 
         <div class="card">
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong>
-            <div style="color:#64748b;font-size:13px;">
+            <div class="meta-text">
                 Status: <?= $candidate['status'] ?> |
                 Skor: <?= $result['score_total'] ?> |
                 Keputusan: <?= strtoupper($result['decision']) ?>
@@ -116,10 +116,10 @@ $pageTitle = 'Detail Kandidat';
             <!-- CARD: GRAFIK -->
             <div class="card">
                 <h3>Grafik Profil Kemampuan</h3>
-                <div style="height:260px;">
+                <div class="h-[260px]">
                     <canvas id="radarChart"></canvas>
                 </div>
-                <div style="margin-top:10px;font-size:13px;color:#64748b;">
+                <div class="mt-2 text-sm text-slate-500">
                     Grafik ini menunjukkan profil kemampuan kerja kandidat berdasarkan hasil AI assessment.
                 </div>
             </div>
@@ -132,9 +132,9 @@ $pageTitle = 'Detail Kandidat';
                     <table class="table-custom">
                         <thead>
                             <tr>
-                                <th style="width:50px;">No</th>
+                                <th class="w-14">No</th>
                                 <th>Pertanyaan</th>
-                                <th style="width:90px;">Jawaban</th>
+                                <th class="w-24">Jawaban</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -146,9 +146,9 @@ $pageTitle = 'Detail Kandidat';
                                         <?php
                                         $ans = $answers[$no] ?? '-';
                                         if ($ans === 'ya') {
-                                            echo '<span style="color:#16a34a;font-weight:600;">YA</span>';
+                                            echo '<span class="badge-success">YA</span>';
                                         } elseif ($ans === 'tidak') {
-                                            echo '<span style="color:#dc2626;font-weight:600;">TIDAK</span>';
+                                            echo '<span class="badge-danger">TIDAK</span>';
                                         } else {
                                             echo '-';
                                         }
@@ -164,92 +164,91 @@ $pageTitle = 'Detail Kandidat';
         </div>
 
         <!-- CARD BAWAH (FULL WIDTH) -->
-        <div class="card" style="margin-top:16px;">
+        <div class="card mt-4">
             <h3>Ringkasan Calon Medis</h3>
 
-            <div style="
-        font-size:15px;
-        line-height:1.7;
-        color:#334155;
-        background:#f8fafc;
-        padding:16px;
-        border-radius:10px;
-        border-left:4px solid #2563eb;
-    ">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
                 <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
             </div>
 
-            <div style="margin-top:10px;font-size:12px;color:#64748b;">
+            <div class="mt-2 text-xs text-slate-500">
                 Catatan: Ringkasan ini dihasilkan otomatis sebagai alat bantu HR dan
                 <strong>bukan diagnosis psikologis</strong>.
             </div>
         </div>
 
         <!-- CARD: DOKUMEN PELAMAR (PINDAH KE SINI) -->
-        <div class="card" style="margin-top:16px;">
+        <div class="card mt-4">
             <h3>Dokumen Pelamar</h3>
 
-            <table class="table-custom">
-                <tbody>
-                    <?php
-                    $documents = [
-                        'KTP' => 'ktp_ic',
-                        'SKB' => 'skb',
-                        'SIM' => 'sim',
-                    ];
-
-                    $uploadBase = '../'; // karena path sudah storage/...
-                    ?>
-
-                    <?php foreach ($documents as $label => $type): ?>
+            <div class="table-wrapper">
+                <table class="table-custom">
+                    <tbody>
                         <?php
-                        $stmt = $pdo->prepare("
-                    SELECT file_path, is_valid, validation_notes
-                    FROM applicant_documents
-                    WHERE applicant_id = ? AND document_type = ?
-                    LIMIT 1
-                ");
-                        $stmt->execute([$id, $type]);
-                        $doc = $stmt->fetch(PDO::FETCH_ASSOC);
+                        $documents = [
+                            'KTP' => 'ktp_ic',
+                            'SKB' => 'skb',
+                            'SIM' => 'sim',
+                        ];
+
+                        $uploadBase = '../'; // karena path sudah storage/...
                         ?>
-                        <tr>
-                            <td style="width:220px;"><strong><?= $label ?></strong></td>
-                            <td>
-                                <?php if ($doc): ?>
-                                    <a href="<?= htmlspecialchars($uploadBase . $doc['file_path']) ?>"
-                                        target="_blank"
-                                        class="btn btn-sm btn-primary">
-                                        📄 Lihat Dokumen
-                                    </a>
 
-                                    <?php if ($doc['is_valid'] === '0'): ?>
-                                        <span class="badge badge-danger">TIDAK VALID</span>
-                                    <?php elseif ($doc['is_valid'] === '1'): ?>
-                                        <span class="badge badge-success">VALID</span>
+                        <?php foreach ($documents as $label => $type): ?>
+                            <?php
+                            $stmt = $pdo->prepare("
+	                    SELECT file_path, is_valid, validation_notes
+	                    FROM applicant_documents
+	                    WHERE applicant_id = ? AND document_type = ?
+	                    LIMIT 1
+	                ");
+                            $stmt->execute([$id, $type]);
+                            $doc = $stmt->fetch(PDO::FETCH_ASSOC);
+                            ?>
+	                            <tr>
+	                                <td class="w-56"><strong><?= $label ?></strong></td>
+	                                <td>
+	                                    <?php if ($doc): ?>
+	                                        <?php $docUrl = $uploadBase . $doc['file_path']; ?>
+	                                        <a href="<?= htmlspecialchars($docUrl) ?>"
+	                                            target="_blank"
+	                                            class="doc-badge btn-preview-doc"
+	                                            data-src="<?= htmlspecialchars($docUrl) ?>"
+	                                            data-title="<?= htmlspecialchars($label) ?>"
+	                                            title="Lihat <?= htmlspecialchars($label) ?>">
+	                                            <?= ems_icon('document-text', 'h-4 w-4') ?>
+	                                            <span>Lihat Dokumen</span>
+	                                        </a>
+
+	                                        <?php if ($doc['is_valid'] === '0'): ?>
+	                                            <span class="badge-danger">Tidak valid</span>
+	                                        <?php elseif ($doc['is_valid'] === '1'): ?>
+	                                            <span class="badge-success">Valid</span>
+                                        <?php endif; ?>
+
+                                        <?php if ($doc['validation_notes']): ?>
+                                            <div class="mt-1 text-xs font-medium text-rose-600">
+                                                <?= htmlspecialchars($doc['validation_notes']) ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <span class="muted-placeholder text-sm">Tidak tersedia</span>
                                     <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
 
-                                    <?php if ($doc['validation_notes']): ?>
-                                        <div style="font-size:12px;color:#dc2626;margin-top:4px;">
-                                            <?= htmlspecialchars($doc['validation_notes']) ?>
-                                        </div>
-                                    <?php endif; ?>
-                                <?php else: ?>
-                                    <span style="color:#94a3b8;font-size:13px;">Tidak tersedia</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-
-            <div style="margin-top:10px;font-size:12px;color:#64748b;">
+            <div class="mt-2 text-xs text-slate-500">
                 Dokumen ditampilkan sesuai file yang diunggah pelamar.
             </div>
         </div>
     </div>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/assets/vendor/chartjs/chart.umd.js"></script>
 <script>
     const ctx = document.getElementById('radarChart');
 

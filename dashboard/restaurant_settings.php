@@ -10,6 +10,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -35,10 +36,10 @@ $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 
 if (in_array($userRole, ['staff', 'manager'], true)) {
     http_response_code(403);
-    echo '<div style="padding:40px;text-align:center;">
-        <h3>🚫 Akses Ditolak</h3>
+    echo '<div class="access-card">
+        <h3 class="access-title">Akses Ditolak</h3>
         <p>Anda tidak memiliki izin untuk mengakses halaman ini.</p>
-        <a href="/dashboard/index.php" class="btn btn-secondary">Kembali</a>
+        <a href="/dashboard/index.php" class="btn btn-secondary top-spaced-button">Kembali</a>
     </div>';
     include __DIR__ . '/../partials/footer.php';
     exit;
@@ -70,37 +71,38 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1000px;margin:auto;">
+    <div class="page mx-auto max-w-[1000px]">
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div class="header-row">
             <div>
-                <h1>Restaurant Settings</h1>
-                <p class="text-muted">Kelola daftar restoran dan harga per paket</p>
+                <h1 class="page-title">Pengaturan Restoran</h1>
+                <p class="page-subtitle">Kelola daftar restoran dan harga per paket</p>
             </div>
             <a href="/dashboard/restaurant_consumption.php" class="btn btn-secondary">
-                ← Kembali ke Konsumsi
+                <?= ems_icon('arrow-left', 'h-4 w-4') ?>
+                <span>Kembali ke Konsumsi</span>
             </a>
         </div>
 
         <!-- FLASH MESSAGES -->
         <?php if (!empty($messages)): ?>
             <?php foreach ($messages as $msg): ?>
-                <div class="alert alert-success" style="margin-bottom:15px;padding:12px;background:#dcfce7;color:#166534;border-radius:8px;">
-                    ✅ <?= htmlspecialchars($msg) ?>
+                <div class="flash-success">
+                    <?= htmlspecialchars($msg) ?>
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>
 
         <?php if (!empty($errors)): ?>
             <?php foreach ($errors as $err): ?>
-                <div class="alert alert-error" style="margin-bottom:15px;padding:12px;background:#fee2e2;color:#991b1b;border-radius:8px;">
-                    ❌ <?= htmlspecialchars($err) ?>
+                <div class="flash-error">
+                    <?= htmlspecialchars($err) ?>
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>
 
         <!-- FORM TAMBAH RESTORAN -->
-        <div class="card" style="margin-bottom:20px;">
+        <div class="card card-section">
             <div class="card-header">
                 <span>Tambah Restoran Baru</span>
             </div>
@@ -122,17 +124,18 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                             <label>Pajak (%)</label>
                             <input type="number" name="tax_percentage" step="0.01" min="0" max="100" value="5" required>
                         </div>
-                        <div style="display:flex;align-items:flex-end;">
-                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <div class="flex items-end">
+                            <label class="checkbox-label">
                                 <input type="checkbox" name="is_active" value="1" checked>
                                 <span>Aktif</span>
                             </label>
                         </div>
                     </div>
 
-                    <div style="margin-top:10px;">
+                    <div class="mt-2">
                         <button type="submit" class="btn btn-success">
-                            ➕ Tambah Restoran
+                            <?= ems_icon('plus', 'h-4 w-4') ?>
+                            <span>Tambah Restoran</span>
                         </button>
                     </div>
                 </form>
@@ -167,7 +170,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                     <strong><?= htmlspecialchars($r['restaurant_name']) ?></strong>
                                 </td>
                                 <td>
-                                    <span style="color:#0369a1;font-weight:600;">
+                                    <span class="price-text">
                                         $<?= number_format($r['price_per_packet'], 0, ',', '.') ?>
                                     </span>
                                 </td>
@@ -180,29 +183,33 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <small style="color:#64748b;">
+                                    <small class="meta-text">
                                         <?= date('d M Y', strtotime($r['created_at'])) ?>
                                     </small>
                                 </td>
-                                <td style="white-space:nowrap;">
-                                    <button class="btn-secondary btn-sm"
+                                <td class="action-cell">
+                                    <button type="button" class="btn-secondary btn-sm"
                                         onclick="editRestaurant(<?= $r['id'] ?>, '<?= htmlspecialchars($r['restaurant_name'], ENT_QUOTES) ?>', <?= $r['price_per_packet'] ?>, <?= $r['tax_percentage'] ?>, <?= $r['is_active'] ?>)">
-                                        ✏️ Edit
+                                        <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                        <span>Edit</span>
                                     </button>
                                     <?php if ($r['is_active']): ?>
-                                        <button class="btn-warning btn-sm"
+                                        <button type="button" class="btn-warning btn-sm"
                                             onclick="toggleStatus(<?= $r['id'] ?>, 0)">
-                                            🔒 Nonaktifkan
+                                            <?= ems_icon('lock-closed', 'h-4 w-4') ?>
+                                            <span>Nonaktifkan</span>
                                         </button>
                                     <?php else: ?>
-                                        <button class="btn-success btn-sm"
+                                        <button type="button" class="btn-success btn-sm"
                                             onclick="toggleStatus(<?= $r['id'] ?>, 1)">
-                                            🔓 Aktifkan
+                                            <?= ems_icon('lock-open', 'h-4 w-4') ?>
+                                            <span>Aktifkan</span>
                                         </button>
                                     <?php endif; ?>
-                                    <button class="btn-danger btn-sm"
+                                    <button type="button" class="btn-danger btn-sm"
                                         onclick="deleteRestaurant(<?= $r['id'] ?>)">
-                                        🗑 Hapus
+                                        <?= ems_icon('trash', 'h-4 w-4') ?>
+                                        <span>Hapus</span>
                                     </button>
                                 </td>
                             </tr>
@@ -218,11 +225,17 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 <!-- =================================================
      MODAL EDIT RESTORAN
      ================================================= -->
-<div id="editModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Edit Restoran</h3>
+<div id="editModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Edit Restoran</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
-        <form method="POST" action="restaurant_settings_action.php?action=update" class="form">
+        <form method="POST" action="restaurant_settings_action.php?action=update" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="id" id="editId">
 
             <label>Nama Restoran</label>
@@ -239,14 +252,18 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                 </div>
             </div>
 
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <label class="checkbox-label">
                 <input type="checkbox" name="is_active" id="editActive" value="1">
                 <span>Aktif</span>
             </label>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan Perubahan</button>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan Perubahan</button>
+                </div>
             </div>
         </form>
     </div>
@@ -260,6 +277,8 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
         document.getElementById('editTax').value = tax;
         document.getElementById('editActive').checked = active === 1;
 
+        const modal = document.getElementById('editModal');
+        if (modal) modal.classList.remove('hidden');
         document.getElementById('editModal').style.display = 'flex';
         document.body.classList.add('modal-open');
     }
@@ -296,6 +315,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
         document.body.addEventListener('click', function(e) {
             if (e.target.classList.contains('modal-overlay') || e.target.closest('.btn-cancel')) {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -303,6 +323,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }

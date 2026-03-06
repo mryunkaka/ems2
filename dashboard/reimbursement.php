@@ -10,6 +10,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -84,7 +85,7 @@ $sql = "
 
 $params = [];
 
-// 📅 FILTER TANGGAL - gunakan rangeStart/rangeEnd dari date_range.php
+// FILTER TANGGAL - gunakan rangeStart/rangeEnd dari date_range.php
 $range = $_GET['range'] ?? 'week3';
 
 if ($range !== 'custom') {
@@ -111,20 +112,20 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1>Reimbursement</h1>
-        <p class="text-muted">
+        <h1 class="page-title">Reimbursement</h1>
+        <p class="page-subtitle">
             <?= htmlspecialchars($rangeLabel ?? '-') ?>
         </p>
 
-        <div class="card" style="margin-bottom:20px;">
+        <div class="card card-section">
             <div class="card-header">Filter Rentang Tanggal</div>
             <div class="card-body">
                 <form method="get" id="filterForm" class="filter-bar">
                     <div class="filter-group">
                         <label>Rentang</label>
-                        <select name="range" id="rangeSelect" class="form-control">
+                        <select name="range" id="rangeSelect" class="form-control min-w-[220px] md:min-w-[280px]">
                             <option value="week1" <?= ($_GET['range'] ?? 'week3') === 'week1' ? 'selected' : '' ?>>
                                 3 Minggu Lalu
                             </option>
@@ -150,19 +151,19 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <label>Tanggal Akhir</label>
                         <input type="date" name="to" value="<?= htmlspecialchars($endDate) ?>" class="form-control">
                     </div>
-                    <div class="filter-group" style="align-self:flex-end;">
-                        <button type="submit" class="btn btn-primary">Terapkan</button>
+                    <div class="filter-group filter-action-end">
+                        <button type="submit" class="btn-secondary">Terapkan</button>
                     </div>
                 </form>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-header"
-                style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="card-header card-header-between">
                 <span>Daftar Reimbursement</span>
                 <button id="btnAddReim" class="btn-success">
-                    ➕ Input Reimbursement
+                    <?= ems_icon('plus', 'h-4 w-4') ?>
+                    <span>Input Reimbursement</span>
                 </button>
             </div>
 
@@ -201,7 +202,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <strong><?= ucfirst($r['billing_source_type']) ?> – <?= htmlspecialchars($r['billing_source_name']) ?></strong>
                                     </div>
                                     <?php if (!empty($r['item_name'])): ?>
-                                        <small style="color:#64748b;">
+                                        <small class="meta-text">
                                             Item: <?= htmlspecialchars($r['item_name']) ?>
                                         </small>
                                     <?php endif; ?>
@@ -209,7 +210,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <!-- DIAJUKAN OLEH -->
                                 <td>
-                                    <?= !empty($r['created_by_name']) ? htmlspecialchars($r['created_by_name']) : '<span style="color:#9ca3af;">-</span>' ?>
+                                    <?= !empty($r['created_by_name']) ? htmlspecialchars($r['created_by_name']) : '<span class="muted-placeholder">-</span>' ?>
                                 </td>
 
                                 <!-- STATUS -->
@@ -226,10 +227,11 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             class="doc-badge btn-preview-doc"
                                             data-src="/<?= htmlspecialchars($r['receipt_file']) ?>"
                                             data-title="Bukti Pembayaran <?= htmlspecialchars($r['reimbursement_code']) ?>">
-                                            📄 Bukti
+                                            <?= ems_icon('document-text', 'h-4 w-4') ?>
+                                            <span>Bukti</span>
                                         </a>
                                     <?php else: ?>
-                                        <span style="color:#9ca3af;">-</span>
+                                        <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
                                 </td>
 
@@ -239,32 +241,34 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <!-- DIBAYAR OLEH (NAMA + WAKTU) -->
                                 <td>
                                     <?php if (!empty($r['paid_by_name'])): ?>
-                                        <div style="display:flex;flex-direction:column;">
+                                        <div class="stacked-meta">
                                             <strong><?= htmlspecialchars($r['paid_by_name']) ?></strong>
                                             <?php if (!empty($r['paid_at'])): ?>
-                                                <small style="color:#64748b;">
+                                                <small class="meta-text">
                                                     <?= date('d M Y H:i', strtotime($r['paid_at'])) ?>
                                                 </small>
                                             <?php endif; ?>
                                         </div>
                                     <?php else: ?>
-                                        <span style="color:#9ca3af;">-</span>
+                                        <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
                                 </td>
 
                                 <!-- AKSI -->
-                                <td style="white-space:nowrap;">
+                                <td class="action-cell">
                                     <?php if ($canPayReimbursement && $r['status'] === 'submitted'): ?>
                                         <button class="btn-success"
                                             onclick="payReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')">
-                                            💰 Dibayarkan
+                                            <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                                            <span>Dibayarkan</span>
                                         </button>
                                     <?php endif; ?>
 
                                     <?php if (!empty($isDirector) && $isDirector): ?>
                                         <button class="btn-danger"
                                             onclick="deleteReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')">
-                                            🗑 Hapus
+                                            <?= ems_icon('trash', 'h-4 w-4') ?>
+                                            <span>Hapus</span>
                                         </button>
                                     <?php endif; ?>
 
@@ -272,7 +276,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         ($userRole === 'staff' || $r['status'] !== 'submitted')
                                         && empty($isDirector)
                                     ): ?>
-                                        <span style="color:#9ca3af;">-</span>
+                                        <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -301,15 +305,21 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <!-- =================================================
      MODAL INPUT REIMBURSEMENT
      ================================================= -->
-<div id="reimModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-
-        <h3>Input Reimbursement</h3>
+<div id="reimModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Input Reimbursement</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
         <form method="POST"
             action="reimbursement_action.php"
-            class="form"
+            class="form modal-form"
             enctype="multipart/form-data">
+
+            <div class="modal-content">
 
             <input type="hidden"
                 name="reimbursement_code"
@@ -350,7 +360,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 <div class="doc-upload-input">
                     <label for="receipt_file" class="file-upload-label">
-                        <span class="file-icon">📁</span>
+                        <span class="file-icon"><?= ems_icon('folder', 'h-5 w-5') ?></span>
                         <span class="file-text">
                             <strong>Pilih file</strong>
                             <small>PNG atau JPG</small>
@@ -360,14 +370,18 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         id="receipt_file"
                         name="receipt_file"
                         accept="image/png,image/jpeg"
-                        style="display:none;">
+                        class="hidden">
                     <div class="file-selected-name" data-for="receipt_file"></div>
                 </div>
             </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan</button>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan</button>
+                </div>
             </div>
 
         </form>
@@ -407,7 +421,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     [5, 'desc']
                 ],
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }
@@ -448,6 +462,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         const btnOpen = document.getElementById('btnAddReim');
 
         btnOpen.addEventListener('click', () => {
+            modal.classList.remove('hidden');
             modal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -457,6 +472,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -464,6 +480,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -485,93 +502,5 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }).then(() => location.reload());
     }
 </script>
-
-<!-- ======================================
-     MODAL PREVIEW BUKTI PEMBAYARAN
-     ====================================== -->
-<div id="docPreviewModal" class="modal-overlay" style="display:none;">
-    <div class="modal-card" style="max-width:900px;">
-
-        <!-- HEADER -->
-        <div class="modal-header">
-            <strong id="docPreviewTitle">📄 Bukti Pembayaran</strong>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" class="zoom-control-btn" id="docZoomOut">➖</button>
-                <button type="button" class="zoom-control-btn" id="docZoomIn">➕</button>
-                <button type="button" class="zoom-control-btn" id="docZoomReset">🔄</button>
-                <button type="button" onclick="closeDocModal()">✕</button>
-            </div>
-        </div>
-
-        <!-- BODY -->
-        <div class="modal-body"
-            style="background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:60vh;">
-            <img id="docPreviewImage"
-                src=""
-                alt="Bukti Pembayaran"
-                style="max-width:100%;max-height:75vh;object-fit:contain;transition:transform 0.2s ease;">
-        </div>
-
-    </div>
-</div>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const modal = document.getElementById('docPreviewModal');
-        const img = document.getElementById('docPreviewImage');
-        const title = document.getElementById('docPreviewTitle');
-
-        let scale = 1;
-        let currentSrc = '';
-
-        document.body.addEventListener('click', function(e) {
-            const btn = e.target.closest('.btn-preview-doc');
-            if (!btn) return;
-
-            e.preventDefault();
-
-            currentSrc = btn.dataset.src;
-            img.src = currentSrc;
-            title.textContent = btn.dataset.title || 'Bukti Pembayaran';
-
-            scale = 1;
-            img.style.transform = 'scale(1)';
-
-            modal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
-
-        window.closeDocModal = function() {
-            modal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-            img.src = '';
-            scale = 1;
-        };
-
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) closeDocModal();
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && modal.style.display === 'flex') {
-                closeDocModal();
-            }
-        });
-
-        document.getElementById('docZoomIn').onclick = () => {
-            scale = Math.min(scale + 0.2, 3);
-            img.style.transform = `scale(${scale})`;
-        };
-        document.getElementById('docZoomOut').onclick = () => {
-            scale = Math.max(scale - 0.2, 0.5);
-            img.style.transform = `scale(${scale})`;
-        };
-        document.getElementById('docZoomReset').onclick = () => {
-            scale = 1;
-            img.style.transform = 'scale(1)';
-        };
-    });
-</script>
-
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /* ===============================
    RANGE DEFAULT: MINGGU INI
@@ -103,43 +104,55 @@ $leaderboard = $stmtLeaderboard->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page page-absensi-ems" style="max-width:1200px;margin:auto;">
+    <div class="page page-absensi-ems page-shell">
 
-        <h1>Jam Kerja EMS</h1>
-        <p style="font-size:13px;color:#9ca3af;">
+        <h1 class="page-title">Jam Kerja EMS</h1>
+        <p class="text-sm text-slate-400">
             <?= htmlspecialchars($rangeLabel) ?>
         </p>
 
-        <!-- ===============================
-     SUMMARY CARDS
-     =============================== -->
-        <div class="ems-summary-grid">
+	        <!-- ===============================
+	     SUMMARY CARDS
+	     =============================== -->
+	        <div class="kpi-grid">
+	            <div class="kpi-card">
+	                <div class="kpi-head">
+	                    <div class="min-w-0">
+	                        <div class="kpi-label">Total Jam Kerja Minggu Ini</div>
+	                        <div class="kpi-value font-mono"><?= $totalWeek ?></div>
+	                    </div>
+	                    <div class="kpi-icon" aria-hidden="true">
+	                        <?= ems_icon('clock', 'h-5 w-5') ?>
+	                    </div>
+	                </div>
+	            </div>
 
-            <div class="stat-box">
-                <small>Total Jam Kerja Minggu Ini</small>
-                <h3><?= $totalWeek ?></h3>
-            </div>
-
-            <div class="stat-box highlight">
-                <small>Akumulasi Jam Pengguna Web</small>
-                <h3><?= $totalAll ?></h3>
-            </div>
-
-        </div>
+	            <div class="kpi-card kpi-card-accent">
+	                <div class="kpi-head">
+	                    <div class="min-w-0">
+	                        <div class="kpi-label">Akumulasi Jam Pengguna Web</div>
+	                        <div class="kpi-value font-mono"><?= $totalAll ?></div>
+	                    </div>
+	                    <div class="kpi-icon kpi-icon-accent" aria-hidden="true">
+	                        <?= ems_icon('chart-bar', 'h-5 w-5') ?>
+	                    </div>
+	                </div>
+	            </div>
+	        </div>
 
         <!-- ===============================
      SESI HARI INI
      =============================== -->
         <div class="card">
             <div class="card-header">
-                ⏱️ Sesi Hari Ini
+                <?= ems_icon('clock', 'h-4 w-4') ?> Sesi Hari Ini
                 <span class="weekly-badge">
                     <?= count($todaySessions) ?> Sesi
                 </span>
             </div>
 
             <?php if (empty($todaySessions)): ?>
-                <p style="font-size:13px;color:#64748b;">
+                <p class="section-empty">
                     Belum ada sesi hari ini.
                 </p>
             <?php else: ?>
@@ -231,7 +244,7 @@ $leaderboard = $stmtLeaderboard->fetchAll(PDO::FETCH_ASSOC);
      =============================== -->
         <div class="card">
             <div class="card-header">
-                🏆 Leaderboard Pengguna Web Farmasi & Layanan Medis Mingguan
+                <?= ems_icon('trophy', 'h-4 w-4') ?> Leaderboard Pengguna Web Farmasi & Layanan Medis Mingguan
             </div>
 
             <div class="table-wrapper">
@@ -272,7 +285,7 @@ $leaderboard = $stmtLeaderboard->fetchAll(PDO::FETCH_ASSOC);
                 ],
                 pageLength: 10,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }

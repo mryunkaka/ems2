@@ -46,10 +46,10 @@ $medicRanking = $stmtRank->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
-        <h1>Ranking Medis</h1>
+    <div class="page page-shell">
+        <h1 class="page-title">Ranking Medis</h1>
 
-        <p style="font-size:13px;color:#9ca3af;">
+        <p class="page-subtitle">
             <?= htmlspecialchars($rangeLabel) ?>
         </p>
 
@@ -58,7 +58,7 @@ $medicRanking = $stmtRank->fetchAll(PDO::FETCH_ASSOC);
                 Ranking Medis Berdasarkan Total Harga
             </div>
 
-            <form method="GET" id="filterForm" class="filter-bar">
+            <form method="GET" id="filterForm" class="filter-bar search-panel">
                 <div class="filter-group">
                     <select name="range" id="rangeSelect" class="form-control">
                         <option value="current_week" <?= ($_GET['range'] ?? '') === 'current_week' ? 'selected' : '' ?>>
@@ -73,20 +73,20 @@ $medicRanking = $stmtRank->fetchAll(PDO::FETCH_ASSOC);
                     </select>
                 </div>
 
-                <div class="filter-group filter-custom">
+                <div class="filter-group filter-custom <?= $rangeType === 'custom' ? '' : 'hidden' ?>">
                     <input type="date" name="start" value="<?= $_GET['start'] ?? '' ?>" class="form-control">
                 </div>
 
-                <div class="filter-group filter-custom">
+                <div class="filter-group filter-custom <?= $rangeType === 'custom' ? '' : 'hidden' ?>">
                     <input type="date" name="end" value="<?= $_GET['end'] ?? '' ?>" class="form-control">
                 </div>
 
-                <div class="filter-group">
+                <div class="filter-group filter-action-end">
                     <button type="submit" class="btn btn-primary">Terapkan</button>
                 </div>
             </form>
 
-            <div class="table-wrapper">
+            <div class="table-wrapper mt-4">
                 <table id="rankingTable" class="table-custom">
                     <thead>
                         <tr>
@@ -127,30 +127,30 @@ $medicRanking = $stmtRank->fetchAll(PDO::FETCH_ASSOC);
                 ],
                 pageLength: 10,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }
     });
 </script>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const rangeSelect = document.getElementById('rangeSelect');
-        const customFields = document.querySelectorAll('.filter-custom');
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const rangeSelect = document.getElementById('rangeSelect');
+            const customFields = document.querySelectorAll('.filter-custom');
 
-        function toggleCustom() {
-            if (rangeSelect.value === 'custom') {
-                customFields.forEach(el => el.style.display = 'block');
-            } else {
-                customFields.forEach(el => el.style.display = 'none');
+            function toggleCustom() {
+                if (rangeSelect.value === 'custom') {
+                    customFields.forEach(el => el.classList.remove('hidden'));
+                } else {
+                    customFields.forEach(el => el.classList.add('hidden'));
+                }
             }
-        }
 
-        rangeSelect.addEventListener('change', toggleCustom);
-        toggleCustom(); // initial load
-    });
-</script>
+            rangeSelect.addEventListener('change', toggleCustom);
+            toggleCustom(); // initial load
+        });
+    </script>
 
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

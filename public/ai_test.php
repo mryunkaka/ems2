@@ -1,6 +1,7 @@
 <?php
 // PUBLIC PAGE - FIXED VERSION
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $applicantId = (int)($_GET['applicant_id'] ?? 0);
 
@@ -10,10 +11,9 @@ if ($applicantId <= 0) {
     exit;
 }
 
-// CARI bagian ini di ai_test.php (sekitar line 12-16):
 $stmt = $pdo->prepare("
-    SELECT id, ic_name, status 
-    FROM medical_applicants 
+    SELECT id, ic_name, status
+    FROM medical_applicants
     WHERE id = ?
 ");
 $stmt->execute([$applicantId]);
@@ -24,7 +24,6 @@ if (!$applicant) {
     exit;
 }
 
-// TAMBAHKAN validasi status:
 if ($applicant['status'] !== 'ai_test') {
     header('Location: recruitment_done.php');
     exit;
@@ -34,7 +33,6 @@ if ($applicant['status'] !== 'ai_test') {
 $stmt = $pdo->prepare("SELECT id FROM ai_test_results WHERE applicant_id = ?");
 $stmt->execute([$applicantId]);
 if ($stmt->fetch()) {
-    // Sudah pernah submit, redirect ke done
     header('Location: recruitment_done.php');
     exit;
 }
@@ -44,138 +42,159 @@ if ($stmt->fetch()) {
 
 <head>
     <meta charset="UTF-8">
-    <title>Form Pertanyaan – Roxwood Hospital</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Pertanyaan - Roxwood Hospital</title>
 
-    <link rel="stylesheet" href="/assets/css/app.css">
-    <link rel="stylesheet" href="/assets/css/components.css">
-    <link rel="stylesheet" href="/assets/css/login.css">
-    <link rel="stylesheet" href="/assets/css/responsive.css">
+    <link rel="stylesheet" href="/assets/design/tailwind/build.css">
 </head>
 
-<body>
+<body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-sky-900">
 
-    <div class="login-wrapper">
-        <div class="login-card">
+    <div class="min-h-screen px-4 py-10">
+        <div class="mx-auto flex w-full max-w-5xl items-start justify-center">
+            <div class="w-full max-w-[920px]">
+                <div class="rounded-3xl border border-white/60 bg-white/85 p-6 shadow-modal backdrop-blur">
 
-            <div class="brand">
-                <h2>Form Pertanyaan</h2>
-                <p>Halo, <strong><?= htmlspecialchars($applicant['ic_name']) ?></strong></p>
-                <p>Silakan jawab pertanyaan sederhana berikut ini</p>
-            </div>
-
-            <div class="alert alert-info">
-                Jawab sesuai kondisi dan kebiasaan Anda.<br>
-                Tidak ada jawaban benar atau salah.
-            </div>
-
-            <form action="ai_test_submit.php" method="post" id="aiTestForm">
-
-                <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
-                <input type="hidden" name="start_time" id="start_time">
-                <input type="hidden" name="end_time" id="end_time">
-                <input type="hidden" name="duration_seconds" id="duration_seconds">
-
-                <?php
-                $questions = [
-                    1  => 'Apakah Anda pernah menyesuaikan jawaban agar terlihat lebih baik?',
-                    2  => 'Apakah Anda merasa sulit fokus jika duty terlalu lama?',
-                    3  => 'Apakah Anda lebih memilih mengikuti SOP meski situasi menekan?',
-                    4  => 'Apakah Anda merasa tidak semua orang perlu tahu isi pikiran Anda?',
-                    5  => 'Apakah Anda pernah menangani kondisi darurat di mana keputusan harus diambil tanpa alat medis lengkap?',
-
-                    6  => 'Apakah Anda merasa stabilitas lingkungan kerja memengaruhi performa Anda?',
-                    7  => 'Apakah Anda sering berubah jam online karena faktor lain di luar pekerjaan ini?',
-                    8  => 'Apakah Anda percaya adab dan etika kerja sama pentingnya dengan skill?',
-                    9  => 'Apakah Anda lebih nyaman bekerja tanpa banyak berbicara?',
-                    10 => 'Apakah Anda pernah meninggalkan tugas karena kewajiban di tempat lain?',
-
-                    11 => 'Apakah dalam situasi kritis, keselamatan nyawa lebih utama dibanding prosedur administratif?',
-                    12 => 'Apakah Anda merasa cepat kehilangan semangat jika hasil tidak langsung terlihat?',
-                    13 => 'Apakah Anda jarang menunjukkan stres meskipun sedang tertekan?',
-                    14 => 'Apakah Anda merasa wajar untuk sering berpindah instansi dalam waktu singkat?',
-                    15 => 'Apakah Anda merasa aturan kerja bisa diabaikan dalam kondisi tertentu?',
-
-                    16 => 'Apakah Anda lebih memilih diam saat emosi meningkat?',
-                    17 => 'Apakah Anda terbiasa menyelesaikan tugas meski waktu duty sudah panjang?',
-                    18 => 'Apakah Anda merasa jawaban jujur tidak selalu aman?',
-                    19 => 'Apakah Anda yakin dapat memisahkan tanggung jawab antar instansi secara profesional?',
-                    20 => 'Apakah Anda pernah menyesal karena melanggar prinsip kerja sendiri?',
-
-                    21 => 'Apakah Anda memahami bahwa tidak semua kondisi medis memungkinkan pemeriksaan lengkap sebelum tindakan?',
-                    22 => 'Apakah Anda lebih memilih mengamati sebelum terlibat aktif?',
-                    23 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-                    24 => 'Apakah Anda cenderung menyimpan emosi daripada mengungkapkannya?',
-                    25 => 'Apakah Anda jarang meninggalkan tugas saat sudah mulai bertugas?',
-
-                    26 => 'Apakah Anda percaya kesan pertama sangat menentukan?',
-                    27 => 'Apakah Anda merasa sulit membagi fokus jika memiliki tanggung jawab di lebih dari satu instansi?',
-                    28 => 'Apakah Anda merasa prinsip kerja dapat berubah tergantung situasi?',
-                    29 => 'Apakah Anda membutuhkan waktu untuk beradaptasi dengan tekanan baru?',
-                    30 => 'Apakah Anda merasa tidak nyaman jika jadwal kerja terlalu berubah-ubah?',
-
-                    31 => 'Apakah pada kondisi pasien sekarat dengan dugaan patah tulang, tindakan stabilisasi lebih diprioritaskan daripada pemeriksaan lanjutan seperti MRI?',
-                    32 => 'Apakah Anda jarang memulai percakapan lebih dulu dalam tim?',
-                    33 => 'Apakah Anda merasa jadwal tetap justru membatasi fleksibilitas Anda?',
-                    34 => 'Apakah Anda pernah bergabung ke instansi hanya karena ajakan lingkungan?',
-                    35 => 'Apakah Anda merasa stamina kerja memengaruhi kualitas pelayanan?',
-
-                    36 => 'Apakah Anda cenderung bertahan lebih lama jika sudah merasa cocok di satu tempat?',
-                    37 => 'Apakah Anda memiliki kecenderungan memprioritaskan peran lain jika terjadi bentrok jadwal?',
-                    38 => 'Apakah Anda sering menilai diri sendiri secara diam-diam?',
-                    39 => 'Apakah Anda merasa sulit berkomitmen jika baru berada di suatu kota dalam waktu singkat?',
-                    40 => 'Apakah Anda jarang memulai interaksi kecuali diperlukan?',
-
-                    41 => 'Apakah menurut Anda pemeriksaan MRI selalu wajib sebelum tindakan medis darurat?',
-                    42 => 'Apakah Anda terbiasa menyesuaikan jadwal demi tanggung jawab pekerjaan?',
-                    43 => 'Apakah Anda memilih diam saat tidak setuju demi menjaga suasana?',
-                    44 => 'Apakah Anda merasa loyalitas perlu dibagi secara seimbang jika memiliki banyak peran?',
-                    45 => 'Apakah Anda tetap bertahan meski peran yang dijalani terasa berat?',
-
-                    46 => 'Apakah Anda lebih memilih patuh demi menjaga suasana kerja?',
-                    47 => 'Apakah Anda sering menghitung waktu untuk segera menyelesaikan duty?',
-                    48 => 'Apakah Anda merasa betah di satu lingkungan kerja setelah waktu tertentu?',
-                    49 => 'Apakah Anda menyesuaikan sikap saat berbicara dengan atasan?',
-                    50 => 'Apakah Anda merasa menahan emosi adalah bentuk kedewasaan?',
-                ];
-                foreach ($questions as $no => $text): ?>
-                    <label class="ai-question"><?= $no ?>. <?= $text ?></label>
-
-                    <div class="ai-radio-group">
-                        <label class="ai-radio">
-                            <input type="radio" name="q<?= $no ?>" value="ya" required>
-                            <span>Ya</span>
-                        </label>
-
-                        <label class="ai-radio">
-                            <input type="radio" name="q<?= $no ?>" value="tidak" required>
-                            <span>Tidak</span>
-                        </label>
+                    <div class="mb-6">
+                        <div class="text-center">
+                            <div class="text-xl font-bold text-slate-900">Form Pertanyaan</div>
+                            <div class="mt-1 text-sm text-slate-600">
+                                Halo, <strong><?= htmlspecialchars($applicant['ic_name']) ?></strong>. Silakan jawab pertanyaan berikut.
+                            </div>
+                        </div>
                     </div>
 
-                <?php endforeach; ?>
+                    <div class="alert alert-info">
+                        Jawab sesuai kondisi dan kebiasaan Anda. Tidak ada jawaban benar atau salah.
+                    </div>
 
-                <button type="submit" class="btn btn-primary" style="width:100%;margin-top:18px;">
-                    Kirim Jawaban
-                </button>
+                    <form action="ai_test_submit.php" method="post" id="aiTestForm" class="space-y-3">
+                        <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
+                        <input type="hidden" name="start_time" id="start_time">
+                        <input type="hidden" name="end_time" id="end_time">
+                        <input type="hidden" name="duration_seconds" id="duration_seconds">
 
-            </form>
+                        <?php
+                        $questions = [
+                            1  => 'Apakah Anda pernah menyesuaikan jawaban agar terlihat lebih baik?',
+                            2  => 'Apakah Anda merasa sulit fokus jika duty terlalu lama?',
+                            3  => 'Apakah Anda lebih memilih mengikuti SOP meski situasi menekan?',
+                            4  => 'Apakah Anda merasa tidak semua orang perlu tahu isi pikiran Anda?',
+                            5  => 'Apakah Anda pernah menangani kondisi darurat di mana keputusan harus diambil tanpa alat medis lengkap?',
 
+                            6  => 'Apakah Anda merasa stabilitas lingkungan kerja memengaruhi performa Anda?',
+                            7  => 'Apakah Anda sering berubah jam online karena faktor lain di luar pekerjaan ini?',
+                            8  => 'Apakah Anda percaya adab dan etika kerja sama pentingnya dengan skill?',
+                            9  => 'Apakah Anda lebih nyaman bekerja tanpa banyak berbicara?',
+                            10 => 'Apakah Anda pernah meninggalkan tugas karena kewajiban di tempat lain?',
+
+                            11 => 'Apakah dalam situasi kritis, keselamatan nyawa lebih utama dibanding prosedur administratif?',
+                            12 => 'Apakah Anda merasa cepat kehilangan semangat jika hasil tidak langsung terlihat?',
+                            13 => 'Apakah Anda jarang menunjukkan stres meskipun sedang tertekan?',
+                            14 => 'Apakah Anda merasa wajar untuk sering berpindah instansi dalam waktu singkat?',
+                            15 => 'Apakah Anda merasa aturan kerja bisa diabaikan dalam kondisi tertentu?',
+
+                            16 => 'Apakah Anda lebih memilih diam saat emosi meningkat?',
+                            17 => 'Apakah Anda terbiasa menyelesaikan tugas meski waktu duty sudah panjang?',
+                            18 => 'Apakah Anda merasa jawaban jujur tidak selalu aman?',
+                            19 => 'Apakah Anda yakin dapat memisahkan tanggung jawab antar instansi secara profesional?',
+                            20 => 'Apakah Anda pernah menyesal karena melanggar prinsip kerja sendiri?',
+
+                            21 => 'Apakah Anda memahami bahwa tidak semua kondisi medis memungkinkan pemeriksaan lengkap sebelum tindakan?',
+                            22 => 'Apakah Anda lebih memilih mengamati sebelum terlibat aktif?',
+                            23 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
+                            24 => 'Apakah Anda cenderung menyimpan emosi daripada mengungkapkannya?',
+                            25 => 'Apakah Anda jarang meninggalkan tugas saat sudah mulai bertugas?',
+
+                            26 => 'Apakah Anda percaya kesan pertama sangat menentukan?',
+                            27 => 'Apakah Anda merasa sulit membagi fokus jika memiliki tanggung jawab di lebih dari satu instansi?',
+                            28 => 'Apakah Anda merasa prinsip kerja dapat berubah tergantung situasi?',
+                            29 => 'Apakah Anda membutuhkan waktu untuk beradaptasi dengan tekanan baru?',
+                            30 => 'Apakah Anda merasa tidak nyaman jika jadwal kerja terlalu berubah-ubah?',
+
+                            31 => 'Apakah pada kondisi pasien sekarat dengan dugaan patah tulang, tindakan stabilisasi lebih diprioritaskan daripada pemeriksaan lanjutan seperti MRI?',
+                            32 => 'Apakah Anda jarang memulai percakapan lebih dulu dalam tim?',
+                            33 => 'Apakah Anda merasa jadwal tetap justru membatasi fleksibilitas Anda?',
+                            34 => 'Apakah Anda pernah bergabung ke instansi hanya karena ajakan lingkungan?',
+                            35 => 'Apakah Anda merasa stamina kerja memengaruhi kualitas pelayanan?',
+
+                            36 => 'Apakah Anda cenderung bertahan lebih lama jika sudah merasa cocok di satu tempat?',
+                            37 => 'Apakah Anda memiliki kecenderungan memprioritaskan peran lain jika terjadi bentrok jadwal?',
+                            38 => 'Apakah Anda sering menilai diri sendiri secara diam-diam?',
+                            39 => 'Apakah Anda merasa sulit berkomitmen jika baru berada di suatu kota dalam waktu singkat?',
+                            40 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
+
+                            41 => 'Apakah Anda lebih nyaman bekerja tanpa banyak arahan?',
+                            42 => 'Apakah Anda cenderung menghindari konflik langsung?',
+                            43 => 'Apakah Anda merasa sulit menerima kritik?',
+                            44 => 'Apakah Anda lebih memilih bekerja sendiri?',
+                            45 => 'Apakah Anda mudah panik dalam situasi darurat?',
+
+                            46 => 'Apakah Anda merasa kelelahan memengaruhi pengambilan keputusan?',
+                            47 => 'Apakah Anda pernah merasa tidak dihargai dalam tim?',
+                            48 => 'Apakah Anda cenderung menunda pekerjaan jika tidak diawasi?',
+                            49 => 'Apakah Anda sering overthinking setelah mengambil keputusan?',
+                            50 => 'Apakah Anda siap mengikuti arahan senior saat training?',
+                        ];
+                        ?>
+
+                        <?php foreach ($questions as $no => $q): ?>
+                            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div class="text-sm font-semibold text-slate-900">
+                                        <span class="text-slate-500">#<?= (int)$no ?></span> <?= htmlspecialchars($q) ?>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 transition hover:bg-sky-50">
+                                        <input type="radio" name="q<?= (int)$no ?>" value="ya" required>
+                                        <span class="text-sm font-semibold">Ya</span>
+                                    </label>
+
+                                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-3 py-2 transition hover:bg-sky-50">
+                                        <input type="radio" name="q<?= (int)$no ?>" value="tidak" required>
+                                        <span class="text-sm font-semibold">Tidak</span>
+                                    </label>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+
+                        <div class="pt-2">
+                            <button type="submit" class="btn-success w-full justify-center">
+                                <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
+                                <span>Kirim Jawaban</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- MODAL -->
     <div class="modal-overlay" id="introModal">
-        <div class="modal-box">
-            <h3>Petunjuk Pengisian</h3>
-            <ul>
-                <li>Tidak ada jawaban benar atau salah</li>
-                <li>Jawablah dengan jujur sesuai kondisi Anda</li>
-                <li><strong>Kerjakan dengan tenang, tidak perlu terburu-buru</strong></li>
-            </ul>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-primary" id="btnStartTest">
-                    Saya Mengerti & Mulai
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('document-text', 'h-5 w-5') ?>
+                    <span>Petunjuk Pengisian</span>
+                </div>
+                <button type="button" class="modal-close-btn" id="btnCloseIntro" aria-label="Tutup">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
                 </button>
+            </div>
+            <div class="modal-content">
+                <ul class="list-disc pl-5 text-sm text-slate-700">
+                    <li>Tidak ada jawaban benar atau salah.</li>
+                    <li>Jawablah dengan jujur sesuai kondisi Anda.</li>
+                    <li>Kerjakan dengan tenang, tidak perlu terburu-buru.</li>
+                </ul>
+            </div>
+            <div class="modal-foot">
+                <div class="modal-actions justify-end">
+                    <button type="button" class="btn-success" id="btnStartTest">Saya Mengerti dan Mulai</button>
+                </div>
             </div>
         </div>
     </div>
@@ -187,19 +206,40 @@ if ($stmt->fetch()) {
             const form = document.getElementById('aiTestForm');
             const modal = document.getElementById('introModal');
             const startBtn = document.getElementById('btnStartTest');
+            const closeBtn = document.getElementById('btnCloseIntro');
 
             let data = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
                 startTime: null,
                 answers: {}
             };
 
+            function hideModal() {
+                modal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+            }
+
+            function showModal() {
+                modal.style.display = 'flex';
+                document.body.classList.add('modal-open');
+            }
+
             /* ===== RESTORE DATA ===== */
             if (data.startTime) {
                 document.getElementById('start_time').value = data.startTime;
-                modal.style.display = 'none';
+                hideModal();
             } else {
-                document.body.classList.add('modal-open');
+                showModal();
             }
+
+            closeBtn.addEventListener('click', () => {
+                // Do not allow closing if not started, keep it simple: start is required.
+                if (!data.startTime) return;
+                hideModal();
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal && data.startTime) hideModal();
+            });
 
             // restore answers
             Object.keys(data.answers).forEach(name => {
@@ -209,8 +249,7 @@ if ($stmt->fetch()) {
 
             /* ===== START TEST ===== */
             startBtn.addEventListener('click', () => {
-                modal.style.display = 'none';
-                document.body.classList.remove('modal-open');
+                hideModal();
 
                 if (!data.startTime) {
                     data.startTime = Math.floor(Date.now() / 1000);
@@ -221,7 +260,7 @@ if ($stmt->fetch()) {
 
             /* ===== SAVE ANSWERS ===== */
             form.addEventListener('change', e => {
-                if (e.target.name.startsWith('q')) {
+                if (e.target.name && e.target.name.startsWith('q')) {
                     data.answers[e.target.name] = e.target.value;
                     save();
                 }
@@ -259,7 +298,7 @@ if ($stmt->fetch()) {
 
         });
     </script>
-
 </body>
 
 </html>
+

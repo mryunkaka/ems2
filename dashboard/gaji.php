@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 date_default_timezone_set('Asia/jakarta');
 session_start();
 
@@ -8,8 +8,9 @@ if (!isset($_GET['range'])) {
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/date_range.php'; // 🔴 WAJIB
+require_once __DIR__ . '/../config/date_range.php'; // WAJIB
 require_once __DIR__ . '/../config/helpers.php';    // untuk dollar()
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $isStaff = ($userRole === 'staff');
@@ -67,6 +68,9 @@ $totalPaidBonus = (int)($paidData['total_paid_bonus'] ?? 0);
 
 // Hitung sisa bonus
 $sisaBonus = $rekap['total_bonus'] - $totalPaidBonus;
+$paidPct = ($rekap['total_bonus'] > 0)
+    ? (int)min(100, round(($totalPaidBonus / max(1, $rekap['total_bonus'])) * 100))
+    : 0;
 
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
@@ -103,14 +107,14 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1100px;margin:auto;">
-        <h1>Rekap Gaji Mingguan</h1>
+    <div class="page page-shell-md">
+        <h1 class="page-title">Rekap Gaji Mingguan</h1>
 
-        <p class="text-muted"><?= htmlspecialchars($rangeLabel ?? '-') ?>
+        <p class="page-subtitle"><?= htmlspecialchars($rangeLabel ?? '-') ?>
         </p>
         <?php if (!$isStaff && ($_GET['range'] ?? '') !== 'all'): ?>
 
-            <div class="card" style="margin-bottom:20px;">
+            <div class="card card-section">
                 <div class="card-header">
                     Filter Rentang Tanggal
                 </div>
@@ -149,7 +153,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <input type="date" name="to" value="<?= $_GET['to'] ?? '' ?>" class="form-control">
                         </div>
 
-                        <div class="filter-group" style="align-self:flex-end;">
+                        <div class="filter-group filter-action-end">
                             <button type="submit" class="btn btn-primary">
                                 Terapkan
                             </button>
@@ -160,33 +164,93 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
             </div>
 
             <div class="card">
-                <div class="card-header">Ringkasan Gaji</div>
+                <div class="card-header">
+                    <?= ems_icon('receipt-percent', 'h-5 w-5') ?> Ringkasan Gaji
+                </div>
 
-                <div class="card-body ringkasan-gaji-grid">
+                <div class="salary-summary">
+                    <div class="salary-summary-hero">
+                        <div class="min-w-0">
+                            <div class="salary-summary-title">Total Bonus (40%)</div>
+                            <div class="salary-summary-value"><?= dollar($rekap['total_bonus']) ?></div>
+                            <div class="salary-summary-sub">
+                                Sudah dibayarkan: <span class="font-semibold text-emerald-700"><?= dollar($totalPaidBonus) ?></span>
+                                <span class="mx-1 text-slate-300">•</span>
+                                Sisa: <span class="font-semibold text-amber-700"><?= dollar($sisaBonus) ?></span>
+                            </div>
+                        </div>
 
-                    <div class="stat-box">
-                        <small>Total Transaksi</small>
-                        <h3><?= (int)$rekap['total_transaksi'] ?></h3>
+                        <div class="salary-progress">
+                            <div class="salary-progress-track" role="progressbar" aria-valuenow="<?= $paidPct ?>" aria-valuemin="0" aria-valuemax="100">
+                                <div class="salary-progress-bar" style="width: <?= (int)$paidPct ?>%"></div>
+                            </div>
+                            <div class="salary-progress-meta">
+                                <span><?= (int)$paidPct ?>% dibayarkan</span>
+                                <span><?= (int)$rekap['total_medis'] ?> medis</span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="stat-box">
-                        <small>Total Bonus</small>
-                        <h3><?= dollar($rekap['total_rupiah']) ?></h3>
-                    </div>
+                    <div class="salary-metrics">
+                        <div class="metric-tile metric-teal">
+                            <div class="metric-head">
+                                <div>
+                                    <div class="metric-label">Total Transaksi</div>
+                                    <div class="metric-value"><?= (int)$rekap['total_transaksi'] ?></div>
+                                </div>
+                                <div class="metric-icon" aria-hidden="true">
+                                    <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+                                </div>
+                            </div>
+                        </div>
 
-                    <div class="stat-box highlight">
-                        <small>Total Bonus (40%)</small>
-                        <h3><?= dollar($rekap['total_bonus']) ?></h3>
-                    </div>
+                        <div class="metric-tile">
+                            <div class="metric-head">
+                                <div>
+                                    <div class="metric-label">Total Item</div>
+                                    <div class="metric-value"><?= (int)$rekap['total_item'] ?></div>
+                                </div>
+                                <div class="metric-icon" aria-hidden="true">
+                                    <?= ems_icon('user-group', 'h-5 w-5') ?>
+                                </div>
+                            </div>
+                        </div>
 
-                    <div class="stat-box" style="background: linear-gradient(145deg, #15803d, #166534);">
-                        <small>Sudah Dibayarkan</small>
-                        <h3><?= dollar($totalPaidBonus) ?></h3>
-                    </div>
+                        <div class="metric-tile">
+                            <div class="metric-head">
+                                <div>
+                                    <div class="metric-label">Total Pemasukan</div>
+                                    <div class="metric-value"><?= dollar($rekap['total_rupiah']) ?></div>
+                                </div>
+                                <div class="metric-icon" aria-hidden="true">
+                                    <?= ems_icon('chart-bar', 'h-5 w-5') ?>
+                                </div>
+                            </div>
+                        </div>
 
-                    <div class="stat-box" style="background: linear-gradient(145deg, #f59e0b, #d97706);">
-                        <small>Sisa Bonus</small>
-                        <h3><?= dollar($sisaBonus) ?></h3>
+                        <div class="metric-tile metric-emerald">
+                            <div class="metric-head">
+                                <div>
+                                    <div class="metric-label">Sudah Dibayarkan</div>
+                                    <div class="metric-value"><?= dollar($totalPaidBonus) ?></div>
+                                </div>
+                                <div class="metric-icon" aria-hidden="true">
+                                    <?= ems_icon('check-circle', 'h-5 w-5') ?>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="metric-tile metric-amber">
+                            <div class="metric-head">
+                                <div>
+                                    <div class="metric-label">Sisa Bonus</div>
+                                    <div class="metric-value"><?= dollar($sisaBonus) ?></div>
+                                </div>
+                                <div class="metric-icon" aria-hidden="true">
+                                    <?= ems_icon('exclamation-triangle', 'h-5 w-5') ?>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -197,12 +261,12 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <?php if (isset($_GET['generated'])): ?>
             <div class="alert alert-success" id="autoAlert">
-                ✅ Generate gaji manual selesai.
+                Generate gaji manual selesai.
                 Periode baru dibuat: <strong><?= (int)$_GET['generated'] ?></strong>
             </div>
         <?php elseif (($_GET['msg'] ?? '') === 'nosales'): ?>
             <div class="alert alert-warning" id="autoAlert">
-                ⚠️ Tidak ada data sales untuk dihitung.
+                Tidak ada data sales untuk dihitung.
             </div>
         <?php endif; ?>
 
@@ -214,13 +278,13 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="card-header">Daftar Gaji</div>
 
             <?php if (in_array(strtolower($userRole), $allowedRoles, true)): ?>
-                <form action="gaji_generate_manual.php" method="POST" style="margin-bottom:14px;">
+                <form action="gaji_generate_manual.php" method="POST" class="mb-3.5">
                     <input type="hidden" name="csrf" value="<?= $_SESSION['csrf'] ??= bin2hex(random_bytes(16)) ?>">
                     <button
                         type="submit"
                         class="btn btn-warning"
                         onclick="return confirm('Generate gaji mingguan sekarang? Digunakan jika otomatis generate bermasalah.')">
-                        🔄 Generate Gaji Manual
+                        <?= ems_icon('arrow-path', 'h-4 w-4') ?> <span>Generate Gaji Manual</span>
                     </button>
                 </form>
             <?php endif; ?>
@@ -257,16 +321,16 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <td>
                                     <?php if ($row['status'] === 'paid'): ?>
-                                        <div class="status-box verified">✔ Dibayar</div>
+                                        <div class="status-box verified">Dibayar</div>
                                     <?php else: ?>
-                                        <div class="status-box pending">⏳ Pending</div>
+                                        <div class="status-box pending">Pending</div>
                                     <?php endif; ?>
                                 </td>
 
                                 <td>
                                     <?= $row['paid_by'] ?? '-' ?>
                                     <?php if (!empty($row['paid_at'])): ?>
-                                        <div style="font-size:11px;color:#64748b;margin-top:2px;">
+                                        <div class="status-meta">
                                             <?= formatTanggalID($row['paid_at']) ?>
                                         </div>
                                     <?php endif; ?>
@@ -290,7 +354,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                     <tfoot>
                         <tr>
-                            <th colspan="4" style="text-align:right;font-weight:600;">
+                            <th colspan="4" class="table-align-right font-semibold">
                                 TOTAL :
                             </th>
                             <th id="totalBonus">0</th>
@@ -303,85 +367,73 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 
     <!-- MODAL PEMBAYARAN GAJI -->
-    <div id="payModal" class="modal-overlay" style="display:none;">
-        <div class="modal-box">
-            <h3>💰 Konfirmasi Pembayaran Gaji</h3>
+    <div id="payModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('banknotes', 'h-5 w-5') ?>
+                    <span>Konfirmasi Pembayaran Gaji</span>
+                </div>
+                <button type="button" class="modal-close-btn" onclick="closePayModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
 
-            <form id="payForm" class="form" style="margin-top:16px;">
-                <input type="hidden" id="paySalaryId" name="salary_id">
+            <form id="payForm" class="form modal-form">
+                <div class="modal-content">
+                    <input type="hidden" id="paySalaryId" name="salary_id">
 
-                <!-- Info Target Pembayaran -->
-                <div style="background:#f8fafc;padding:12px;border-radius:10px;margin-bottom:14px;border:1px solid #e2e8f0;">
-                    <div style="font-size:12px;color:#64748b;margin-bottom:4px;">Target Pembayaran:</div>
-                    <div style="font-size:15px;font-weight:700;color:#0f172a;" id="payTargetName">-</div>
-                    <div style="font-size:13px;color:#16a34a;margin-top:4px;font-weight:600;">
-                        $<span id="payTargetBonus">0</span>
+                    <!-- Info Target Pembayaran -->
+                    <div class="pay-target-box">
+                        <div class="pay-target-label">Target Pembayaran:</div>
+                        <div class="pay-target-name" id="payTargetName">-</div>
+                        <div class="pay-target-value">
+                            $<span id="payTargetBonus">0</span>
+                        </div>
                     </div>
+
+                    <!-- Pilihan Metode Pembayaran -->
+                    <div class="payment-extra">
+                        <label class="payment-method-label">Metode Pembayaran:</label>
+                        <div class="payment-method-grid">
+                            <label class="payment-option selected">
+                                <input type="radio" name="pay_method" value="direct" checked>
+                                <span>Langsung Dibayar</span>
+                            </label>
+                            <label class="payment-option">
+                                <input type="radio" name="pay_method" value="titip">
+                                <span>Titip ke:</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Input Titip ke Siapa (dengan autocomplete) -->
+                    <div id="titipSection" class="hidden payment-extra">
+                        <label class="payment-method-label">Titip ke Siapa:</label>
+                        <div class="relative">
+                            <input type="text" id="titipInput" name="titip_to"
+                                placeholder="Ketik nama orang..."
+                                autocomplete="off"
+                                class="payment-input">
+                            <!-- DROPDOWN AUTOCOMPLETE (seperti events.php) -->
+                            <div id="titipDropdown" class="consumer-search-dropdown consumer-search-dropdown-field hidden"></div>
+                        </div>
+                        <small class="payment-help">
+                            Jika nama belum ada, akun akan dibuat otomatis seperti form event.
+                        </small>
+                    </div>
+
                 </div>
 
-                <!-- Pilihan Metode Pembayaran -->
-                <div style="margin-bottom:14px;">
-                    <label style="font-size:13px;font-weight:700;">Metode Pembayaran:</label>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
-                        <label style="display:flex;align-items:center;padding:10px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;transition:all 0.2s;margin:0;">
-                            <input type="radio" name="pay_method" value="direct" checked style="margin-right:8px;">
-                            <span style="font-size:13px;font-weight:600;">Langsung Dibayar</span>
-                        </label>
-                        <label style="display:flex;align-items:center;padding:10px;border:2px solid #e2e8f0;border-radius:10px;cursor:pointer;transition:all 0.2s;margin:0;">
-                            <input type="radio" name="pay_method" value="titip" style="margin-right:8px;">
-                            <span style="font-size:13px;font-weight:600;">Titip ke:</span>
-                        </label>
+                <div class="modal-foot">
+                    <div class="modal-actions">
+                        <button type="button" onclick="closePayModal()" class="btn-secondary">Batal</button>
+                        <button type="submit" class="btn-success"><?= ems_icon('banknotes', 'h-4 w-4') ?> <span>Proses Pembayaran</span></button>
                     </div>
-                </div>
-
-                <!-- Input Titip ke Siapa (dengan autocomplete) -->
-                <div id="titipSection" style="display:none;margin-bottom:14px;">
-                    <label style="font-size:13px;font-weight:700;">Titip ke Siapa:</label>
-                    <div style="position:relative;">
-                        <input type="text" id="titipInput" name="titip_to"
-                            placeholder="Ketik nama orang..."
-                            autocomplete="off"
-                            style="width:100%;padding:12px 14px;font-size:14px;border:1px solid #cbd5e1;border-radius:12px;">
-                        <!-- DROPDOWN AUTOCOMPLETE (seperti events.php) -->
-                        <div id="titipDropdown" class="consumer-search-dropdown hidden"></div>
-                    </div>
-                    <small style="color:#64748b;font-size:11px;display:block;margin-top:4px;">
-                        💡 Jika nama belum ada, akun akan dibuat otomatis (seperti form event)
-                    </small>
-                </div>
-
-                <!-- Actions -->
-                <div class="modal-actions" style="margin-top:16px;">
-                    <button type="button" onclick="closePayModal()" style="background:#e5e7eb;color:#334155;">Batal</button>
-                    <button type="submit" class="btn-success" style="background:linear-gradient(135deg, #22c55e, #16a34a);color:#fff;">💰 Proses Pembayaran</button>
                 </div>
             </form>
         </div>
     </div>
-
-    <style>
-        /* Highlight radio button saat dipilih */
-        input[type="radio"]:checked+span {
-            color: #0369a1;
-        }
-
-        label.selected {
-            border-color: #0ea5e9 !important;
-            background: #f0f9ff;
-        }
-
-        /* Modal box animation */
-        #payModal .modal-box {
-            animation: slideUp 0.3s ease;
-        }
-
-        #payModal h3 {
-            font-size: 18px;
-            font-weight: 700;
-            color: #0f172a;
-            margin-bottom: 0;
-        }
-    </style>
 
     <script>
         let selectedUserId = null;
@@ -391,12 +443,15 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
             document.getElementById('paySalaryId').value = id;
             document.getElementById('payTargetName').textContent = medicName;
             document.getElementById('payTargetBonus').textContent = bonus.toLocaleString('id-ID');
+            document.getElementById('payModal').classList.remove('hidden');
             document.getElementById('payModal').style.display = 'flex';
             document.body.style.overflow = 'hidden';
 
             // Reset form
             document.querySelector('input[name="pay_method"][value="direct"]').checked = true;
-            document.getElementById('titipSection').style.display = 'none';
+            document.getElementById('titipSection').classList.add('hidden');
+            document.querySelectorAll('.payment-option').forEach(option => option.classList.remove('selected'));
+            document.querySelector('input[name="pay_method"][value="direct"]').closest('.payment-option').classList.add('selected');
             document.getElementById('titipInput').value = '';
             document.getElementById('titipDropdown').classList.add('hidden');
             document.getElementById('titipDropdown').style.display = '';
@@ -406,6 +461,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
         // Tutup modal
         function closePayModal() {
             document.getElementById('payModal').style.display = 'none';
+            document.getElementById('payModal').classList.add('hidden');
             document.body.style.overflow = '';
         }
 
@@ -414,15 +470,15 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
             radio.addEventListener('change', function() {
                 const titipSection = document.getElementById('titipSection');
                 // Remove selected class dari semua label
-                document.querySelectorAll('label[style*="display:grid"]').forEach(lbl => {
+                document.querySelectorAll('.payment-option').forEach(lbl => {
                     lbl.classList.remove('selected');
                 });
                 // Tambah selected class ke parent label yang dipilih
                 if (this.value === 'titip') {
-                    titipSection.style.display = 'block';
+                    titipSection.classList.remove('hidden');
                     this.closest('label').classList.add('selected');
                 } else {
-                    titipSection.style.display = 'none';
+                    titipSection.classList.add('hidden');
                     selectedUserId = null;
                     this.closest('label').classList.add('selected');
                 }
@@ -488,7 +544,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         metaDiv.className = 'consumer-search-meta';
                         metaDiv.innerHTML = `
                         <span>${user.position ?? '-'}</span>
-                        <span class="dot">•</span>
+	                        <span class="dot">&bull;</span>
                         <span>Batch ${user.batch ?? '-'}</span>
                     `;
                         item.appendChild(metaDiv);
@@ -550,16 +606,16 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert('✅ ' + data.message);
+                        alert(data.message || 'Pembayaran berhasil diproses.');
                         closePayModal();
                         location.reload();
                     } else {
-                        alert('❌ ' + (data.message || 'Terjadi kesalahan'));
+                        alert(data.message || 'Terjadi kesalahan');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('❌ Terjadi kesalahan saat memproses pembayaran.');
+                    alert('Terjadi kesalahan saat memproses pembayaran.');
                 });
         });
 
@@ -600,7 +656,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 ],
                 pageLength: 10,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 },
 
                 footerCallback: function(row, data, start, end, display) {

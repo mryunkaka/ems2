@@ -147,9 +147,9 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:900px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1>Operasi Plastik</h1>
+	        <h1 class="page-title">Operasi Plastik</h1>
 
         <!-- NOTIF -->
         <?php foreach ($messages as $m): ?>
@@ -170,11 +170,11 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                 <div class="operasi-status">
                     <?php if (!$bolehInput): ?>
                         <span class="badge-danger badge-operasi">
-                            ⏳ <?= $sisaHari ?> hari lagi
+                            <?= $sisaHari ?> hari lagi
                         </span>
                     <?php else: ?>
                         <span class="badge-success-mini badge-operasi">
-                            ✅ Sudah bisa
+                            Sudah bisa
                         </span>
                     <?php endif; ?>
                 </div>
@@ -229,15 +229,17 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                 </div>
 
                 <label>Alasan</label>
-                <textarea name="alasan" rows="4" required></textarea>
+                <textarea name="alasan" rows="4" required class="form-gap"></textarea>
 
-                <button type="submit"
-                    class="btn-primary"
-                    <?= !$bolehInput ? 'disabled' : '' ?>>
-                    Simpan Data Operasi
-                </button>
+                <div class="form-submit-wrapper">
+                    <button type="submit"
+                        class="btn-success"
+                        <?= !$bolehInput ? 'disabled' : '' ?>>
+                        Simpan Data Operasi
+                    </button>
+                </div>
                 <?php if (!$bolehInput): ?>
-                    <small style="color:#b91c1c;font-weight:600;">
+                    <small class="mt-2 block text-sm font-semibold text-danger">
                         Anda harus menunggu <?= $sisaHari ?> hari lagi untuk operasi plastik berikutnya.
                     </small>
                 <?php endif; ?>
@@ -288,15 +290,15 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                 <td>
                                     <?php if ($row['status'] === 'approved'): ?>
                                         <span class="status-pill status-approved">
-                                            ✅ Approved
+                                            Approved
                                         </span>
                                     <?php elseif ($row['status'] === 'rejected'): ?>
                                         <span class="status-pill status-rejected">
-                                            ❌ Rejected
+                                            Rejected
                                         </span>
                                     <?php else: ?>
                                         <span class="status-pill status-pending">
-                                            ⏳ Pending
+                                            Pending
                                         </span>
                                     <?php endif; ?>
                                 </td>
@@ -358,7 +360,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                 searching: true,
                 lengthChange: false,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         });
@@ -448,15 +450,24 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
     <!-- MODAL ALASAN OPERASI -->
     <div id="modalAlasan" class="modal-overlay hidden">
-        <div class="modal-box">
-            <h3 id="modalTitle">Alasan Operasi</h3>
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div id="modalTitle" class="modal-title">Alasan Operasi</div>
+                <button type="button" class="modal-close-btn btn-cancel" onclick="closeAlasanModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
 
-            <div id="modalContent" style="margin-top:10px;white-space:pre-line;"></div>
+            <div class="modal-content">
+                <div id="modalContent" class="whitespace-pre-line text-sm text-slate-700"></div>
+            </div>
 
-            <div style="margin-top:15px;text-align:right;">
-                <button id="btnApprove" class="btn btn-success">Approve</button>
-                <button id="btnReject" class="btn btn-danger">Reject</button>
-                <button class="btn btn-secondary" onclick="closeAlasanModal()">Batal</button>
+            <div class="modal-foot">
+                <div class="modal-actions justify-end">
+                    <button type="button" id="btnApprove" class="btn-success">Approve</button>
+                    <button type="button" id="btnReject" class="btn-danger">Reject</button>
+                    <button type="button" class="btn-secondary btn-cancel" onclick="closeAlasanModal()">Batal</button>
+                </div>
             </div>
         </div>
     </div>
@@ -477,7 +488,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                     alert.remove();
                 }, 500);
             });
-        }, 5000); // ⏱️ 5 detik
+        }, 5000); // 5 detik
     });
 </script>
 

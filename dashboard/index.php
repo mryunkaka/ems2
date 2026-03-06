@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Dashboard | Farmasi EMS';
 
@@ -20,12 +21,12 @@ require_once __DIR__ . '/dashboard_data.php';
     window.DASHBOARD_DATA = <?= json_encode($dashboard, JSON_NUMERIC_CHECK); ?>;
 </script>
 
-<h1>Dashboard</h1>
-<p class="text-muted">
+<h1 class="page-title">Dashboard</h1>
+<p class="page-subtitle">
     <?= htmlspecialchars($rangeLabel) ?>
 </p>
 
-<h3 class="section-title section-farmasi">💊 Rekap Farmasi</h3>
+<h3 class="section-title section-farmasi"><?= ems_icon('beaker', 'h-5 w-5 text-primary') ?> Rekap Farmasi</h3>
 
 <div class="dashboard-grid">
 
@@ -91,7 +92,7 @@ require_once __DIR__ . '/dashboard_data.php';
 
 </div>
 
-<h3 class="section-title section-medis">🏥 Rekap Medis</h3>
+<h3 class="section-title section-medis"><?= ems_icon('building-office-2', 'h-5 w-5 text-success') ?> Rekap Medis</h3>
 
 <div class="dashboard-grid">
 
@@ -138,7 +139,7 @@ require_once __DIR__ . '/dashboard_data.php';
 </div>
 
 <div class="card" style="margin-top:20px;">
-    <div class="card-header">📊 Penjualan Mingguan (Perusahaan)</div>
+    <div class="card-header"><?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Penjualan Mingguan (Perusahaan)</div>
 
     <div class="chart-container">
         <canvas id="weeklyChart"></canvas>
@@ -149,7 +150,7 @@ require_once __DIR__ . '/dashboard_data.php';
 <!-- JUARA MINGGUAN -->
 <!-- ===================== -->
 <div class="card" style="margin-top:20px;">
-    <div class="card-header">🏆 Juara Mingguan (Medis)</div>
+    <div class="card-header"><?= ems_icon('check-circle', 'h-5 w-5 text-success') ?> Juara Mingguan (Medis)</div>
 
     <div class="dashboard-grid">
         <?php foreach ($dashboard['weekly_winner'] as $week => $data): ?>

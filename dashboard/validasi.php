@@ -40,10 +40,10 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1200px;margin:auto;">
-        <h1>Validasi User</h1>
+    <div class="page page-shell">
+        <h1 class="page-title">Validasi User</h1>
 
-        <p style="font-size:13px;color:#9ca3af;">
+        <p class="page-subtitle">
             Halaman ini digunakan untuk memverifikasi akun user baru
         </p>
 
@@ -73,37 +73,37 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?= htmlspecialchars($u['role']) ?></td>
                                 <td><?= htmlspecialchars($u['position']) ?></td>
 
-                                <td>
-                                    <?php if ((int)$u['is_verified'] === 1): ?>
-                                        <div class="status-box verified">
-                                            <span class="icon">✔</span>
-                                            Terverifikasi
-                                        </div>
-                                    <?php else: ?>
-                                        <div class="status-box pending">
-                                            <span class="icon">⏳</span>
-                                            Belum Verifikasi
-                                        </div>
-                                    <?php endif; ?>
-                                </td>
+	                                <td>
+	                                    <?php if ((int)$u['is_verified'] === 1): ?>
+	                                        <div class="status-box verified">
+	                                            <span class="icon"><?= ems_icon('check-circle', 'h-4 w-4') ?></span>
+	                                            Terverifikasi
+	                                        </div>
+	                                    <?php else: ?>
+	                                        <div class="status-box pending">
+	                                            <span class="icon"><?= ems_icon('clock', 'h-4 w-4') ?></span>
+	                                            Belum Verifikasi
+	                                        </div>
+	                                    <?php endif; ?>
+	                                </td>
 
                                 <td><?= date('d-m-Y H:i', strtotime($u['created_at'])) ?></td>
 
-                                <td>
-                                    <?php if ((int)$u['is_verified'] === 0): ?>
-                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=approve"
-                                            class="btn btn-sm btn-success"
-                                            onclick="return confirm('Verifikasi user ini?')">
-                                            Validasi
-                                        </a>
-                                    <?php else: ?>
-                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=reject"
-                                            class="btn btn-sm btn-danger"
-                                            onclick="return confirm('Batalkan verifikasi user ini?')">
-                                            Batalkan
-                                        </a>
-                                    <?php endif; ?>
-                                </td>
+	                                <td>
+	                                    <?php if ((int)$u['is_verified'] === 0): ?>
+	                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=approve"
+	                                            class="btn-success btn-compact"
+	                                            onclick="return confirm('Verifikasi user ini?')">
+	                                            Validasi
+	                                        </a>
+	                                    <?php else: ?>
+	                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=reject"
+	                                            class="btn-danger btn-compact"
+	                                            onclick="return confirm('Batalkan verifikasi user ini?')">
+	                                            Batalkan
+	                                        </a>
+	                                    <?php endif; ?>
+	                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -119,7 +119,7 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
             jQuery('#validasiTable').DataTable({
                 pageLength: 10,
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }

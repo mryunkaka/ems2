@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
@@ -113,10 +114,10 @@ uksort($usersByBatch, function ($a, $b) {
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
 <section class="content">
-    <div class="page" style="max-width:1100px;margin:auto;">
+    <div class="page page-shell-md">
 
-        <h1 class="gradient-text">Manajemen User</h1>
-        <p class="text-muted">Kelola akun, jabatan, role, dan PIN pengguna</p>
+        <h1 class="page-title">Manajemen User</h1>
+        <p class="page-subtitle">Kelola akun, jabatan, role, dan PIN pengguna</p>
 
         <?php foreach ($messages as $m): ?>
             <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>
@@ -127,10 +128,10 @@ uksort($usersByBatch, function ($a, $b) {
         <?php endforeach; ?>
 
         <div class="card">
-            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div class="card-header card-toolbar">
                 <span>Daftar User</span>
-	                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-	                    <select id="searchColumn" style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+	                <div class="toolbar-group">
+	                    <select id="searchColumn" class="toolbar-select">
 	                        <option value="all" selected>Semua Kolom</option>
 	                        <option value="name">Nama</option>
 	                        <option value="position">Jabatan</option>
@@ -140,33 +141,33 @@ uksort($usersByBatch, function ($a, $b) {
 	                    </select>
 	                    <input type="text"
 	                        id="searchUser"
-                        placeholder="🔍 Cari nama..."
-                        style="padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;min-width:250px;">
+                        placeholder="Cari nama..."
+                        class="toolbar-input">
 
                     <button id="btnExportText" class="btn-secondary">
-                        📄 Export Text
+                        <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
                     </button>
 
                     <button id="btnAddUser" class="btn-success">
-                        ➕ Tambah Anggota
+                        <?= ems_icon('plus', 'h-4 w-4') ?> Tambah Anggota
                     </button>
                 </div>
             </div>
 
 	            <div class="table-wrapper">
 	                <?php foreach ($usersByBatch as $batchName => $batchUsers): ?>
-	                    <div class="card" style="margin-bottom:20px;">
-	                        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+	                    <div class="card batch-card">
+	                        <div class="card-header batch-card-header">
 	                            <div>
 	                                <?= htmlspecialchars($batchName) ?>
-	                                <span style="font-size:12px;color:#64748b;">
+	                                <span class="batch-count">
 	                                    (<?= count($batchUsers) ?> user)
 	                                </span>
 	                            </div>
 
 	                            <?php if ($batchName === 'Tanpa Batch'): ?>
-	                                <button id="btnExportTanpaBatch" class="btn-secondary" type="button" style="padding:6px 10px;font-size:13px;">
-	                                    📄 Export Tanpa Batch
+	                                <button id="btnExportTanpaBatch" class="btn-secondary button-compact" type="button">
+	                                    <?= ems_icon('document-text', 'h-4 w-4') ?> Export Tanpa Batch
 	                                </button>
 	                            <?php endif; ?>
 	                        </div>
@@ -235,18 +236,18 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-search-all="<?= htmlspecialchars($allSearch) ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
-	                                                <strong><?= htmlspecialchars($u['full_name']) ?></strong>
+                                                <strong><?= htmlspecialchars($u['full_name']) ?></strong>
 
                                                 <?php if (!empty($u['reactivated_at'])): ?>
-                                                    <div style="margin-top:4px;font-size:12px;color:#16a34a;">
-                                                        🔄 Aktif kembali:
+                                                    <div class="status-note-success">
+                                                        Aktif kembali:
                                                         <?= (new DateTime($u['reactivated_at']))->format('d M Y') ?>
                                                     </div>
                                                 <?php endif; ?>
 
                                                 <?php if ((int)$u['is_active'] === 0 && !empty($u['resigned_at'])): ?>
-                                                    <div style="margin-top:4px;font-size:12px;color:#64748b;">
-                                                        📅 Resign: <?= (new DateTime($u['resigned_at']))->format('d M Y') ?>
+                                                    <div class="status-note-muted">
+                                                        Resign: <?= (new DateTime($u['resigned_at']))->format('d M Y') ?>
                                                     </div>
                                                 <?php endif; ?>
                                             </td>
@@ -258,11 +259,11 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <div>
                                                         <?= (new DateTime($u['tanggal_masuk']))->format('d M Y') ?>
                                                     </div>
-                                                    <small style="color:#64748b;">
+                                                    <small class="meta-text">
                                                         <?= formatDurasiMedis($u['tanggal_masuk']) ?>
                                                     </small>
                                                 <?php else: ?>
-                                                    <span style="color:#9ca3af;">-</span>
+                                                    <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
 	                                            </td>
 	                                            <td>
@@ -328,56 +329,17 @@ uksort($usersByBatch, function ($a, $b) {
 
 </section>
 
-<!-- ======================================
-     MODAL PREVIEW DOKUMEN
-     ====================================== -->
-<div id="docPreviewModal" class="modal-overlay" style="display:none;">
-    <div class="modal-card" style="max-width:900px;">
-
-        <!-- HEADER -->
-        <div class="modal-header">
-            <strong id="docPreviewTitle">📄 Preview Dokumen</strong>
-
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" class="zoom-control-btn" id="docPrev" title="Sebelumnya">⬅️</button>
-                <button type="button" class="zoom-control-btn" id="docNext" title="Berikutnya">➡️</button>
-
-                <button type="button" class="zoom-control-btn" id="docZoomOut" title="Perkecil">➖</button>
-                <button type="button" class="zoom-control-btn" id="docZoomIn" title="Perbesar">➕</button>
-                <button type="button" class="zoom-control-btn" id="docZoomReset" title="Reset">🔄</button>
-
-                <button type="button" onclick="closeDocModal()">✕</button>
-            </div>
+<div id="resignModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Resign User</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
         </div>
 
-        <!-- BODY -->
-        <div class="modal-body"
-            style="
-                background:#f8fafc;
-                display:flex;
-                align-items:center;
-                justify-content:center;
-                min-height:60vh;
-            ">
-            <img id="docPreviewImage"
-                src=""
-                alt="Dokumen"
-                style="
-                    max-width:100%;
-                    max-height:75vh;
-                    object-fit:contain;
-                    transition:transform 0.2s ease;
-                ">
-        </div>
-
-    </div>
-</div>
-
-<div id="resignModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Resign User</h3>
-
-        <form method="POST" action="manage_users_action.php" class="form">
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="resign">
             <input type="hidden" name="user_id" id="resignUserId">
 
@@ -388,20 +350,29 @@ uksort($usersByBatch, function ($a, $b) {
 
 	            <label for="resignReason">Alasan Resign</label>
 	            <textarea id="resignReason" name="resign_reason" autocomplete="off" required></textarea>
+            </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-nonaktif ">Nonaktifkan</button>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-nonaktif">Nonaktifkan</button>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
-<div id="reactivateModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Kembali Bekerja</h3>
+<div id="reactivateModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Kembali Bekerja</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
-        <form method="POST" action="manage_users_action.php" class="form">
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="reactivate">
             <input type="hidden" name="user_id" id="reactivateUserId">
 
@@ -413,51 +384,62 @@ uksort($usersByBatch, function ($a, $b) {
 	            <label for="reactivateNote">Keterangan (opsional)</label>
 	            <textarea id="reactivateNote" name="reactivate_note" autocomplete="off"
 	                placeholder="Contoh: Kontrak baru / dipanggil kembali"></textarea>
+            </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Aktifkan</button>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Aktifkan</button>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
-<div id="editModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Edit User</h3>
+<div id="editModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Edit User</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
-        <form method="POST" action="manage_users_action.php" class="form">
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="user_id" id="editUserId">
 
 	            <label for="editBatch">Batch</label>
-	            <input type="number"
-	                name="batch"
-	                id="editBatch"
-	                autocomplete="off"
-	                min="1"
-	                max="26"
-	                placeholder="Contoh: 3">
+		            <input type="number"
+		                name="batch"
+		                id="editBatch"
+		                autocomplete="off"
+		                min="1"
+		                max="26"
+		                placeholder="Contoh: 3">
 
-	            <label for="editKodeMedis">Kode Medis / Nomor Induk RS</label>
+		            <div class="hidden" aria-hidden="true">
+		                <label for="editKodeMedis">Kode Medis / Nomor Induk RS</label>
 
-            <div class="ems-kode-medis">
-                <input type="text"
-                    id="editKodeMedis"
-                    readonly>
+		                <div class="ems-kode-medis">
+		                    <input type="text"
+		                        id="editKodeMedis"
+		                        readonly>
 
-                <button type="button"
-                    id="btnDeleteKodeMedis"
-                    title="Hapus kode medis">
-                    🗑
-                </button>
-            </div>
+		                    <button type="button"
+		                        id="btnDeleteKodeMedis"
+		                        title="Hapus kode medis">
+		                        <?= ems_icon('trash', 'h-4 w-4') ?>
+		                    </button>
+		                </div>
 
-            <small style="color:#c0392b;display:none;" id="kodeMedisWarning">
-                Menghapus kode medis akan mengizinkan sistem membuat ulang kode baru.
-            </small>
+		                <small class="danger-note-sm" id="kodeMedisWarning">
+		                    Menghapus kode medis akan mengizinkan sistem membuat ulang kode baru.
+		                </small>
+		            </div>
 
-	            <label for="editName">Nama</label>
-	            <input type="text" name="full_name" id="editName" autocomplete="username" required>
+		            <label for="editName">Nama</label>
+		            <input type="text" name="full_name" id="editName" autocomplete="username" required>
 
 	            <label for="editPosition">Jabatan</label>
 	            <select name="position" id="editPosition" autocomplete="organization-title" required>
@@ -486,41 +468,59 @@ uksort($usersByBatch, function ($a, $b) {
 		                pattern="[0-9]{4}"
 		                maxlength="4">
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan</button>
             </div>
 
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan</button>
+                </div>
+            </div>
         </form>
     </div>
 </div>
 
-<div id="deleteModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Hapus User</h3>
+<div id="deleteModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Hapus User</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
-        <form method="POST" action="manage_users_action.php" class="form">
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="user_id" id="deleteUserId">
 
-            <p style="color:#b91c1c;">
-                ⚠️ User <strong id="deleteUserName"></strong> akan dihapus permanen.
+            <p class="danger-note">
+                User <strong id="deleteUserName"></strong> akan dihapus permanen.
                 <br>Tindakan ini <strong>tidak dapat dibatalkan</strong>.
             </p>
+            </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-danger">Hapus Permanen</button>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-danger">Hapus Permanen</button>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
-<div id="addUserModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-        <h3>Tambah Anggota Baru</h3>
+<div id="addUserModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Tambah Anggota Baru</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
-        <form method="POST" action="manage_users_action.php" class="form">
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
             <input type="hidden" name="action" value="add_user">
 
 	            <label for="addFullName">Nama Lengkap</label>
@@ -547,13 +547,16 @@ uksort($usersByBatch, function ($a, $b) {
 	            <label for="addBatch">Batch <small>(opsional)</small></label>
 	            <input type="number" id="addBatch" name="batch" autocomplete="off" min="1" max="26" placeholder="Contoh: 3">
 
-            <small style="color:#64748b;">
+            <small class="helper-note">
                 PIN awal akan otomatis dibuat: <strong>0000</strong>
             </small>
+            </div>
 
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan</button>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan</button>
+                </div>
             </div>
         </form>
     </div>
@@ -571,6 +574,7 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('resignUserId').value = btn.dataset.id;
             document.getElementById('resignUserName').innerText = btn.dataset.name;
 
+            resignModal.classList.remove('hidden');
             resignModal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -580,6 +584,7 @@ uksort($usersByBatch, function ($a, $b) {
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                resignModal.classList.add('hidden');
                 resignModal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -592,7 +597,11 @@ uksort($usersByBatch, function ($a, $b) {
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             const modal = document.getElementById('editModal');
-            if (modal) modal.style.display = 'none';
+            if (modal && modal.style.display === 'flex') {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+            }
         }
     });
 </script>
@@ -625,6 +634,7 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('kodeMedisWarning').style.display =
                 btn.dataset.kode ? 'block' : 'none';
 
+            modal.classList.remove('hidden');
             modal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -635,6 +645,7 @@ uksort($usersByBatch, function ($a, $b) {
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -645,7 +656,11 @@ uksort($usersByBatch, function ($a, $b) {
 
 <script>
     function closeModal() {
-        document.getElementById('editModal').style.display = 'none';
+        const modal = document.getElementById('editModal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
     }
 
 	    document.addEventListener('DOMContentLoaded', function() {
@@ -672,7 +687,7 @@ uksort($usersByBatch, function ($a, $b) {
 	                            [1, 'asc']
 	                        ],
 	                        language: {
-	                            url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+	                            url: '/assets/design/js/datatables-id.json'
 	                        }
 	                    });
 
@@ -694,14 +709,14 @@ uksort($usersByBatch, function ($a, $b) {
 	            if (!searchInput) return;
 	            const mode = searchColumn ? searchColumn.value : 'all';
 		            const map = {
-		                all: '🔍 Cari (semua kolom)...',
-		                name: '🔍 Cari nama...',
-		                position: '🔍 Cari jabatan...',
-		                role: '🔍 Cari role...',
-		                docs: '🔍 Cari dokumen (Sertifikat Heli, Operasi, Academy)...',
-		                join: '🔍 Cari tanggal join...'
+		                all: 'Cari (semua kolom)...',
+		                name: 'Cari nama...',
+		                position: 'Cari jabatan...',
+		                role: 'Cari role...',
+		                docs: 'Cari dokumen (Sertifikat Heli, Operasi, Academy)...',
+		                join: 'Cari tanggal join...'
 		            };
-	            searchInput.placeholder = map[mode] || '🔍 Cari...';
+	            searchInput.placeholder = map[mode] || 'Cari...';
 	        }
 
 	        if (searchInput) {
@@ -801,6 +816,7 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('reactivateUserId').value = btn.dataset.id;
             document.getElementById('reactivateUserName').innerText = btn.dataset.name;
 
+            reactivateModal.classList.remove('hidden');
             reactivateModal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -810,6 +826,7 @@ uksort($usersByBatch, function ($a, $b) {
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                reactivateModal.classList.add('hidden');
                 reactivateModal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -830,6 +847,7 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('deleteUserId').value = btn.dataset.id;
             document.getElementById('deleteUserName').innerText = btn.dataset.name;
 
+            deleteModal.classList.remove('hidden');
             deleteModal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -839,6 +857,7 @@ uksort($usersByBatch, function ($a, $b) {
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                deleteModal.classList.add('hidden');
                 deleteModal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -885,6 +904,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         if (btnOpen) {
             btnOpen.addEventListener('click', () => {
+                modal.classList.remove('hidden');
                 modal.style.display = 'flex';
                 document.body.classList.add('modal-open');
             });
@@ -895,121 +915,11 @@ uksort($usersByBatch, function ($a, $b) {
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
         });
-    });
-</script>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-
-        const modal = document.getElementById('docPreviewModal');
-        const img = document.getElementById('docPreviewImage');
-        const title = document.getElementById('docPreviewTitle');
-
-        const btnPrev = document.getElementById('docPrev');
-        const btnNext = document.getElementById('docNext');
-
-        let scale = 1;
-
-        let docList = []; // daftar dokumen user aktif
-        let currentIndex = 0; // index dokumen aktif
-
-        // ===============================
-        // OPEN PREVIEW
-        // ===============================
-        document.body.addEventListener('click', function(e) {
-            const btn = e.target.closest('.btn-preview-doc');
-            if (!btn) return;
-
-            e.preventDefault();
-
-            // 🔎 ambil SEMUA dokumen di cell yang sama (user yang sama)
-            const cell = btn.closest('td');
-            const docs = cell.querySelectorAll('.btn-preview-doc');
-
-            docList = Array.from(docs).map(el => ({
-                src: el.dataset.src,
-                title: el.dataset.title || 'Dokumen'
-            }));
-
-            currentIndex = Array.from(docs).indexOf(btn);
-
-            openDoc(currentIndex);
-            modal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
-
-        // ===============================
-        // OPEN BY INDEX
-        // ===============================
-        function openDoc(index) {
-            const doc = docList[index];
-            if (!doc) return;
-
-            img.src = doc.src;
-            title.textContent = '📄 ' + doc.title;
-
-            scale = 1;
-            img.style.transform = 'scale(1)';
-        }
-
-        // ===============================
-        // NAVIGATION (LOOP)
-        // ===============================
-        btnNext.onclick = () => {
-            if (!docList.length) return;
-            currentIndex = (currentIndex + 1) % docList.length;
-            openDoc(currentIndex);
-        };
-
-        btnPrev.onclick = () => {
-            if (!docList.length) return;
-            currentIndex =
-                (currentIndex - 1 + docList.length) % docList.length;
-            openDoc(currentIndex);
-        };
-
-        // ===============================
-        // ZOOM CONTROLS
-        // ===============================
-        document.getElementById('docZoomIn').onclick = () => {
-            scale += 0.1;
-            img.style.transform = `scale(${scale})`;
-        };
-
-        document.getElementById('docZoomOut').onclick = () => {
-            scale = Math.max(0.3, scale - 0.1);
-            img.style.transform = `scale(${scale})`;
-        };
-
-        document.getElementById('docZoomReset').onclick = () => {
-            scale = 1;
-            img.style.transform = 'scale(1)';
-        };
-
-        // ===============================
-        // CLOSE MODAL
-        // ===============================
-        window.closeDocModal = function() {
-            modal.style.display = 'none';
-            img.src = '';
-            docList = [];
-            currentIndex = 0;
-            scale = 1;
-            document.body.classList.remove('modal-open');
-        };
-
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) closeDocModal();
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeDocModal();
-        });
-
     });
 </script>
 
@@ -1216,3 +1126,4 @@ uksort($usersByBatch, function ($a, $b) {
 
 
 	<?php include __DIR__ . '/../partials/footer.php'; ?>
+

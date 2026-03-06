@@ -10,6 +10,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -90,7 +91,7 @@ $sql = "
 
 $params = [];
 
-// 📅 FILTER TANGGAL
+// FILTER TANGGAL
 $range = $_GET['range'] ?? 'week4';
 
 if ($range !== 'custom') {
@@ -144,50 +145,50 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 ?>
 
 <section class="content">
-    <div class="page" style="max-width:1400px;margin:auto;">
+    <div class="page mx-auto max-w-[1400px]">
 
-        <h1>Restaurant Consumption</h1>
-        <p class="text-muted">
+        <h1 class="page-title">Konsumsi Restoran</h1>
+        <p class="page-subtitle">
             <?= htmlspecialchars($rangeLabel ?? '-') ?>
         </p>
 
         <!-- STATISTIK -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:20px;">
-            <div class="card" style="margin:0;">
-                <div class="card-body" style="text-align:center;">
-                    <small style="color:#64748b;">Total Paket</small>
-                    <div style="font-size:24px;font-weight:700;color:#0f766e;">
+        <div class="stats-grid">
+            <div class="card stats-card">
+                <div class="card-body stats-body-center">
+                    <small class="stats-label">Total Paket</small>
+                    <div class="stats-value-teal">
                         <?= number_format($stats['total_packets'] ?? 0, 0, ',', '.') ?>
                     </div>
                 </div>
             </div>
-            <div class="card" style="margin:0;">
-                <div class="card-body" style="text-align:center;">
-                    <small style="color:#64748b;">Subtotal</small>
-                    <div style="font-size:20px;font-weight:700;color:#0369a1;">
+            <div class="card stats-card">
+                <div class="card-body stats-body-center">
+                    <small class="stats-label">Subtotal</small>
+                    <div class="stats-value-blue">
                         $<?= number_format($stats['total_subtotal'] ?? 0, 0, ',', '.') ?>
                     </div>
                 </div>
             </div>
-            <div class="card" style="margin:0;">
-                <div class="card-body" style="text-align:center;">
-                    <small style="color:#64748b;">Pajak (5%)</small>
-                    <div style="font-size:20px;font-weight:700;color:#b45309;">
+            <div class="card stats-card">
+                <div class="card-body stats-body-center">
+                    <small class="stats-label">Pajak (5%)</small>
+                    <div class="stats-value-amber">
                         $<?= number_format($stats['total_tax'] ?? 0, 0, ',', '.') ?>
                     </div>
                 </div>
             </div>
-            <div class="card" style="margin:0;">
-                <div class="card-body" style="text-align:center;">
-                    <small style="color:#64748b;">Grand Total</small>
-                    <div style="font-size:24px;font-weight:700;color:#047857;">
+            <div class="card stats-card">
+                <div class="card-body stats-body-center">
+                    <small class="stats-label">Grand Total</small>
+                    <div class="stats-value-green">
                         $<?= number_format($stats['total_grand'] ?? 0, 0, ',', '.') ?>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="card" style="margin-bottom:20px;">
+        <div class="card card-section">
             <div class="card-header">Filter Rentang Tanggal</div>
             <div class="card-body">
                 <form method="get" id="filterForm" class="filter-bar">
@@ -222,7 +223,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                         <label>Tanggal Akhir</label>
                         <input type="date" name="to" value="<?= htmlspecialchars($endDate) ?>" class="form-control">
                     </div>
-                    <div class="filter-group" style="align-self:flex-end;">
+                    <div class="filter-group filter-action-end">
                         <button type="submit" class="btn btn-primary">Terapkan</button>
                     </div>
                 </form>
@@ -230,15 +231,17 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
         </div>
 
         <div class="card">
-            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:nowrap;gap:15px;">
-                <span style="white-space:nowrap;min-width:fit-content;">Daftar Konsumsi Restoran</span>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div class="card-header card-header-between">
+                <span class="nowrap-label">Daftar Konsumsi Restoran</span>
+                <div class="inline-actions">
                     <button id="btnAddConsumption" class="btn-success">
-                        ➕ Input Konsumsi
+                        <?= ems_icon('plus', 'h-4 w-4') ?>
+                        <span>Input Konsumsi</span>
                     </button>
                     <?php if ($canManage): ?>
                         <button id="btnManageResto" class="btn-secondary">
-                            ⚙️ Setting Restoran
+                            <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?>
+                            <span>Setting Restoran</span>
                         </button>
                     <?php endif; ?>
                 </div>
@@ -276,7 +279,11 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 </td>
 
                                 <!-- TANGGAL & JAM -->
-                                <td>
+                                <?php
+                                // DataTables sort: gunakan timestamp numeric agar urut walau format tanggal teks Indonesia.
+                                $deliveryOrderTs = strtotime(($r['delivery_date'] ?? '') . ' ' . ($r['delivery_time'] ?? '00:00:00'));
+                                ?>
+                                <td data-order="<?= (int)$deliveryOrderTs ?>">
                                     <?php
                                     $daysIndonesian = [
                                         'Monday' => 'Senin',
@@ -292,7 +299,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                     $dateFormatted = date('d M Y', strtotime($r['delivery_date']));
                                     ?>
                                     <div><strong><?= $dayIndo ?></strong>, <?= $dateFormatted ?></div>
-                                    <small style="color:#64748b;"><?= date('H:i', strtotime($r['delivery_time'])) ?></small>
+                                    <small class="meta-text-xs"><?= date('H:i', strtotime($r['delivery_time'])) ?></small>
                                 </td>
 
                                 <!-- RESTORAN -->
@@ -303,11 +310,10 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 <!-- PENERIMA -->
                                 <td>
                                     <div><?= htmlspecialchars($r['recipient_name']) ?></div>
-                                    <small style="color:#64748b;">Diajukan oleh: <?= htmlspecialchars($r['created_by_name']) ?></small>
                                 </td>
 
                                 <!-- PAKET -->
-                                <td style="text-align:center;">
+                                <td class="table-align-center">
                                     <strong><?= number_format($r['packet_count'], 0, ',', '.') ?></strong> pkt
                                 </td>
 
@@ -319,12 +325,12 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 
                                 <!-- PAJAK -->
                                 <td>
-                                    <small style="color:#64748b;"><?= number_format($r['tax_percentage'], 0) ?>%</small><br>
+                                    <small class="meta-text-xs"><?= number_format($r['tax_percentage'], 0) ?>%</small><br>
                                     $<?= number_format($r['tax_amount'], 0, ',', '.') ?>
                                 </td>
 
                                 <!-- TOTAL -->
-                                <td style="font-weight:700;color:#047857;">
+                                <td class="font-semibold text-emerald-700">
                                     $<?= number_format($r['total_amount'], 0, ',', '.') ?>
                                 </td>
 
@@ -335,16 +341,17 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                             class="doc-badge btn-preview-doc"
                                             data-src="/<?= htmlspecialchars($r['ktp_file']) ?>"
                                             data-title="KTP - <?= htmlspecialchars($r['restaurant_name']) ?>">
-                                            📄 Lihat
+                                            <?= ems_icon('document-text', 'h-4 w-4') ?>
+                                            <span>Lihat</span>
                                         </a>
                                     <?php else: ?>
-                                        <span style="color:#9ca3af;">-</span>
+                                        <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
                                 </td>
 
                                 <!-- STATUS -->
                                 <td>
-                                    <div style="display:flex;flex-direction:column;gap:6px;">
+                                    <div class="meta-stack">
                                         <span class="badge-status badge-<?= htmlspecialchars($r['status']) ?>">
                                             <?= strtoupper(htmlspecialchars($r['status'])) ?>
                                         </span>
@@ -364,9 +371,9 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                             $approvedDayIndo = $daysIndonesian[$approvedDayEnglish] ?? $approvedDayEnglish;
                                             $approvedDateFormatted = date('d M Y H:i', strtotime($r['approved_at']));
                                             ?>
-                                            <small style="color:#059669;font-size:11px;">
-                                                ✅ Approved by: <strong><?= htmlspecialchars($r['approved_by_name']) ?></strong><br>
-                                                <span style="color:#64748b;"><?= $approvedDayIndo ?>, <?= $approvedDateFormatted ?></span>
+                                            <small class="meta-note-green">
+                                                Approved by: <strong><?= htmlspecialchars($r['approved_by_name']) ?></strong><br>
+                                                <span class="meta-text"><?= $approvedDayIndo ?>, <?= $approvedDateFormatted ?></span>
                                             </small>
                                         <?php endif; ?>
 
@@ -385,38 +392,38 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                             $paidDayIndo = $daysIndonesian[$paidDayEnglish] ?? $paidDayEnglish;
                                             $paidDateFormatted = date('d M Y H:i', strtotime($r['paid_at']));
                                             ?>
-                                            <small style="color:#0369a1;font-size:11px;">
-                                                💰 Paid by: <strong><?= htmlspecialchars($r['paid_by_name']) ?></strong><br>
-                                                <span style="color:#64748b;"><?= $paidDayIndo ?>, <?= $paidDateFormatted ?></span>
+                                            <small class="meta-note-blue">
+                                                Paid by: <strong><?= htmlspecialchars($r['paid_by_name']) ?></strong><br>
+                                                <span class="meta-text"><?= $paidDayIndo ?>, <?= $paidDateFormatted ?></span>
                                             </small>
                                         <?php endif; ?>
                                     </div>
                                 </td>
 
                                 <!-- AKSI -->
-                                <td style="white-space:nowrap;min-width:200px;">
-                                    <div style="display:flex;gap:5px;flex-wrap:nowrap;">
+                                <td class="action-cell min-w-[200px]">
+                                    <div class="action-row-nowrap">
                                         <?php if ($canManage && $r['status'] === 'pending'): ?>
-                                            <button class="btn-success"
-                                                onclick="approveConsumption(<?= $r['id'] ?>)"
-                                                style="min-width:80px;padding:6px 10px;font-size:12px;">
-                                                ✅ Approve
+                                            <button class="btn-success btn-compact"
+                                                onclick="approveConsumption(<?= $r['id'] ?>)">
+                                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
+                                                <span>Approve</span>
                                             </button>
                                         <?php endif; ?>
 
                                         <?php if ($canManage && $r['status'] === 'approved'): ?>
-                                            <button class="btn-primary"
-                                                onclick="markPaid(<?= $r['id'] ?>)"
-                                                style="min-width:80px;padding:6px 10px;font-size:12px;">
-                                                💰 Paid
+                                            <button class="btn-primary btn-compact"
+                                                onclick="markPaid(<?= $r['id'] ?>)">
+                                                <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                                                <span>Paid</span>
                                             </button>
                                         <?php endif; ?>
 
                                         <?php if (!empty($isDirector) && $isDirector): ?>
-                                            <button class="btn-danger"
-                                                onclick="deleteConsumption(<?= $r['id'] ?>)"
-                                                style="min-width:80px;padding:6px 10px;font-size:12px;">
-                                                🗑️ Delete
+                                            <button class="btn-danger btn-compact"
+                                                onclick="deleteConsumption(<?= $r['id'] ?>)">
+                                                <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                <span>Delete</span>
                                             </button>
                                         <?php endif; ?>
                                     </div>
@@ -444,14 +451,14 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Data berhasil dihapus!');
+                    alert('Data berhasil dihapus!');
                     location.reload();
                 } else {
-                    alert('❌ ' + (data.message || 'Gagal menghapus data'));
+                    alert(data.message || 'Gagal menghapus data');
                 }
             })
             .catch(err => {
-                alert('❌ Terjadi kesalahan: ' + err.message);
+                alert('Terjadi kesalahan: ' + err.message);
             });
     }
 
@@ -468,14 +475,14 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Konsumsi berhasil disetujui!');
+                    alert('Konsumsi berhasil disetujui!');
                     location.reload();
                 } else {
-                    alert('❌ ' + (data.message || 'Gagal menyetujui'));
+                    alert(data.message || 'Gagal menyetujui');
                 }
             })
             .catch(err => {
-                alert('❌ Terjadi kesalahan: ' + err.message);
+                alert('Terjadi kesalahan: ' + err.message);
             });
     }
 
@@ -492,14 +499,14 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('✅ Konsumsi berhasil ditandai LUNAS!');
+                    alert('Konsumsi berhasil ditandai lunas!');
                     location.reload();
                 } else {
-                    alert('❌ ' + (data.message || 'Gagal memperbarui status'));
+                    alert(data.message || 'Gagal memperbarui status');
                 }
             })
             .catch(err => {
-                alert('❌ Terjadi kesalahan: ' + err.message);
+                alert('Terjadi kesalahan: ' + err.message);
             });
     }
 </script>
@@ -507,109 +514,119 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 <!-- =================================================
      MODAL INPUT KONSUMSI
      ================================================= -->
-<div id="consumptionModal" class="modal-overlay" style="display:none;">
-    <div class="modal-box">
-
-        <h3>Input Konsumsi Restoran</h3>
+<div id="consumptionModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Input Konsumsi Restoran</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
 
         <form method="POST"
             action="restaurant_consumption_action.php?action=create"
-            class="form"
+            class="form modal-form"
             enctype="multipart/form-data"
             id="consumptionForm">
 
-            <input type="hidden" name="consumption_code" value="CONS-<?= date('Ymd-His') ?>">
-            <input type="hidden" name="recipient_user_id" value="<?= $userId ?>">
-            <input type="hidden" name="recipient_name" value="<?= htmlspecialchars($userName) ?>">
+            <div class="modal-content">
 
-            <label>Pilih Restoran</label>
-            <select name="restaurant_id" id="restaurantSelect" required onchange="updatePriceInfo()">
-                <option value="">-- Pilih Restoran --</option>
-                <?php foreach ($restaurants as $r): ?>
-                    <option value="<?= $r['id'] ?>"
-                        data-price="<?= $r['price_per_packet'] ?>"
-                        data-tax="<?= $r['tax_percentage'] ?>">
-                        <?= htmlspecialchars($r['restaurant_name']) ?> ($<?= number_format($r['price_per_packet'], 0, ',', '.') ?>/pkt)
-                    </option>
-                <?php endforeach; ?>
-            </select>
+                <input type="hidden" name="consumption_code" value="CONS-<?= date('Ymd-His') ?>">
+                <input type="hidden" name="recipient_user_id" value="<?= $userId ?>">
+                <input type="hidden" name="recipient_name" value="<?= htmlspecialchars($userName) ?>">
 
-            <label>Tanggal & Jam Pengiriman</label>
-            <div style="display:flex;gap:12px;align-items:center;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #e2e8f0;">
-                <div style="flex:1;">
-                    <small style="color:#64748b;display:block;margin-bottom:4px;">Tanggal</small>
-                    <input type="date" name="delivery_date" required value="<?= date('Y-m-d') ?>"
-                        style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;background:#fff;">
+                <label>Pilih Restoran</label>
+                <select name="restaurant_id" id="restaurantSelect" required onchange="updatePriceInfo()">
+                    <option value="">-- Pilih Restoran --</option>
+                    <?php foreach ($restaurants as $r): ?>
+                        <option value="<?= $r['id'] ?>"
+                            data-price="<?= $r['price_per_packet'] ?>"
+                            data-tax="<?= $r['tax_percentage'] ?>">
+                            <?= htmlspecialchars($r['restaurant_name']) ?> ($<?= number_format($r['price_per_packet'], 0, ',', '.') ?>/pkt)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label>Tanggal & Jam Pengiriman</label>
+                <div class="delivery-grid">
+                    <div class="delivery-field">
+                        <small class="delivery-label">Tanggal</small>
+                        <input type="date" name="delivery_date" required value="<?= date('Y-m-d') ?>"
+                            class="delivery-input">
+                    </div>
+                    <div class="delivery-field">
+                        <small class="delivery-label">Jam</small>
+                        <input type="time" name="delivery_time" required value="<?= date('H:i') ?>"
+                            class="delivery-input">
+                    </div>
                 </div>
-                <div style="flex:1;">
-                    <small style="color:#64748b;display:block;margin-bottom:4px;">Jam</small>
-                    <input type="time" name="delivery_time" required value="<?= date('H:i') ?>"
-                        style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;background:#fff;">
+
+                <label>Jumlah Paket</label>
+                <input type="number" name="packet_count" id="packetCount" min="1" required oninput="calculateTotal()">
+
+                <!-- INFO HARGA (READONLY) -->
+                <div class="price-summary-box">
+                    <div class="price-summary-row">
+                        <span>Harga per Paket:</span>
+                        <strong id="displayPrice">$0</strong>
+                    </div>
+                    <div class="price-summary-row">
+                        <span>Subtotal:</span>
+                        <span id="displaySubtotal">$0</span>
+                    </div>
+                    <div class="price-summary-row">
+                        <span>Pajak (<span id="displayTaxPercent">0</span>%):</span>
+                        <span id="displayTax">$0</span>
+                    </div>
+                    <div class="price-summary-total">
+                        <strong>TOTAL:</strong>
+                        <strong id="displayTotal" class="price-summary-total-value">$0</strong>
+                    </div>
                 </div>
+
+                <!-- HIDDEN FIELDS FOR CALCULATION -->
+                <input type="hidden" name="price_per_packet" id="inputPrice" value="0">
+                <input type="hidden" name="tax_percentage" id="inputTax" value="0">
+                <input type="hidden" name="subtotal" id="inputSubtotal" value="0">
+                <input type="hidden" name="tax_amount" id="inputTaxAmount" value="0">
+                <input type="hidden" name="total_amount" id="inputTotal" value="0">
+
+                <label>Catatan (Opsional)</label>
+                <textarea name="notes" rows="2" placeholder="Catatan tambahan..."></textarea>
+
+                <!-- FILE UPLOAD KTP -->
+                <div class="doc-upload-wrapper">
+                    <div class="doc-upload-header">
+                        <label class="doc-label">Foto KTP Karyawan Restoran</label>
+                        <span class="badge-muted-mini">PNG / JPG (Akan dikompresi otomatis ke ±300KB)</span>
+                    </div>
+
+                    <div class="doc-upload-input">
+                        <label for="ktp_file" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('folder', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih file</strong>
+                                <small>PNG atau JPG - Otomatis dikompresi</small>
+                            </span>
+                        </label>
+                        <input type="file"
+                            id="ktp_file"
+                            name="ktp_file"
+                            accept="image/png,image/jpeg"
+                            required
+                            class="hidden">
+                        <div class="file-selected-name" data-for="ktp_file"></div>
+                        <div id="fileSizeInfo" data-for="ktp_file" class="file-size-info"></div>
+                    </div>
+                </div>
+
             </div>
 
-            <label>Jumlah Paket</label>
-            <input type="number" name="packet_count" id="packetCount" min="1" required oninput="calculateTotal()">
-
-            <!-- INFO HARGA (READONLY) -->
-            <div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:15px;">
-                <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                    <span>Harga per Paket:</span>
-                    <strong id="displayPrice">$0</strong>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan</button>
                 </div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                    <span>Subtotal:</span>
-                    <span id="displaySubtotal">$0</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
-                    <span>Pajak (<span id="displayTaxPercent">0</span>%):</span>
-                    <span id="displayTax">$0</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px;">
-                    <strong>TOTAL:</strong>
-                    <strong id="displayTotal" style="color:#047857;font-size:16px;">$0</strong>
-                </div>
-            </div>
-
-            <!-- HIDDEN FIELDS FOR CALCULATION -->
-            <input type="hidden" name="price_per_packet" id="inputPrice" value="0">
-            <input type="hidden" name="tax_percentage" id="inputTax" value="0">
-            <input type="hidden" name="subtotal" id="inputSubtotal" value="0">
-            <input type="hidden" name="tax_amount" id="inputTaxAmount" value="0">
-            <input type="hidden" name="total_amount" id="inputTotal" value="0">
-
-            <label>Catatan (Opsional)</label>
-            <textarea name="notes" rows="2" placeholder="Catatan tambahan..."></textarea>
-
-            <!-- FILE UPLOAD KTP -->
-            <div class="doc-upload-wrapper">
-                <div class="doc-upload-header">
-                    <label class="doc-label">Foto KTP Karyawan Restoran</label>
-                    <span class="badge-muted-mini">PNG / JPG (Akan dikompresi otomatis ke ±300KB)</span>
-                </div>
-
-                <div class="doc-upload-input">
-                    <label for="ktp_file" class="file-upload-label">
-                        <span class="file-icon">📁</span>
-                        <span class="file-text">
-                            <strong>Pilih file</strong>
-                            <small>PNG atau JPG - Otomatis dikompresi</small>
-                        </span>
-                    </label>
-                    <input type="file"
-                        id="ktp_file"
-                        name="ktp_file"
-                        accept="image/png,image/jpeg"
-                        required
-                        style="display:none;">
-                    <div class="file-selected-name" data-for="ktp_file"></div>
-                    <div id="fileSizeInfo" data-for="ktp_file" style="font-size:11px;color:#64748b;margin-top:4px;"></div>
-                </div>
-            </div>
-
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                <button type="submit" class="btn-success">Simpan</button>
             </div>
 
         </form>
@@ -685,7 +702,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                     [2, 'desc']
                 ],
                 language: {
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json'
+                    url: '/assets/design/js/datatables-id.json'
                 }
             });
         }
@@ -756,6 +773,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
         const btnOpen = document.getElementById('btnAddConsumption');
 
         btnOpen.addEventListener('click', () => {
+            modal.classList.remove('hidden');
             modal.style.display = 'flex';
             document.body.classList.add('modal-open');
         });
@@ -765,6 +783,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 e.target.classList.contains('modal-overlay') ||
                 e.target.closest('.btn-cancel')
             ) {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -772,6 +791,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');
             }
@@ -815,8 +835,10 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        alert('✅ ' + (data.message || 'Konsumsi berhasil dicatat!'));
+                        alert(data.message || 'Konsumsi berhasil dicatat!');
                         // Tutup modal
+                        const modalEl = document.getElementById('consumptionModal');
+                        if (modalEl) modalEl.classList.add('hidden');
                         document.getElementById('consumptionModal').style.display = 'none';
                         document.body.classList.remove('modal-open');
                         // Reset form
@@ -824,100 +846,17 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                         // Reload halaman
                         location.reload();
                     } else {
-                        alert('❌ ' + (data.message || 'Gagal menyimpan data'));
+                        alert(data.message || 'Gagal menyimpan data');
                         submitBtn.disabled = false;
                         submitBtn.textContent = originalText;
                     }
                 })
                 .catch(err => {
-                    alert('❌ Terjadi kesalahan: ' + err.message);
+                    alert('Terjadi kesalahan: ' + err.message);
                     submitBtn.disabled = false;
                     submitBtn.textContent = originalText;
                 });
         });
-    });
-</script>
-
-<!-- ======================================
-     MODAL PREVIEW KTP
-     ====================================== -->
-<div id="docPreviewModal" class="modal-overlay" style="display:none;">
-    <div class="modal-card" style="max-width:900px;">
-        <div class="modal-header">
-            <strong id="docPreviewTitle">📄 Foto KTP</strong>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <button type="button" class="zoom-control-btn" id="docZoomOut">➖</button>
-                <button type="button" class="zoom-control-btn" id="docZoomIn">➕</button>
-                <button type="button" class="zoom-control-btn" id="docZoomReset">🔄</button>
-                <button type="button" onclick="closeDocModal()">✕</button>
-            </div>
-        </div>
-
-        <div class="modal-body"
-            style="background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:60vh;">
-            <img id="docPreviewImage"
-                src=""
-                alt="KTP"
-                style="max-width:100%;max-height:75vh;object-fit:contain;transition:transform 0.2s ease;">
-        </div>
-    </div>
-</div>
-
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const modal = document.getElementById('docPreviewModal');
-        const img = document.getElementById('docPreviewImage');
-        const title = document.getElementById('docPreviewTitle');
-
-        let scale = 1;
-        let currentSrc = '';
-
-        document.body.addEventListener('click', function(e) {
-            const btn = e.target.closest('.btn-preview-doc');
-            if (!btn) return;
-
-            e.preventDefault();
-
-            currentSrc = btn.dataset.src;
-            img.src = currentSrc;
-            title.textContent = btn.dataset.title || 'Foto KTP';
-
-            scale = 1;
-            img.style.transform = 'scale(1)';
-
-            modal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
-
-        window.closeDocModal = function() {
-            modal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-            img.src = '';
-            scale = 1;
-        };
-
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) closeDocModal();
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape' && modal.style.display === 'flex') {
-                closeDocModal();
-            }
-        });
-
-        document.getElementById('docZoomIn').onclick = () => {
-            scale = Math.min(scale + 0.2, 3);
-            img.style.transform = `scale(${scale})`;
-        };
-        document.getElementById('docZoomOut').onclick = () => {
-            scale = Math.max(scale - 0.2, 0.5);
-            img.style.transform = `scale(${scale})`;
-        };
-        document.getElementById('docZoomReset').onclick = () => {
-            scale = 1;
-            img.style.transform = 'scale(1)';
-        };
     });
 </script>
 

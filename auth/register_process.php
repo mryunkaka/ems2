@@ -103,23 +103,6 @@ if ($checkCitizen->fetch()) {
     exit;
 }
 
-
-if (
-    empty($_FILES['file_ktp']['tmp_name']) ||
-    $_FILES['file_ktp']['error'] !== UPLOAD_ERR_OK
-) {
-    $_SESSION['error'] = 'KTP wajib diunggah';
-    header("Location: login.php");
-    exit;
-}
-
-$ktpInfo = getimagesize($_FILES['file_ktp']['tmp_name']);
-if (!$ktpInfo || !in_array($ktpInfo['mime'], ['image/jpeg', 'image/png'], true)) {
-    $_SESSION['error'] = 'File KTP harus JPG atau PNG';
-    header('Location: login.php');
-    exit;
-}
-
 $check = $pdo->prepare("SELECT id FROM user_rh WHERE full_name = ?");
 $check->execute([$name]);
 
@@ -192,7 +175,7 @@ if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
     exit;
 }
 
-$docFields = ['file_ktp', 'file_sim', 'file_skb'];
+$docFields = ['sertifikat_heli', 'sertifikat_operasi'];
 $uploadedPaths = [];
 
 foreach ($docFields as $field) {
@@ -208,7 +191,7 @@ foreach ($docFields as $field) {
     $info = getimagesize($tmp);
 
     if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
-        $_SESSION['error'] = "File {$field} harus JPG atau PNG";
+        $_SESSION['error'] = "File sertifikat harus JPG atau PNG";
         header('Location: login.php');
         exit;
     }
@@ -217,7 +200,7 @@ foreach ($docFields as $field) {
     $finalPath = $uploadDir . '/' . $field . '.' . $ext;
 
     if (!compressImageSmart($tmp, $finalPath)) {
-        $_SESSION['error'] = "Gagal memproses {$field}";
+        $_SESSION['error'] = "Gagal memproses sertifikat";
         header('Location: login.php');
         exit;
     }
@@ -226,12 +209,49 @@ foreach ($docFields as $field) {
         'storage/user_docs/' . $folderName . '/' . $field . '.' . $ext;
 }
 
+$academyJson = null;
+if (
+    !empty($_FILES['academy_doc_file']['tmp_name']) &&
+    ($_FILES['academy_doc_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK
+) {
+    $tmp = $_FILES['academy_doc_file']['tmp_name'];
+    $info = getimagesize($tmp);
+
+    if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
+        $_SESSION['error'] = 'Sertifikat Academy harus JPG atau PNG';
+        header('Location: login.php');
+        exit;
+    }
+
+    $id = bin2hex(random_bytes(8));
+    $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
+    $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
+
+    if (!compressImageSmart($tmp, $finalPath)) {
+        $_SESSION['error'] = 'Gagal memproses Sertifikat Academy';
+        header('Location: login.php');
+        exit;
+    }
+
+    $path = 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext;
+    $academyJson = json_encode([[
+        'id' => $id,
+        'name' => 'Sertifikat Academy',
+        'path' => $path,
+    ]], JSON_UNESCAPED_SLASHES);
+}
+
 $sql = "UPDATE user_rh SET kode_nomor_induk_rs = ?";
 $params = [$kodeNomorInduk];
 
 foreach ($uploadedPaths as $col => $path) {
     $sql .= ", {$col} = ?";
     $params[] = $path;
+}
+
+if ($academyJson !== null) {
+    $sql .= ", dokumen_lainnya = ?";
+    $params[] = $academyJson;
 }
 
 $sql .= " WHERE id = ?";

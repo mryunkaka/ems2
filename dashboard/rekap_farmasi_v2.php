@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 session_start();
 // =======================================
 // ERROR LOG CONFIG (PRODUCTION SAFE)
@@ -21,6 +21,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 // ===============================
 // HARD GUARD date_range (WAJIB DI HOSTING)
@@ -83,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (is_array($decoded) && count($decoded) > 0) {
             $mergeTargets = $decoded;
         } else {
-            // kalau JSON rusak → MATIKAN auto merge
+            // kalau JSON rusak -> MATIKAN auto merge
             $autoMerge = false;
         }
     }
@@ -147,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             empty($_SESSION['tx_token']) ||
             !hash_equals($_SESSION['tx_token'], $postedToken)
         ) {
-            $errors[] = '⚠️ Permintaan tidak valid atau sudah diproses.';
+            $errors[] = 'Permintaan tidak valid atau sudah diproses.';
         } else {
 
             unset($_SESSION['tx_token']);
@@ -271,15 +272,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $overLimit = false;
 
                     if ($newBandage > $maxBandage) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
+                        $warnings[] = "Perhatian: {$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
                         $overLimit = true;
                     }
                     if ($newIfaks > $maxIfaks) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
+                        $warnings[] = "Perhatian: {$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
                         $overLimit = true;
                     }
                     if ($newPain > $maxPain) {
-                        $warnings[] = "⚠️ {$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
+                        $warnings[] = "Perhatian: {$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
                         $overLimit = true;
                     }
 
@@ -315,7 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($merged > 0) {
-                        $warnings[] = "🔁 {$merged} transaksi lama digabung ke {$consumerName}.";
+                        $warnings[] = "{$merged} transaksi lama digabung ke {$consumerName}.";
                     }
                 }
 
@@ -361,7 +362,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $clearFormNextLoad = true;
                     } catch (PDOException $e) {
                         if ($e->getCode() === '23000') {
-                            $warnings[] = '⚠️ Transaksi ini sudah pernah diproses.';
+                            $warnings[] = 'Perhatian: transaksi ini sudah pernah diproses.';
                         } else {
                             app_log($e->getMessage());
                             $errors[] = 'Terjadi kesalahan sistem saat menyimpan transaksi.';
@@ -514,7 +515,7 @@ foreach ($detailRows as $row) {
 
 // Ambil data transaksi sesuai filter tanggal.
 // Default: hanya transaksi milik medis aktif (session).
-// Jika ?show_all=1 → tampilkan semua medis.
+// Jika ?show_all=1 -> tampilkan semua medis.
 $sqlSales = "
     SELECT 
         s.*,
@@ -531,7 +532,7 @@ $paramsSales = [
 
 $showAll = isset($_GET['show_all']) && $_GET['show_all'] === '1';
 
-// Kalau TIDAK show_all dan ada medis aktif → filter berdasarkan medic_name
+// Kalau TIDAK show_all dan ada medis aktif -> filter berdasarkan medic_name
 if (!$showAll && $medicName !== '') {
     $sqlSales .= " AND medic_name = :mname";
     $paramsSales[':mname'] = $medicName;
@@ -599,9 +600,9 @@ include __DIR__ . '/../partials/sidebar.php';
 ?>
 <section class="content">
     <!-- ===== CONTENT ===== -->
-    <div class="page" style="max-width:1200px;margin:auto;">
+    <div class="page page-shell">
 
-        <h1>Rekap Farmasi EMS</h1>
+	        <h1 class="page-title">Rekap Farmasi EMS</h1>
 
         <div id="localClock" style="font-size:13px;color:#9ca3af;margin-bottom:6px;"></div>
 
@@ -635,7 +636,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         href="/dashboard/rekap_farmasi.php"
                         class="btn-secondary btn-sm"
                         title="Buka Rekap Farmasi Versi 1">
-                        ⏪ Versi Lama
+                        Versi Lama
                     </a>
                 </div>
 
@@ -646,7 +647,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         (<?= htmlspecialchars($medicJabatan) ?>)
                     </p>
 
-                    <!-- <div id="dailyNotice" style="
+	                    <!-- <div id="dailyNotice" style="
                         margin:6px 0 12px;
                         padding:8px 12px;
                         border-left:4px solid #f59e0b;
@@ -655,7 +656,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         font-size:13px;
                         border-radius:6px;
                     ">
-                        <strong>⚠️ Perhatian:</strong><br>
+	                        <strong>Perhatian:</strong><br>
                         <strong>1 konsumen / pasien hanya diperbolehkan melakukan 1 transaksi dalam 1 hari.</strong><br>
                         Jika pasien menyatakan belum pernah membeli hari ini,
                         <em>kemungkinan nama pasien telah digunakan oleh temannya atau orang lain</em>.
@@ -689,7 +690,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" name="merge_targets" id="merge_targets">
                     <input type="hidden" name="force_overlimit" id="force_overlimit" value="0">
 
-                    <!-- 🔑 IDENTITAS (DARI OCR) -->
+                    <!-- IDENTITAS (DARI OCR) -->
                     <input type="hidden" name="identity_id" id="identity_id">
 
                     <!-- ===============================
@@ -701,11 +702,12 @@ include __DIR__ . '/../partials/sidebar.php';
                             <label>Identitas Konsumen</label>
 
                             <!-- Tombol OCR -->
-                            <div style="margin-bottom:6px;">
+                            <div class="mb-1.5">
                                 <button type="button"
                                     class="btn-secondary"
                                     onclick="openIdentityScan()">
-                                    📷 Scan Identitas (OCR)
+                                    <?= ems_icon('document-text', 'h-4 w-4') ?>
+                                    <span>Scan Identitas (OCR)</span>
                                 </button>
                             </div>
 
@@ -717,9 +719,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 placeholder="Scan identitas terlebih dahulu"
                                 required
                                 readonly
-                                style="background:#f9fafb;cursor:not-allowed;">
+                                class="bg-slate-50 cursor-not-allowed">
 
-                            <small style="color:#92400e;">
+                            <small class="text-xs text-amber-700">
                                 Nama akan terisi otomatis dari hasil scan identitas (KTP / ID).
                                 Input manual tidak diperbolehkan.
                             </small>
@@ -824,12 +826,12 @@ include __DIR__ . '/../partials/sidebar.php';
                             Simpan Transaksi
                         </button>
 
-                        <button
-                            type="button"
-                            class="btn-secondary"
-                            onclick="clearFormInputs();">
-                            Clear
-                        </button>
+	                        <button
+	                            type="button"
+	                            class="btn-secondary"
+	                            onclick="clearFormInputs();">
+	                            Bersihkan
+	                        </button>
                     </div>
 
                 </form>
@@ -852,19 +854,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
 
                                 <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
-                                    Minggu 1 (<?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>)
+	                                    Minggu 1 (<?= $weeks['week1']['start']->format('d M') ?> - <?= $weeks['week1']['end']->format('d M') ?>)
                                 </option>
 
                                 <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
-                                    Minggu 2 (<?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>)
+	                                    Minggu 2 (<?= $weeks['week2']['start']->format('d M') ?> - <?= $weeks['week2']['end']->format('d M') ?>)
                                 </option>
 
                                 <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
-                                    Minggu 3 (<?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>)
+	                                    Minggu 3 (<?= $weeks['week3']['start']->format('d M') ?> - <?= $weeks['week3']['end']->format('d M') ?>)
                                 </option>
 
                                 <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
-                                    Minggu 4 (<?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>)
+	                                    Minggu 4 (<?= $weeks['week4']['start']->format('d M') ?> - <?= $weeks['week4']['end']->format('d M') ?>)
                                 </option>
 
                                 <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
@@ -965,12 +967,12 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?php endif; ?>
 
                         <?php if ($showAll): ?>
-                            <!-- Sedang mode "tampilkan semua data" → tombol kembali ke hanya medis aktif -->
+	                        <!-- Sedang mode "tampilkan semua data" -> tombol kembali ke hanya medis aktif -->
                             <button type="submit" class="btn-secondary">
                                 Kembali (Hanya Medis Aktif)
                             </button>
                         <?php else: ?>
-                            <!-- Sedang mode hanya medis aktif → tombol untuk tampilkan semua data -->
+	                        <!-- Sedang mode hanya medis aktif -> tombol untuk tampilkan semua data -->
                             <input type="hidden" name="show_all" value="1">
                             <button type="submit" class="btn-secondary">
                                 Tampilkan Semua Data
@@ -1337,26 +1339,31 @@ include __DIR__ . '/../partials/sidebar.php';
             if (alreadyBoughtToday) {
                 let html = '';
 
-                html += '🚫 <strong>' + escapeHtml(cname) + '</strong> ';
+                const ICON_BLOCK = <?= json_encode(ems_icon('exclamation-triangle', 'h-4 w-4')) ?>;
+                const ICON_PKG = <?= json_encode(ems_icon('document-text', 'h-4 w-4')) ?>;
+                const ICON_TIME = <?= json_encode(ems_icon('clock', 'h-4 w-4')) ?>;
+                const ICON_MEDIC = <?= json_encode(ems_icon('user-group', 'h-4 w-4')) ?>;
+
+                html += '<div class="inline-flex items-center gap-2 text-rose-700">' + ICON_BLOCK + ' <strong>' + escapeHtml(cname) + '</strong></div> ';
                 html += 'sudah melakukan <strong>1 transaksi hari ini</strong>.<br>';
                 html += 'Transaksi tambahan <strong>tidak diperbolehkan</strong>.<br><br>';
 
                 html += '<strong>Detail pembelian hari ini:</strong>';
-                html += '<ul style="margin-top:6px;padding-left:18px;">';
+                html += '<ul class="mt-1.5 list-disc pl-5">';
 
                 detail.forEach(function(d) {
                     const waktu = d.time ? d.time.substring(0, 16) : '-';
-                    html += '<li>' +
-                        '📦 <strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
-                        '<small>' +
-                        '🕒 ' + escapeHtml(waktu) +
-                        ' &nbsp;|&nbsp; 👨‍⚕️ ' + escapeHtml(d.medic || '-') +
+                    html += '<li class="mt-2">' +
+                        '<div class="inline-flex items-center gap-2">' + ICON_PKG + ' <strong>' + escapeHtml(d.package || '-') + '</strong></div><br>' +
+                        '<small class="mt-0.5 inline-flex items-center gap-2 text-slate-600">' +
+                        ICON_TIME + '<span>' + escapeHtml(waktu) + '</span>' +
+                        '<span class="px-1 text-slate-300">|</span>' + ICON_MEDIC + '<span>' + escapeHtml(d.medic || '-') + '</span>' +
                         '</small>' +
                         '</li>';
                 });
 
                 html += '</ul>';
-                html += '<small style="display:block;margin-top:6px;">';
+                html += '<small class="mt-1.5 block text-xs text-slate-600">';
                 html += 'Silakan konfirmasi ke konsumen bahwa pembelian telah dilakukan pada waktu tersebut.<br>';
                 // Hitung tanggal transaksi berikutnya (besok jam 00:00)
                 const now = new Date();
@@ -1385,12 +1392,12 @@ include __DIR__ . '/../partials/sidebar.php';
                 warningBox.style.display = 'block';
                 warningBox.innerHTML = html;
 
-                // 🔒 Kunci tombol simpan
+                // Kunci tombol simpan
                 btnSubmit.disabled = true;
                 btnSubmit.classList.add('btn-disabled');
 
             } else {
-                // Belum ada transaksi hari ini → boleh lanjut
+	                // Belum ada transaksi hari ini -> boleh lanjut
                 warningBox.style.display = 'none';
                 warningBox.innerHTML = '';
 
@@ -1428,7 +1435,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 nameInput.style.background = '#f9fafb';
             }
 
-            // 🔑 RESET IDENTITAS & NAMA
+            // Reset identitas dan nama
             if (identityInput) {
                 identityInput.value = '';
             }
@@ -1479,7 +1486,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function handleSaveClick() {
             if (ALREADY_BOUGHT_TODAY) {
-                alert('🚫 Konsumen ini sudah melakukan transaksi hari ini.');
+                alert('Konsumen ini sudah melakukan transaksi hari ini.');
                 return;
             }
 
@@ -1506,7 +1513,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             if (IS_OVER_LIMIT) {
                 // Kasus: kalau disimpan, dia akan MELEBIHI batas harian
-                msg += "⚠️ Orang ini telah mencapai / akan melewati batas maksimal pembelian harian.\n\n";
+	                msg += "Perhatian: orang ini telah mencapai / akan melewati batas maksimal pembelian harian.\n\n";
 
                 if (cname) {
                     msg += "Nama konsumen: " + cname + "\n\n" +
@@ -1527,7 +1534,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     return;
                 }
 
-                // User setuju override → beritahu server
+	                // User setuju override -> beritahu server
                 if (forceOverInput) {
                     forceOverInput.value = '1';
                 }
@@ -1586,8 +1593,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const offsetMinutes = -date.getTimezoneOffset();
 
             if (offsetMinutes === 7 * 60) return 'WIB (UTC+7)';
-            if (offsetMinutes === 8 * 60) return 'WITA (UTC+8)';
-            if (offsetMinutes === 9 * 60) return 'WIT (UTC+9)';
+            if (offsetMinutes === 8 * 60) return 'WIB (UTC+7)';
+            if (offsetMinutes === 9 * 60) return 'WIB (UTC+7)';
 
             // Jika di luar Indonesia, fallback ke label umum
             return 'Zona waktu lokal';
@@ -1614,7 +1621,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 hour12: false
             });
 
-            el.textContent = `${tanggal} • ${jam} (${tzName})`;
+	            el.textContent = `${tanggal} - ${jam} (${tzName})`;
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -1660,7 +1667,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             });
 
-            // Listener nama konsumen → cek limit + save state
+	            // Listener nama konsumen -> cek limit + save state
             const consumerInput = document.querySelector('input[name="consumer_name"]');
             if (consumerInput) {
                 ['input', 'change', 'blur'].forEach(function(evt) {
@@ -1701,7 +1708,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         [1, 'desc']
                     ],
                     language: {
-                        url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/id.json"
+                        url: "/assets/design/js/datatables-id.json"
                     },
                     footerCallback: function(row, data, start, end, display) {
                         let api = this.api();
@@ -1778,136 +1785,45 @@ include __DIR__ . '/../partials/sidebar.php';
             }
         });
     </script>
-    <div id="identityModal" style="
-            display:none;
-            position:fixed;
-            inset:0;
-            background:rgba(0,0,0,.6);
-            z-index:99999;
-            padding:60px 16px 16px;
-            overflow:auto;
-        ">
 
-        <div style="
-                background:#fff;
-                max-width:900px;
-                width:100%;
-                margin:0 auto;
-                border-radius:12px;
-                box-shadow:0 20px 60px rgba(0,0,0,.3);
-                display:flex;
-                flex-direction:column;
-                max-height:calc(100vh - 120px);
-                position:relative;
-                z-index:100000;
-            ">
-
-            <div style="
-                    padding:16px 20px;
-                    border-bottom:1px solid #e2e8f0;
-                    display:flex;
-                    justify-content:space-between;
-                    align-items:center;
-                    background:#fff;
-                    border-radius:12px 12px 0 0;
-                    position:relative;
-                    z-index:100001;
-                ">
-                <strong style="font-size:16px;color:#0f172a;">📷 Scan Identitas</strong>
-                <button onclick="closeIdentityScan()" style="
-                        background:#ef4444;
-                        color:#fff;
-                        border:none;
-                        padding:8px 16px;
-                        border-radius:8px;
-                        cursor:pointer;
-                        font-weight:600;
-                        font-size:14px;
-                        transition:all 0.2s ease;
-                    " onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'">
-                    ✖ Tutup
+    <div id="identityModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-lg p-0">
+            <div class="modal-head px-5 py-4">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('document-text', 'h-5 w-5') ?> <span>Scan Identitas</span>
+                </div>
+                <button type="button" onclick="closeIdentityScan()" class="btn-danger btn-compact">
+                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
                 </button>
             </div>
-
-            <iframe
-                src="/dashboard/identity_test.php"
-                style="
-                width:100%; 
-                height:calc(100vh - 180px); 
-                border:none; 
-                display:block;
-                border-radius:0 0 12px 12px;
-            ">
-            </iframe>
+            <div class="modal-content p-0">
+                <iframe src="/dashboard/identity_test.php" class="block h-[calc(100vh-180px)] w-full border-0"></iframe>
+            </div>
         </div>
     </div>
-    <div id="identityViewModal" style="
-    display:none;
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,.6);
-    z-index:99998;
-    padding:80px 16px 16px; /* ⬅ ruang header */
-    overflow:auto;
-">
 
-        <div style="
-        background:#fff;
-        max-width:900px;
-        width:100%;
-        margin:0 auto;
-        border-radius:12px;
-        box-shadow:0 20px 60px rgba(0,0,0,.3);
-        display:flex;
-        flex-direction:column;
-        max-height:calc(100vh - 120px);
-        position:relative;
-        z-index:99999;
-    ">
-
-            <!-- HEADER MODAL -->
-            <div style="
-            padding:16px 20px;
-            border-bottom:1px solid #e2e8f0;
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            background:#fff;
-            border-radius:12px 12px 0 0;
-            position:sticky;
-            top:0;
-            z-index:10;
-        ">
-                <strong style="font-size:16px;color:#0f172a;">📋 Data Konsumen</strong>
-
-                <button onclick="closeIdentityViewModal()" style="
-                background:#ef4444;
-                color:#fff;
-                border:none;
-                padding:8px 16px;
-                border-radius:8px;
-                cursor:pointer;
-                font-weight:600;
-                font-size:14px;
-            ">
-                    ✖ Tutup
+    <div id="identityViewModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-lg p-0">
+            <div class="modal-head sticky top-0 rounded-t-3xl bg-white px-5 py-4">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?> <span>Data Konsumen</span>
+                </div>
+                <button type="button" onclick="closeIdentityViewModal()" class="btn-danger btn-compact">
+                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
                 </button>
             </div>
-
-            <!-- BODY -->
-            <div id="identityViewContent" style="
-            padding:20px;
-            overflow:auto;
-        ">
-                <p style="color:#9ca3af;">Memuat data...</p>
+            <div class="modal-content p-0">
+                <div id="identityViewContent" class="max-h-[calc(100vh-220px)] overflow-auto p-5">
+                    <p class="text-sm text-slate-500">Memuat data...</p>
+                </div>
             </div>
-
         </div>
     </div>
+
     <!-- IMAGE LIGHTBOX (ZOOM KTP) -->
     <div id="imageLightbox" class="image-lightbox">
         <div class="lightbox-content">
-            <button class="lightbox-close" onclick="closeLightbox()">×</button>
+            <button class="lightbox-close" onclick="closeLightbox()">Ã—</button>
             <img class="lightbox-image" src="" alt="Preview KTP">
             <div class="lightbox-caption"></div>
         </div>
@@ -1915,11 +1831,19 @@ include __DIR__ . '/../partials/sidebar.php';
 </section>
 <script>
     function openIdentityScan() {
-        document.getElementById('identityModal').style.display = 'block';
+        const modal = document.getElementById('identityModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
     }
 
     function closeIdentityScan() {
-        document.getElementById('identityModal').style.display = 'none';
+        const modal = document.getElementById('identityModal');
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.classList.remove('modal-open');
     }
 
     // DITERIMA DARI identity_test.php
@@ -1940,11 +1864,11 @@ include __DIR__ . '/../partials/sidebar.php';
             nameInput.readOnly = true;
             nameInput.style.background = '#f0fdf4';
 
-            // 💾 SIMPAN KE LOCALSTORAGE
+            // Simpan ke localStorage
             saveConsumerData(e.data.identity_id, fullName);
         }
 
-        alert('✅ Identitas berhasil dipindai & dikunci');
+        alert('Identitas berhasil dipindai dan dikunci.');
         closeIdentityScan();
     });
 </script>
@@ -1972,14 +1896,14 @@ include __DIR__ . '/../partials/sidebar.php';
             .then(text => {
                 if (text.startsWith('OK|')) {
                     const count = text.split('|')[1];
-                    alert(`✅ Berhasil!\n${count} transaksi diperbaiki.`);
+                    alert(`Berhasil.\n${count} transaksi diperbaiki.`);
                     location.reload();
                 } else {
-                    alert('❌ Gagal:\n' + text);
+                    alert('Gagal:\n' + text);
                 }
             })
             .catch(err => {
-                alert('❌ Error koneksi');
+                alert('Error koneksi');
                 console.error(err);
             });
     }
@@ -2025,8 +1949,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
         if (!modal || !content) return;
 
+        modal.classList.remove('hidden');
         modal.style.display = 'flex';
-        content.innerHTML = '<p style="color:#9ca3af;">Memuat data...</p>';
+        document.body.classList.add('modal-open');
+        content.innerHTML = '<p class="text-sm text-slate-500">Memuat data...</p>';
 
         fetch('/ajax/get_identity_detail.php?id=' + encodeURIComponent(identityId))
             .then(res => res.text())
@@ -2035,13 +1961,16 @@ include __DIR__ . '/../partials/sidebar.php';
             })
             .catch(err => {
                 console.error('Error loading identity:', err);
-                content.innerHTML = '<p style="color:#ef4444;">Gagal memuat data.</p>';
+                content.innerHTML = '<p class="text-sm text-rose-600">Gagal memuat data.</p>';
             });
     }
 
     function closeIdentityViewModal() {
         const modal = document.getElementById('identityViewModal');
-        if (modal) modal.style.display = 'none';
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.classList.remove('modal-open');
     }
 
     /* klik di luar modal */
