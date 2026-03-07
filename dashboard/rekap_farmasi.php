@@ -29,6 +29,7 @@ function app_log($message)
 }
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
@@ -999,6 +1000,42 @@ $toDateInput = ($range === 'custom' && $endDT instanceof DateTime)
     ? $endDT->format('Y-m-d')
     : '';
 
+$canAcknowledgeIncomingLetter = ems_is_letter_receiver_role($medicRole);
+$incomingLetterAlerts = [];
+$incomingLetterAlertCount = 0;
+
+try {
+    $stmtIncomingLetters = $pdo->query("
+        SELECT
+            id,
+            letter_code,
+            institution_name,
+            sender_name,
+            sender_phone,
+            meeting_topic,
+            appointment_date,
+            appointment_time,
+            target_user_id,
+            target_name_snapshot,
+            target_role_snapshot,
+            submitted_at
+        FROM incoming_letters
+        WHERE status = 'unread'
+        ORDER BY submitted_at DESC
+        LIMIT 5
+    ");
+    $incomingLetterAlerts = $stmtIncomingLetters->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $incomingLetterAlertCount = (int)$pdo->query("
+        SELECT COUNT(*)
+        FROM incoming_letters
+        WHERE status = 'unread'
+    ")->fetchColumn();
+} catch (Throwable $e) {
+    $incomingLetterAlerts = [];
+    $incomingLetterAlertCount = 0;
+}
+
 ?>
 <?php
 $pageTitle = 'Rekap Farmasi EMS';
@@ -1009,7 +1046,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-	        <h1 class="page-title">Rekap Farmasi EMS</h1>
+        <h1 class="page-title">Rekap Farmasi EMS</h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
@@ -1026,13 +1063,73 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
         <?php endforeach; ?>
 
-	        <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
-	
-	        <?php if ($medicName): ?>
-	            <!-- Card Input Transaksi -->
-	            <div class="card">
-	                <div class="card-header card-header-actions card-header-flex">
-	                    <div class="card-header-actions-title">
+        <?php if (!empty($incomingLetterAlerts)): ?>
+            <div class="card card-section">
+                <div class="card-header-between">
+                    <div>
+                        <div class="card-header">Surat Masuk Belum Dibaca</div>
+                        <p class="muted-copy-tight">
+                            Ada <strong><?= (int)$incomingLetterAlertCount ?></strong> surat masuk. Medis lain bisa bantu menginfokan ke manager.
+                        </p>
+                    </div>
+                    <?php if ($canAcknowledgeIncomingLetter): ?>
+                        <a href="surat_menyurat.php" class="btn-secondary">
+                            <?= ems_icon('document-text', 'h-4 w-4') ?> <span>Lihat Semua</span>
+                        </a>
+                    <?php else: ?>
+                        <span class="badge-counter">Info Manager</span>
+                    <?php endif; ?>
+                </div>
+
+                <div class="space-y-2 mt-3" style="max-height: 400px; overflow-y: auto;">
+                    <?php foreach ($incomingLetterAlerts as $letter): ?>
+                        <div class="rounded-xl border border-amber-500 bg-amber-50 px-4 py-3.5">
+                            <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <strong class="text-amber-700"><?= htmlspecialchars((string)$letter['institution_name']) ?></strong>
+                                        <span class="meta-text-xs"><?= htmlspecialchars((string)$letter['letter_code']) ?></span>
+                                    </div>
+                                    <div class="text-sm text-amber-900 mt-1"><?= htmlspecialchars((string)$letter['meeting_topic']) ?></div>
+                                    <div class="meta-text-xs mt-1">
+                                        Pengirim: <strong><?= htmlspecialchars((string)$letter['sender_name']) ?></strong> · <?= htmlspecialchars((string)$letter['sender_phone']) ?>
+                                    </div>
+                                    <div class="meta-text-xs">
+                                        Jadwal: <strong><?= htmlspecialchars((string)$letter['appointment_date']) ?></strong> <?= htmlspecialchars(substr((string)$letter['appointment_time'], 0, 5)) ?> WIB ·
+                                        Tujuan: <strong><?= htmlspecialchars((string)$letter['target_name_snapshot']) ?></strong> (<?= htmlspecialchars((string)$letter['target_role_snapshot']) ?>)
+                                    </div>
+                                    <div class="meta-text-xs">
+                                        Tanggal Dibuat: <?= htmlspecialchars((string)$letter['submitted_at']) ?>
+                                    </div>
+                                </div>
+
+                                <?php if ($canAcknowledgeIncomingLetter): ?>
+                                    <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                                        <form method="POST" action="surat_menyurat_action.php" class="inline">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="mark_incoming_read">
+                                            <input type="hidden" name="letter_id" value="<?= (int)$letter['id'] ?>">
+                                            <input type="hidden" name="redirect_to" value="rekap_farmasi.php">
+                                            <button type="submit" class="btn-success">
+                                                <?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Tandai Dibaca</span>
+                                            </button>
+                                        </form>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
+
+        <?php if ($medicName): ?>
+            <!-- Card Input Transaksi -->
+            <div class="card">
+                <div class="card-header card-header-actions card-header-flex">
+                    <div class="card-header-actions-title">
                         Input Transaksi Baru
                     </div>
                 </div>
@@ -1205,124 +1302,124 @@ include __DIR__ . '/../partials/sidebar.php';
                             Bersihkan
                         </button>
                     </div>
-	                </form>
+                </form>
 
-	            </div>
+            </div>
 
-	            <!-- Aktivitas + Medis Online (fokus setelah input) -->
-	            <div class="farmasi-side-grid">
-	                <div class="activity-feed-container">
+            <!-- Aktivitas + Medis Online (fokus setelah input) -->
+            <div class="farmasi-side-grid">
+                <div class="activity-feed-container">
 
-	                    <audio id="activitySound" preload="auto">
-	                        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/activity.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
-	                    </audio>
+                    <audio id="activitySound" preload="auto">
+                        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/activity.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
+                    </audio>
 
-	                    <div class="activity-feed-card">
+                    <div class="activity-feed-card">
 
-	                        <!-- HEADER -->
-	                        <div class="activity-feed-header">
-	                            <span class="activity-feed-title"><?= ems_icon('document-text', 'h-4 w-4 text-primary') ?> Aktivitas</span>
+                        <!-- HEADER -->
+                        <div class="activity-feed-header">
+                            <span class="activity-feed-title"><?= ems_icon('document-text', 'h-4 w-4 text-primary') ?> Aktivitas</span>
 
-	                            <div class="flex items-center gap-2">
-	                                <button
-	                                    id="btnToggleActivitySound"
-	                                    class="activity-sound-btn"
-	                                    title="Matikan suara activity"
-	                                    aria-label="Toggle suara activity">
-	                                    <?= ems_icon('bell', 'h-4 w-4') ?>
-	                                    <span class="text-[11px] font-bold" data-sound-label>On</span>
-	                                </button>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    id="btnToggleActivitySound"
+                                    class="activity-sound-btn"
+                                    title="Matikan suara activity"
+                                    aria-label="Toggle suara activity">
+                                    <?= ems_icon('bell', 'h-4 w-4') ?>
+                                    <span class="text-[11px] font-bold" data-sound-label>On</span>
+                                </button>
 
-	                                <button
-	                                    id="btnCloseActivity"
-	                                    class="activity-feed-close"
-	                                    title="Tutup Activity"
-	                                    aria-label="Tutup Activity">
-	                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
-	                                </button>
-	                            </div>
-	                        </div>
+                                <button
+                                    id="btnCloseActivity"
+                                    class="activity-feed-close"
+                                    title="Tutup Activity"
+                                    aria-label="Tutup Activity">
+                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
+                                </button>
+                            </div>
+                        </div>
 
-	                        <div class="activity-feed-list" id="activityFeedList"></div>
+                        <div class="activity-feed-list" id="activityFeedList"></div>
 
-	                    </div>
-	                </div>
+                    </div>
+                </div>
 
-	                <div class="card card-online-medics">
-	                    <div class="card-header-between">
-	                        <div class="flex min-w-0 flex-wrap items-center gap-2">
-	                            <?= ems_icon('user-group', 'h-5 w-5 text-primary') ?>
-	                            <span class="font-semibold text-text">Medis Online Hari Ini</span>
-	                            <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
-	                        </div>
-	                        <small class="card-subnote hidden md:block">
-	                            (prioritas penjualan paling sedikit di sortir paling atas)
-	                        </small>
-	                    </div>
-	                    <div class="meta-text-xs md:hidden">
-	                        (prioritas penjualan paling sedikit di sortir paling atas)
-	                    </div>
+                <div class="card card-online-medics">
+                    <div class="card-header-between">
+                        <div class="flex min-w-0 flex-wrap items-center gap-2">
+                            <?= ems_icon('user-group', 'h-5 w-5 text-primary') ?>
+                            <span class="font-semibold text-text">Medis Online Hari Ini</span>
+                            <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
+                        </div>
+                        <small class="card-subnote hidden md:block">
+                            (prioritas penjualan paling sedikit di sortir paling atas)
+                        </small>
+                    </div>
+                    <div class="meta-text-xs md:hidden">
+                        (prioritas penjualan paling sedikit di sortir paling atas)
+                    </div>
 
-	                    <div class="online-medics-list" id="onlineMedicsContainer">
+                    <div class="online-medics-list" id="onlineMedicsContainer">
 
-	                        <?php if (empty($onlineMedics)): ?>
+                        <?php if (empty($onlineMedics)): ?>
 
-	                            <p class="meta-text">
-	                                Tidak ada medis yang sedang online.
-	                            </p>
+                            <p class="meta-text">
+                                Tidak ada medis yang sedang online.
+                            </p>
 
-	                        <?php else: ?>
+                        <?php else: ?>
 
-	                            <?php foreach ($onlineMedics as $m): ?>
-	                                <div class="online-medic-row">
-	                                    <div class="medic-main">
-	                                        <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
+                            <?php foreach ($onlineMedics as $m): ?>
+                                <div class="online-medic-row">
+                                    <div class="medic-main">
+                                        <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
 
-	                                        <span class="weekly-badge">
-	                                            Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx
-	                                        </span>
+                                        <span class="weekly-badge">
+                                            Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx
+                                        </span>
 
-	                                        <span class="weekly-online"
-	                                            data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
-	                                            data-user-id="<?= (int)$m['user_id'] ?>">
-	                                            Online: <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
-	                                        </span>
+                                        <span class="weekly-online"
+                                            data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
+                                            data-user-id="<?= (int)$m['user_id'] ?>">
+                                            Online: <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
+                                        </span>
 
-	                                        <div class="medic-role">
-	                                            <?= htmlspecialchars($m['medic_jabatan']) ?>
-	                                        </div>
+                                        <div class="medic-role">
+                                            <?= htmlspecialchars($m['medic_jabatan']) ?>
+                                        </div>
 
                                         <button
                                             type="button"
                                             class="btn-force-offline"
                                             data-user-id="<?= (int)$m['user_id'] ?>"
                                             data-name="<?= htmlspecialchars($m['medic_name']) ?>"
-	                                            data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
-	                                            <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
-	                                        </button>
-	                                    </div>
+                                            data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
+                                            <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
+                                        </button>
+                                    </div>
 
-	                                    <div class="medic-stats">
-	                                        <div class="tx"><?= (int)$m['total_transaksi'] ?> trx</div>
-	                                        <div class="amount"><?= dollar((int)$m['total_pendapatan']) ?></div>
-	                                        <div class="bonus text-success-xs">
-	                                            Bonus: <?= dollar((int)$m['bonus_40']) ?>
-	                                        </div>
-	                                    </div>
-	                                </div>
-	                            <?php endforeach; ?>
+                                    <div class="medic-stats">
+                                        <div class="tx"><?= (int)$m['total_transaksi'] ?> trx</div>
+                                        <div class="amount"><?= dollar((int)$m['total_pendapatan']) ?></div>
+                                        <div class="bonus text-success-xs">
+                                            Bonus: <?= dollar((int)$m['bonus_40']) ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
 
-	                        <?php endif; ?>
+                        <?php endif; ?>
 
-	                    </div>
+                    </div>
 
-	                </div>
-	            </div>
+                </div>
+            </div>
 
-	            <!-- TOTAL TRANSAKSI HARI INI -->
-	            <div class="card">
-	                <h3 class="section-title-compact">
-	                    <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
+            <!-- TOTAL TRANSAKSI HARI INI -->
+            <div class="card">
+                <h3 class="section-title-compact">
+                    <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
                 </h3>
 
                 <p class="muted-copy-tight">
@@ -1722,23 +1819,24 @@ include __DIR__ . '/../partials/sidebar.php';
             };
         }
 
-	        function saveFormState() {
-	            const consumerInput = document.querySelector('input[name="consumer_name"]');
-	            function getValue(id) {
-	                const el = document.getElementById(id);
-	                return el ? (el.value || '') : '';
-	            }
-	            const data = {
-	                consumer_name: consumerInput ? consumerInput.value : '',
-	                pkg_main: getValue('pkg_main'),
-	                pkg_bandage: getValue('pkg_bandage'),
-	                pkg_ifaks: getValue('pkg_ifaks'),
-	                pkg_painkiller: getValue('pkg_painkiller'),
-	            };
-	            try {
-	                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-	            } catch (e) {
-	                // abaikan
+        function saveFormState() {
+            const consumerInput = document.querySelector('input[name="consumer_name"]');
+
+            function getValue(id) {
+                const el = document.getElementById(id);
+                return el ? (el.value || '') : '';
+            }
+            const data = {
+                consumer_name: consumerInput ? consumerInput.value : '',
+                pkg_main: getValue('pkg_main'),
+                pkg_bandage: getValue('pkg_bandage'),
+                pkg_ifaks: getValue('pkg_ifaks'),
+                pkg_painkiller: getValue('pkg_painkiller'),
+            };
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                // abaikan
             }
         }
 
@@ -2333,30 +2431,30 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }, 5000);
 
-	            // ===== Inisialisasi DataTables untuk tabel transaksi =====
-	            if (!window.jQuery) {
-	                console.warn('jQuery tidak tersedia: tabel transaksi tanpa DataTables.');
-	                return;
-	            }
+            // ===== Inisialisasi DataTables untuk tabel transaksi =====
+            if (!window.jQuery) {
+                console.warn('jQuery tidak tersedia: tabel transaksi tanpa DataTables.');
+                return;
+            }
 
-	            let table = null;
-	            if (jQuery.fn.DataTable) {
-	                table = jQuery('#salesTable').DataTable({
-	                    pageLength: 10,
-	                    scrollX: true,
-	                    autoWidth: false,
-	                    order: [
-	                        [1, 'desc']
-	                    ],
-		                    language: {
-		                        url: "<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>"
-		                    },
-		                    footerCallback: function(row, data, start, end, display) {
-	                        let api = this.api();
-	
-	                        function intVal(i) {
-	                            return typeof i === 'string' ?
-	                                i.replace(/[^\d]/g, '') * 1 :
+            let table = null;
+            if (jQuery.fn.DataTable) {
+                table = jQuery('#salesTable').DataTable({
+                    pageLength: 10,
+                    scrollX: true,
+                    autoWidth: false,
+                    order: [
+                        [1, 'desc']
+                    ],
+                    language: {
+                        url: "<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>"
+                    },
+                    footerCallback: function(row, data, start, end, display) {
+                        let api = this.api();
+
+                        function intVal(i) {
+                            return typeof i === 'string' ?
+                                i.replace(/[^\d]/g, '') * 1 :
                                 typeof i === 'number' ?
                                 i :
                                 0;
@@ -2393,42 +2491,42 @@ include __DIR__ . '/../partials/sidebar.php';
                         jQuery(api.column(8).footer()).html(totalPain);
                         jQuery(api.column(9).footer()).html(formatDollar(totalPrice));
                         jQuery(api.column(10).footer()).html(formatDollar(totalBonus));
-	                    }
-	                });
-	            } else {
-	                console.warn('DataTables tidak tersedia: fallback ke tabel biasa.');
-	            }
-
-	            const $selectAll = jQuery('#selectAll');
-	            const $bulkBtn = jQuery('#btnBulkDelete');
-
-	                function updateBulkButton() {
-	                    const anyChecked = jQuery('.row-check:checked').length > 0;
-	                    $bulkBtn.prop('disabled', !anyChecked);
-	                }
-
-                // Select/Deselect all (hanya yang ada checkboxnya)
-                $selectAll.on('click', function() {
-                    const checked = this.checked;
-                    jQuery('#salesTable tbody .row-check').prop('checked', checked);
-                    updateBulkButton();
-                });
-
-                // Per row checkbox
-	                jQuery(document).on('change', '.row-check', function() {
-	                    const total = jQuery('#salesTable tbody .row-check').length;
-	                    const checked = jQuery('#salesTable tbody .row-check:checked').length;
-
-                    if (!this.checked) {
-                        $selectAll.prop('checked', false);
-                    } else if (checked === total && total > 0) {
-                        $selectAll.prop('checked', true);
                     }
+                });
+            } else {
+                console.warn('DataTables tidak tersedia: fallback ke tabel biasa.');
+            }
 
-	                    updateBulkButton();
-	                });
-	        });
-	    </script>
+            const $selectAll = jQuery('#selectAll');
+            const $bulkBtn = jQuery('#btnBulkDelete');
+
+            function updateBulkButton() {
+                const anyChecked = jQuery('.row-check:checked').length > 0;
+                $bulkBtn.prop('disabled', !anyChecked);
+            }
+
+            // Select/Deselect all (hanya yang ada checkboxnya)
+            $selectAll.on('click', function() {
+                const checked = this.checked;
+                jQuery('#salesTable tbody .row-check').prop('checked', checked);
+                updateBulkButton();
+            });
+
+            // Per row checkbox
+            jQuery(document).on('change', '.row-check', function() {
+                const total = jQuery('#salesTable tbody .row-check').length;
+                const checked = jQuery('#salesTable tbody .row-check:checked').length;
+
+                if (!this.checked) {
+                    $selectAll.prop('checked', false);
+                } else if (checked === total && total > 0) {
+                    $selectAll.prop('checked', true);
+                }
+
+                updateBulkButton();
+            });
+        });
+    </script>
     <script>
         (function() {
             if (window.EMSRealtime) {
@@ -3144,90 +3242,90 @@ include __DIR__ . '/../partials/sidebar.php';
         let lastState = null;
 
         function applyFairnessData(data) {
-                const selisih = parseInt(data.selisih || 0, 10);
-                const blocked = !!data.blocked;
+            const selisih = parseInt(data.selisih || 0, 10);
+            const blocked = !!data.blocked;
 
-                const stateKey = blocked + ':' + selisih + ':' + data.user_status;
-                if (stateKey === lastState) return;
-                lastState = stateKey;
+            const stateKey = blocked + ':' + selisih + ':' + data.user_status;
+            if (stateKey === lastState) return;
+            lastState = stateKey;
 
-                // ===============================
-                // USER OFFLINE: TAMPILKAN NOTICE
-                // ===============================
-                if (data.user_status === 'offline') {
+            // ===============================
+            // USER OFFLINE: TAMPILKAN NOTICE
+            // ===============================
+            if (data.user_status === 'offline') {
 
-                    showFairnessNotice(`
+                showFairnessNotice(`
                         <strong>Status Anda OFFLINE</strong><br><br>
                         Anda tidak dapat melakukan transaksi selama status OFFLINE.<br>
                         Silakan Klik Tombol <strong>OFFLINE</strong> untuk merubah status menjadi <strong>ONLINE</strong> untuk melanjutkan.
                     `);
 
-                    return;
-                }
-
-                // ===============================
-                // User online: pastikan notice offline hilang
-                // ===============================
-                clearFairnessNotice();
-
-                // ===============================
-                // HARD LOCK (FAIRNESS BLOCK)
-                // ===============================
-                if (blocked) {
-                    //     showFairnessNotice(`
-                    //     <strong>Distribusi transaksi tidak seimbang</strong><br><br>
-                    //     Anda memiliki <strong>${selisih}</strong> transaksi lebih banyak.<br><br>
-                    //     [Dokter] <strong>Silakan arahkan konsumen ke:</strong><br>
-                    //     <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
-                    //     <small>
-                    //         ${escapeHtml(data.medic_jabatan || '-')}
-                    //         • ${parseInt(data.total_transaksi || 0, 10)} trx
-                    //     </small>
-                    // `);
-                    //     return;
-                }
-
-                // // ===============================
-                // // EARLY WARNING (BELUM LOCK)
-                // // ===============================
-                // if (!blocked && selisih > 0) {
-
-                //     clearFairnessNotice();
-
-                //     const box = document.getElementById('fairnessNotice');
-                //     if (!box) return;
-
-                //     box.innerHTML = `
-                //     ℹ️ <strong>Monitoring distribusi transaksi</strong><br>
-                //     Selisih transaksi Anda saat ini:
-                //     <strong>${selisih}</strong>.<br>
-                //     Sistem akan <strong>mengunci otomatis</strong>
-                //     jika selisih mencapai
-                //     <strong>${threshold}</strong>.
-                // `;
-                //     box.style.display = 'block';
-                //     return;
-                // }
-
-                // if (selisih >= threshold) {
-                //     const box = document.getElementById('fairnessNotice');
-                //     box.innerHTML = `
-                //         <strong>Distribusi transaksi tidak seimbang</strong><br>
-                //         Selisih transaksi Anda saat ini:
-                //         <strong>${selisih}</strong>.<br><br>
-                //         [Dokter] Medis dengan transaksi paling sedikit:<br>
-                //         <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
-                //         <small>${escapeHtml(data.medic_jabatan || '-')}</small>
-                //     `;
-                //     box.style.display = 'block';
-                //     return;
-                // }
-
-                // ===============================
-                // AMAN TOTAL (SELISIH = 0)
-                // ===============================
-                clearFairnessNotice();
+                return;
             }
+
+            // ===============================
+            // User online: pastikan notice offline hilang
+            // ===============================
+            clearFairnessNotice();
+
+            // ===============================
+            // HARD LOCK (FAIRNESS BLOCK)
+            // ===============================
+            if (blocked) {
+                //     showFairnessNotice(`
+                //     <strong>Distribusi transaksi tidak seimbang</strong><br><br>
+                //     Anda memiliki <strong>${selisih}</strong> transaksi lebih banyak.<br><br>
+                //     [Dokter] <strong>Silakan arahkan konsumen ke:</strong><br>
+                //     <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
+                //     <small>
+                //         ${escapeHtml(data.medic_jabatan || '-')}
+                //         • ${parseInt(data.total_transaksi || 0, 10)} trx
+                //     </small>
+                // `);
+                //     return;
+            }
+
+            // // ===============================
+            // // EARLY WARNING (BELUM LOCK)
+            // // ===============================
+            // if (!blocked && selisih > 0) {
+
+            //     clearFairnessNotice();
+
+            //     const box = document.getElementById('fairnessNotice');
+            //     if (!box) return;
+
+            //     box.innerHTML = `
+            //     ℹ️ <strong>Monitoring distribusi transaksi</strong><br>
+            //     Selisih transaksi Anda saat ini:
+            //     <strong>${selisih}</strong>.<br>
+            //     Sistem akan <strong>mengunci otomatis</strong>
+            //     jika selisih mencapai
+            //     <strong>${threshold}</strong>.
+            // `;
+            //     box.style.display = 'block';
+            //     return;
+            // }
+
+            // if (selisih >= threshold) {
+            //     const box = document.getElementById('fairnessNotice');
+            //     box.innerHTML = `
+            //         <strong>Distribusi transaksi tidak seimbang</strong><br>
+            //         Selisih transaksi Anda saat ini:
+            //         <strong>${selisih}</strong>.<br><br>
+            //         [Dokter] Medis dengan transaksi paling sedikit:<br>
+            //         <strong>${escapeHtml(data.medic_name || '-')}</strong><br>
+            //         <small>${escapeHtml(data.medic_jabatan || '-')}</small>
+            //     `;
+            //     box.style.display = 'block';
+            //     return;
+            // }
+
+            // ===============================
+            // AMAN TOTAL (SELISIH = 0)
+            // ===============================
+            clearFairnessNotice();
+        }
 
         const fairnessPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_fairness_status.php'),

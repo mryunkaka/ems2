@@ -191,3 +191,123 @@ Stack trace:
 [07-Mar-2026 01:03:04 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
 [07-Mar-2026 01:03:18 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
 [07-Mar-2026 01:03:18 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 09:34:05 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1105
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1105
+[07-Mar-2026 09:38:59 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1105
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1105
+[07-Mar-2026 09:40:02 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1105
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1105
+[07-Mar-2026 09:40:05 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1105
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1105
+[07-Mar-2026 09:42:24 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1105
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1105
+[07-Mar-2026 10:25:40 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:43 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:43 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:44 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:45 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:45 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:46 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:25:46 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:26:00 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:26:00 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:43 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:45 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:45 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:48 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:53 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:54 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:29:59 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:04 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:06 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:07 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:12 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:23 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:30:25 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:31:01 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108
+[07-Mar-2026 10:31:27 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function csrfField() in D:\Project\Web\ems2\dashboard\rekap_farmasi.php:1108
+Stack trace:
+#0 {main}
+  thrown in D:\Project\Web\ems2\dashboard\rekap_farmasi.php on line 1108

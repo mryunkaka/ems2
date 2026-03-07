@@ -45,6 +45,10 @@ if ($userRole !== 'staff') {
     $navItems[] = ['href' => '/dashboard/manage_users.php', 'page' => 'manage_users.php', 'label' => 'Manajemen User', 'icon' => 'user-group'];
 }
 
+if ($userRole !== 'staff') {
+    $navItems[] = ['href' => '/dashboard/surat_menyurat.php', 'page' => 'surat_menyurat.php', 'label' => 'Surat & Notulen', 'icon' => 'document-text'];
+}
+
 $navItems[] = ['href' => '/dashboard/setting_akun.php', 'page' => 'setting_akun.php', 'label' => 'Setting Akun', 'icon' => 'cog-6-tooth'];
 
 if ($userRole !== 'staff') {
@@ -106,6 +110,7 @@ foreach ($navItems as $it) {
         case 'pengajuan_jabatan.php':
         case 'persyaratan_jabatan.php':
         case 'review_pengajuan_jabatan.php':
+        case 'surat_menyurat.php':
             $groupedNav['Administrasi'][] = $it;
             break;
         case 'setting_akun.php':

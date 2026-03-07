@@ -164,6 +164,30 @@ function ems_next_position(?string $position): string
     };
 }
 
+function ems_normalize_role(?string $role): string
+{
+    $raw = strtolower(trim((string)$role));
+    return preg_replace('/\s+/', ' ', $raw) ?: '';
+}
+
+function ems_role_label(?string $role): string
+{
+    return match (ems_normalize_role($role)) {
+        'staff' => 'Staff',
+        'staff manager' => 'Staff Manager',
+        'manager' => 'Manager',
+        'vice director' => 'Vice Director',
+        'director' => 'Director',
+        '' => '-',
+        default => ucwords((string)$role),
+    };
+}
+
+function ems_is_letter_receiver_role(?string $role): bool
+{
+    return ems_normalize_role($role) !== 'staff';
+}
+
 function ems_asset(string $path): string
 {
     $path = (string)$path;
