@@ -53,12 +53,14 @@
 
 	            const beforeFail = failCount;
 	            try {
-	                const data = await safeFetchJSON('/auth/check_session.php');
-	                if (!data) {
-	                    failCount++;
-	                    if (beforeFail === 0) console.warn('Session check: gagal fetch, polling dibackoff.');
-	                    return;
-	                }
+		                const data = await safeFetchJSON(window.emsUrl('/auth/check_session.php'));
+		                if (!data) {
+		                    failCount++;
+		                    if (beforeFail === 0) {
+		                        window.emsLogOnce('session-check-backoff', 'Session check sementara gagal dimuat, polling dibackoff.');
+		                    }
+		                    return;
+		                }
 
 	                failCount = 0;
 
@@ -78,9 +80,9 @@
 	                                <p>Anda akan logout...</p>
 	                            </div>
 	                        </div>`;
-	                    setTimeout(() => {
-	                        window.location.href = '/auth/login.php';
-	                    }, 1500);
+		                    setTimeout(() => {
+		                        window.location.href = window.emsUrl('/auth/login.php');
+		                    }, 1500);
 	                }
 	            } finally {
 	                inFlight = false;
@@ -100,19 +102,25 @@
 
 <script>
     setInterval(function() {
-        var elements = document.querySelectorAll('.realtime-duration');
+        if (document.hidden) {
+            return;
+        }
 
-        elements.forEach(function(el) {
+        var elements = document.querySelectorAll('.realtime-duration');
+        if (!elements.length) {
+            return;
+        }
+
+        for (var index = 0; index < elements.length; index++) {
+            var el = elements[index];
             var timestamp = parseInt(el.getAttribute('data-start-timestamp'));
 
-
             if (!timestamp) {
-                return;
+                continue;
             }
 
             var now = Math.floor(Date.now() / 1000);
             var elapsed = now - timestamp;
-
 
             if (elapsed < 0) elapsed = 0;
 
@@ -125,9 +133,8 @@
                 (minutes < 10 ? '0' : '') + minutes + ':' +
                 (seconds < 10 ? '0' : '') + seconds;
 
-
             el.textContent = display;
-        });
+        }
     }, 1000);
 </script>
 

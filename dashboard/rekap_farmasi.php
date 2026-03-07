@@ -49,7 +49,7 @@ $user = $_SESSION['user_rh'] ?? [];
 
 if (empty($user['name']) || empty($user['position'])) {
     // Redirect ke login jika session invalid
-    header('Location: /auth/login.php?error=session_expired');
+    header('Location: ' . ems_url('/auth/login.php?error=session_expired'));
     exit;
 }
 
@@ -1214,7 +1214,7 @@ include __DIR__ . '/../partials/sidebar.php';
 	                <div class="activity-feed-container">
 
 	                    <audio id="activitySound" preload="auto">
-	                        <source src="/assets/sound/activity.mp3" type="audio/mpeg">
+	                        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/activity.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
 	                    </audio>
 
 	                    <div class="activity-feed-card">
@@ -1292,10 +1292,11 @@ include __DIR__ . '/../partials/sidebar.php';
 	                                            <?= htmlspecialchars($m['medic_jabatan']) ?>
 	                                        </div>
 
-	                                        <button
-	                                            class="btn-force-offline"
-	                                            data-user-id="<?= (int)$m['user_id'] ?>"
-	                                            data-name="<?= htmlspecialchars($m['medic_name']) ?>"
+                                        <button
+                                            type="button"
+                                            class="btn-force-offline"
+                                            data-user-id="<?= (int)$m['user_id'] ?>"
+                                            data-name="<?= htmlspecialchars($m['medic_name']) ?>"
 	                                            data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
 	                                            <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
 	                                        </button>
@@ -1583,30 +1584,39 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- =========================
      MODAL FORCE OFFLINE (EMS)
      ========================= -->
-    <div id="emsForceModal" class="ems-modal-overlay hidden">
-        <div class="ems-modal-card">
-            <h4>Force Offline Medis</h4>
-
-            <p id="emsForceDesc">
-                Anda akan memaksa petugas medis menjadi <strong>OFFLINE</strong>.
-            </p>
-
-            <div class="force-offline-body">
-                <label for="emsForceReason" class="force-offline-label">
-                    Alasan Force Offline
-                </label>
-                <textarea id="emsForceReason"
-                    placeholder="Contoh: sudah tidak duty / tidak berada di kota"
-                    class="force-offline-textarea"></textarea>
-
-                <small class="force-offline-hint">
-                    Minimal 5 karakter
-                </small>
+    <div id="emsForceModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title">Force Offline Medis</div>
+                <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
             </div>
 
-            <div class="modal-actions force-offline-actions">
-                <button type="button" class="ems-btn-cancel">Batal</button>
-                <button type="button" class="ems-btn-confirm">Force Offline</button>
+            <div class="modal-content">
+                <p id="emsForceDesc">
+                    Anda akan memaksa petugas medis menjadi <strong>OFFLINE</strong>.
+                </p>
+
+                <div class="force-offline-body">
+                    <label for="emsForceReason" class="force-offline-label">
+                        Alasan Force Offline
+                    </label>
+                    <textarea id="emsForceReason"
+                        placeholder="Contoh: sudah tidak duty / tidak berada di kota"
+                        class="force-offline-textarea"></textarea>
+
+                    <small class="force-offline-hint">
+                        Minimal 5 karakter
+                    </small>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions force-offline-actions">
+                    <button type="button" class="btn-secondary ems-btn-cancel">Batal</button>
+                    <button type="button" class="btn-danger ems-btn-confirm">Force Offline</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2676,7 +2686,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         Online: ${m.weekly_online_text}
                     </span>
                     <div class="medic-role">${escapeHtml(m.medic_jabatan)}</div>
-                    <button class="btn-force-offline"
+                    <button type="button" class="btn-force-offline"
                         data-user-id="${m.user_id}"
                         data-name="${escapeHtml(m.medic_name)}"
                         data-jabatan="${escapeHtml(m.medic_jabatan)}">
@@ -2741,7 +2751,7 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             const medicsPoller = window.EMSRealtime.createPollingTask({
-                url: '/actions/get_online_medics.php',
+                url: window.emsUrl('/actions/get_online_medics.php'),
                 interval: 3000,
                 maxInterval: 30000,
                 timeoutMs: 7000,
@@ -2955,7 +2965,7 @@ include __DIR__ . '/../partials/sidebar.php';
             // INIT & POLLING
             // ===============================
             const activitiesPoller = window.EMSRealtime.createPollingTask({
-                url: '/actions/get_activities.php',
+                url: window.emsUrl('/actions/get_activities.php'),
                 interval: 3000,
                 maxInterval: 30000,
                 timeoutMs: 7000,
@@ -3032,7 +3042,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         if (!confirm(msg)) return;
 
-        fetch('/actions/koreksi_nama_konsumen.php', {
+        fetch(window.emsUrl('/actions/koreksi_nama_konsumen.php'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
@@ -3101,7 +3111,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         const statusPoller = window.EMSRealtime.createPollingTask({
-            url: '/actions/get_farmasi_status.php',
+            url: window.emsUrl('/actions/get_farmasi_status.php'),
             interval: 5000,
             maxInterval: 30000,
             timeoutMs: 7000,
@@ -3220,7 +3230,7 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
         const fairnessPoller = window.EMSRealtime.createPollingTask({
-            url: '/actions/get_fairness_status.php',
+            url: window.emsUrl('/actions/get_fairness_status.php'),
             interval: 3000,
             maxInterval: 30000,
             timeoutMs: 7000,
@@ -3286,7 +3296,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         const cooldownPoller = window.EMSRealtime.createPollingTask({
-            url: '/actions/get_global_cooldown.php',
+            url: window.emsUrl('/actions/get_global_cooldown.php'),
             interval: 3000,
             maxInterval: 30000,
             timeoutMs: 7000,
@@ -3343,7 +3353,7 @@ include __DIR__ . '/../partials/sidebar.php';
             isBusy = true;
 
             try {
-                const res = await fetch('/actions/toggle_farmasi_status.php', {
+                const res = await fetch(window.emsUrl('/actions/toggle_farmasi_status.php'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -3393,8 +3403,14 @@ include __DIR__ . '/../partials/sidebar.php';
         const modal = document.getElementById('emsForceModal');
         const desc = document.getElementById('emsForceDesc');
         const reasonInput = document.getElementById('emsForceReason');
-        const btnCancel = modal.querySelector('.ems-btn-cancel');
+        if (!modal || !desc || !reasonInput) {
+            return;
+        }
         const btnConfirm = modal.querySelector('.ems-btn-confirm');
+        const closeButtons = modal.querySelectorAll('.ems-btn-cancel, .modal-close-btn');
+        if (!btnConfirm || !closeButtons.length) {
+            return;
+        }
 
         function openModal(userId, name, jabatan) {
             targetUserId = userId;
@@ -3407,14 +3423,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 `Status akan diubah menjadi <strong class="text-danger-strong">OFFLINE</strong>.`;
 
             reasonInput.value = '';
-            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
             document.body.classList.add('modal-open');
 
             setTimeout(() => reasonInput.focus(), 50);
         }
 
         function closeModal() {
-            modal.style.display = 'none';
+            modal.classList.add('hidden');
             document.body.classList.remove('modal-open');
             targetUserId = null;
             targetName = null;
@@ -3426,6 +3442,9 @@ include __DIR__ . '/../partials/sidebar.php';
             const btn = e.target.closest('.btn-force-offline');
             if (!btn) return;
 
+            e.preventDefault();
+            e.stopPropagation();
+
             openModal(
                 btn.dataset.userId,
                 btn.dataset.name,
@@ -3434,7 +3453,9 @@ include __DIR__ . '/../partials/sidebar.php';
         });
 
         // Batal
-        btnCancel.addEventListener('click', closeModal);
+        closeButtons.forEach(function(button) {
+            button.addEventListener('click', closeModal);
+        });
 
         // Klik overlay untuk tutup
         modal.addEventListener('click', function(e) {
@@ -3455,7 +3476,7 @@ include __DIR__ . '/../partials/sidebar.php';
             btnConfirm.style.pointerEvents = 'none';
 
             try {
-                const res = await fetch('/actions/force_offline_medis.php', {
+                const res = await fetch(window.emsUrl('/actions/force_offline_medis.php'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

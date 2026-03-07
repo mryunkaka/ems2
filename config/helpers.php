@@ -171,7 +171,8 @@ function ems_asset(string $path): string
 
     // Keep existing query string, append v= if possible.
     $parts = explode('?', $path, 2);
-    $urlPath = '/' . ltrim($parts[0], '/');
+    $pathOnly = '/' . ltrim($parts[0], '/');
+    $urlPath = ems_url($pathOnly);
     $query = $parts[1] ?? '';
     $disableVersion = ems_env_flag('EMS_ASSET_DISABLE_VERSION');
     $disableVendorVersion = ems_env_flag('EMS_VENDOR_ASSET_DISABLE_VERSION');
@@ -184,7 +185,7 @@ function ems_asset(string $path): string
     }
 
     $base = realpath(__DIR__ . '/..'); // repo root (config/..)
-    $fs = $base ? ($base . $urlPath) : null;
+    $fs = $base ? ($base . $pathOnly) : null;
     $v = ($fs && is_file($fs)) ? @filemtime($fs) : null;
 
     if (!$v) {
@@ -195,6 +196,51 @@ function ems_asset(string $path): string
     if ($query === '') return $urlPath . '?' . $ver;
     if (str_contains($query, 'v=')) return $urlPath . '?' . $query;
     return $urlPath . '?' . $query . '&' . $ver;
+}
+
+function ems_base_path(): string
+{
+    static $basePath = null;
+    if ($basePath !== null) {
+        return $basePath;
+    }
+
+    $documentRoot = isset($_SERVER['DOCUMENT_ROOT']) ? realpath((string)$_SERVER['DOCUMENT_ROOT']) : false;
+    $repoRoot = realpath(__DIR__ . '/..');
+
+    if (!$documentRoot || !$repoRoot) {
+        $basePath = '';
+        return $basePath;
+    }
+
+    $normalizedDocRoot = str_replace('\\', '/', $documentRoot);
+    $normalizedRepoRoot = str_replace('\\', '/', $repoRoot);
+
+    if (strpos($normalizedRepoRoot, $normalizedDocRoot) !== 0) {
+        $basePath = '';
+        return $basePath;
+    }
+
+    $relative = substr($normalizedRepoRoot, strlen($normalizedDocRoot));
+    $relative = trim((string)$relative, '/');
+    $basePath = $relative === '' ? '' : '/' . $relative;
+    return $basePath;
+}
+
+function ems_url(string $path): string
+{
+    $normalized = '/' . ltrim((string)$path, '/');
+    $basePath = ems_base_path();
+
+    if ($basePath === '') {
+        return $normalized;
+    }
+
+    if (strpos($normalized, $basePath . '/') === 0 || $normalized === $basePath) {
+        return $normalized;
+    }
+
+    return $basePath . $normalized;
 }
 
 function ems_env_flag(string $key): bool

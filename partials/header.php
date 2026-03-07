@@ -54,8 +54,8 @@ if ($userId) {
     <title><?= htmlspecialchars($pageTitle ?? 'Farmasi EMS') ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link rel="icon" type="image/png" href="/assets/logo.png">
-    <link rel="apple-touch-icon" href="/assets/logo.png">
+    <link rel="icon" type="image/png" href="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="apple-touch-icon" href="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.css'), ENT_QUOTES, 'UTF-8') ?>">
@@ -67,8 +67,35 @@ if ($userId) {
 
 <body x-data>
     <audio id="inboxSound" preload="auto">
-        <source src="/assets/sound/notification.mp3" type="audio/mpeg">
+        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/notification.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
     </audio>
+    <script>
+        window.EMS_BASE_URL = <?= json_encode(ems_base_path(), JSON_UNESCAPED_SLASHES) ?>;
+        window.emsUrl = window.emsUrl || function(path) {
+            const normalized = '/' + String(path || '').replace(/^\/+/, '');
+            if (!window.EMS_BASE_URL) {
+                return normalized;
+            }
+            if (normalized === window.EMS_BASE_URL || normalized.indexOf(window.EMS_BASE_URL + '/') === 0) {
+                return normalized;
+            }
+            return window.EMS_BASE_URL + normalized;
+        };
+        window.emsLogOnce = window.emsLogOnce || (function() {
+            const emitted = {};
+            return function(key, message, detail) {
+                if (emitted[key]) {
+                    return;
+                }
+                emitted[key] = true;
+                if (typeof detail === 'undefined') {
+                    console.warn(message);
+                    return;
+                }
+                console.warn(message, detail);
+            };
+        })();
+    </script>
 
 	    <div class="ems-app">
 	        <header class="topbar">
@@ -76,7 +103,7 @@ if ($userId) {
 	                <button id="menuToggle" class="menu-btn" type="button" aria-label="Buka navigasi"><?= ems_icon('bars-3', 'h-7 w-7', '2.2') ?></button>
 	
 	                <div class="topbar-brand">
-	                    <img src="/assets/logo.png" alt="EMS Logo" class="topbar-logo">
+	                    <img src="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>" alt="EMS Logo" class="topbar-logo">
 	                    <div class="topbar-text">
 	                        <div class="topbar-title">Roxwood Hospital</div>
 	                        <div class="topbar-subtitle">Emergency Medical System</div>
@@ -224,7 +251,7 @@ if ($userId) {
             // KONFIRMASI ONLINE
             // =========================
             function confirmOnline() {
-                fetch('/actions/confirm_farmasi_online.php', {
+                fetch(window.emsUrl('/actions/confirm_farmasi_online.php'), {
                         method: 'POST'
                     })
                     .then(() => {
@@ -243,7 +270,7 @@ if ($userId) {
                     }
                 }
 
-                fetch('/actions/set_farmasi_offline.php', {
+                fetch(window.emsUrl('/actions/set_farmasi_offline.php'), {
                         method: 'POST'
                     })
                     .then(() => {
@@ -295,7 +322,7 @@ if ($userId) {
 
             async function checkFarmasiNotif() {
                 try {
-                    const notif = await safeFetchJSON('/actions/check_farmasi_notif.php');
+                    const notif = await safeFetchJSON(window.emsUrl('/actions/check_farmasi_notif.php'));
                     if (!notif) return;
 
                     /*
@@ -312,7 +339,7 @@ if ($userId) {
                         return;
                     }
 
-                    const dl = await safeFetchJSON('/actions/get_farmasi_deadline.php');
+                    const dl = await safeFetchJSON(window.emsUrl('/actions/get_farmasi_deadline.php'));
                     if (!dl) return;
 
                     if (dl.active && dl.remaining && !onlineModalActive) {
@@ -339,10 +366,12 @@ if ($userId) {
 
                 const beforeFail = farmasiNotifFailCount;
                 try {
-                    const notif = await safeFetchJSON('/actions/check_farmasi_notif.php');
+                    const notif = await safeFetchJSON(window.emsUrl('/actions/check_farmasi_notif.php'));
                     if (!notif) {
                         farmasiNotifFailCount++;
-                        if (beforeFail === 0) console.warn('Farmasi notif: gagal fetch, polling dibackoff.');
+                        if (beforeFail === 0) {
+                            window.emsLogOnce('farmasi-notif-backoff', 'Farmasi notif sementara gagal dimuat, polling dibackoff.');
+                        }
                         return;
                     }
 
@@ -355,7 +384,7 @@ if ($userId) {
 
                     if (!notif.has_notif) return;
 
-                    const dl = await safeFetchJSON('/actions/get_farmasi_deadline.php');
+                    const dl = await safeFetchJSON(window.emsUrl('/actions/get_farmasi_deadline.php'));
                     if (dl && dl.active && dl.remaining && !onlineModalActive) {
                         showOnlineModal(notif.message, dl.remaining);
                     }
@@ -389,7 +418,7 @@ if ($userId) {
              */
             async function sendHeartbeat() {
                 try {
-                    const res = await fetch('/actions/heartbeat.php', {
+                    const res = await fetch(window.emsUrl('/actions/heartbeat.php'), {
                         method: 'POST',
                         cache: 'no-store'
                     });
@@ -405,7 +434,7 @@ if ($userId) {
                     }
 
                 } catch (e) {
-                    console.warn('Heartbeat gagal', e);
+                    window.emsLogOnce('heartbeat-failed', 'Heartbeat sementara gagal dikirim.', e && e.message ? e.message : e);
                 }
             }
 
@@ -450,7 +479,7 @@ if ($userId) {
             }
 
             async function loadInbox() {
-                const data = await safeFetchJSON('/actions/get_inbox.php');
+                const data = await safeFetchJSON(window.emsUrl('/actions/get_inbox.php'));
                 if (!inboxList || !inboxBadge) return;
 
                 if (!data) {
@@ -489,7 +518,7 @@ if ($userId) {
                 document.getElementById('modalMessage').innerHTML = item.message;
                 document.getElementById('inboxModal').classList.remove('hidden');
 
-                fetch('/actions/read_inbox.php', {
+                fetch(window.emsUrl('/actions/read_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
                         id: item.id
@@ -506,7 +535,7 @@ if ($userId) {
             function deleteInbox() {
                 if (!currentInboxId) return;
 
-                fetch('/actions/delete_inbox.php', {
+                fetch(window.emsUrl('/actions/delete_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
                         id: currentInboxId
@@ -530,7 +559,7 @@ if ($userId) {
              */
             async function pollInbox() {
                 try {
-                    const data = await safeFetchJSON('/actions/get_inbox.php');
+                    const data = await safeFetchJSON(window.emsUrl('/actions/get_inbox.php'));
                     if (!data) return;
 
                     // Update badge
@@ -621,10 +650,12 @@ if ($userId) {
 
                     const beforeFail = inboxFailCount;
                     try {
-                        const data = await safeFetchJSON('/actions/get_inbox.php');
+                        const data = await safeFetchJSON(window.emsUrl('/actions/get_inbox.php'));
                         if (!data) {
                             inboxFailCount++;
-                            if (beforeFail === 0) console.warn('Inbox: gagal fetch, polling dibackoff.');
+                            if (beforeFail === 0) {
+                                window.emsLogOnce('inbox-backoff', 'Inbox sementara gagal dimuat, polling dibackoff.');
+                            }
                             return;
                         }
 
@@ -678,7 +709,7 @@ if ($userId) {
             const PUSH_PUBLIC_KEY = '<?= htmlspecialchars($pushConfig['public_key']) ?>';
         </script>
 
-        <script src="/public/push-subscribe.js"></script>
+        <script src="<?= htmlspecialchars(ems_url('/public/push-subscribe.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
         <script>
             document.addEventListener("DOMContentLoaded", async () => {
