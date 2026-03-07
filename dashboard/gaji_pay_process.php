@@ -1,8 +1,12 @@
 <?php
 session_start();
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json');
+
+ems_require_not_trainee_json('Pembayaran Gaji');
 
 // Cek apakah user memiliki akses
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 function compressImageSmart(
     string $sourcePath,
@@ -69,7 +70,7 @@ $batch  = intval($_POST['batch'] ?? 0);
 $role   = $_POST['role'] ?? 'Staff';
 
 // DEFAULT
-$position = 'Trainee';
+$position = 'trainee';
 
 if ($name === '' || !preg_match('/^\d{4}$/', $pin)) {
     header("Location: login.php?error=Data registrasi tidak valid");

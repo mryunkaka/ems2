@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 $sessionUser = $_SESSION['user_rh'] ?? [];
 $sessionRole = $sessionUser['role'] ?? '';
@@ -25,7 +26,7 @@ $action = $_POST['action'] ?? '';
 if ($action === 'add_user') {
 
     $name     = trim($_POST['full_name'] ?? '');
-    $position = trim($_POST['position'] ?? '');
+    $position = ems_normalize_position($_POST['position'] ?? '');
     $role     = trim($_POST['role'] ?? '');
     $batch    = (int)($_POST['batch'] ?? 0);
 
@@ -45,6 +46,12 @@ if ($action === 'add_user') {
 
     if (!in_array($role, $allowedRoles, true)) {
         $_SESSION['flash_errors'][] = 'Role tidak valid.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!ems_is_valid_position($position)) {
+        $_SESSION['flash_errors'][] = 'Jabatan tidak valid.';
         header('Location: manage_users.php');
         exit;
     }
@@ -291,7 +298,7 @@ if ($action === 'delete') {
    ========================================================= */
 $userId   = (int)($_POST['user_id'] ?? 0);
 $name     = trim($_POST['full_name'] ?? '');
-$position = trim($_POST['position'] ?? '');
+$position = ems_normalize_position($_POST['position'] ?? '');
 $newRole  = trim($_POST['role'] ?? '');
 $newPin   = $_POST['new_pin'] ?? '';
 $batch    = (int)($_POST['batch'] ?? 0);
@@ -312,6 +319,12 @@ if (!in_array($newRole, $allowedRoles, true)) {
 
 if ($userId <= 0 || $name === '' || $position === '' || $newRole === '') {
     $_SESSION['flash_errors'][] = 'Data tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+if (!ems_is_valid_position($position)) {
+    $_SESSION['flash_errors'][] = 'Jabatan tidak valid.';
     header('Location: manage_users.php');
     exit;
 }

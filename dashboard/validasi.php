@@ -71,7 +71,7 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?= $i + 1 ?></td>
                                 <td><?= htmlspecialchars($u['full_name']) ?></td>
                                 <td><?= htmlspecialchars($u['role']) ?></td>
-                                <td><?= htmlspecialchars($u['position']) ?></td>
+                                <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
 
 	                                <td>
 	                                    <?php if ((int)$u['is_verified'] === 1): ?>

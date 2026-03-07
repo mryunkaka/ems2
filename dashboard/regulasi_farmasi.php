@@ -3,9 +3,12 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+
+ems_require_not_trainee_html('Regulasi Paket Farmasi');
 
 /* ===============================
    ROLE GUARD (NON-STAFF)
@@ -236,4 +239,3 @@ include __DIR__ . '/../partials/sidebar.php';
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
-

@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 /* ===============================
@@ -269,7 +270,7 @@ $pageTitle = 'Peserta Event';
                             <tr>
                                 <td><?= $i + 1 ?></td>
                                 <td><strong><?= htmlspecialchars($p['full_name']) ?></strong></td>
-                                <td><?= htmlspecialchars($p['position']) ?></td>
+                                <td><?= htmlspecialchars(ems_position_label($p['position'])) ?></td>
                                 <td><?= htmlspecialchars((string)($p['batch'] ?? '')) ?></td>
                                 <td><?= htmlspecialchars($p['jenis_kelamin']) ?></td>
                                 <td><?= htmlspecialchars((string)($p['citizen_id'] ?? '')) ?></td>

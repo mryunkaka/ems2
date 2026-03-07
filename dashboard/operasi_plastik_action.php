@@ -242,13 +242,13 @@ if (!in_array($jenisOperasi, $allowedJenis, true)) {
 | VALIDASI PENANGGUNG JAWAB (MIN CO.AST)
 |--------------------------------------------------------------------------
 */
-$stmt = $pdo->prepare("
-    SELECT id
-    FROM user_rh
-    WHERE id = ?
-      AND position IN ('(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
-    LIMIT 1
-");
+	$stmt = $pdo->prepare("
+	    SELECT id
+	    FROM user_rh
+	    WHERE id = ?
+	      AND position IN ('co_asst', 'general_practitioner', 'specialist', '(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
+	    LIMIT 1
+	");
 $stmt->execute([$idPenanggungJawab]);
 
 if (!$stmt->fetch()) {

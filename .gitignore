@@ -3,10 +3,10 @@
 .env.*
 
 # Runtime / generated
-storage/
+# storage/
 backup/
 node_modules/
-vendor/
+# vendor/
 
 # Host/control files
 .ftpquota

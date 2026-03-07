@@ -34,6 +34,7 @@ function tanggalIndo($date)
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -127,7 +128,7 @@ if ($lastTanggal) {
 $pjStmt = $pdo->query("
     SELECT id, full_name, position
     FROM user_rh
-    WHERE position IN ('(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
+    WHERE position IN ('co_asst', 'general_practitioner', 'specialist', '(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
     ORDER BY full_name ASC
 ");
 $penanggungJawab = $pjStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -219,7 +220,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                 data-id="<?= $pj['id'] ?>">
                                 <?= htmlspecialchars($pj['full_name']) ?>
                                 <small style="color:#64748b;">
-                                    (<?= htmlspecialchars($pj['position']) ?>)
+                                    (<?= htmlspecialchars(ems_position_label($pj['position'])) ?>)
                                 </small>
                             </div>
                         <?php endforeach; ?>
@@ -315,9 +316,9 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                 </td>
 
                                 <td style="white-space:nowrap;text-align:center;">
-                                    <?php
-                                    $role     = strtolower($_SESSION['user_rh']['role'] ?? '');
-                                    $position = strtolower($medicPos ?? '');
+	                                    <?php
+	                                    $role     = strtolower($_SESSION['user_rh']['role'] ?? '');
+	                                    $position = ems_normalize_position($medicPos ?? '');
 
                                     $bolehAlasan =
                                         $row['status'] === 'pending' &&

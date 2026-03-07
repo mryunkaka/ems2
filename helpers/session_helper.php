@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../config/helpers.php';
 
 /**
  * =========================================================
@@ -41,7 +42,7 @@ function forceReloadUserSession(PDO $pdo, int $userId): void
         'full_name'           => $user['full_name'],
         'name'                => $user['full_name'], // 🔥 TAMBAHKAN INI untuk backward compatibility
         'role'                => $user['role'],
-        'position'            => $user['position'],
+        'position'            => ems_normalize_position($user['position'] ?? ''),
         'batch'               => $user['batch'],
         'tanggal_masuk'       => $user['tanggal_masuk'],
         'citizen_id'          => $user['citizen_id'],

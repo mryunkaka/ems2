@@ -2,6 +2,7 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $position = strtolower(trim($_SESSION['user_rh']['position'] ?? ''));
+$isTrainee = ($position === 'trainee');
 
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -22,9 +23,7 @@ if ($userRole !== 'staff') {
 
 $navItems[] = ['href' => '/dashboard/ems_services.php', 'page' => 'ems_services.php', 'label' => 'Layanan Medis', 'icon' => 'building-office-2'];
 
-if ($position !== 'trainee') {
-    $navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
-}
+$navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
 
 $navItems = array_merge($navItems, [
     ['href' => '/dashboard/reimbursement.php', 'page' => 'reimbursement.php', 'label' => 'Reimbursement', 'icon' => 'receipt-percent'],
@@ -34,12 +33,15 @@ $navItems = array_merge($navItems, [
     ['href' => '/dashboard/ranking.php', 'page' => 'ranking.php', 'label' => 'Ranking', 'icon' => 'chart-bar'],
     ['href' => '/dashboard/absensi_ems.php', 'page' => 'absensi_ems.php', 'label' => 'Jam Kerja Web', 'icon' => 'clock'],
     ['href' => '/dashboard/gaji.php', 'page' => 'gaji.php', 'label' => 'Gaji', 'icon' => 'banknotes'],
+    ['href' => '/dashboard/pengajuan_jabatan.php', 'page' => 'pengajuan_jabatan.php', 'label' => 'Pengajuan Jabatan', 'icon' => 'arrow-up-tray'],
 ]);
 
 if ($userRole !== 'staff') {
     $navItems[] = ['href' => '/dashboard/validasi.php', 'page' => 'validasi.php', 'label' => 'Validasi', 'icon' => 'receipt-percent'];
     $navItems[] = ['href' => '/dashboard/regulasi_medis.php', 'page' => 'regulasi_medis.php', 'label' => 'Regulasi Medis', 'icon' => 'document-text'];
     $navItems[] = ['href' => '/dashboard/regulasi_farmasi.php', 'page' => 'regulasi_farmasi.php', 'label' => 'Regulasi Paket Farmasi', 'icon' => 'beaker'];
+    $navItems[] = ['href' => '/dashboard/persyaratan_jabatan.php', 'page' => 'persyaratan_jabatan.php', 'label' => 'Syarat Jabatan', 'icon' => 'wrench'];
+    $navItems[] = ['href' => '/dashboard/review_pengajuan_jabatan.php', 'page' => 'review_pengajuan_jabatan.php', 'label' => 'Review Jabatan', 'icon' => 'check-circle'];
     $navItems[] = ['href' => '/dashboard/manage_users.php', 'page' => 'manage_users.php', 'label' => 'Manajemen User', 'icon' => 'user-group'];
 }
 
@@ -47,6 +49,21 @@ $navItems[] = ['href' => '/dashboard/setting_akun.php', 'page' => 'setting_akun.
 
 if ($userRole !== 'staff') {
     $navItems[] = ['href' => '/dashboard/candidates.php', 'page' => 'candidates.php', 'label' => 'Calon Kandidat', 'icon' => 'clipboard-document-list'];
+}
+
+// Trainee: hide all menu Farmasi (UI only).
+if ($isTrainee) {
+    $hiddenPages = [
+        'rekap_farmasi.php',
+        'regulasi_farmasi.php',
+        'konsumen.php',
+        'ranking.php',
+        'absensi_ems.php',
+        'gaji.php',
+    ];
+    $navItems = array_values(array_filter($navItems, function ($it) use ($hiddenPages) {
+        return !in_array($it['page'] ?? '', $hiddenPages, true);
+    }));
 }
 
 // Re-group for sidebar rendering (UI-only; href/page remain the contract).
@@ -86,6 +103,9 @@ foreach ($navItems as $it) {
         case 'validasi.php':
         case 'manage_users.php':
         case 'candidates.php':
+        case 'pengajuan_jabatan.php':
+        case 'persyaratan_jabatan.php':
+        case 'review_pengajuan_jabatan.php':
             $groupedNav['Administrasi'][] = $it;
             break;
         case 'setting_akun.php':

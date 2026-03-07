@@ -13,7 +13,7 @@ unset($_SESSION['clear_form']);
 
 $user = $_SESSION['user_rh'] ?? [];
 $medicName    = $user['name'] ?? '';
-$medicJabatan = $user['position'] ?? '';
+$medicJabatan = ems_position_label($user['position'] ?? '');
 
 if (empty($medicName)) {
     $_SESSION['flash_errors'][] = 'Session login tidak valid. Silakan login ulang.';

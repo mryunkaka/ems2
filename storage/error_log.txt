@@ -1,0 +1,193 @@
+[06-Jan-2026 16:07:42 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'location' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:134
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(134): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 134
+[06-Jan-2026 16:10:40 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'duration_minutes' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:132
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(132): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 132
+[06-Jan-2026 16:10:41 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'duration_minutes' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:132
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(132): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 132
+[06-Jan-2026 16:10:42 Asia/Jakarta] PHP Fatal error:  Uncaught PDOException: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'duration_minutes' in 'SELECT' in /home/hark8423/public_html/ems/dashboard/regulasi.php:132
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/regulasi.php(132): PDO->query()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/dashboard/regulasi.php on line 132
+[11-Jan-2026 20:50:35 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:35 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:36 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:36 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:37 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:37 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:38 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:38 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:43 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:43 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:56 Asia/Jakarta] PHP Warning:  Undefined variable $mondayThisWeek in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[11-Jan-2026 20:50:56 Asia/Jakarta] PHP Fatal error:  Uncaught Error: __clone method called on non-object in /home/hark8423/public_html/ems/config/date_range.php:38
+Stack trace:
+#0 /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php(23): require_once()
+#1 {main}
+  thrown in /home/hark8423/public_html/ems/config/date_range.php on line 38
+[14-Jan-2026 14:29:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:29:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:29:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:29:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:29:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:30:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:30:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:30:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:30:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:30:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:31:31 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:31:31 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:31:31 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:31:31 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:31:31 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:28 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:28 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:28 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:28 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:28 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:32:49 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:40 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:33:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:36:51 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:36:51 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:36:51 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:36:51 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:36:51 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:03 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:03 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:03 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:03 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:44 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:59 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:59 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:49:59 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:50:17 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:50:17 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:02 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:02 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:25 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:25 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:25 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:30 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:30 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:51:30 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:53:57 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:53:57 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:53:57 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:16 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:16 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:16 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:16 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:54:20 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:38 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:38 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:38 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:38 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:50 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:50 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:50 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:50 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:56:50 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:57:52 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:14 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 14:58:54 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:01:47 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[14-Jan-2026 15:02:15 Asia/Jakarta] PHP Warning:  Undefined array key "weekly_transaksi" in /home/hark8423/public_html/ems/dashboard/rekap_farmasi.php on line 864
+[07-Mar-2026 01:01:49 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:01:49 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:02:30 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:02:30 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:02:45 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:02:45 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:03:04 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:03:04 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:03:18 UTC] PHP Warning:  session_start(): Session ID is too long or contains illegal characters. Only the A-Z, a-z, 0-9, &quot;-&quot;, and &quot;,&quot; characters are allowed in D:\Project\Web\ems2\auth\auth_guard.php on line 3
+[07-Mar-2026 01:03:18 UTC] PHP Warning:  session_start(): Failed to read session data: files (path: C:/laragon/tmp) in D:\Project\Web\ems2\auth\auth_guard.php on line 3

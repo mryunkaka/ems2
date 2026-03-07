@@ -96,7 +96,7 @@ if ($batchFromDb > 0) {
 |--------------------------------------------------------------------------
 */
 $fullName   = trim($_POST['full_name'] ?? '');
-$position   = trim($_POST['position'] ?? '');
+$position   = $currentPos; // Jabatan tidak diubah lewat Setting Akun
 $citizenId    = trim($_POST['citizen_id'] ?? '');
 $jenisKelamin = trim($_POST['jenis_kelamin'] ?? '');
 $noHpIc = trim($_POST['no_hp_ic'] ?? '');
@@ -221,8 +221,8 @@ if ($noHpIc === '') {
     exit;
 }
 
-if ($fullName === '' || $position === '') {
-    $_SESSION['flash_errors'][] = 'Nama dan Jabatan wajib diisi.';
+if ($fullName === '') {
+    $_SESSION['flash_errors'][] = 'Nama wajib diisi.';
     header('Location: setting_akun.php');
     exit;
 }
@@ -560,14 +560,12 @@ if ($academyJson === false) {
 $sql = "UPDATE user_rh 
         SET 
             full_name = ?,
-            position = ?,
             tanggal_masuk = ?,
             citizen_id = ?,
             jenis_kelamin = ?,
             no_hp_ic = ?";
 $params = [
     $fullName,
-    $position,
     $tanggalMasuk,
     $citizenId,
     $jenisKelamin,

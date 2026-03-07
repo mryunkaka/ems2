@@ -3,7 +3,10 @@ date_default_timezone_set('Asia/Makassar');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
+
+ems_require_not_trainee_html('Generate Gaji');
 
 // ==================
 // SECURITY GUARD

@@ -8,24 +8,29 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+$isTrainee = (strtolower(trim($_SESSION['user_rh']['position'] ?? '')) === 'trainee');
+
 $pageTitle = 'Dashboard | Farmasi EMS';
 
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 
 // DATA DASHBOARD
-require_once __DIR__ . '/dashboard_data.php';
+require_once __DIR__ . ($isTrainee ? '/dashboard_data_medis.php' : '/dashboard_data.php');
 ?>
 
-<script>
-    window.DASHBOARD_DATA = <?= json_encode($dashboard, JSON_NUMERIC_CHECK); ?>;
-</script>
+<?php if (!$isTrainee): ?>
+    <script>
+        window.DASHBOARD_DATA = <?= json_encode($dashboard, JSON_NUMERIC_CHECK); ?>;
+    </script>
+<?php endif; ?>
 
 <h1 class="page-title">Dashboard</h1>
 <p class="page-subtitle">
     <?= htmlspecialchars($rangeLabel) ?>
 </p>
 
+<?php if (!$isTrainee): ?>
 <h3 class="section-title section-farmasi"><?= ems_icon('beaker', 'h-5 w-5 text-primary') ?> Rekap Farmasi</h3>
 
 <div class="dashboard-grid">
@@ -91,6 +96,7 @@ require_once __DIR__ . '/dashboard_data.php';
     </div>
 
 </div>
+<?php endif; ?>
 
 <h3 class="section-title section-medis"><?= ems_icon('building-office-2', 'h-5 w-5 text-success') ?> Rekap Medis</h3>
 
@@ -138,6 +144,7 @@ require_once __DIR__ . '/dashboard_data.php';
 
 </div>
 
+<?php if (!$isTrainee): ?>
 <div class="card" style="margin-top:20px;">
     <div class="card-header"><?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Penjualan Mingguan (Perusahaan)</div>
 
@@ -162,8 +169,10 @@ require_once __DIR__ . '/dashboard_data.php';
         <?php endforeach; ?>
     </div>
 </div>
+<?php endif; ?>
 </div>
 </section>
+<?php if (!$isTrainee): ?>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
 
@@ -225,5 +234,6 @@ require_once __DIR__ . '/dashboard_data.php';
 
     });
 </script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -1,6 +1,10 @@
 <?php
 session_start();
-require __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/position_guard.php';
+require_once __DIR__ . '/../config/database.php';
+
+ems_require_not_trainee_html('Aksi Gaji');
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 if ($userRole === 'staff') {

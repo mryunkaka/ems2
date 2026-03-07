@@ -252,7 +252,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <?php endif; ?>
                                             </td>
 
-                                            <td><?= htmlspecialchars($u['position']) ?></td>
+                                            <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
                                             <td><?= htmlspecialchars($u['role']) ?></td>
                                             <td>
                                                 <?php if (!empty($u['tanggal_masuk'])): ?>
@@ -288,7 +288,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                     class="btn-secondary btn-edit-user"
                                                     data-id="<?= (int)$u['id'] ?>"
                                                     data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
-                                                    data-position="<?= htmlspecialchars($u['position'], ENT_QUOTES) ?>"
+                                                    data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
                                                     data-role="<?= strtolower(trim($u['role'])) ?>"
                                                     data-batch="<?= (int)($u['batch'] ?? 0) ?>"
                                                     data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
@@ -441,14 +441,14 @@ uksort($usersByBatch, function ($a, $b) {
 		            <label for="editName">Nama</label>
 		            <input type="text" name="full_name" id="editName" autocomplete="username" required>
 
-	            <label for="editPosition">Jabatan</label>
-	            <select name="position" id="editPosition" autocomplete="organization-title" required>
-                <option value="Trainee">Trainee</option>
-                <option value="Paramedic">Paramedic</option>
-                <option value="(Co.Ast)">(Co.Ast)</option>
-                <option value="Dokter Umum">Dokter Umum</option>
-                <option value="Dokter Spesialis">Dokter Spesialis</option>
-            </select>
+		            <label for="editPosition">Jabatan</label>
+		            <select name="position" id="editPosition" autocomplete="organization-title" required>
+	                    <?php foreach (ems_position_options() as $opt): ?>
+	                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+	                            <?= htmlspecialchars($opt['label']) ?>
+	                        </option>
+	                    <?php endforeach; ?>
+	            </select>
 
 	            <label for="editRole">Role</label>
 	            <select name="role" id="editRole" autocomplete="off" required>
@@ -526,14 +526,14 @@ uksort($usersByBatch, function ($a, $b) {
 	            <label for="addFullName">Nama Lengkap</label>
 	            <input type="text" id="addFullName" name="full_name" autocomplete="name" required>
 
-	            <label for="addPosition">Jabatan</label>
-	            <select id="addPosition" name="position" autocomplete="organization-title" required>
-                <option value="Trainee">Trainee</option>
-                <option value="Paramedic">Paramedic</option>
-                <option value="(Co.Ast)">(Co.Ast)</option>
-                <option value="Dokter Umum">Dokter Umum</option>
-                <option value="Dokter Spesialis">Dokter Spesialis</option>
-            </select>
+		            <label for="addPosition">Jabatan</label>
+		            <select id="addPosition" name="position" autocomplete="organization-title" required>
+	                    <?php foreach (ems_position_options() as $opt): ?>
+	                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+	                            <?= htmlspecialchars($opt['label']) ?>
+	                        </option>
+	                    <?php endforeach; ?>
+	            </select>
 
 	            <label for="addRole">Role</label>
 	            <select id="addRole" name="role" autocomplete="off" required>

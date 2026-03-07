@@ -8,6 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 // =====================================================
 // AMBIL INPUT (NORMAL / FORCE LOGIN)
@@ -93,7 +94,7 @@ $_SESSION['user_rh'] = [
     'id'       => $user['id'],
     'name'     => $user['full_name'],
     'role'     => $user['role'],
-    'position' => $user['position']
+    'position' => ems_normalize_position($user['position'] ?? '')
 ];
 
 // =====================================================
@@ -122,7 +123,7 @@ setcookie(
 // =====================================================
 // REDIRECT BERDASARKAN POSITION
 // =====================================================
-$position = strtolower(trim($user['position'] ?? ''));
+$position = ems_normalize_position($user['position'] ?? '');
 
 // trainee → dashboard
 if ($position === 'trainee') {

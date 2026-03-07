@@ -18,6 +18,7 @@ function app_log($message)
 }
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
@@ -37,8 +38,10 @@ $endDT       = $endDT       ?? new DateTime($rangeEnd);
 $user = $_SESSION['user_rh'] ?? [];
 
 $medicName    = $user['name'] ?? '';
-$medicJabatan = $user['position'] ?? '';
+$medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
+
+ems_require_not_trainee_html('Rekap Farmasi');
 
 $avatarInitials = initialsFromName($medicName);
 $avatarColor    = avatarColorFromName($medicName);
@@ -986,8 +989,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 <?php else: ?>
                     <form method="post" id="bulkDeleteForm" onsubmit="return confirmBulkDelete();">
                         <input type="hidden" name="action" value="delete_selected">
-                        <div class="table-wrapper">
-                            <table id="salesTable">
+	                        <div class="table-wrapper-sm">
+	                            <table id="salesTable" class="table-custom">
                                 <thead>
                                     <tr>
                                         <th style="width:32px;text-align:center;">
@@ -1214,12 +1217,16 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function saveFormState() {
             const consumerInput = document.querySelector('input[name="consumer_name"]');
+            function getValue(id) {
+                const el = document.getElementById(id);
+                return el ? (el.value || '') : '';
+            }
             const data = {
                 consumer_name: consumerInput ? consumerInput.value : '',
-                pkg_main: document.getElementById('pkg_main')?.value || '',
-                pkg_bandage: document.getElementById('pkg_bandage')?.value || '',
-                pkg_ifaks: document.getElementById('pkg_ifaks')?.value || '',
-                pkg_painkiller: document.getElementById('pkg_painkiller')?.value || '',
+                pkg_main: getValue('pkg_main'),
+                pkg_bandage: getValue('pkg_bandage'),
+                pkg_ifaks: getValue('pkg_ifaks'),
+                pkg_painkiller: getValue('pkg_painkiller'),
             };
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1704,11 +1711,13 @@ include __DIR__ . '/../partials/sidebar.php';
             if (window.jQuery && jQuery.fn.DataTable) {
                 const table = jQuery('#salesTable').DataTable({
                     pageLength: 10,
+                    scrollX: true,
+                    autoWidth: false,
                     order: [
                         [1, 'desc']
                     ],
                     language: {
-                        url: "/assets/design/js/datatables-id.json"
+                        url: "<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>"
                     },
                     footerCallback: function(row, data, start, end, display) {
                         let api = this.api();

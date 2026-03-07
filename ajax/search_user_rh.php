@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -29,4 +30,10 @@ $stmt = $pdo->prepare("
 
 $stmt->execute([$q]);
 
-echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rows as &$r) {
+    $r['position'] = ems_position_label($r['position'] ?? '');
+}
+unset($r);
+
+echo json_encode($rows);

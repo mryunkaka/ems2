@@ -104,9 +104,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     role,
                     pin,
                     is_active
-                ) VALUES (
-                    ?, ?, ?, 'Trainee', 'Staff', ?, 1
-                )
+	                ) VALUES (
+	                    ?, ?, ?, 'trainee', 'Staff', ?, 1
+	                )
             ");
             $stmt->execute([$nama, $batch, $gender, $pinHash]);
             $userId = (int)$pdo->lastInsertId();

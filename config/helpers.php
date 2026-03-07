@@ -106,3 +106,124 @@ function dollar($amount)
 {
     return '$' . number_format((float)$amount, 0, ',', '.');
 }
+
+function ems_normalize_position(?string $position): string
+{
+    $raw = strtolower(trim((string)$position));
+    $raw = preg_replace('/\s+/', ' ', $raw);
+
+    return match ($raw) {
+        'trainee' => 'trainee',
+        'paramedic' => 'paramedic',
+        '(co.ast)', '(co. ast)', 'co.ast', 'co. ast', 'co asst', 'co. asst', 'co-ass', 'co_asst', 'coasst' => 'co_asst',
+        'dokter umum', 'dr umum', 'general practitioner', 'gp' => 'general_practitioner',
+        'dokter spesialis', 'dr spesialis', 'specialist', 'specialist doctor' => 'specialist',
+        '' => '',
+        default => str_replace(' ', '_', $raw),
+    };
+}
+
+function ems_position_label(?string $position): string
+{
+    $pos = ems_normalize_position($position);
+    return match ($pos) {
+        'trainee' => 'Trainee',
+        'paramedic' => 'Paramedic',
+        'co_asst' => 'Co. Asst',
+        'general_practitioner' => 'Dokter Umum',
+        'specialist' => 'Dokter Spesialis',
+        '' => '-',
+        default => (string)$position,
+    };
+}
+
+function ems_position_options(): array
+{
+    return [
+        ['value' => 'trainee', 'label' => 'Trainee'],
+        ['value' => 'paramedic', 'label' => 'Paramedic'],
+        ['value' => 'co_asst', 'label' => 'Co. Asst'],
+        ['value' => 'general_practitioner', 'label' => 'Dokter Umum'],
+        ['value' => 'specialist', 'label' => 'Dokter Spesialis'],
+    ];
+}
+
+function ems_is_valid_position(string $position): bool
+{
+    return in_array($position, array_column(ems_position_options(), 'value'), true);
+}
+
+function ems_next_position(?string $position): string
+{
+    $pos = ems_normalize_position($position);
+    return match ($pos) {
+        'trainee' => 'paramedic',
+        'paramedic' => 'co_asst',
+        'co_asst' => 'general_practitioner',
+        default => '',
+    };
+}
+
+function ems_asset(string $path): string
+{
+    $path = (string)$path;
+    if ($path === '') return '';
+
+    // Keep existing query string, append v= if possible.
+    $parts = explode('?', $path, 2);
+    $urlPath = '/' . ltrim($parts[0], '/');
+    $query = $parts[1] ?? '';
+    $disableVersion = ems_env_flag('EMS_ASSET_DISABLE_VERSION');
+    $disableVendorVersion = ems_env_flag('EMS_VENDOR_ASSET_DISABLE_VERSION');
+
+    if (
+        $disableVersion ||
+        ($disableVendorVersion && strpos($urlPath, '/assets/vendor/') === 0)
+    ) {
+        return $query !== '' ? ($urlPath . '?' . $query) : $urlPath;
+    }
+
+    $base = realpath(__DIR__ . '/..'); // repo root (config/..)
+    $fs = $base ? ($base . $urlPath) : null;
+    $v = ($fs && is_file($fs)) ? @filemtime($fs) : null;
+
+    if (!$v) {
+        return $query !== '' ? ($urlPath . '?' . $query) : $urlPath;
+    }
+
+    $ver = 'v=' . rawurlencode((string)$v);
+    if ($query === '') return $urlPath . '?' . $ver;
+    if (str_contains($query, 'v=')) return $urlPath . '?' . $query;
+    return $urlPath . '?' . $query . '&' . $ver;
+}
+
+function ems_env_flag(string $key): bool
+{
+    $value = getenv($key);
+    if ($value === false && array_key_exists($key, $_SERVER)) {
+        $value = $_SERVER[$key];
+    }
+    if ($value === false || $value === null) {
+        return false;
+    }
+
+    $normalized = strtolower(trim((string)$value));
+    return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
+}
+
+function ems_json_response(array $payload, int $statusCode = 200): void
+{
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function ems_json_error(string $message = 'Internal server error', int $statusCode = 500, array $extra = []): void
+{
+    ems_json_response(array_merge([
+        'success' => false,
+        'error' => $message,
+    ], $extra), $statusCode);
+}

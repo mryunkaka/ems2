@@ -157,16 +157,6 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                     placeholder="Masukkan nama lengkap Anda"
                     value="<?= htmlspecialchars($medicName) ?>">
 
-                <label>Jabatan <span class="required">*</span></label>
-                <select name="position" required>
-                    <option value="">-- Pilih Jabatan --</option>
-                    <option value="Trainee" <?= $medicPos === 'Trainee' ? 'selected' : '' ?>>Trainee</option>
-                    <option value="Paramedic" <?= $medicPos === 'Paramedic' ? 'selected' : '' ?>>Paramedic</option>
-                    <option value="(Co.Ast)" <?= $medicPos === '(Co.Ast)' ? 'selected' : '' ?>>(Co.Ast)</option>
-                    <option value="Dokter Umum" <?= $medicPos === 'Dokter Umum' ? 'selected' : '' ?>>Dokter Umum</option>
-                    <option value="Dokter Spesialis" <?= $medicPos === 'Dokter Spesialis' ? 'selected' : '' ?>>Dokter Spesialis</option>
-                </select>
-
                 <!-- BARIS 1 -->
                 <div class="row-form-2">
                     <div>
@@ -206,7 +196,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                         name="no_hp_ic"
                         required
                         inputmode="numeric"
-                        placeholder="Contoh: 8123456789"
+                        placeholder="Contoh: 544322"
                         value="<?= htmlspecialchars($noHpIc) ?>">
                     <small class="hint-info">
                         Nomor HP yang terdaftar di sistem IC

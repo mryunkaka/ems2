@@ -12,7 +12,7 @@ $pushConfig = require __DIR__ . '/../config/push.php';
 $user = $_SESSION['user_rh'] ?? [];
 
 $medicName    = $user['name'] ?? 'User';
-$medicJabatan = $user['position'] ?? '-';
+$medicJabatan = ems_position_label($user['position'] ?? '-');
 $medicRole    = $user['role'] ?? null;
 
 $avatarInitials = initialsFromName($medicName);
@@ -56,11 +56,12 @@ if ($userId) {
 
     <link rel="icon" type="image/png" href="/assets/logo.png">
     <link rel="apple-touch-icon" href="/assets/logo.png">
-    <link rel="stylesheet" href="/assets/vendor/datatables/dataTables.dataTables.min.css">
-    <link rel="stylesheet" href="/assets/vendor/datatables/buttons.dataTables.min.css">
-    <link rel="stylesheet" href="/assets/vendor/photoswipe/photoswipe.css">
-    <link rel="stylesheet" href="/assets/design/tailwind/build.css">
-    <script defer src="/assets/vendor/alpine/alpine.min.js"></script>
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/design/tailwind/build.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/css/overrides.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <script defer src="<?= htmlspecialchars(ems_asset('/assets/vendor/alpine/alpine.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
 </head>
 

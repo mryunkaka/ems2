@@ -54,7 +54,7 @@ if (empty($user['name']) || empty($user['position'])) {
 }
 
 $medicName    = $user['name'] ?? '';
-$medicJabatan = $user['position'] ?? '';
+$medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
 
 // ===============================
@@ -1498,8 +1498,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 <?php else: ?>
                     <form method="post" id="bulkDeleteForm" onsubmit="return confirmBulkDelete();">
                         <input type="hidden" name="action" value="delete_selected">
-                        <div class="table-wrapper">
-                            <table id="salesTable">
+                        <div class="table-wrapper-sm">
+                            <table id="salesTable" class="table-custom">
                                 <thead>
                                     <tr>
                                         <th class="checkbox-col">
@@ -1712,19 +1712,23 @@ include __DIR__ . '/../partials/sidebar.php';
             };
         }
 
-        function saveFormState() {
-            const consumerInput = document.querySelector('input[name="consumer_name"]');
-            const data = {
-                consumer_name: consumerInput ? consumerInput.value : '',
-                pkg_main: document.getElementById('pkg_main')?.value || '',
-                pkg_bandage: document.getElementById('pkg_bandage')?.value || '',
-                pkg_ifaks: document.getElementById('pkg_ifaks')?.value || '',
-                pkg_painkiller: document.getElementById('pkg_painkiller')?.value || '',
-            };
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-            } catch (e) {
-                // abaikan
+	        function saveFormState() {
+	            const consumerInput = document.querySelector('input[name="consumer_name"]');
+	            function getValue(id) {
+	                const el = document.getElementById(id);
+	                return el ? (el.value || '') : '';
+	            }
+	            const data = {
+	                consumer_name: consumerInput ? consumerInput.value : '',
+	                pkg_main: getValue('pkg_main'),
+	                pkg_bandage: getValue('pkg_bandage'),
+	                pkg_ifaks: getValue('pkg_ifaks'),
+	                pkg_painkiller: getValue('pkg_painkiller'),
+	            };
+	            try {
+	                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+	            } catch (e) {
+	                // abaikan
             }
         }
 
@@ -2145,6 +2149,45 @@ include __DIR__ . '/../partials/sidebar.php';
             );
         }
 
+        // Fallback: tetap hitung TOTAL footer meski DataTables gagal ter-load
+        function updateSalesTableFooterTotalsFallback() {
+            const table = document.getElementById('salesTable');
+            if (!table) return;
+
+            const tfootRow = table.querySelector('tfoot tr');
+            if (!tfootRow || !tfootRow.cells || tfootRow.cells.length < 6) return;
+
+            function intVal(text) {
+                if (text == null) return 0;
+                if (typeof text === 'number') return text;
+                return String(text).replace(/[^\d]/g, '') * 1 || 0;
+            }
+
+            let totalBandage = 0;
+            let totalIfaks = 0;
+            let totalPain = 0;
+            let totalPrice = 0;
+            let totalBonus = 0;
+
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(function(row) {
+                const cells = row.cells;
+                if (!cells || cells.length < 11) return;
+                totalBandage += intVal(cells[6].textContent);
+                totalIfaks += intVal(cells[7].textContent);
+                totalPain += intVal(cells[8].textContent);
+                totalPrice += intVal(cells[9].textContent);
+                totalBonus += intVal(cells[10].textContent);
+            });
+
+            // Struktur footer: [TOTAL(colspan=6), bandage, ifaks, pain, price, bonus]
+            tfootRow.cells[1].textContent = totalBandage;
+            tfootRow.cells[2].textContent = totalIfaks;
+            tfootRow.cells[3].textContent = totalPain;
+            tfootRow.cells[4].textContent = formatDollar(totalPrice);
+            tfootRow.cells[5].textContent = formatDollar(totalBonus);
+        }
+
         // ===== JAM & TANGGAL REALTIME (BERDASARKAN WAKTU LOKAL PERANGKAT) =====
         function getIndonesiaTimeZoneName(date) {
             // getTimezoneOffset = selisih terhadap UTC dalam menit (WIB = -420, WITA = -480, WIT = -540)
@@ -2161,25 +2204,48 @@ include __DIR__ . '/../partials/sidebar.php';
         function updateLocalClock() {
             const el = document.getElementById('localClock');
             if (!el) return;
+            try {
+                const now = new Date();
+                const tzName = getIndonesiaTimeZoneName(now);
 
-            const now = new Date();
-            const tzName = getIndonesiaTimeZoneName(now);
+                let tanggal = '';
+                let jam = '';
 
-            const tanggal = now.toLocaleDateString('id-ID', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
+                if (now.toLocaleDateString) {
+                    try {
+                        tanggal = now.toLocaleDateString('id-ID', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        });
+                    } catch (e) {
+                        tanggal = now.toLocaleDateString();
+                    }
+                }
 
-            const jam = now.toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
+                if (now.toLocaleTimeString) {
+                    try {
+                        jam = now.toLocaleTimeString('id-ID', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: false
+                        });
+                    } catch (e) {
+                        jam = now.toLocaleTimeString();
+                    }
+                }
 
-            el.textContent = `${tanggal} • ${jam} (${tzName})`;
+                if (!tanggal && !jam) {
+                    el.textContent = now.toString();
+                    return;
+                }
+
+                el.textContent = (tanggal || '') + ' • ' + (jam || '') + ' (' + tzName + ')';
+            } catch (e) {
+                // Jangan sampai error jam mematikan fitur lain (total/Datatables)
+            }
         }
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -2242,6 +2308,7 @@ include __DIR__ . '/../partials/sidebar.php';
             updateCustomDateVisibility();
             recalcTotals(); // hitung awal berdasarkan form yang dipulihkan
             renderPricePerPcs();
+            updateSalesTableFooterTotalsFallback();
 
             // ===== Auto hide alert setelah 5 detik =====
             setTimeout(function() {
@@ -2256,22 +2323,30 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }, 5000);
 
-            // ===== Inisialisasi DataTables untuk tabel transaksi =====
-            if (window.jQuery && jQuery.fn.DataTable) {
-                const table = jQuery('#salesTable').DataTable({
-                    pageLength: 10,
-                    order: [
-                        [1, 'desc']
-                    ],
-                    language: {
-                        url: "/assets/design/js/datatables-id.json"
-                    },
-                    footerCallback: function(row, data, start, end, display) {
-                        let api = this.api();
+	            // ===== Inisialisasi DataTables untuk tabel transaksi =====
+	            if (!window.jQuery) {
+	                console.warn('jQuery tidak tersedia: tabel transaksi tanpa DataTables.');
+	                return;
+	            }
 
-                        function intVal(i) {
-                            return typeof i === 'string' ?
-                                i.replace(/[^\d]/g, '') * 1 :
+	            let table = null;
+	            if (jQuery.fn.DataTable) {
+	                table = jQuery('#salesTable').DataTable({
+	                    pageLength: 10,
+	                    scrollX: true,
+	                    autoWidth: false,
+	                    order: [
+	                        [1, 'desc']
+	                    ],
+		                    language: {
+		                        url: "<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>"
+		                    },
+		                    footerCallback: function(row, data, start, end, display) {
+	                        let api = this.api();
+	
+	                        function intVal(i) {
+	                            return typeof i === 'string' ?
+	                                i.replace(/[^\d]/g, '') * 1 :
                                 typeof i === 'number' ?
                                 i :
                                 0;
@@ -2308,16 +2383,19 @@ include __DIR__ . '/../partials/sidebar.php';
                         jQuery(api.column(8).footer()).html(totalPain);
                         jQuery(api.column(9).footer()).html(formatDollar(totalPrice));
                         jQuery(api.column(10).footer()).html(formatDollar(totalBonus));
-                    }
-                });
+	                    }
+	                });
+	            } else {
+	                console.warn('DataTables tidak tersedia: fallback ke tabel biasa.');
+	            }
 
-                const $selectAll = jQuery('#selectAll');
-                const $bulkBtn = jQuery('#btnBulkDelete');
+	            const $selectAll = jQuery('#selectAll');
+	            const $bulkBtn = jQuery('#btnBulkDelete');
 
-                function updateBulkButton() {
-                    const anyChecked = jQuery('.row-check:checked').length > 0;
-                    $bulkBtn.prop('disabled', !anyChecked);
-                }
+	                function updateBulkButton() {
+	                    const anyChecked = jQuery('.row-check:checked').length > 0;
+	                    $bulkBtn.prop('disabled', !anyChecked);
+	                }
 
                 // Select/Deselect all (hanya yang ada checkboxnya)
                 $selectAll.on('click', function() {
@@ -2327,9 +2405,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
 
                 // Per row checkbox
-                jQuery(document).on('change', '.row-check', function() {
-                    const total = jQuery('#salesTable tbody .row-check').length;
-                    const checked = jQuery('#salesTable tbody .row-check:checked').length;
+	                jQuery(document).on('change', '.row-check', function() {
+	                    const total = jQuery('#salesTable tbody .row-check').length;
+	                    const checked = jQuery('#salesTable tbody .row-check:checked').length;
 
                     if (!this.checked) {
                         $selectAll.prop('checked', false);
@@ -2337,10 +2415,201 @@ include __DIR__ . '/../partials/sidebar.php';
                         $selectAll.prop('checked', true);
                     }
 
-                    updateBulkButton();
-                });
+	                    updateBulkButton();
+	                });
+	        });
+	    </script>
+    <script>
+        (function() {
+            if (window.EMSRealtime) {
+                return;
             }
-        });
+
+            const loggedErrors = {};
+
+            function logOnce(key, message, detail) {
+                if (loggedErrors[key]) {
+                    return;
+                }
+                loggedErrors[key] = true;
+                if (typeof detail === 'undefined') {
+                    console.warn(message);
+                    return;
+                }
+                console.warn(message, detail);
+            }
+
+            function previewText(value) {
+                return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+            }
+
+            async function safeFetchJSON(url, fetchOptions, runtimeOptions) {
+                const options = fetchOptions || {};
+                const settings = runtimeOptions || {};
+                const timeoutMs = settings.timeoutMs || 8000;
+                const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                const requestOptions = Object.assign({
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                }, options);
+
+                let timeoutId = null;
+                if (controller) {
+                    requestOptions.signal = controller.signal;
+                    timeoutId = setTimeout(function() {
+                        controller.abort();
+                    }, timeoutMs);
+                }
+
+                try {
+                    const res = await fetch(url, requestOptions);
+                    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+
+                    if (!res.ok) {
+                        let bodyPreview = '';
+                        try {
+                            bodyPreview = previewText(await res.text());
+                        } catch (e) {}
+
+                        return {
+                            ok: false,
+                            url: url,
+                            status: res.status,
+                            reason: 'http',
+                            contentType: contentType,
+                            bodyPreview: bodyPreview
+                        };
+                    }
+
+                    if (contentType.indexOf('application/json') === -1 && contentType.indexOf('text/json') === -1) {
+                        let bodyPreview = '';
+                        try {
+                            bodyPreview = previewText(await res.text());
+                        } catch (e) {}
+
+                        return {
+                            ok: false,
+                            url: url,
+                            status: res.status,
+                            reason: 'invalid_content_type',
+                            contentType: contentType,
+                            bodyPreview: bodyPreview
+                        };
+                    }
+
+                    try {
+                        return {
+                            ok: true,
+                            url: url,
+                            status: res.status,
+                            data: await res.json()
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            url: url,
+                            status: res.status,
+                            reason: 'invalid_json',
+                            error: e.message || String(e)
+                        };
+                    }
+                } catch (e) {
+                    return {
+                        ok: false,
+                        url: url,
+                        status: 0,
+                        reason: e && e.name === 'AbortError' ? 'timeout' : 'network',
+                        error: e && e.message ? e.message : String(e)
+                    };
+                } finally {
+                    if (timeoutId) {
+                        clearTimeout(timeoutId);
+                    }
+                }
+            }
+
+            function createPollingTask(config) {
+                const interval = config.interval || 3000;
+                const maxInterval = config.maxInterval || 30000;
+                let stopped = false;
+                let timer = null;
+                let inFlight = false;
+                let failCount = 0;
+
+                function nextDelay() {
+                    if (failCount <= 0) {
+                        return interval;
+                    }
+                    return Math.min(maxInterval, interval * Math.pow(2, Math.min(failCount - 1, 4)));
+                }
+
+                function schedule(delay) {
+                    if (stopped) {
+                        return;
+                    }
+                    if (timer) {
+                        clearTimeout(timer);
+                    }
+                    timer = setTimeout(run, Math.max(250, delay));
+                }
+
+                async function run() {
+                    if (stopped || inFlight) {
+                        return;
+                    }
+
+                    inFlight = true;
+
+                    try {
+                        const result = await safeFetchJSON(config.url, config.fetchOptions || {}, {
+                            timeoutMs: config.timeoutMs || 8000
+                        });
+
+                        if (result.ok) {
+                            failCount = 0;
+                            if (config.onSuccess) {
+                                config.onSuccess(result.data, result);
+                            }
+                        } else {
+                            failCount += 1;
+                            if (config.onError) {
+                                config.onError(result, failCount);
+                            } else {
+                                logOnce(
+                                    'poll:' + config.url + ':' + result.reason,
+                                    'Realtime request failed: ' + config.url,
+                                    result
+                                );
+                            }
+                        }
+                    } finally {
+                        inFlight = false;
+                        schedule(nextDelay());
+                    }
+                }
+
+                return {
+                    start: function() {
+                        schedule(0);
+                    },
+                    stop: function() {
+                        stopped = true;
+                        if (timer) {
+                            clearTimeout(timer);
+                        }
+                    },
+                    trigger: function() {
+                        schedule(0);
+                    }
+                };
+            }
+
+            window.EMSRealtime = {
+                createPollingTask: createPollingTask,
+                logOnce: logOnce,
+                safeFetchJSON: safeFetchJSON
+            };
+        })();
     </script>
     <script>
         (function() {
@@ -2456,27 +2725,41 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }
 
-            // =============================================
-            // FETCH DATA DARI SERVER (SETIAP 1 DETIK)
-            // =============================================
-            async function fetchMedics() {
-                try {
-                    const res = await fetch('/actions/get_online_medics.php', {
-                        cache: 'no-store'
-                    });
-                    const data = await res.json();
-                    renderMedics(data); // ⬅️ RENDER HANYA KALAU DATA BERUBAH
-                } catch (e) {
-                    console.error('Realtime medis gagal', e);
+            function handleMedicsError(result, failCount) {
+                if (!lastDataHash) {
+                    container.innerHTML = '<p class="meta-text">Data realtime medis sementara tidak tersedia.</p>';
+                    updateTotal(0);
+                }
+
+                if (failCount === 1) {
+                    window.EMSRealtime.logOnce(
+                        'online-medics:' + result.reason,
+                        'Realtime medis sementara gagal dimuat.',
+                        result
+                    );
                 }
             }
 
-            // TIMER UPDATE (SETIAP 1 DETIK, INDEPENDEN)
-            setInterval(updateOnlineDurations, 1000);
+            const medicsPoller = window.EMSRealtime.createPollingTask({
+                url: '/actions/get_online_medics.php',
+                interval: 3000,
+                maxInterval: 30000,
+                timeoutMs: 7000,
+                onSuccess: function(data) {
+                    if (!Array.isArray(data)) {
+                        handleMedicsError({
+                            reason: 'invalid_payload'
+                        }, 1);
+                        return;
+                    }
 
-            // FETCH DATA (SETIAP 1 DETIK)
-            fetchMedics();
-            setInterval(fetchMedics, 1000);
+                    renderMedics(data);
+                },
+                onError: handleMedicsError
+            });
+
+            setInterval(updateOnlineDurations, 1000);
+            medicsPoller.start();
         })();
     </script>
 
@@ -2494,9 +2777,23 @@ include __DIR__ . '/../partials/sidebar.php';
             let isFirstLoad = true;
 
             const sound = document.getElementById('activitySound');
-            if (sound && !sound.muted) {
-                sound.currentTime = 0;
-                sound.play().catch(() => {});
+
+            function playSound() {
+                if (!sound) {
+                    return;
+                }
+
+                if (localStorage.getItem('activity_sound_muted') === '1' || sound.muted) {
+                    return;
+                }
+
+                try {
+                    sound.currentTime = 0;
+                    const playback = sound.play();
+                    if (playback && typeof playback.catch === 'function') {
+                        playback.catch(function() {});
+                    }
+                } catch (e) {}
             }
 
             // ===============================
@@ -2583,7 +2880,12 @@ include __DIR__ . '/../partials/sidebar.php';
             // UPDATE LIST
             // ===============================
             function updateList(newActivities) {
-                if (!newActivities.length) return;
+                if (!newActivities.length) {
+                    if (!lastActivityHash) {
+                        container.innerHTML = '<p class="meta-text">Belum ada activity terbaru.</p>';
+                    }
+                    return;
+                }
 
                 const newestId = newActivities[0].id;
 
@@ -2596,13 +2898,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 isFirstLoad = false;
 
                 // ===== LOGIC LAMA TETAP =====
-                const newHash = JSON.stringify(newActivities.map(a => a.id));
+                const trimmedActivities = newActivities.slice(0, MAX_ITEMS);
+                const newHash = JSON.stringify(trimmedActivities.map(function(activity) {
+                    return activity.id;
+                }));
                 if (newHash === lastActivityHash) return;
                 lastActivityHash = newHash;
 
                 container.innerHTML = '';
 
-                newActivities.forEach(activity => {
+                trimmedActivities.forEach(activity => {
                     container.appendChild(renderActivity(activity));
                 });
             }
@@ -2617,19 +2922,17 @@ include __DIR__ . '/../partials/sidebar.php';
             // ===============================
             // FETCH DARI SERVER
             // ===============================
-            async function fetchActivities() {
-                try {
-                    const res = await fetch('/actions/get_activities.php', {
-                        cache: 'no-store'
-                    });
+            function handleActivityError(result, failCount) {
+                if (!lastActivityHash) {
+                    container.innerHTML = '<p class="meta-text">Activity feed sementara tidak tersedia.</p>';
+                }
 
-                    if (!res.ok) return;
-
-                    const data = await res.json();
-                    updateList(data);
-
-                } catch (e) {
-                    console.error('Activity feed error:', e);
+                if (failCount === 1) {
+                    window.EMSRealtime.logOnce(
+                        'activities:' + result.reason,
+                        'Activity feed sementara gagal dimuat.',
+                        result
+                    );
                 }
             }
 
@@ -2651,8 +2954,25 @@ include __DIR__ . '/../partials/sidebar.php';
             // ===============================
             // INIT & POLLING
             // ===============================
-            fetchActivities(); // Fetch pertama kali
-            setInterval(fetchActivities, 3000); // Fetch data baru setiap 3 detik
+            const activitiesPoller = window.EMSRealtime.createPollingTask({
+                url: '/actions/get_activities.php',
+                interval: 3000,
+                maxInterval: 30000,
+                timeoutMs: 7000,
+                onSuccess: function(data) {
+                    if (!Array.isArray(data)) {
+                        handleActivityError({
+                            reason: 'invalid_payload'
+                        }, 1);
+                        return;
+                    }
+
+                    updateList(data);
+                },
+                onError: handleActivityError
+            });
+
+            activitiesPoller.start();
 
             // UPDATE TIME SETIAP 10 DETIK
             setInterval(updateAllTimes, 10000);
@@ -2780,21 +3100,31 @@ include __DIR__ . '/../partials/sidebar.php';
             }
         }
 
-        async function checkStatus() {
-            try {
-                const res = await fetch('/actions/get_farmasi_status.php', {
-                    cache: 'no-store'
-                });
-                const json = await res.json();
-                updateUI(json.status);
-            } catch (e) {
-                console.error('Status check failed', e);
+        const statusPoller = window.EMSRealtime.createPollingTask({
+            url: '/actions/get_farmasi_status.php',
+            interval: 5000,
+            maxInterval: 30000,
+            timeoutMs: 7000,
+            onSuccess: function(data) {
+                if (!data || typeof data.status !== 'string') {
+                    return;
+                }
+                badge.title = '';
+                updateUI(data.status);
+            },
+            onError: function(result, failCount) {
+                badge.title = 'Status realtime sementara tidak tersedia.';
+                if (failCount === 1) {
+                    window.EMSRealtime.logOnce(
+                        'farmasi-status:' + result.reason,
+                        'Status farmasi sementara gagal dimuat.',
+                        result
+                    );
+                }
             }
-        }
+        });
 
-        // Cek setiap 5 detik (aman & ringan)
-        checkStatus();
-        setInterval(checkStatus, 5000);
+        statusPoller.start();
     })();
 </script>
 
@@ -2803,21 +3133,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
         let lastState = null;
 
-        async function checkFairness() {
-            try {
-                const res = await fetch('/actions/get_fairness_status.php', {
-                    cache: 'no-store'
-                });
-
-                if (!res.ok) return;
-
-                const data = await res.json();
-
+        function applyFairnessData(data) {
                 const selisih = parseInt(data.selisih || 0, 10);
                 const blocked = !!data.blocked;
-                const threshold = parseInt(data.threshold || 10, 10);
 
-                // STATE KEY HARUS TERMASUK STATUS USER
                 const stateKey = blocked + ':' + selisih + ':' + data.user_status;
                 if (stateKey === lastState) return;
                 lastState = stateKey;
@@ -2898,17 +3217,32 @@ include __DIR__ . '/../partials/sidebar.php';
                 // AMAN TOTAL (SELISIH = 0)
                 // ===============================
                 clearFairnessNotice();
-
-            } catch (e) {
-                console.error('Fairness error:', e);
             }
-        }
 
-        // Jalankan pertama kali
-        checkFairness();
+        const fairnessPoller = window.EMSRealtime.createPollingTask({
+            url: '/actions/get_fairness_status.php',
+            interval: 3000,
+            maxInterval: 30000,
+            timeoutMs: 7000,
+            onSuccess: function(data) {
+                if (!data || typeof data.user_status !== 'string') {
+                    return;
+                }
+                applyFairnessData(data);
+            },
+            onError: function(result, failCount) {
+                clearFairnessNotice();
+                if (failCount === 1) {
+                    window.EMSRealtime.logOnce(
+                        'fairness:' + result.reason,
+                        'Fairness check sementara gagal dimuat.',
+                        result
+                    );
+                }
+            }
+        });
 
-        // Cek ulang setiap 3 detik
-        setInterval(checkFairness, 3000);
+        fairnessPoller.start();
 
     })();
 </script>
@@ -2921,48 +3255,61 @@ include __DIR__ . '/../partials/sidebar.php';
 
         let timer = null;
 
-        async function checkCooldown() {
-            try {
-                const res = await fetch('/actions/get_global_cooldown.php', {
-                    cache: 'no-store'
-                });
-                const data = await res.json();
+        function clearCooldownUI() {
+            box.style.display = 'none';
+            box.innerHTML = '';
+            btn.disabled = false;
+            btn.classList.remove('btn-disabled');
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
 
-                // Tidak aktif: pastikan bersih
-                if (!data.active) {
-                    box.style.display = 'none';
-                    box.innerHTML = '';
-                    btn.disabled = false;
-                    btn.classList.remove('btn-disabled');
+        function applyCooldownData(data) {
+            if (!data.active) {
+                clearCooldownUI();
+                return;
+            }
 
-                    if (timer) {
-                        clearInterval(timer);
-                        timer = null;
-                    }
-                    return;
-                }
+            btn.disabled = true;
+            btn.classList.add('btn-disabled');
 
-                // Aktif: hanya untuk user ini
-                btn.disabled = true;
-                btn.classList.add('btn-disabled');
-
-                const remain = parseInt(data.remain || 0, 10);
-
-                box.innerHTML = `
+            const remain = parseInt(data.remain || 0, 10);
+            box.innerHTML = `
                 <strong>Cooldown transaksi</strong><br>
                 Anda baru saja menyimpan transaksi.<br>
                 Silakan tunggu <strong>${remain} detik</strong>
                 sebelum transaksi berikutnya.
             `;
-                box.style.display = 'block';
-
-            } catch (e) {
-                console.error('Cooldown error', e);
-            }
+            box.style.display = 'block';
         }
 
-        checkCooldown();
-        setInterval(checkCooldown, 1000);
+        const cooldownPoller = window.EMSRealtime.createPollingTask({
+            url: '/actions/get_global_cooldown.php',
+            interval: 3000,
+            maxInterval: 30000,
+            timeoutMs: 7000,
+            onSuccess: function(data) {
+                if (!data || typeof data.active === 'undefined') {
+                    clearCooldownUI();
+                    return;
+                }
+                applyCooldownData(data);
+            },
+            onError: function(result, failCount) {
+                clearCooldownUI();
+                if (failCount === 1) {
+                    window.EMSRealtime.logOnce(
+                        'cooldown:' + result.reason,
+                        'Cooldown status sementara gagal dimuat.',
+                        result
+                    );
+                }
+            }
+        });
+
+        cooldownPoller.start();
     })();
 </script>
 

@@ -1,18 +1,19 @@
+<?php require_once __DIR__ . '/../config/helpers.php'; ?>
 </main>
 
 </div>
 
-<script src="/assets/js/app.js"></script>
-<script src="/assets/design/js/app-shell.js"></script>
-<script src="/assets/vendor/photoswipe/photoswipe.umd.min.js"></script>
-<script src="/assets/vendor/photoswipe/photoswipe-lightbox.umd.min.js"></script>
-<script src="/assets/design/js/photoswipe-init.js"></script>
-<script src="/assets/vendor/jquery/jquery.min.js"></script>
-<script src="/assets/vendor/datatables/dataTables.min.js"></script>
-<script src="/assets/vendor/jszip/jszip.min.js"></script>
-<script src="/assets/vendor/datatables/dataTables.buttons.min.js"></script>
-<script src="/assets/vendor/datatables/buttons.html5.min.js"></script>
-<script src="/assets/vendor/chartjs/chart.umd.js"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/js/app.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/design/js/app-shell.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.umd.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe-lightbox.umd.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/design/js/photoswipe-init.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jquery/jquery.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jszip/jszip.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.buttons.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.html5.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/chartjs/chart.umd.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script>
     (function realtimeSessionCheck() {
 	        let timer = null;

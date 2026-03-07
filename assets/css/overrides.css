@@ -1,0 +1,98 @@
+/* UI overrides loaded after vendor + build.css */
+
+:root {
+  --ems-line: rgba(148, 163, 184, 0.45);
+  --ems-line-strong: rgba(148, 163, 184, 0.65);
+  --ems-head: rgba(14, 165, 233, 0.10);
+}
+
+/* =========================================================
+   TABLE BORDERS (generic)
+   ========================================================= */
+.table-wrapper,
+.table-wrapper-sm {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table.table-custom {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+
+table.table-custom thead th {
+  background: var(--ems-head);
+  font-weight: 800;
+  border-top: 1px solid var(--ems-line);
+  border-bottom: 1px solid var(--ems-line-strong);
+  white-space: nowrap;
+}
+
+table.table-custom th,
+table.table-custom td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ems-line);
+  vertical-align: middle;
+}
+
+table.table-custom th + th,
+table.table-custom td + td {
+  border-left: 1px solid var(--ems-line);
+}
+
+table.table-custom tbody tr:last-child td {
+  border-bottom: 1px solid var(--ems-line);
+}
+
+/* Wrap table with a clean frame (opt-in with table-wrapper-sm) */
+.table-wrapper-sm {
+  border: 1px solid var(--ems-line);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* =========================================================
+   DATATABLES (fallback styling if vendor CSS fails)
+   ========================================================= */
+table.dataTable {
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+table.dataTable thead th,
+table.dataTable thead td {
+  background: var(--ems-head) !important;
+  border-top: 1px solid var(--ems-line) !important;
+  border-bottom: 1px solid var(--ems-line-strong) !important;
+}
+
+table.dataTable th,
+table.dataTable td {
+  border-bottom: 1px solid var(--ems-line) !important;
+}
+
+table.dataTable th + th,
+table.dataTable td + td {
+  border-left: 1px solid var(--ems-line) !important;
+}
+
+/* DataTables controls layout on small screens */
+.dt-container .dt-layout-row {
+  gap: 10px;
+}
+
+@media (max-width: 767px) {
+  .dt-container .dt-layout-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dt-container .dt-search input {
+    width: 100%;
+  }
+}
+
