@@ -14,6 +14,17 @@
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.buttons.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.html5.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/chartjs/chart.umd.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+
+<!-- Sidebar Toggle Script -->
+<script>
+// Close sidebar on window resize to desktop
+window.addEventListener('resize', function() {
+    if (window.innerWidth >= 768) {
+        document.body.classList.remove('sidebar-open');
+    }
+});
+</script>
+
 <script>
     (function realtimeSessionCheck() {
 	        let timer = null;

@@ -34,6 +34,7 @@ $navItems = array_merge($navItems, [
     ['href' => '/dashboard/absensi_ems.php', 'page' => 'absensi_ems.php', 'label' => 'Jam Kerja Web', 'icon' => 'clock'],
     ['href' => '/dashboard/gaji.php', 'page' => 'gaji.php', 'label' => 'Gaji', 'icon' => 'banknotes'],
     ['href' => '/dashboard/pengajuan_jabatan.php', 'page' => 'pengajuan_jabatan.php', 'label' => 'Pengajuan Jabatan', 'icon' => 'arrow-up-tray'],
+    ['href' => '/dashboard/pengajuan_cuti_resign.php', 'page' => 'pengajuan_cuti_resign.php', 'label' => 'Pengajuan Cuti & Resign', 'icon' => 'calendar'],
 ]);
 
 if ($userRole !== 'staff') {
@@ -47,6 +48,8 @@ if ($userRole !== 'staff') {
 
 if ($userRole !== 'staff') {
     $navItems[] = ['href' => '/dashboard/surat_menyurat.php', 'page' => 'surat_menyurat.php', 'label' => 'Surat & Notulen', 'icon' => 'document-text'];
+    // Menu Monitoring Cuti & Resign (hanya untuk Manager+)
+    $navItems[] = ['href' => '/dashboard/tracking_cuti_resign.php', 'page' => 'tracking_cuti_resign.php', 'label' => 'Monitoring Cuti & Resign', 'icon' => 'chart-bar'];
 }
 
 $navItems[] = ['href' => '/dashboard/setting_akun.php', 'page' => 'setting_akun.php', 'label' => 'Setting Akun', 'icon' => 'cog-6-tooth'];
@@ -111,6 +114,8 @@ foreach ($navItems as $it) {
         case 'persyaratan_jabatan.php':
         case 'review_pengajuan_jabatan.php':
         case 'surat_menyurat.php':
+        case 'pengajuan_cuti_resign.php':
+        case 'tracking_cuti_resign.php':
             $groupedNav['Administrasi'][] = $it;
             break;
         case 'setting_akun.php':
@@ -165,5 +170,5 @@ foreach ($navItems as $it) {
     </div>
 </aside>
 
-<div class="sidebar-overlay" id="sidebarOverlay"></div>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="document.body.classList.remove('sidebar-open');"></div>
 <main class="main-content">

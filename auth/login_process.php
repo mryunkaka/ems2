@@ -57,6 +57,26 @@ if ((int)$user['is_verified'] === 0) {
 }
 
 // =====================================================
+// CEK STATUS AKTIF USER (REIGNED/NONAKTIF)
+// =====================================================
+if ((int)$user['is_active'] === 0) {
+    $_SESSION['error'] = 'Akun Anda sudah dinonaktifkan. Hubungi administrator.';
+    header("Location: login.php");
+    exit;
+}
+
+// =====================================================
+// CEK STATUS CUTI (INFO ONLY - TIDAK BLOKIR LOGIN)
+// =====================================================
+if (is_user_on_cuti($pdo, $user['id'])) {
+    // Set info session untuk ditampilkan di dashboard
+    $_SESSION['cuti_info'] = [
+        'on_cuti' => true,
+        'message' => 'Anda sedang dalam masa cuti. Sistem tetap dapat diakses.'
+    ];
+}
+
+// =====================================================
 // CEK LOGIN DI DEVICE LAIN
 // =====================================================
 $stmt = $pdo->prepare("

@@ -100,8 +100,8 @@ if ($userId) {
 	    <div class="ems-app">
 	        <header class="topbar">
 	            <div class="topbar-left">
-	                <button id="menuToggle" class="menu-btn" type="button" aria-label="Buka navigasi"><?= ems_icon('bars-3', 'h-7 w-7', '2.2') ?></button>
-	
+	                <button id="menuToggle" class="menu-btn" type="button" aria-label="Buka navigasi" onclick="document.body.classList.toggle('sidebar-open'); return false;"><?= ems_icon('bars-3', 'h-7 w-7', '2.2') ?></button>
+
 	                <div class="topbar-brand">
 	                    <img src="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>" alt="EMS Logo" class="topbar-logo">
 	                    <div class="topbar-text">
