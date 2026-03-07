@@ -37,6 +37,7 @@ $endDT       = $endDT       ?? new DateTime($rangeEnd);
 
 $user = $_SESSION['user_rh'] ?? [];
 
+$medicUserId  = $user['id'] ?? '';
 $medicName    = $user['name'] ?? '';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
@@ -564,24 +565,25 @@ $rowsExport = $filteredSales;
 // Rekapan bonus: selalu berdasarkan medis aktif (session)
 $singleMedicStats = null;
 
-if ($medicName !== '') {
+if ($medicUserId !== '') {
     $stmtSingle = $pdo->prepare("
-        SELECT 
-            medic_name,
-            medic_jabatan,
+        SELECT
+            medic_user_id,
+            MAX(medic_name) AS medic_name,
+            MAX(medic_jabatan) AS medic_jabatan,
             COUNT(*) AS total_transaksi,
             SUM(qty_bandage + qty_ifaks + qty_painkiller) AS total_item,
             SUM(price) AS total_rupiah
         FROM sales
         WHERE created_at BETWEEN :start AND :end
-          AND medic_name = :mname
-        GROUP BY medic_name, medic_jabatan
+          AND medic_user_id = :uid
+        GROUP BY medic_user_id
         LIMIT 1
     ");
     $stmtSingle->execute([
         ':start' => $rangeStart,
         ':end'   => $rangeEnd,
-        ':mname' => $medicName,
+        ':uid'   => $medicUserId,
     ]);
     $singleMedicStats = $stmtSingle->fetch(PDO::FETCH_ASSOC) ?: null;
 }

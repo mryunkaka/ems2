@@ -90,13 +90,14 @@ $totalAll = gmdate('H:i:s', (int)$stmtAll->fetchColumn());
    =============================== */
 $stmtLeaderboard = $pdo->prepare("
     SELECT
-        medic_name,
-        medic_jabatan,
+        user_id,
+        MAX(medic_name) AS medic_name,
+        MAX(medic_jabatan) AS medic_jabatan,
         SUM(duration_seconds) AS total_seconds,
         COUNT(*) AS total_sesi
     FROM user_farmasi_sessions
     WHERE session_start BETWEEN :start AND :end
-    GROUP BY user_id, medic_name, medic_jabatan
+    GROUP BY user_id
     ORDER BY total_seconds DESC
 ");
 $stmtLeaderboard->execute([

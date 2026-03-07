@@ -119,10 +119,10 @@ foreach ($weeks as $key => $w) {
     $totalIncomeWeek = (float)($weeklyIncome['total'] ?? 0);
 
     $winner = fetchOne($pdo, "
-        SELECT medic_name, SUM(price) AS total
+        SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
         FROM sales
         WHERE created_at BETWEEN :ws AND :we
-        GROUP BY medic_name
+        GROUP BY medic_user_id
         ORDER BY SUM(price) DESC
         LIMIT 1
     ", [
@@ -152,10 +152,10 @@ $lastMonthStart = date('Y-m-01 00:00:00', strtotime('-1 month'));
 $lastMonthEnd   = date('Y-m-t 23:59:59', strtotime('-1 month'));
 
 $monthlyCurrent = fetchOne($pdo, "
-    SELECT medic_name, SUM(price) AS total
+    SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
     FROM sales
     WHERE created_at BETWEEN :s AND :e
-    GROUP BY medic_name
+    GROUP BY medic_user_id
     ORDER BY total DESC
     LIMIT 1
 ", [
@@ -164,10 +164,10 @@ $monthlyCurrent = fetchOne($pdo, "
 ]);
 
 $monthlyLast = fetchOne($pdo, "
-    SELECT medic_name, SUM(price) AS total
+    SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
     FROM sales
     WHERE created_at BETWEEN :s AND :e
-    GROUP BY medic_name
+    GROUP BY medic_user_id
     ORDER BY total DESC
     LIMIT 1
 ", [
@@ -179,10 +179,10 @@ $monthlyLast = fetchOne($pdo, "
 // TOP EARNING MEDIC (BONUS TERBESAR)
 // =====================================================
 $topEarning = fetchOne($pdo, "
-    SELECT medic_name, SUM(price * 0.4) AS bonus
+    SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price * 0.4) AS bonus
     FROM sales
     WHERE created_at BETWEEN :start AND :end
-    GROUP BY medic_name
+    GROUP BY medic_user_id
     ORDER BY bonus DESC
     LIMIT 1
 ", $paramsRange);
