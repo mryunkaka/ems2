@@ -28,17 +28,18 @@ ems_require_not_trainee_html('Ranking');
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 
-// === QUERY RANKING (ASLI DARI REKAP_FARMASI) ===
+// === QUERY RANKING (BERDASARKAN USER ID) ===
 $stmtRank = $pdo->prepare("
-    SELECT 
-        medic_name,
-        medic_jabatan,
+    SELECT
+        medic_user_id,
+        MAX(medic_name) AS medic_name,
+        MAX(medic_jabatan) AS medic_jabatan,
         COUNT(*) AS total_transaksi,
         SUM(qty_bandage + qty_ifaks + qty_painkiller) AS total_item,
         SUM(price) AS total_rupiah
     FROM sales
     WHERE created_at BETWEEN :start AND :end
-    GROUP BY medic_name, medic_jabatan
+    GROUP BY medic_user_id
     ORDER BY total_rupiah DESC
 ");
 $stmtRank->execute([

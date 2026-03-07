@@ -946,10 +946,10 @@ $singleMedicStats = null;
 
 if ($medicName !== '') {
     $stmtSingle = $pdo->prepare("
-        SELECT 
+        SELECT
             medic_user_id,
-            medic_name,
-            medic_jabatan,
+            MAX(medic_name) AS medic_name,
+            MAX(medic_jabatan) AS medic_jabatan,
             COUNT(*) AS total_transaksi,
             SUM(qty_bandage + qty_ifaks + qty_painkiller) AS total_item,
             SUM(price) AS total_harga,
@@ -957,7 +957,7 @@ if ($medicName !== '') {
         FROM sales
         WHERE created_at BETWEEN :start AND :end
         AND medic_user_id = :uid
-        GROUP BY medic_user_id, medic_name, medic_jabatan
+        GROUP BY medic_user_id
         LIMIT 1
     ");
     $stmtSingle->execute([

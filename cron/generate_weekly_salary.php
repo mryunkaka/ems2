@@ -77,14 +77,15 @@ while ($startDate <= $today) {
     // === AMBIL DATA SALES
     $stmt = $pdo->prepare("
         SELECT
-            medic_name,
+            medic_user_id,
+            MAX(medic_name) AS medic_name,
             MAX(medic_jabatan) AS medic_jabatan,
             COUNT(*) AS total_transaksi,
             SUM(qty_bandage + qty_ifaks + qty_painkiller) AS total_item,
             SUM(price) AS total_rupiah
         FROM sales
         WHERE DATE(created_at) BETWEEN :start AND :end
-        GROUP BY medic_name
+        GROUP BY medic_user_id
     ");
     $stmt->execute([
         ':start' => $periodStart,
@@ -102,13 +103,14 @@ while ($startDate <= $today) {
     // === INSERT SALARY
     $insert = $pdo->prepare("
         INSERT INTO salary
-        (medic_name, medic_jabatan, period_start, period_end,
+        (medic_user_id, medic_name, medic_jabatan, period_start, period_end,
          total_transaksi, total_item, total_rupiah, bonus_40)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
 
     foreach ($data as $row) {
         $insert->execute([
+            $row['medic_user_id'],
             $row['medic_name'],
             $row['medic_jabatan'],
             $periodStart,

@@ -26,7 +26,7 @@ $pageTitle = 'Gaji Mingguan';
 // =======================
 $stmtRekap = $pdo->prepare("
     SELECT
-        COUNT(DISTINCT medic_name) AS total_medis,
+        COUNT(DISTINCT medic_user_id) AS total_medis,
         SUM(total_transaksi) AS total_transaksi,
         SUM(total_item) AS total_item,
         SUM(total_rupiah) AS total_rupiah,
@@ -85,11 +85,11 @@ if ($userRole === 'staff') {
     $stmt = $pdo->prepare("
         SELECT *
         FROM salary
-        WHERE medic_name = ?
+        WHERE medic_user_id = ?
         ORDER BY period_end DESC
     ");
 
-    $stmt->execute([$userName]);
+    $stmt->execute([$_SESSION['user_rh']['id']]);
 } else {
 
     // NON-STAFF: tabel HARUS ikut filter tanggal
