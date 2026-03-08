@@ -1,0 +1,161 @@
+<?php
+date_default_timezone_set('Asia/Jakarta');
+session_start();
+
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
+
+// Validate request method
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit('Invalid method');
+}
+
+// Validate CSRF token
+if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
+}
+
+// Get user from session
+$user = $_SESSION['user_rh'] ?? [];
+$userId = (int)($user['id'] ?? 0);
+
+if ($userId <= 0) {
+    $_SESSION['flash_errors'][] = 'Session tidak valid.';
+    header('Location: rekam_medis.php');
+    exit;
+}
+
+try {
+    // =====================
+    // 1. VALIDATION
+    // =====================
+    
+    $patientName = trim($_POST['patient_name'] ?? '');
+    $patientDob = $_POST['patient_dob'] ?? '';
+    $patientGender = $_POST['patient_gender'] ?? '';
+    $doctorId = (int)($_POST['doctor_id'] ?? 0);
+    $operasiType = $_POST['operasi_type'] ?? 'minor';
+    
+    // Required fields validation
+    if ($patientName === '') {
+        throw new Exception('Nama pasien wajib diisi.');
+    }
+    
+    if (empty($patientDob)) {
+        throw new Exception('Tanggal lahir pasien wajib diisi.');
+    }
+    
+    // Validate date format (YYYY-MM-DD)
+    $dobPattern = '/^\d{4}-\d{2}-\d{2}$/';
+    if (!preg_match($dobPattern, $patientDob)) {
+        throw new Exception('Format tanggal lahir tidak valid. Gunakan format YYYY-MM-DD.');
+    }
+    
+    // Validate date is reasonable (between 1900 and today)
+    $dobDateTime = DateTime::createFromFormat('Y-m-d', $patientDob);
+    if (!$dobDateTime || $dobDateTime->format('Y-m-d') !== $patientDob) {
+        throw new Exception('Tanggal lahir tidak valid.');
+    }
+    
+    $minDate = new DateTime('1900-01-01');
+    $maxDate = new DateTime();
+    if ($dobDateTime < $minDate || $dobDateTime > $maxDate) {
+        throw new Exception('Tanggal lahir tidak masuk akal. Harus antara tahun 1900 sampai hari ini.');
+    }
+    
+    if (empty($patientGender)) {
+        throw new Exception('Jenis kelamin pasien wajib dipilih.');
+    }
+    
+    if ($doctorId <= 0) {
+        throw new Exception('Dokter DPJP wajib dipilih.');
+    }
+    
+    if (!in_array($operasiType, ['major', 'minor'])) {
+        throw new Exception('Jenis operasi tidak valid.');
+    }
+    
+    // =====================
+    // 2. FILE UPLOAD KTP (WAJIB)
+    // =====================
+    
+    $ktpPath = null;
+    if (isset($_FILES['ktp_file']) && $_FILES['ktp_file']['error'] === UPLOAD_ERR_OK) {
+        $ktpPath = uploadAndCompressFile($_FILES['ktp_file'], 'medical_records/ktp', 300000, 5000000);
+        if (!$ktpPath) {
+            throw new Exception('Gagal upload KTP. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi 5MB.');
+        }
+    } else {
+        throw new Exception('Upload KTP wajib dilakukan.');
+    }
+    
+    // =====================
+    // 3. FILE UPLOAD MRI (OPSIONAL)
+    // =====================
+    
+    $mriPath = null;
+    if (isset($_FILES['mri_file']) && $_FILES['mri_file']['error'] === UPLOAD_ERR_OK) {
+        $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
+        // MRI optional, jadi jika gagal upload tetap lanjut
+    }
+    
+    // =====================
+    // 4. HTML SANITIZATION
+    // =====================
+    
+    $medicalResultHtml = $_POST['medical_result_html'] ?? '';
+    // Basic XSS prevention - strip script tags
+    $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
+    
+    // =====================
+    // 5. INSERT TO DATABASE
+    // =====================
+    
+    // Handle multiple assistants - get first one for assistant_id (backward compatibility)
+    $assistantIds = $_POST['assistant_ids'] ?? [];
+    $assistantId = !empty($assistantIds[0]) ? (int)$assistantIds[0] : null;
+    
+    $stmt = $pdo->prepare("
+        INSERT INTO medical_records 
+        (patient_name, patient_occupation, patient_dob, patient_phone, 
+         patient_gender, patient_address, patient_status, ktp_file_path, 
+         mri_file_path, medical_result_html, doctor_id, assistant_id, 
+         operasi_type, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    
+    $stmt->execute([
+        $patientName,
+        trim($_POST['patient_occupation'] ?? 'Civilian'),
+        $patientDob,
+        trim($_POST['patient_phone'] ?? null),
+        $patientGender,
+        trim($_POST['patient_address'] ?? 'INDONESIA'),
+        trim($_POST['patient_status'] ?? null),
+        $ktpPath,
+        $mriPath,
+        $medicalResultHtml,
+        $doctorId,
+        $assistantId,
+        $operasiType,
+        $userId
+    ]);
+    
+    // =====================
+    // 6. SUCCESS
+    // =====================
+    
+    $_SESSION['flash_messages'][] = 'Rekam medis berhasil disimpan.';
+    
+    header('Location: rekam_medis.php?saved=1');
+    exit;
+    
+} catch (Exception $e) {
+    $_SESSION['flash_errors'][] = $e->getMessage();
+    header('Location: rekam_medis.php');
+    exit;
+}

@@ -574,3 +574,108 @@ function get_status_badge(string $status): array
         ]
     };
 }
+
+/**
+ * Compress image smart - reduce file size while maintaining quality
+ * 
+ * @param string $sourcePath Path to source image
+ * @param string $targetPath Path to save compressed image
+ * @param int $maxWidth Maximum width (default 1200px)
+ * @param int $targetSize Target file size in bytes (default 300KB)
+ * @param int $minQuality Minimum quality (default 70)
+ * @return bool Success or failure
+ */
+function compressImageSmart(
+    string $sourcePath,
+    string $targetPath,
+    int $maxWidth = 1200,
+    int $targetSize = 300000,
+    int $minQuality = 70
+): bool {
+    $info = getimagesize($sourcePath);
+    if (!$info) return false;
+
+    $mime = $info['mime'];
+    if ($mime === 'image/jpeg') {
+        $src = imagecreatefromjpeg($sourcePath);
+    } elseif ($mime === 'image/png') {
+        $src = imagecreatefrompng($sourcePath);
+    } else {
+        return false;
+    }
+
+    $w = imagesx($src);
+    $h = imagesy($src);
+
+    // Resize if width exceeds max
+    if ($w > $maxWidth) {
+        $ratio = $maxWidth / $w;
+        $nw = $maxWidth;
+        $nh = (int)($h * $ratio);
+        $dst = imagecreatetruecolor($nw, $nh);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        imagedestroy($src);
+    } else {
+        $dst = $src;
+    }
+
+    // Compress
+    if ($mime === 'image/png') {
+        imagepng($dst, $targetPath, 7);
+    } else {
+        for ($q = 90; $q >= $minQuality; $q -= 5) {
+            imagejpeg($dst, $targetPath, $q);
+            if (filesize($targetPath) <= $targetSize) break;
+        }
+    }
+
+    imagedestroy($dst);
+    return true;
+}
+
+/**
+ * Upload and compress file helper
+ * 
+ * @param array $file $_FILES array element
+ * @param string $folder Folder name under storage/
+ * @param int $maxSize Max file size in bytes (default 300KB)
+ * @param int $uploadMaxSize Max upload size in bytes (default 5MB)
+ * @return string|null File path on success, null on failure
+ */
+function uploadAndCompressFile(array $file, string $folder, int $maxSize = 300000, int $uploadMaxSize = 5000000): ?string
+{
+    // Validate error
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    // Validate file type
+    $allowedTypes = ['image/jpeg', 'image/png'];
+    $info = getimagesize($file['tmp_name']);
+    if (!$info || !in_array($info['mime'], $allowedTypes, true)) {
+        return null;
+    }
+
+    // Validate file size
+    if ($file['size'] > $uploadMaxSize) {
+        return null;
+    }
+
+    // Create folder path
+    $baseDir = __DIR__ . '/../storage/' . $folder;
+    if (!is_dir($baseDir)) {
+        mkdir($baseDir, 0755, true);
+    }
+
+    // Generate filename
+    $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
+    $filename = uniqid() . '_' . time() . '.' . $ext;
+    $targetPath = $baseDir . '/' . $filename;
+
+    // Compress and save
+    if (compressImageSmart($file['tmp_name'], $targetPath, 1200, $maxSize, 70)) {
+        return 'storage/' . $folder . '/' . $filename;
+    }
+
+    return null;
+}

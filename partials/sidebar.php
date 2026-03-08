@@ -23,6 +23,8 @@ if ($userRole !== 'staff') {
 
 $navItems[] = ['href' => '/dashboard/ems_services.php', 'page' => 'ems_services.php', 'label' => 'Layanan Medis', 'icon' => 'building-office-2'];
 
+$navItems[] = ['href' => '/dashboard/rekam_medis_list.php', 'page' => 'rekam_medis_list.php', 'label' => 'Rekam Medis', 'icon' => 'clipboard-document-list'];
+
 $navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
 
 $navItems = array_merge($navItems, [
@@ -92,6 +94,7 @@ foreach ($navItems as $it) {
             break;
         case 'ems_services.php':
         case 'operasi_plastik.php':
+        case 'rekam_medis_list.php':
         case 'regulasi_medis.php':
             $groupedNav['Medis'][] = $it;
             break;
