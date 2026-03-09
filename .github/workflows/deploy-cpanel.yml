@@ -41,29 +41,50 @@ jobs:
       - name: Install lftp
         run: sudo apt-get install -y lftp
 
-      - name: Deploy via SFTP (lftp)
+      - name: Write lftp deploy script
+        # Tulis ke file agar karakter & di password tidak dieksekusi shell
+        env:
+          FTP_HOST: ${{ secrets.SERVER }}
+          FTP_USER: ${{ secrets.USERNAME }}
+          FTP_PASS: ${{ secrets.PASSWORD }}
         run: |
-          lftp -c "
-          set sftp:auto-confirm yes;
-          set net:timeout 60;
-          set net:max-retries 3;
-          set net:reconnect-interval-base 5;
-          open sftp://${{ secrets.USERNAME }}:${{ secrets.PASSWORD }}@${{ secrets.SERVER }}:22;
-          mirror \
-            --reverse \
-            --delete \
-            --verbose \
-            --exclude-glob .git \
-            --exclude-glob .github/ \
-            --exclude-glob .env \
-            --exclude-glob .env.* \
-            --exclude-glob .ftpquota \
-            --exclude-glob node_modules/ \
-            --exclude-glob storage/ \
-            --exclude-glob backup/ \
-            --exclude-glob *.sql \
-            --exclude-glob cron/error_log \
-            --exclude-glob actions/error_log \
-            . /home/emsrhhar/public_html/;
-          bye;
-          "
+          cat > /tmp/lftp_deploy.sh << EOF
+          set sftp:auto-confirm yes
+          set net:timeout 60
+          set net:max-retries 3
+          set net:reconnect-interval-base 5
+          set ssl:verify-certificate no
+          open sftp://${FTP_USER}:${FTP_PASS}@${FTP_HOST}:22
+          mirror \\
+            --reverse \\
+            --delete \\
+            --verbose \\
+            --exclude-glob .git \\
+            --exclude-glob .github/ \\
+            --exclude-glob .env \\
+            --exclude-glob .env.* \\
+            --exclude-glob .ftpquota \\
+            --exclude-glob node_modules/ \\
+            --exclude-glob storage/ \\
+            --exclude-glob backup/ \\
+            --exclude-glob *.sql \\
+            --exclude-glob cron/error_log \\
+            --exclude-glob actions/error_log \\
+            . /home/emsrhhar/public_html/
+          bye
+          EOF
+
+      - name: Deploy via SFTP (lftp)
+        run: lftp -f /tmp/lftp_deploy.sh
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f /tmp/lftp_deploy.sh
+
+      - name: Notify Deploy Success
+        if: success()
+        run: echo "✅ Deploy berhasil!"
+
+      - name: Notify Deploy Failed
+        if: failure()
+        run: echo "❌ Deploy gagal! Cek log di atas."
