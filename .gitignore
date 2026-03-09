@@ -16,6 +16,7 @@ node_modules/
 *.sql
 cron/error_log
 actions/error_log
+config/database.php
 
 # IDE / OS
 .vscode/
