@@ -1,1 +1,1 @@
-test saja ajas aja adam tes
+Sayid Adam Kaharianto
