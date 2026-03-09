@@ -2,8 +2,8 @@
 date_default_timezone_set('Asia/Jakarta');
 
 $DB_HOST = 'localhost';
-$DB_NAME = 'farmasi_ems';
-$DB_USER = 'root';
+$DB_NAME = 'hark8423_ems';
+$DB_USER = 'hark8423_adam';
 $DB_PASS = 'Jal&jar123';
 
 try {
