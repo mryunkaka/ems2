@@ -1,4 +1,4 @@
-name: Deploy PHP Website to cPanel (FTP)
+name: Deploy PHP Website to cPanel (SFTP)
 
 on:
   push:
@@ -38,27 +38,32 @@ jobs:
           COMPOSER_NO_INTERACTION: 1
           COMPOSER_NO_AUDIT: 1
 
-      - name: Deploy to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.SERVER }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
-          protocol: ftp        # ← Diubah: ftps → ftp (FTPS port 21 sering diblokir)
-          port: 21
-          security: loose      # ← Ditambah: izinkan koneksi tanpa strict TLS
-          timeout: 60000       # ← Ditambah: timeout 60 detik (default 30s terlalu cepat)
-          server-dir: /        # ← Diubah: gunakan / bukan ./ untuk root FTP
-          local-dir: ./
-          exclude: |
-            **/.git*
-            **/.github/**
-            **/.env
-            **/.env.*
-            **/.ftpquota
-            **/node_modules/**
-            **/storage/**
-            **/backup/**
-            **/*.sql
-            **/cron/error_log
-            **/actions/error_log
+      - name: Install lftp
+        run: sudo apt-get install -y lftp
+
+      - name: Deploy via SFTP (lftp)
+        run: |
+          lftp -c "
+          set sftp:auto-confirm yes;
+          set net:timeout 60;
+          set net:max-retries 3;
+          set net:reconnect-interval-base 5;
+          open sftp://${{ secrets.USERNAME }}:${{ secrets.PASSWORD }}@${{ secrets.SERVER }}:22;
+          mirror \
+            --reverse \
+            --delete \
+            --verbose \
+            --exclude-glob .git \
+            --exclude-glob .github/ \
+            --exclude-glob .env \
+            --exclude-glob .env.* \
+            --exclude-glob .ftpquota \
+            --exclude-glob node_modules/ \
+            --exclude-glob storage/ \
+            --exclude-glob backup/ \
+            --exclude-glob *.sql \
+            --exclude-glob cron/error_log \
+            --exclude-glob actions/error_log \
+            . /home/emsrhhar/public_html/;
+          bye;
+          "
