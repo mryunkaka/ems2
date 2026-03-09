@@ -298,10 +298,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $consumerName = ucwords(strtolower(trim($_POST['consumer_name'] ?? '')));
 
 
-                $pkgMainId    = (int)($_POST['package_main'] ?? 0);
+                $packageMainRaw = trim((string)($_POST['package_main'] ?? ''));
+                $isCustomPackage = $packageMainRaw === 'custom';
+                $pkgMainId    = $isCustomPackage ? 0 : (int)$packageMainRaw;
                 $pkgBandageId = (int)($_POST['package_bandage'] ?? 0);
                 $pkgIfaksId   = (int)($_POST['package_ifaks'] ?? 0);
-                $pkgPainId   = (int)($_POST['package_painkiller'] ?? 0);
+                $pkgPainId    = (int)($_POST['package_painkiller'] ?? 0);
 
                 $forceOverLimit = isset($_POST['force_overlimit']) && $_POST['force_overlimit'] === '1';
 
@@ -537,27 +539,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     try {
                         // ===============================
-                        // INSERT SALES (MULTI PAKET)
+                        // INSERT SALES
+                        // custom => 1 baris "Paket Custom"
+                        // selain custom => tetap per paket
                         // ===============================
-                        foreach ($selectedIds as $id) {
-                            $p = $packagesSelected[$id];
+                        if ($isCustomPackage) {
+                            $customPrice = 0;
+                            $customBandage = 0;
+                            $customIfaks = 0;
+                            $customPain = 0;
+                            $customPackageId = (int)($selectedIds[0] ?? 0);
 
-                            $txHash = hash('sha256', $postedToken . '|' . $id);
+                            foreach ($selectedIds as $id) {
+                                $p = $packagesSelected[$id];
+                                $customPrice += (int)$p['price'];
+                                $customBandage += (int)$p['bandage_qty'];
+                                $customIfaks += (int)$p['ifaks_qty'];
+                                $customPain += (int)$p['painkiller_qty'];
+                            }
+
+                            $txHash = hash('sha256', $postedToken . '|custom');
 
                             $stmtInsert->execute([
                                 ':cname'   => $consumerName,
                                 ':mname'   => $medicName,
                                 ':muid'    => $userId,
                                 ':mjab'    => $medicJabatan,
-                                ':pid'     => (int)$p['id'],
-                                ':pname'   => $p['name'],
-                                ':price'   => (int)$p['price'],
-                                ':qb'      => (int)$p['bandage_qty'],
-                                ':qi'      => (int)$p['ifaks_qty'],
-                                ':qp'      => (int)$p['painkiller_qty'],
+                                ':pid'     => $customPackageId,
+                                ':pname'   => 'Paket Custom',
+                                ':price'   => $customPrice,
+                                ':qb'      => $customBandage,
+                                ':qi'      => $customIfaks,
+                                ':qp'      => $customPain,
                                 ':created' => $now,
                                 ':tx'      => $txHash,
                             ]);
+                        } else {
+                            foreach ($selectedIds as $id) {
+                                $p = $packagesSelected[$id];
+
+                                $txHash = hash('sha256', $postedToken . '|' . $id);
+
+                                $stmtInsert->execute([
+                                    ':cname'   => $consumerName,
+                                    ':mname'   => $medicName,
+                                    ':muid'    => $userId,
+                                    ':mjab'    => $medicJabatan,
+                                    ':pid'     => (int)$p['id'],
+                                    ':pname'   => $p['name'],
+                                    ':price'   => (int)$p['price'],
+                                    ':qb'      => (int)$p['bandage_qty'],
+                                    ':qi'      => (int)$p['ifaks_qty'],
+                                    ':qp'      => (int)$p['painkiller_qty'],
+                                    ':created' => $now,
+                                    ':tx'      => $txHash,
+                                ]);
+                            }
                         }
 
                         /* =====================================================
@@ -663,10 +700,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messages[] = "Transaksi {$consumerName} berhasil disimpan (" . count($selectedIds) . " paket).";
                         $clearFormNextLoad = true;
                     } catch (PDOException $e) {
-                        if ($e->getCode() === '23000') {
+                        $dbMessage = $e->getMessage();
+                        if (
+                            $e->getCode() === '23000' &&
+                            (
+                                stripos($dbMessage, 'uniq_tx_hash') !== false ||
+                                stripos($dbMessage, 'tx_hash') !== false
+                            )
+                        ) {
                             $warnings[] = 'Transaksi ini sudah pernah diproses.';
                         } else {
-                            app_log($e->getMessage());
+                            app_log(
+                                '[FARMASI INSERT ERROR] ' .
+                                    'consumer=' . $consumerName .
+                                    ' | user_id=' . $userId .
+                                    ' | package_main=' . $packageMainRaw .
+                                    ' | selected_ids=' . json_encode($selectedIds) .
+                                    ' | error=' . $dbMessage
+                            );
                             $errors[] = 'Terjadi kesalahan sistem saat menyimpan transaksi.';
                         }
                     }
