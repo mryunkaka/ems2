@@ -30,16 +30,16 @@ jobs:
       - name: Deploy to cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.SERVER }}
+          server: ftp.harikenangan.my.id
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
 
-          protocol: ftps
+          protocol: ftp
           port: 21
-          timeout: 60000
+          timeout: 120000
 
           local-dir: ./
-          server-dir: ./
+          server-dir: /public_html/ems2/
 
           dangerous-clean-slate: false
 
