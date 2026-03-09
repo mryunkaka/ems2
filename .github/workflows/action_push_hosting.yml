@@ -1,44 +1,38 @@
-name: Deploy PHP Website to cPanel (FTP)
+name: Deploy
 
 on:
   push:
-    branches: [main]
-
-concurrency:
-  group: deploy-cpanel-main
-  cancel-in-progress: true
+    branches:
+      - main
 
 jobs:
   deploy:
-    name: Deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.4"
+          php-version: 8.4
           tools: composer:v2
           extensions: mbstring, curl, openssl, json, zip, pdo_mysql
 
-      - name: Install Composer Dependencies
+      - name: Install Composer
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
 
-      - name: Deploy to cPanel via FTP
+      - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.SERVER }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PASSWORD }}
-          protocol: sftp
-          port: 22
-          server-dir: ./
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          server-dir: ./public_html/
           local-dir: ./
-
-          # Jangan overwrite data runtime (upload/log) di server
           exclude: |
             **/.git*
             **/.github/**
@@ -49,5 +43,3 @@ jobs:
             **/storage/**
             **/backup/**
             **/*.sql
-            **/cron/error_log
-            **/actions/error_log
