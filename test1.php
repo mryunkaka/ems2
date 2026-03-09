@@ -1,1 +1,0 @@
-Sayid Adam Kaharianto

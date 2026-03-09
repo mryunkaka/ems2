@@ -28,6 +28,53 @@ function app_log($message)
     error_log($line, 3, __DIR__ . '/../storage/error_log.txt');
 }
 
+function ensureFarmasiOnline(PDO $pdo, int $userId, string $medicName, string $medicJabatan, bool $confirmActivity = false): void
+{
+    if ($userId <= 0) {
+        return;
+    }
+
+    $lastConfirmSql = $confirmActivity ? 'last_confirm_at = NOW(),' : '';
+
+    $stmtStatus = $pdo->prepare("
+        INSERT INTO user_farmasi_status
+            (user_id, status, last_activity_at, last_confirm_at, auto_offline_at)
+        VALUES
+            (?, 'online', NOW(), " . ($confirmActivity ? "NOW()" : "NULL") . ", NULL)
+        ON DUPLICATE KEY UPDATE
+            status = 'online',
+            last_activity_at = NOW(),
+            {$lastConfirmSql}
+            auto_offline_at = NULL,
+            updated_at = NOW()
+    ");
+    $stmtStatus->execute([$userId]);
+
+    $stmtCheckSession = $pdo->prepare("
+        SELECT id
+        FROM user_farmasi_sessions
+        WHERE user_id = ?
+          AND session_end IS NULL
+        LIMIT 1
+    ");
+    $stmtCheckSession->execute([$userId]);
+    $activeSessionId = $stmtCheckSession->fetchColumn();
+
+    if (!$activeSessionId) {
+        $stmtCreateSession = $pdo->prepare("
+            INSERT INTO user_farmasi_sessions
+                (user_id, medic_name, medic_jabatan, session_start)
+            VALUES
+                (?, ?, ?, NOW())
+        ");
+        $stmtCreateSession->execute([
+            $userId,
+            $medicName,
+            $medicJabatan
+        ]);
+    }
+}
+
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
@@ -244,6 +291,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 3) Tambah transaksi penjualan (bisa beberapa paket sekaligus)
     if ($action === 'add_sale') {
+        $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+
         // ===============================
         // COOLDOWN ANTI-SPAM (SERVER - SESSION BASED)
         // ===============================
@@ -264,19 +313,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = "Mohon tunggu {$remain} detik sebelum input transaksi berikutnya.";
         }
 
-        // BLOK JIKA MEDIS OFFLINE
-        $stmtStatus = $pdo->prepare("
-            SELECT status
-            FROM user_farmasi_status
-            WHERE user_id = ?
-        ");
-        $stmtStatus->execute([$_SESSION['user_rh']['id']]);
-        $currentStatus = $stmtStatus->fetchColumn() ?: 'offline';
-
-        if ($currentStatus !== 'online') {
-            $errors[] = "Anda berstatus OFFLINE. Tidak diperbolehkan melakukan transaksi.";
-        }
-
         $postedToken = $_POST['tx_token'] ?? '';
 
         if (
@@ -292,6 +328,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($medicName === '' || $medicJabatan === '') {
                 $errors[] = "Set dulu nama petugas medis sebelum input transaksi.";
             } else {
+                try {
+                    // Sinkronkan status lebih awal agar tombol simpan tidak terblokir
+                    // hanya karena status sebelumnya masih OFFLINE.
+                    ensureFarmasiOnline($pdo, $userId, $medicName, $medicJabatan, false);
+                } catch (Throwable $e) {
+                    app_log('[FARMASI AUTO-ONLINE ERROR] user_id=' . $userId . ' | error=' . $e->getMessage());
+                }
+
                 // ===============================
                 // AMBIL INPUT + NORMALISASI NAMA
                 // ===============================
@@ -502,7 +546,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($errors)) {
 
                     $now    = date('Y-m-d H:i:s');
-                    $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
 
                     $stmtInsert = $pdo->prepare("
                         INSERT INTO sales
@@ -648,49 +691,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // ======================================================
                         // UPDATE STATUS FARMASI → ONLINE (AKTIVITAS VALID)
                         // ======================================================
-                        if ($userId > 0) {
-                            $stmtStatus = $pdo->prepare("
-                                INSERT INTO user_farmasi_status
-                                    (user_id, status, last_activity_at, last_confirm_at, auto_offline_at)
-                                VALUES
-                                    (?, 'online', NOW(), NOW(), NULL)
-                                ON DUPLICATE KEY UPDATE
-                                    status = 'online',
-                                    last_activity_at = NOW(),
-                                    last_confirm_at = NOW(),
-                                    auto_offline_at = NULL,
-                                    updated_at = NOW()
-                            ");
-                            $stmtStatus->execute([$userId]);
-
-                            // ======================================================
-                            // FIX UTAMA: PASTIKAN SESSION FARMASI AKTIF
-                            // ======================================================
-                            $stmtCheckSession = $pdo->prepare("
-                                SELECT id
-                                FROM user_farmasi_sessions
-                                WHERE user_id = ?
-                                AND session_end IS NULL
-                                LIMIT 1
-                            ");
-                            $stmtCheckSession->execute([$userId]);
-                            $activeSessionId = $stmtCheckSession->fetchColumn();
-
-                            if (!$activeSessionId) {
-                                // BUAT SESSION BARU (PERTAMA KALI AKTIVITAS)
-                                $stmtCreateSession = $pdo->prepare("
-                                    INSERT INTO user_farmasi_sessions
-                                        (user_id, medic_name, medic_jabatan, session_start)
-                                    VALUES
-                                        (?, ?, ?, NOW())
-                                ");
-                                $stmtCreateSession->execute([
-                                    $userId,
-                                    $medicName,
-                                    $medicJabatan
-                                ]);
-                            }
-                        }
+                        ensureFarmasiOnline($pdo, $userId, $medicName, $medicJabatan, true);
 
                         // ===============================
                         // UPDATE COOLDOWN TIMESTAMP
