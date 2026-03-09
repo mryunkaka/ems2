@@ -24,8 +24,19 @@ jobs:
           tools: composer:v2
           extensions: mbstring, curl, openssl, json, zip, pdo_mysql
 
+      - name: Cache Composer Dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
       - name: Install Composer Dependencies
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+        env:
+          COMPOSER_PROCESS_TIMEOUT: 0
+          COMPOSER_NO_INTERACTION: 1
+          COMPOSER_NO_AUDIT: 1
 
       - name: Deploy to cPanel via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -33,12 +44,12 @@ jobs:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
-          protocol: ftps
+          protocol: ftp        # ← Diubah: ftps → ftp (FTPS port 21 sering diblokir)
           port: 21
-          server-dir: ./
+          security: loose      # ← Ditambah: izinkan koneksi tanpa strict TLS
+          timeout: 60000       # ← Ditambah: timeout 60 detik (default 30s terlalu cepat)
+          server-dir: /        # ← Diubah: gunakan / bukan ./ untuk root FTP
           local-dir: ./
-
-          # Jangan overwrite data runtime (upload/log) di server
           exclude: |
             **/.git*
             **/.github/**
