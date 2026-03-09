@@ -28,11 +28,13 @@ jobs:
         run: composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
 
       - name: Deploy to cPanel via FTP
-        uses: SamKirkland/FTP-Deploy-Action@4.3.3
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
+          protocol: ftps
+          port: 21
           server-dir: ./
           local-dir: ./
 
@@ -49,4 +51,3 @@ jobs:
             **/*.sql
             **/cron/error_log
             **/actions/error_log
-
