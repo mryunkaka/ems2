@@ -11,17 +11,102 @@
  * - reject_resign: Tolak pengajuan resign
  */
 
+// Start output buffering to prevent any HTML output before JSON
+ob_start();
+
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
-// Pastikan request adalah POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    ems_json_response(['success' => false, 'error' => 'Method not allowed'], 405);
-    exit;
+// Set JSON header for all responses by default
+header('Content-Type: application/json; charset=utf-8');
+
+// Pastikan request adalah POST atau GET (untuk detail)
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
+    sendJsonResponse(['success' => false, 'error' => 'Method not allowed'], 405);
+}
+
+// Handle GET request untuk detail
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = trim($_GET['action'] ?? '');
+
+    if ($action === 'get_cuti_detail') {
+        $requestId = (int)($_GET['request_id'] ?? 0);
+        if ($requestId <= 0) {
+            sendJsonResponse(['success' => false, 'error' => 'Request ID tidak valid'], 400);
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    cr.*,
+                    u.full_name,
+                    u.position,
+                    u.batch,
+                    u.role,
+                    approver.full_name as approved_by_name
+                FROM cuti_requests cr
+                INNER JOIN user_rh u ON u.id = cr.user_id
+                LEFT JOIN user_rh approver ON approver.id = cr.approved_by
+                WHERE cr.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$requestId]);
+            $detail = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$detail) {
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan'], 404);
+            }
+
+            sendJsonResponse([
+                'success' => true,
+                'data' => $detail
+            ]);
+        } catch (Throwable $e) {
+            sendJsonResponse(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    if ($action === 'get_resign_detail') {
+        $requestId = (int)($_GET['request_id'] ?? 0);
+        if ($requestId <= 0) {
+            sendJsonResponse(['success' => false, 'error' => 'Request ID tidak valid'], 400);
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    rr.*,
+                    u.full_name,
+                    u.position,
+                    u.batch,
+                    u.role,
+                    approver.full_name as approved_by_name
+                FROM resign_requests rr
+                INNER JOIN user_rh u ON u.id = rr.user_id
+                LEFT JOIN user_rh approver ON approver.id = rr.approved_by
+                WHERE rr.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$requestId]);
+            $detail = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$detail) {
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan'], 404);
+            }
+
+            sendJsonResponse([
+                'success' => true,
+                'data' => $detail
+            ]);
+        } catch (Throwable $e) {
+            sendJsonResponse(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    sendJsonResponse(['success' => false, 'error' => 'Action tidak dikenali'], 400);
 }
 
 // Ambil data user dari session
@@ -30,19 +115,12 @@ $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
 
 if ($userId <= 0) {
-    ems_json_response(['success' => false, 'error' => 'Session tidak valid'], 401);
-    exit;
+    sendJsonResponse(['success' => false, 'error' => 'Session tidak valid'], 401);
 }
 
 // Ambil action dari POST
 $action = trim($_POST['action'] ?? '');
 $csrfToken = $_POST['csrf_token'] ?? '';
-
-// Validasi CSRF token (sederhana untuk AJAX request)
-if (empty($csrfToken)) {
-    ems_json_response(['success' => false, 'error' => 'CSRF token missing'], 403);
-    exit;
-}
 
 // Fungsi redirect untuk non-AJAX request
 function redirect_back(string $fallback = 'pengajuan_cuti_resign.php'): void
@@ -55,6 +133,23 @@ function redirect_back(string $fallback = 'pengajuan_cuti_resign.php'): void
     exit;
 }
 
+// Helper function to send JSON response for AJAX requests
+function sendJsonResponse(array $data, int $statusCode = 200): void
+{
+    // Clean all output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Set headers
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    
+    // Send JSON response
+    echo json_encode($data);
+    exit;
+}
+
 try {
     // =====================================================
     // ACTION: SUBMIT CUTI
@@ -62,7 +157,7 @@ try {
     if ($action === 'submit_cuti') {
         // Validasi CSRF untuk non-AJAX
         require_once __DIR__ . '/../auth/csrf.php';
-        if (!validateCsrfToken($csrfToken)) {
+        if (empty($csrfToken) || !validateCsrfToken($csrfToken)) {
             $_SESSION['flash_errors'][] = 'CSRF token tidak valid';
             redirect_back();
         }
@@ -120,7 +215,7 @@ try {
 
         // Cek jika request AJAX
         if (!empty($_POST['ajax'])) {
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan cuti berhasil dikirim dengan kode {$requestCode}"
             ]);
@@ -135,7 +230,7 @@ try {
     if ($action === 'submit_resign') {
         // Validasi CSRF untuk non-AJAX
         require_once __DIR__ . '/../auth/csrf.php';
-        if (!validateCsrfToken($csrfToken)) {
+        if (empty($csrfToken) || !validateCsrfToken($csrfToken)) {
             $_SESSION['flash_errors'][] = 'CSRF token tidak valid';
             redirect_back();
         }
@@ -169,7 +264,7 @@ try {
 
         // Cek jika request AJAX
         if (!empty($_POST['ajax'])) {
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan resign berhasil dikirim dengan kode {$requestCode}"
             ]);
@@ -186,13 +281,13 @@ try {
     if (in_array($action, $approvalActions)) {
         // Cek apakah user punya akses approval
         if (!can_approve_cuti_resign($userRole)) {
-            ems_json_response(['success' => false, 'error' => 'Anda tidak berwenang melakukan approval'], 403);
+            sendJsonResponse(['success' => false, 'error' => 'Anda tidak berwenang melakukan approval'], 403);
             exit;
         }
 
         $requestId = (int)($_POST['request_id'] ?? 0);
         if ($requestId <= 0) {
-            ems_json_response(['success' => false, 'error' => 'Request ID tidak valid'], 400);
+            sendJsonResponse(['success' => false, 'error' => 'Request ID tidak valid'], 400);
             exit;
         }
 
@@ -212,7 +307,7 @@ try {
             $cutiRequest = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$cutiRequest) {
-                ems_json_response(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
                 exit;
             }
 
@@ -248,22 +343,33 @@ try {
             // Log ke account_logs
             $stmt = $pdo->prepare("
                 INSERT INTO account_logs
-                    (user_id, changed_by, action, details, created_at)
+                    (user_id, full_name_after, position_after, pin_changed, created_at)
                 VALUES
-                    (?, ?, 'cuti_approved', ?, NOW())
+                    (?, ?, ?, 0, NOW())
             ");
             $stmt->execute([
                 $cutiRequest['user_id'],
-                $userId,
-                json_encode([
-                    'request_code' => $cutiRequest['request_code'],
-                    'start_date' => $cutiRequest['start_date'],
-                    'end_date' => $cutiRequest['end_date'],
-                    'days_total' => $cutiRequest['days_total']
-                ])
+                $cutiRequest['full_name'] ?? '',
+                $cutiRequest['position'] ?? '',
             ]);
+            
+            // Also log to cuti_requests table via details in JSON (stored in separate log file)
+            $logFile = __DIR__ . '/../logs/cuti_approved.log';
+            $logDir = dirname($logFile);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            $logEntry = sprintf(
+                "[%s] Cuti approved: %s (User ID: %d) by User ID: %d. Days: %d\n",
+                date('Y-m-d H:i:s'),
+                $cutiRequest['request_code'],
+                $cutiRequest['user_id'],
+                $userId,
+                $cutiRequest['days_total']
+            );
+            file_put_contents($logFile, $logEntry, FILE_APPEND);
 
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan cuti {$cutiRequest['request_code']} berhasil disetujui"
             ]);
@@ -276,7 +382,7 @@ try {
             $rejectionReason = trim($_POST['rejection_reason'] ?? '');
 
             if (empty($rejectionReason)) {
-                ems_json_response(['success' => false, 'error' => 'Alasan penolakan harus diisi'], 400);
+                sendJsonResponse(['success' => false, 'error' => 'Alasan penolakan harus diisi'], 400);
                 exit;
             }
 
@@ -291,7 +397,7 @@ try {
             $cutiRequest = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$cutiRequest) {
-                ems_json_response(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
                 exit;
             }
 
@@ -309,20 +415,33 @@ try {
             // Log ke account_logs
             $stmt = $pdo->prepare("
                 INSERT INTO account_logs
-                    (user_id, changed_by, action, details, created_at)
+                    (user_id, full_name_after, position_after, pin_changed, created_at)
                 VALUES
-                    (?, ?, 'cuti_rejected', ?, NOW())
+                    (?, ?, ?, 0, NOW())
             ");
             $stmt->execute([
                 $cutiRequest['user_id'],
-                $userId,
-                json_encode([
-                    'request_code' => $cutiRequest['request_code'],
-                    'rejection_reason' => $rejectionReason
-                ])
+                $cutiRequest['full_name'] ?? '',
+                $cutiRequest['position'] ?? '',
             ]);
+            
+            // Also log to file
+            $logFile = __DIR__ . '/../logs/cuti_rejected.log';
+            $logDir = dirname($logFile);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            $logEntry = sprintf(
+                "[%s] Cuti rejected: %s (User ID: %d) by User ID: %d. Reason: %s\n",
+                date('Y-m-d H:i:s'),
+                $cutiRequest['request_code'],
+                $cutiRequest['user_id'],
+                $userId,
+                $rejectionReason
+            );
+            file_put_contents($logFile, $logEntry, FILE_APPEND);
 
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan cuti {$cutiRequest['request_code']} berhasil ditolak"
             ]);
@@ -344,7 +463,7 @@ try {
             $resignRequest = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$resignRequest) {
-                ems_json_response(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
                 exit;
             }
 
@@ -383,21 +502,33 @@ try {
             // Log ke account_logs
             $stmt = $pdo->prepare("
                 INSERT INTO account_logs
-                    (user_id, changed_by, action, details, created_at)
+                    (user_id, full_name_after, position_after, pin_changed, created_at)
                 VALUES
-                    (?, ?, 'resign_approved', ?, NOW())
+                    (?, ?, ?, 0, NOW())
             ");
             $stmt->execute([
                 $resignRequest['user_id'],
-                $userId,
-                json_encode([
-                    'request_code' => $resignRequest['request_code'],
-                    'reason_ic' => $resignRequest['reason_ic'],
-                    'reason_ooc' => $resignRequest['reason_ooc']
-                ])
+                $resignRequest['full_name'] ?? '',
+                $resignRequest['position'] ?? '',
             ]);
+            
+            // Also log to file
+            $logFile = __DIR__ . '/../logs/resign_approved.log';
+            $logDir = dirname($logFile);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            $logEntry = sprintf(
+                "[%s] Resign approved: %s (User ID: %d, Name: %s) by User ID: %d\n",
+                date('Y-m-d H:i:s'),
+                $resignRequest['request_code'],
+                $resignRequest['user_id'],
+                $resignRequest['full_name'],
+                $userId
+            );
+            file_put_contents($logFile, $logEntry, FILE_APPEND);
 
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan resign {$resignRequest['request_code']} berhasil disetujui. User {$resignRequest['full_name']} telah dinonaktifkan."
             ]);
@@ -410,7 +541,7 @@ try {
             $rejectionReason = trim($_POST['rejection_reason'] ?? '');
 
             if (empty($rejectionReason)) {
-                ems_json_response(['success' => false, 'error' => 'Alasan penolakan harus diisi'], 400);
+                sendJsonResponse(['success' => false, 'error' => 'Alasan penolakan harus diisi'], 400);
                 exit;
             }
 
@@ -425,7 +556,7 @@ try {
             $resignRequest = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$resignRequest) {
-                ems_json_response(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
+                sendJsonResponse(['success' => false, 'error' => 'Request tidak ditemukan atau sudah diproses'], 404);
                 exit;
             }
 
@@ -443,20 +574,33 @@ try {
             // Log ke account_logs
             $stmt = $pdo->prepare("
                 INSERT INTO account_logs
-                    (user_id, changed_by, action, details, created_at)
+                    (user_id, full_name_after, position_after, pin_changed, created_at)
                 VALUES
-                    (?, ?, 'resign_rejected', ?, NOW())
+                    (?, ?, ?, 0, NOW())
             ");
             $stmt->execute([
                 $resignRequest['user_id'],
-                $userId,
-                json_encode([
-                    'request_code' => $resignRequest['request_code'],
-                    'rejection_reason' => $rejectionReason
-                ])
+                $resignRequest['full_name'] ?? '',
+                $resignRequest['position'] ?? '',
             ]);
+            
+            // Also log to file
+            $logFile = __DIR__ . '/../logs/resign_rejected.log';
+            $logDir = dirname($logFile);
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            $logEntry = sprintf(
+                "[%s] Resign rejected: %s (User ID: %d) by User ID: %d. Reason: %s\n",
+                date('Y-m-d H:i:s'),
+                $resignRequest['request_code'],
+                $resignRequest['user_id'],
+                $userId,
+                $rejectionReason
+            );
+            file_put_contents($logFile, $logEntry, FILE_APPEND);
 
-            ems_json_response([
+            sendJsonResponse([
                 'success' => true,
                 'message' => "Pengajuan resign {$resignRequest['request_code']} berhasil ditolak"
             ]);
@@ -464,21 +608,40 @@ try {
     }
 
     // Jika action tidak dikenali
-    ems_json_response(['success' => false, 'error' => 'Action tidak dikenali'], 400);
+    sendJsonResponse(['success' => false, 'error' => 'Action tidak dikenali'], 400);
 
 } catch (Throwable $e) {
     // Log error untuk debugging
-    error_log('Cuti/Resign Action Error: ' . $e->getMessage());
+    $errorMsg = 'Cuti/Resign Action Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine();
+    error_log($errorMsg);
+    
+    // Also log to file for easier debugging
+    $logFile = __DIR__ . '/../logs/cuti_action_error.log';
+    $logDir = dirname($logFile);
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0755, true);
+    }
+    file_put_contents($logFile, date('Y-m-d H:i:s') . ' - ' . $errorMsg . PHP_EOL, FILE_APPEND);
 
-    // Return error response
-    if (ob_get_length()) ob_clean();
-
-    // Cek jika request AJAX
-    if (!empty($_POST['ajax']) || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) {
-        ems_json_response(['success' => false, 'error' => $e->getMessage()], 500);
+    // Clean any output buffers
+    while (ob_get_level()) {
+        ob_end_clean();
     }
 
-    // Non-AJAX request
-    $_SESSION['flash_errors'][] = 'Gagal memproses: ' . $e->getMessage();
-    redirect_back();
+    // Always return JSON for API actions (approve/reject)
+    $approvalActions = ['approve_cuti', 'reject_cuti', 'approve_resign', 'reject_resign'];
+    $isAjaxAction = in_array($action, $approvalActions) ||
+                    !empty($_POST['ajax']) ||
+                    str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json');
+
+    if ($isAjaxAction) {
+        sendJsonResponse([
+            'success' => false,
+            'error' => 'Terjadi kesalahan: ' . $e->getMessage()
+        ], 500);
+    } else {
+        // Non-AJAX request
+        $_SESSION['flash_errors'][] = 'Gagal memproses: ' . $e->getMessage();
+        redirect_back();
+    }
 }

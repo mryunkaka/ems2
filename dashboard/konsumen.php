@@ -9,6 +9,9 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+// Block access for users on cuti
+require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
+
 $pageTitle = 'Data Konsumen';
 
 ems_require_not_trainee_html('Konsumen');

@@ -23,4 +23,5 @@ config/database.php
 .idea/
 .DS_Store
 Thumbs.db
-
+testsprite_tests
+.claude

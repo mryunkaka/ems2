@@ -4,6 +4,9 @@ $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $position = strtolower(trim($_SESSION['user_rh']['position'] ?? ''));
 $isTrainee = ($position === 'trainee');
 
+// Check if user is currently on cuti (session already refreshed by auth_guard)
+$isOnCuti = is_user_on_cuti_session();
+
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 function isActive($page)
@@ -21,28 +24,47 @@ if ($userRole !== 'staff') {
     $navItems[] = ['href' => '/dashboard/event_manage.php', 'page' => 'event_manage.php', 'label' => 'Manajemen Event', 'icon' => 'wrench'];
 }
 
-$navItems[] = ['href' => '/dashboard/ems_services.php', 'page' => 'ems_services.php', 'label' => 'Layanan Medis', 'icon' => 'building-office-2'];
+// Hide these menus when user is on cuti
+$hiddenWhenCuti = [
+    'ems_services.php',        // Layanan Medis
+    'rekam_medis_list.php',    // Rekam Medis
+    'operasi_plastik.php',     // Operasi Plastik
+    'regulasi_medis.php',      // Regulasi Medis
+    'rekap_farmasi.php',       // Rekap Farmasi
+    'konsumen.php',            // Konsumen
+    'ranking.php',             // Ranking
+    'absensi_ems.php',         // Jam Kerja Web
+    'regulasi_farmasi.php',    // Regulasi Paket Farmasi
+];
 
-$navItems[] = ['href' => '/dashboard/rekam_medis_list.php', 'page' => 'rekam_medis_list.php', 'label' => 'Rekam Medis', 'icon' => 'clipboard-document-list'];
-
-$navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
+if (!$isOnCuti) {
+    $navItems[] = ['href' => '/dashboard/ems_services.php', 'page' => 'ems_services.php', 'label' => 'Layanan Medis', 'icon' => 'building-office-2'];
+    $navItems[] = ['href' => '/dashboard/rekam_medis_list.php', 'page' => 'rekam_medis_list.php', 'label' => 'Rekam Medis', 'icon' => 'clipboard-document-list'];
+    $navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
+}
 
 $navItems = array_merge($navItems, [
     ['href' => '/dashboard/reimbursement.php', 'page' => 'reimbursement.php', 'label' => 'Reimbursement', 'icon' => 'receipt-percent'],
     ['href' => '/dashboard/restaurant_consumption.php', 'page' => 'restaurant_consumption.php', 'label' => 'Konsumsi Restoran', 'icon' => 'cake'],
-    ['href' => '/dashboard/operasi_plastik.php', 'page' => 'operasi_plastik.php', 'label' => 'Operasi Plastik', 'icon' => 'building-office-2'],
-    ['href' => '/dashboard/konsumen.php', 'page' => 'konsumen.php', 'label' => 'Konsumen', 'icon' => 'user-group'],
-    ['href' => '/dashboard/ranking.php', 'page' => 'ranking.php', 'label' => 'Ranking', 'icon' => 'chart-bar'],
-    ['href' => '/dashboard/absensi_ems.php', 'page' => 'absensi_ems.php', 'label' => 'Jam Kerja Web', 'icon' => 'clock'],
-    ['href' => '/dashboard/gaji.php', 'page' => 'gaji.php', 'label' => 'Gaji', 'icon' => 'banknotes'],
-    ['href' => '/dashboard/pengajuan_jabatan.php', 'page' => 'pengajuan_jabatan.php', 'label' => 'Pengajuan Jabatan', 'icon' => 'arrow-up-tray'],
-    ['href' => '/dashboard/pengajuan_cuti_resign.php', 'page' => 'pengajuan_cuti_resign.php', 'label' => 'Pengajuan Cuti & Resign', 'icon' => 'calendar'],
 ]);
 
+if (!$isOnCuti) {
+    $navItems[] = ['href' => '/dashboard/operasi_plastik.php', 'page' => 'operasi_plastik.php', 'label' => 'Operasi Plastik', 'icon' => 'building-office-2'];
+    $navItems[] = ['href' => '/dashboard/konsumen.php', 'page' => 'konsumen.php', 'label' => 'Konsumen', 'icon' => 'user-group'];
+    $navItems[] = ['href' => '/dashboard/ranking.php', 'page' => 'ranking.php', 'label' => 'Ranking', 'icon' => 'chart-bar'];
+    $navItems[] = ['href' => '/dashboard/absensi_ems.php', 'page' => 'absensi_ems.php', 'label' => 'Jam Kerja Web', 'icon' => 'clock'];
+}
+
+$navItems[] = ['href' => '/dashboard/gaji.php', 'page' => 'gaji.php', 'label' => 'Gaji', 'icon' => 'banknotes'];
+$navItems[] = ['href' => '/dashboard/pengajuan_jabatan.php', 'page' => 'pengajuan_jabatan.php', 'label' => 'Pengajuan Jabatan', 'icon' => 'arrow-up-tray'];
+$navItems[] = ['href' => '/dashboard/pengajuan_cuti_resign.php', 'page' => 'pengajuan_cuti_resign.php', 'label' => 'Pengajuan Cuti & Resign', 'icon' => 'calendar'];
+
 if ($userRole !== 'staff') {
-    $navItems[] = ['href' => '/dashboard/validasi.php', 'page' => 'validasi.php', 'label' => 'Validasi', 'icon' => 'receipt-percent'];
-    $navItems[] = ['href' => '/dashboard/regulasi_medis.php', 'page' => 'regulasi_medis.php', 'label' => 'Regulasi Medis', 'icon' => 'document-text'];
-    $navItems[] = ['href' => '/dashboard/regulasi_farmasi.php', 'page' => 'regulasi_farmasi.php', 'label' => 'Regulasi Paket Farmasi', 'icon' => 'beaker'];
+    if (!$isOnCuti) {
+        $navItems[] = ['href' => '/dashboard/validasi.php', 'page' => 'validasi.php', 'label' => 'Validasi', 'icon' => 'receipt-percent'];
+        $navItems[] = ['href' => '/dashboard/regulasi_medis.php', 'page' => 'regulasi_medis.php', 'label' => 'Regulasi Medis', 'icon' => 'document-text'];
+        $navItems[] = ['href' => '/dashboard/regulasi_farmasi.php', 'page' => 'regulasi_farmasi.php', 'label' => 'Regulasi Paket Farmasi', 'icon' => 'beaker'];
+    }
     $navItems[] = ['href' => '/dashboard/persyaratan_jabatan.php', 'page' => 'persyaratan_jabatan.php', 'label' => 'Syarat Jabatan', 'icon' => 'wrench'];
     $navItems[] = ['href' => '/dashboard/review_pengajuan_jabatan.php', 'page' => 'review_pengajuan_jabatan.php', 'label' => 'Review Jabatan', 'icon' => 'check-circle'];
     $navItems[] = ['href' => '/dashboard/manage_users.php', 'page' => 'manage_users.php', 'label' => 'Manajemen User', 'icon' => 'user-group'];
@@ -103,11 +125,11 @@ foreach ($navItems as $it) {
         case 'konsumen.php':
         case 'ranking.php':
         case 'absensi_ems.php':
-        case 'gaji.php':
             $groupedNav['Farmasi'][] = $it;
             break;
         case 'reimbursement.php':
         case 'restaurant_consumption.php':
+        case 'gaji.php':
             $groupedNav['Keuangan'][] = $it;
             break;
         case 'validasi.php':

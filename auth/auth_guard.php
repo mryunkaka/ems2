@@ -10,12 +10,20 @@ if (isset($_SESSION['user_rh'])) {
     $uid = (int)($_SESSION['user_rh']['id'] ?? 0);
     if ($uid > 0) {
         try {
-            $stmt = $pdo->prepare("SELECT role, position, full_name FROM user_rh WHERE id = ? LIMIT 1");
+            $stmt = $pdo->prepare("
+                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date
+                FROM user_rh 
+                WHERE id = ? 
+                LIMIT 1
+            ");
             $stmt->execute([$uid]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
                 $_SESSION['user_rh']['role'] = $row['role'] ?? ($_SESSION['user_rh']['role'] ?? '');
                 $_SESSION['user_rh']['position'] = ems_normalize_position($row['position'] ?? '');
+                $_SESSION['user_rh']['cuti_status'] = $row['cuti_status'] ?? null;
+                $_SESSION['user_rh']['cuti_start_date'] = $row['cuti_start_date'] ?? null;
+                $_SESSION['user_rh']['cuti_end_date'] = $row['cuti_end_date'] ?? null;
                 // Keep backward-compatible name keys in sync
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
@@ -59,7 +67,10 @@ if (!empty($_COOKIE['remember_login'])) {
                     'id'       => $user['id'],
                     'name'     => $user['full_name'],
                     'role'     => $user['role'],
-                    'position' => ems_normalize_position($user['position'] ?? '')
+                    'position' => ems_normalize_position($user['position'] ?? ''),
+                    'cuti_status' => $user['cuti_status'] ?? null,
+                    'cuti_start_date' => $user['cuti_start_date'] ?? null,
+                    'cuti_end_date' => $user['cuti_end_date'] ?? null
                 ];
                 return;
             }

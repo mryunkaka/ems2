@@ -36,6 +36,9 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+// Block access for users on cuti
+require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
+
 /*
 |--------------------------------------------------------------------------
 | USER SESSION

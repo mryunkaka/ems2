@@ -377,6 +377,43 @@ function hitung_sisa_cuti(?string $startDate, ?string $endDate): array
 }
 
 /**
+ * Tentukan status periode cuti berdasarkan flag database dan range tanggal.
+ *
+ * @param string|null $startDate Tanggal mulai cuti
+ * @param string|null $endDate Tanggal selesai cuti
+ * @param string|null $cutiStatus Flag status cuti dari database
+ * @return string none|scheduled|active|completed
+ */
+function get_cuti_period_status(?string $startDate, ?string $endDate, ?string $cutiStatus = null): string
+{
+    if ($cutiStatus !== 'active' || !$startDate || !$endDate) {
+        return 'none';
+    }
+
+    try {
+        $today = new DateTime('today');
+        $start = new DateTime($startDate);
+        $end = new DateTime($endDate);
+
+        if ($start > $end) {
+            return 'none';
+        }
+
+        if ($today < $start) {
+            return 'scheduled';
+        }
+
+        if ($today > $end) {
+            return 'completed';
+        }
+
+        return 'active';
+    } catch (Exception $e) {
+        return 'none';
+    }
+}
+
+/**
  * Generate kode unik untuk request cuti/resign
  *
  * @param string $type Tipe request ('cuti' atau 'resign')
@@ -414,15 +451,50 @@ function is_user_on_cuti(PDO $pdo, int $userId): bool
             return false;
         }
 
-        // Cek apakah hari ini berada dalam range cuti
-        $today = new DateTime();
-        $startDate = new DateTime($user['cuti_start_date']);
-        $endDate = new DateTime($user['cuti_end_date']);
-
-        return $today >= $startDate && $today <= $endDate;
+        return get_cuti_period_status(
+            $user['cuti_start_date'] ?? null,
+            $user['cuti_end_date'] ?? null,
+            $user['cuti_status'] ?? null
+        ) === 'active';
     } catch (Throwable $e) {
         // Return false jika error
         return false;
+    }
+}
+
+/**
+ * Cek apakah user sedang cuti berdasarkan session
+ * Lebih cepat karena tidak query database
+ *
+ * @return bool True jika user sedang cuti
+ */
+function is_user_on_cuti_session(): bool
+{
+    if (!isset($_SESSION['user_rh'])) {
+        return false;
+    }
+    
+    $user = $_SESSION['user_rh'];
+    return get_cuti_period_status(
+        $user['cuti_start_date'] ?? null,
+        $user['cuti_end_date'] ?? null,
+        $user['cuti_status'] ?? null
+    ) === 'active';
+}
+
+/**
+ * Check if user can access a restricted page (not on cuti)
+ * Jika user sedang cuti, akan redirect dengan pesan error
+ *
+ * @param string $redirectPage Halaman redirect jika tidak bisa akses
+ * @return void
+ */
+function require_not_on_cuti(string $redirectPage = '/dashboard/pengajuan_cuti_resign.php'): void
+{
+    if (is_user_on_cuti_session()) {
+        $_SESSION['flash_errors'][] = 'Anda tidak dapat mengakses halaman ini karena sedang cuti.';
+        header('Location: ' . $redirectPage);
+        exit;
     }
 }
 

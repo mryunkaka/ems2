@@ -8,6 +8,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php';
 
+// Block access for users on cuti
+require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
+
 $rangeType = $_GET['range'] ?? 'current_week';
 
 if ($rangeType === 'last_week') {

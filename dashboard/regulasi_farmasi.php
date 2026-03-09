@@ -8,6 +8,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+// Block access for users on cuti
+require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
+
 ems_require_not_trainee_html('Regulasi Paket Farmasi');
 
 /* ===============================

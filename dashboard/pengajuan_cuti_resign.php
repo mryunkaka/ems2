@@ -122,6 +122,9 @@ include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
 <section class="content">
+    <!-- Hidden CSRF Token for JavaScript -->
+    <input type="hidden" id="csrf_token_input" value="<?= generateCsrfToken() ?>">
+    
     <div class="page page-shell">
         <h1 class="page-title"><?= htmlspecialchars($pageTitle) ?></h1>
         <p class="section-intro">Formulir pengajuan cuti dan resign untuk tenaga medis EMS.</p>
@@ -138,22 +141,22 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php endforeach; ?>
 
         <!-- Tab Navigation -->
-        <div class="card card-section mb-4">
-            <div class="flex gap-2 border-b border-gray-200">
-                <a href="?tab=cuti" class="px-4 py-2 font-medium <?= $activeTab === 'cuti' ? 'border-b-2 border-primary text-primary' : 'text-gray-600 hover:text-gray-900' ?>">
+        <div class="card card-section request-tab-shell mb-4">
+            <div class="request-tab-list">
+                <a href="?tab=cuti" class="request-tab-link <?= $activeTab === 'cuti' ? 'is-active' : '' ?>">
                     <?= ems_icon('calendar', 'h-4 w-4 inline mr-1') ?>
                     <span>Pengajuan Cuti</span>
                 </a>
-                <a href="?tab=resign" class="px-4 py-2 font-medium <?= $activeTab === 'resign' ? 'border-b-2 border-primary text-primary' : 'text-gray-600 hover:text-gray-900' ?>">
+                <a href="?tab=resign" class="request-tab-link <?= $activeTab === 'resign' ? 'is-active' : '' ?>">
                     <?= ems_icon('user-minus', 'h-4 w-4 inline mr-1') ?>
                     <span>Pengajuan Resign</span>
                 </a>
                 <?php if ($canApprove): ?>
-                <a href="?tab=approval" class="px-4 py-2 font-medium <?= $activeTab === 'approval' ? 'border-b-2 border-primary text-primary' : 'text-gray-600 hover:text-gray-900' ?>">
+                <a href="?tab=approval" class="request-tab-link <?= $activeTab === 'approval' ? 'is-active' : '' ?>">
                     <?= ems_icon('check-circle', 'h-4 w-4 inline mr-1') ?>
                     <span>Approval Request</span>
                     <?php if (count($pendingCuti) + count($pendingResign) > 0): ?>
-                        <span class="ml-1 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full"><?= count($pendingCuti) + count($pendingResign) ?></span>
+                        <span class="request-tab-badge"><?= count($pendingCuti) + count($pendingResign) ?></span>
                     <?php endif; ?>
                 </a>
                 <?php endif; ?>
@@ -164,8 +167,14 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php if ($activeTab === 'cuti'): ?>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- Form Pengajuan Cuti -->
-                <div class="card card-section">
-                    <div class="card-header">Form Pengajuan Cuti</div>
+                <div class="card card-section request-card">
+                    <div class="request-card-header">
+                        <div>
+                            <div class="request-card-title">Form Pengajuan Cuti</div>
+                            <div class="request-card-subtitle">Ajukan periode cuti dan jelaskan alasan IC maupun OOC.</div>
+                        </div>
+                        <span class="request-status-badge request-status-pending">Form Aktif</span>
+                    </div>
                     <form method="POST" action="pengajuan_cuti_resign_action.php" class="form">
                         <?= csrfField(); ?>
                         <input type="hidden" name="action" value="submit_cuti">
@@ -188,7 +197,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <label>Alasan OOC (Out of Character)</label>
                         <textarea name="reason_ooc" rows="3" required placeholder="Contoh: Libur kerja, acara keluarga, dll."></textarea>
 
-                        <div class="alert alert-info mt-4">
+                        <div class="request-info-box mt-4">
                             <strong>Info:</strong>
                             <ul class="list-disc list-inside mt-2 text-sm">
                                 <li>Tanggal cuti akan dihitung otomatis</li>
@@ -207,27 +216,34 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
 
                 <!-- Riwayat Pengajuan Cuti -->
-                <div class="card card-section">
-                    <div class="card-header">Riwayat Pengajuan Cuti</div>
+                <div class="card card-section request-card request-table-card">
+                    <div class="request-card-header">
+                        <div>
+                            <div class="request-card-title">Riwayat Pengajuan Cuti</div>
+                            <div class="request-card-subtitle">Pantau status pengajuan cuti Anda dengan pencarian dan sorting.</div>
+                        </div>
+                    </div>
                     <div class="table-wrapper table-wrapper-sm">
-                        <table class="table-custom">
+                        <table id="cutiHistoryTable" class="table-custom">
                             <thead>
                                 <tr>
                                     <th>Kode</th>
                                     <th>Tanggal</th>
                                     <th>Durasi</th>
                                     <th>Status</th>
+                                    <th>Alasan Ditolak</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (!$myCutiRequests): ?>
                                     <tr>
-                                        <td colspan="4" class="muted-placeholder">Belum ada pengajuan cuti.</td>
+                                        <td colspan="5" class="muted-placeholder">Belum ada pengajuan cuti.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($myCutiRequests as $req): ?>
                                         <?php
                                         $badge = get_status_badge($req['status']);
+                                        $rejectionReason = $req['rejection_reason'] ?? '';
                                         ?>
                                         <tr>
                                             <td>
@@ -242,9 +258,18 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <strong><?= (int)$req['days_total'] ?> hari</strong>
                                             </td>
                                             <td>
-                                                <span class="badge-counter <?= $badge['class'] ?>"><?= $badge['label'] ?></span>
+                                                <span class="request-status-badge request-status-<?= htmlspecialchars($req['status']) ?>"><?= $badge['label'] ?></span>
                                                 <?php if ($req['status'] === 'approved' && $req['approved_by_name']): ?>
                                                     <div class="meta-text-xs">Oleh <?= htmlspecialchars($req['approved_by_name']) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($req['status'] === 'rejected' && $rejectionReason): ?>
+                                                    <div class="text-sm text-red-600 max-w-xs truncate" title="<?= htmlspecialchars($rejectionReason) ?>">
+                                                        <?= htmlspecialchars($rejectionReason) ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span class="meta-text-xs">-</span>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -261,8 +286,14 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php if ($activeTab === 'resign'): ?>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <!-- Form Pengajuan Resign -->
-                <div class="card card-section">
-                    <div class="card-header">Form Pengajuan Resign</div>
+                <div class="card card-section request-card">
+                    <div class="request-card-header">
+                        <div>
+                            <div class="request-card-title">Form Pengajuan Resign</div>
+                            <div class="request-card-subtitle">Gunakan hanya jika Anda benar-benar siap keluar dari EMS.</div>
+                        </div>
+                        <span class="request-status-badge request-status-rejected">Perlu Konfirmasi</span>
+                    </div>
                     <form method="POST" action="pengajuan_cuti_resign_action.php" class="form">
                         <?= csrfField(); ?>
                         <input type="hidden" name="action" value="submit_resign">
@@ -274,7 +305,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <label>Alasan OOC (Out of Character)</label>
                         <textarea name="reason_ooc" rows="3" required placeholder="Contoh: Ada kerjaan lain, fokus kuliah, dll."></textarea>
 
-                        <div class="alert alert-error mt-4">
+                        <div class="request-danger-box mt-4">
                             <strong>PERHATIAN!</strong>
                             <ul class="list-disc list-inside mt-2 text-sm">
                                 <li>Resign yang sudah disetujui TIDAK BISA dibatalkan</li>
@@ -285,7 +316,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
 
                         <div class="modal-actions mt-4">
-                            <button type="submit" class="btn-error">
+                            <button type="submit" class="btn-resign-soft">
                                 <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?>
                                 <span>Ajukan Resign</span>
                             </button>
@@ -294,22 +325,28 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
 
                 <!-- Riwayat Pengajuan Resign -->
-                <div class="card card-section">
-                    <div class="card-header">Riwayat Pengajuan Resign</div>
+                <div class="card card-section request-card request-table-card">
+                    <div class="request-card-header">
+                        <div>
+                            <div class="request-card-title">Riwayat Pengajuan Resign</div>
+                            <div class="request-card-subtitle">Lihat status resign dan alasan penolakan jika ada.</div>
+                        </div>
+                    </div>
                     <div class="table-wrapper table-wrapper-sm">
-                        <table class="table-custom">
+                        <table id="resignHistoryTable" class="table-custom">
                             <thead>
                                 <tr>
                                     <th>Kode</th>
                                     <th>Tanggal</th>
                                     <th>Alasan</th>
                                     <th>Status</th>
+                                    <th>Alasan Ditolak</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php if (!$myResignRequests): ?>
                                     <tr>
-                                        <td colspan="4" class="muted-placeholder">Belum ada pengajuan resign.</td>
+                                        <td colspan="5" class="muted-placeholder">Belum ada pengajuan resign.</td>
                                     </tr>
                                 <?php else: ?>
                                     <?php foreach ($myResignRequests as $req): ?>
@@ -318,6 +355,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         $reasonIC = strlen($req['reason_ic'] ?? '') > 50
                                             ? substr($req['reason_ic'], 0, 50) . '...'
                                             : ($req['reason_ic'] ?? '-');
+                                        $rejectionReason = $req['rejection_reason'] ?? '';
                                         ?>
                                         <tr>
                                             <td>
@@ -331,9 +369,18 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <div class="text-sm"><?= htmlspecialchars($reasonIC) ?></div>
                                             </td>
                                             <td>
-                                                <span class="badge-counter <?= $badge['class'] ?>"><?= $badge['label'] ?></span>
+                                                <span class="request-status-badge request-status-<?= htmlspecialchars($req['status']) ?>"><?= $badge['label'] ?></span>
                                                 <?php if ($req['status'] === 'approved' && $req['approved_by_name']): ?>
                                                     <div class="meta-text-xs">Oleh <?= htmlspecialchars($req['approved_by_name']) ?></div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if ($req['status'] === 'rejected' && $rejectionReason): ?>
+                                                    <div class="text-sm text-red-600 max-w-xs truncate" title="<?= htmlspecialchars($rejectionReason) ?>">
+                                                        <?= htmlspecialchars($rejectionReason) ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span class="meta-text-xs">-</span>
                                                 <?php endif; ?>
                                             </td>
                                         </tr>
@@ -351,56 +398,59 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="grid grid-cols-1 gap-4">
                 <!-- Pending Cuti Requests -->
                 <?php if ($pendingCuti): ?>
-                    <div class="card card-section">
-                        <div class="card-header">Pengajuan Cuti Pending (<?= count($pendingCuti) ?>)</div>
-                        <div class="space-y-4">
-                            <?php foreach ($pendingCuti as $req): ?>
-                                <div class="border border-gray-200 rounded-lg p-4">
-                                    <div class="flex justify-between items-start mb-3">
-                                        <div>
-                                            <div class="font-bold text-lg"><?= htmlspecialchars($req['full_name']) ?></div>
-                                            <div class="meta-text-xs">
-                                                <?= ems_position_label($req['position']) ?> | Batch <?= (int)$req['batch'] ?>
-                                            </div>
-                                            <div class="meta-text-xs">
-                                                <?= htmlspecialchars($req['request_code']) ?> | <?= formatTanggalIndo($req['created_at']) ?>
-                                            </div>
-                                        </div>
-                                        <div class="text-right">
-                                            <div class="text-2xl font-bold text-primary"><?= (int)$req['days_total'] ?> hari</div>
-                                            <div class="meta-text-xs">Durasi Cuti</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="grid grid-cols-2 gap-4 mb-3">
-                                        <div>
-                                            <div class="text-sm font-medium text-gray-700">Tanggal Cuti</div>
-                                            <div class="text-sm">
-                                                <?= formatTanggalIndo($req['start_date']) ?> - <?= formatTanggalIndo($req['end_date']) ?>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <div class="text-sm font-medium text-gray-700">Alasan</div>
-                                            <div class="text-sm whitespace-pre-line"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex gap-2">
-                                        <button type="button" onclick="approveCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-success btn-sm">
-                                            <?= ems_icon('check', 'h-4 w-4') ?>
-                                            <span>Setujui</span>
-                                        </button>
-                                        <button type="button" onclick="rejectCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-error btn-sm">
-                                            <?= ems_icon('x', 'h-4 w-4') ?>
-                                            <span>Tolak</span>
-                                        </button>
-                                        <button type="button" onclick="viewCutiDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
-                                            <?= ems_icon('eye', 'h-4 w-4') ?>
-                                            <span>Detail</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                    <div class="card card-section request-approval-card request-table-card">
+                        <div class="request-card-header">
+                            <div>
+                                <div class="request-card-title">Pengajuan Cuti Pending</div>
+                                <div class="request-card-subtitle"><?= count($pendingCuti) ?> pengajuan menunggu review.</div>
+                            </div>
+                        </div>
+                        <div class="table-wrapper table-wrapper-sm">
+                            <table id="approvalCutiTable" class="table-custom">
+                                <thead>
+                                    <tr>
+                                        <th>Nama</th>
+                                        <th>Kode</th>
+                                        <th>Tanggal Cuti</th>
+                                        <th>Durasi</th>
+                                        <th>Alasan IC</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($pendingCuti as $req): ?>
+                                        <tr>
+                                            <td>
+                                                <strong><?= htmlspecialchars($req['full_name']) ?></strong>
+                                                <div class="meta-text-xs"><?= ems_position_label($req['position']) ?> | Batch <?= (int)$req['batch'] ?></div>
+                                            </td>
+                                            <td>
+                                                <strong><?= htmlspecialchars($req['request_code']) ?></strong>
+                                                <div class="meta-text-xs"><?= formatTanggalIndo($req['created_at']) ?></div>
+                                            </td>
+                                            <td><?= formatTanggalIndo($req['start_date']) ?> - <?= formatTanggalIndo($req['end_date']) ?></td>
+                                            <td><strong><?= (int)$req['days_total'] ?> hari</strong></td>
+                                            <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ic'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div></td>
+                                            <td class="action-cell">
+                                                <div class="flex flex-wrap gap-2">
+                                                    <button type="button" onclick="approveCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-success btn-sm">
+                                                        <?= ems_icon('check', 'h-4 w-4') ?>
+                                                        <span>Setujui</span>
+                                                    </button>
+                                                    <button type="button" onclick="rejectCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm">
+                                                        <?= ems_icon('x', 'h-4 w-4') ?>
+                                                        <span>Tolak</span>
+                                                    </button>
+                                                    <button type="button" onclick="viewCutiDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
+                                                        <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                        <span>Detail</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 <?php else: ?>
@@ -412,48 +462,57 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 <!-- Pending Resign Requests -->
                 <?php if ($pendingResign): ?>
-                    <div class="card card-section">
-                        <div class="card-header">Pengajuan Resign Pending (<?= count($pendingResign) ?>)</div>
-                        <div class="space-y-4">
-                            <?php foreach ($pendingResign as $req): ?>
-                                <div class="border border-red-200 bg-red-50 rounded-lg p-4">
-                                    <div class="flex justify-between items-start mb-3">
-                                        <div>
-                                            <div class="font-bold text-lg text-red-700"><?= htmlspecialchars($req['full_name']) ?></div>
-                                            <div class="meta-text-xs">
-                                                <?= ems_position_label($req['position']) ?> | Batch <?= (int)$req['batch'] ?>
-                                            </div>
-                                            <div class="meta-text-xs">
-                                                <?= htmlspecialchars($req['request_code']) ?> | <?= formatTanggalIndo($req['created_at']) ?>
-                                            </div>
-                                        </div>
-                                        <div class="text-right">
-                                            <div class="text-lg font-bold text-red-600">RESIGN</div>
-                                            <div class="meta-text-xs text-red-600">Pengunduran Diri</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <div class="text-sm font-medium text-gray-700">Alasan IC</div>
-                                        <div class="text-sm whitespace-pre-line"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div>
-                                    </div>
-
-                                    <div class="flex gap-2">
-                                        <button type="button" onclick="approveResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>', '<?= htmlspecialchars($req['full_name']) ?>')" class="btn-error btn-sm">
-                                            <?= ems_icon('check', 'h-4 w-4') ?>
-                                            <span>Setujui Resign</span>
-                                        </button>
-                                        <button type="button" onclick="rejectResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-secondary btn-sm">
-                                            <?= ems_icon('x', 'h-4 w-4') ?>
-                                            <span>Tolak</span>
-                                        </button>
-                                        <button type="button" onclick="viewResignDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
-                                            <?= ems_icon('eye', 'h-4 w-4') ?>
-                                            <span>Detail</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                    <div class="card card-section request-approval-card is-resign request-table-card">
+                        <div class="request-card-header">
+                            <div>
+                                <div class="request-card-title">Pengajuan Resign Pending</div>
+                                <div class="request-card-subtitle"><?= count($pendingResign) ?> pengajuan resign menunggu keputusan.</div>
+                            </div>
+                        </div>
+                        <div class="table-wrapper table-wrapper-sm">
+                            <table id="approvalResignTable" class="table-custom">
+                                <thead>
+                                    <tr>
+                                        <th>Nama</th>
+                                        <th>Kode</th>
+                                        <th>Role</th>
+                                        <th>Alasan IC</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($pendingResign as $req): ?>
+                                        <tr>
+                                            <td>
+                                                <strong><?= htmlspecialchars($req['full_name']) ?></strong>
+                                                <div class="meta-text-xs"><?= ems_position_label($req['position']) ?> | Batch <?= (int)$req['batch'] ?></div>
+                                            </td>
+                                            <td>
+                                                <strong><?= htmlspecialchars($req['request_code']) ?></strong>
+                                                <div class="meta-text-xs"><?= formatTanggalIndo($req['created_at']) ?></div>
+                                            </td>
+                                            <td><?= htmlspecialchars($req['role']) ?></td>
+                                            <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ic'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div></td>
+                                            <td class="action-cell">
+                                                <div class="flex flex-wrap gap-2">
+                                                    <button type="button" onclick="approveResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>', '<?= htmlspecialchars($req['full_name']) ?>')" class="btn-resign-soft btn-sm">
+                                                        <?= ems_icon('check', 'h-4 w-4') ?>
+                                                        <span>Setujui Resign</span>
+                                                    </button>
+                                                    <button type="button" onclick="rejectResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm">
+                                                        <?= ems_icon('x', 'h-4 w-4') ?>
+                                                        <span>Tolak</span>
+                                                    </button>
+                                                    <button type="button" onclick="viewResignDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
+                                                        <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                        <span>Detail</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 <?php else: ?>
@@ -467,146 +526,526 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
-<!-- Modal untuk Approval -->
-<div id="approvalModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden" style="display: none;" onclick="if (event.target === this) closeModal();">
-    <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl" onclick="event.stopPropagation();">
-        <h3 id="modalTitle" class="text-lg font-bold mb-4">Konfirmasi</h3>
-        <p id="modalMessage" class="text-sm text-gray-600 mb-4"></p>
-
-        <div id="rejectionSection" class="hidden mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Alasan Penolakan</label>
-            <textarea id="rejectionReason" class="w-full border border-gray-300 rounded-lg p-2 text-sm" rows="3" placeholder="Masukkan alasan penolakan..."></textarea>
-        </div>
-
-        <div class="flex justify-end gap-2">
-            <button type="button" onclick="closeModal()" class="btn-secondary">Batal</button>
-            <button type="button" id="modalConfirmBtn" class="btn-success">Konfirmasi</button>
-        </div>
-    </div>
-</div>
-
 <script>
-let currentAction = null;
-let currentRequestId = null;
+// ============================================
+// SISTEM CUTI & RESIGN - JAVASCRIPT HANDLER
+// ============================================
 
-function showModal(title, message, action, requestId, showRejection = false) {
-    document.getElementById('modalTitle').textContent = title;
-    document.getElementById('modalMessage').textContent = message;
+// Helper functions
+function formatTanggalIndo(date) {
+    if (!date) return '-';
+    // Handle YYYY-MM-DD format
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        var parts = date.split('-');
+        var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        return parseInt(parts[2]) + ' ' + months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+    }
+    var d = new Date(date);
+    var months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function ems_position_label(position) {
+    var positions = {
+        'doctor': 'Dokter',
+        'nurse': 'Perawat',
+        'paramedic': 'Paramedis',
+        'pharmacist': 'Apoteker',
+        'admin': 'Admin',
+        'manager': 'Manager',
+        'head': 'Kepala',
+        'specialist': 'Spesialis'
+    };
+    return positions[position] || position || '-';
+}
+
+function get_status_badge(status) {
+    var badges = {
+        'pending': { class: 'request-status-badge request-status-pending', label: 'Pending' },
+        'approved': { class: 'request-status-badge request-status-approved', label: 'Disetujui' },
+        'rejected': { class: 'request-status-badge request-status-rejected', label: 'Ditolak' }
+    };
+    return badges[status] || { class: 'request-status-badge', label: status || '-' };
+}
+
+function htmlspecialchars(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Global variables - initialized when DOM is ready
+var currentAction = null;
+var currentRequestId = null;
+var csrfToken = '';
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Get CSRF token from hidden input
+    var csrfInput = document.getElementById('csrf_token_input');
+    if (csrfInput) {
+        csrfToken = csrfInput.value;
+    } else {
+        // Fallback: try to get from meta tag
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) {
+            csrfToken = meta.getAttribute('content');
+        }
+    }
+    console.log('CSRF Token loaded:', csrfToken ? 'Yes' : 'No');
+});
+
+// ============================================
+// MODAL FUNCTIONS
+// ============================================
+
+// Show approval/rejection modal
+function showModal(title, message, action, requestId, showRejection) {
+    if (showRejection === undefined) showRejection = false;
+
+    var modalTitle = document.getElementById('approvalModalTitle');
+    var modalMessage = document.getElementById('approvalModalMessage');
+    var modal = document.getElementById('approvalModal');
+
+    if (!modal || !modalTitle || !modalMessage) {
+        console.error('Modal elements not found!');
+        alert('Error: Modal tidak ditemukan!');
+        return;
+    }
+
+    modalTitle.textContent = title;
+    modalMessage.textContent = message;
     currentAction = action;
     currentRequestId = requestId;
 
-    const rejectionSection = document.getElementById('rejectionSection');
-    const confirmBtn = document.getElementById('modalConfirmBtn');
-    const modal = document.getElementById('approvalModal');
+    var rejectionSection = document.getElementById('approvalRejectionSection');
+    var confirmBtn = document.getElementById('approvalConfirmBtn');
 
     if (showRejection) {
         rejectionSection.classList.remove('hidden');
-        confirmBtn.className = 'btn-error';
+        confirmBtn.className = 'btn-reject-soft';
         confirmBtn.textContent = 'Tolak';
     } else {
         rejectionSection.classList.add('hidden');
-        confirmBtn.className = action === 'approve_resign' ? 'btn-error' : 'btn-success';
-        confirmBtn.textContent = action === 'approve_resign' ? 'Setujui Resign' : 'Setujui';
+        if (action === 'approve_resign') {
+            confirmBtn.className = 'btn-resign-soft';
+            confirmBtn.textContent = 'Setujui Resign';
+        } else {
+            confirmBtn.className = 'btn-success';
+            confirmBtn.textContent = 'Setujui';
+        }
     }
 
-    // Tampilkan modal dengan flex layout
-    modal.style.display = 'flex';
-    modal.classList.add('items-center', 'justify-center');
+    // Show modal using design system class
+    modal.classList.remove('hidden');
+    
+    console.log('Modal shown for action:', action, 'requestId:', requestId);
 }
 
+// Close approval modal
 function closeModal() {
-    const modal = document.getElementById('approvalModal');
-    modal.style.display = 'none';
-    modal.classList.remove('items-center', 'justify-center');
+    var modal = document.getElementById('approvalModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    var rejectionInput = document.getElementById('approvalRejectionReason');
+    if (rejectionInput) {
+        rejectionInput.value = '';
+    }
     currentAction = null;
     currentRequestId = null;
 }
 
+// Close detail modal
+function closeDetailModal() {
+    var modal = document.getElementById('detailModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// ============================================
+// BUTTON CLICK HANDLERS (Global scope)
+// ============================================
+
+// Approve Cuti
 function approveCuti(id, code) {
-    showModal(
-        'Setujui Cuti',
-        `Apakah Anda yakin ingin menyetujui pengajuan cuti ${code}?`,
-        'approve_cuti',
-        id
-    );
+    console.log('approveCuti called:', id, code);
+    showModal('Setujui Cuti', 'Apakah Anda yakin ingin menyetujui pengajuan cuti ' + code + '?', 'approve_cuti', id);
 }
 
+// Reject Cuti
 function rejectCuti(id, code) {
-    showModal(
-        'Tolak Cuti',
-        `Apakah Anda yakin ingin menolak pengajuan cuti ${code}?`,
-        'reject_cuti',
-        id,
-        true
-    );
+    console.log('rejectCuti called:', id, code);
+    showModal('Tolak Cuti', 'Apakah Anda yakin ingin menolak pengajuan cuti ' + code + '?', 'reject_cuti', id, true);
 }
 
+// Approve Resign
 function approveResign(id, code, name) {
-    showModal(
-        'Setujui Resign',
-        `PERINGATAN: User ${name} akan dinonaktifkan dan tidak bisa login lagi. Lanjutkan?`,
-        'approve_resign',
-        id
-    );
+    console.log('approveResign called:', id, code, name);
+    showModal('Setujui Resign', 'PERINGATAN: User ' + name + ' akan dinonaktifkan dan tidak bisa login lagi. Lanjutkan?', 'approve_resign', id);
 }
 
+// Reject Resign
 function rejectResign(id, code) {
-    showModal(
-        'Tolak Resign',
-        `Apakah Anda yakin ingin menolak pengajuan resign ${code}?`,
-        'reject_resign',
-        id,
-        true
-    );
+    console.log('rejectResign called:', id, code);
+    showModal('Tolak Resign', 'Apakah Anda yakin ingin menolak pengajuan resign ' + code + '?', 'reject_resign', id, true);
 }
 
+// View Cuti Detail
 function viewCutiDetail(id) {
-    // Implementasi modal detail cuti
-    alert('Fitur detail akan segera tersedia');
+    console.log('viewCutiDetail called:', id);
+    var url = window.emsUrl('/dashboard/pengajuan_cuti_resign_action.php?action=get_cuti_detail&request_id=' + id);
+    console.log('Fetching:', url);
+    
+    fetch(url)
+        .then(function(response) { 
+            console.log('Response status:', response.status);
+            return response.json(); 
+        })
+        .then(function(data) {
+            console.log('Response data:', data);
+            if (data.success && data.data) {
+                showCutiDetailModal(data.data);
+            } else {
+                console.error('Error:', data.error);
+                alert('Gagal memuat detail cuti: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function(error) {
+            console.error('Fetch error:', error);
+            alert('Terjadi kesalahan koneksi!');
+        });
 }
 
+// View Resign Detail
 function viewResignDetail(id) {
-    // Implementasi modal detail resign
-    alert('Fitur detail akan segera tersedia');
+    console.log('viewResignDetail called:', id);
+    var url = window.emsUrl('/dashboard/pengajuan_cuti_resign_action.php?action=get_resign_detail&request_id=' + id);
+    console.log('Fetching:', url);
+    
+    fetch(url)
+        .then(function(response) { 
+            console.log('Response status:', response.status);
+            return response.json(); 
+        })
+        .then(function(data) {
+            console.log('Response data:', data);
+            if (data.success && data.data) {
+                showResignDetailModal(data.data);
+            } else {
+                console.error('Error:', data.error);
+                alert('Gagal memuat detail resign: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(function(error) {
+            console.error('Fetch error:', error);
+            alert('Terjadi kesalahan koneksi!');
+        });
 }
 
-document.getElementById('modalConfirmBtn').addEventListener('click', function() {
-    if (!currentAction || !currentRequestId) return;
+// ============================================
+// DETAIL MODAL FUNCTIONS
+// ============================================
 
-    const formData = new FormData();
-    formData.append('action', currentAction);
-    formData.append('request_id', currentRequestId);
-    formData.append('csrf_token', '<?= csrfToken() ?>');
+function showCutiDetailModal(data) {
+    var modal = document.getElementById('detailModal');
+    var title = document.getElementById('detailTitle');
+    var content = document.getElementById('detailContent');
 
-    if (currentAction.includes('reject')) {
-        const reason = document.getElementById('rejectionReason').value.trim();
-        if (!reason) {
-            alert('Alasan penolakan harus diisi!');
-            return;
-        }
-        formData.append('rejection_reason', reason);
+    if (!modal || !title || !content) {
+        alert('Error: Detail modal elements not found!');
+        return;
     }
 
-    fetch('pengajuan_cuti_resign_action.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(data.message || 'Aksi berhasil!');
-            window.location.reload();
-        } else {
-            alert(data.error || 'Terjadi kesalahan!');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Terjadi kesalahan koneksi!');
-    });
+    title.textContent = 'Detail Pengajuan Cuti - ' + htmlspecialchars(data.request_code);
 
-    closeModal();
+    var statusBadge = get_status_badge(data.status);
+
+    content.innerHTML = `
+        <div class="space-y-4">
+            <div class="request-detail-hero">
+                <div class="request-detail-panel">
+                    <div class="request-detail-label">Tenaga Medis</div>
+                    <div class="text-xl font-extrabold text-slate-900">${htmlspecialchars(data.full_name)}</div>
+                    <div class="request-detail-meta mt-2">${ems_position_label(data.position)} | Batch ${parseInt(data.batch)} | ${htmlspecialchars(data.role)}</div>
+                </div>
+                <div class="request-detail-stat">
+                    <div class="request-detail-label">Status Request</div>
+                    <span class="${statusBadge.class}">${statusBadge.label}</span>
+                    <div class="request-detail-meta mt-3">Diajukan ${formatTanggalIndo(data.created_at)}</div>
+                </div>
+            </div>
+
+            <div class="request-detail-grid">
+                <div class="request-detail-block">
+                    <div class="request-detail-label">Tanggal Mulai</div>
+                    <div class="request-detail-value">${formatTanggalIndo(data.start_date)}</div>
+                </div>
+                <div class="request-detail-block">
+                    <div class="request-detail-label">Tanggal Selesai</div>
+                    <div class="request-detail-value">${formatTanggalIndo(data.end_date)}</div>
+                </div>
+                <div class="request-detail-block">
+                    <div class="request-detail-label">Approver</div>
+                    <div class="request-detail-value">${data.approved_by ? htmlspecialchars(data.approved_by_name) : '-'}</div>
+                    ${data.approved_by ? `<div class="request-detail-meta mt-1">${formatTanggalIndo(data.approved_at)}</div>` : ''}
+                </div>
+                <div class="request-detail-stat">
+                    <div class="request-detail-label">Durasi Cuti</div>
+                    <div class="text-3xl font-extrabold text-sky-700">${parseInt(data.days_total)} Hari</div>
+                    <div class="request-detail-meta mt-2">Dihitung otomatis dari tanggal pengajuan</div>
+                </div>
+            </div>
+
+            <div class="request-detail-block">
+                <div class="request-detail-label">Alasan IC (In Character)</div>
+                <div class="request-detail-value whitespace-pre-line">${htmlspecialchars(data.reason_ic)}</div>
+            </div>
+
+            <div class="request-detail-block">
+                <div class="request-detail-label">Alasan OOC (Out of Character)</div>
+                <div class="request-detail-value whitespace-pre-line">${htmlspecialchars(data.reason_ooc)}</div>
+            </div>
+
+            ${data.rejection_reason ? `
+            <div class="request-detail-block request-detail-note-danger">
+                <div class="request-detail-label">Alasan Penolakan</div>
+                <div class="whitespace-pre-line">${htmlspecialchars(data.rejection_reason)}</div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    // Show modal using proper class
+    modal.classList.remove('hidden');
+}
+
+function showResignDetailModal(data) {
+    var modal = document.getElementById('detailModal');
+    var title = document.getElementById('detailTitle');
+    var content = document.getElementById('detailContent');
+
+    if (!modal || !title || !content) {
+        alert('Error: Detail modal elements not found!');
+        return;
+    }
+
+    title.textContent = 'Detail Pengajuan Resign - ' + htmlspecialchars(data.request_code);
+
+    var statusBadge = get_status_badge(data.status);
+
+    content.innerHTML = `
+        <div class="space-y-4">
+            <div class="request-detail-hero is-resign">
+                <div class="request-detail-panel">
+                    <div class="request-detail-label">Tenaga Medis</div>
+                    <div class="text-xl font-extrabold text-slate-900">${htmlspecialchars(data.full_name)}</div>
+                    <div class="request-detail-meta mt-2">${ems_position_label(data.position)} | Batch ${parseInt(data.batch)} | ${htmlspecialchars(data.role)}</div>
+                </div>
+                <div class="request-detail-stat is-danger">
+                    <div class="request-detail-label">Status Request</div>
+                    <span class="${statusBadge.class}">${statusBadge.label}</span>
+                    <div class="request-detail-meta mt-3 text-rose-700">Jika disetujui, akun user akan dinonaktifkan permanen.</div>
+                </div>
+            </div>
+
+            <div class="request-detail-grid">
+                <div class="request-detail-block">
+                    <div class="request-detail-label">Tanggal Pengajuan</div>
+                    <div class="request-detail-value">${formatTanggalIndo(data.created_at)}</div>
+                </div>
+                <div class="request-detail-block">
+                    <div class="request-detail-label">Approver</div>
+                    <div class="request-detail-value">${data.approved_by ? htmlspecialchars(data.approved_by_name) : '-'}</div>
+                    ${data.approved_by ? `<div class="request-detail-meta mt-1">${formatTanggalIndo(data.approved_at)}</div>` : ''}
+                </div>
+            </div>
+
+            <div class="request-detail-block">
+                <div class="request-detail-label">Alasan IC (In Character)</div>
+                <div class="request-detail-value whitespace-pre-line">${htmlspecialchars(data.reason_ic)}</div>
+            </div>
+
+            <div class="request-detail-block">
+                <div class="request-detail-label">Alasan OOC (Out of Character)</div>
+                <div class="request-detail-value whitespace-pre-line">${htmlspecialchars(data.reason_ooc)}</div>
+            </div>
+
+            ${data.rejection_reason ? `
+            <div class="request-detail-block request-detail-note-danger">
+                <div class="request-detail-label">Alasan Penolakan</div>
+                <div class="whitespace-pre-line">${htmlspecialchars(data.rejection_reason)}</div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    // Show modal using proper class
+    modal.classList.remove('hidden');
+}
+
+// ============================================
+// APPROVAL FORM SUBMIT HANDLER
+// ============================================
+
+// Bind modal confirm button when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.jQuery && jQuery.fn.DataTable) {
+        [
+            { selector: '#cutiHistoryTable', order: [[1, 'desc']], noSort: [4] },
+            { selector: '#resignHistoryTable', order: [[1, 'desc']], noSort: [4] },
+            { selector: '#approvalCutiTable', order: [[2, 'asc']], noSort: [4, 5] },
+            { selector: '#approvalResignTable', order: [[1, 'asc']], noSort: [3, 4] }
+        ].forEach(function(cfg) {
+            if (!document.querySelector(cfg.selector)) {
+                return;
+            }
+
+            jQuery(cfg.selector).DataTable({
+                pageLength: 10,
+                scrollX: true,
+                autoWidth: false,
+                order: cfg.order,
+                language: {
+                    url: '/assets/design/js/datatables-id.json'
+                },
+                columnDefs: [
+                    { orderable: false, targets: cfg.noSort }
+                ]
+            });
+        });
+    }
+
+    var modalConfirmBtn = document.getElementById('approvalConfirmBtn');
+    if (modalConfirmBtn) {
+        modalConfirmBtn.addEventListener('click', function() {
+            if (!currentAction || !currentRequestId) {
+                alert('Error: Tidak ada action yang dipilih!');
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append('action', currentAction);
+            formData.append('request_id', currentRequestId);
+            formData.append('csrf_token', csrfToken);
+
+            if (currentAction.indexOf('reject') !== -1) {
+                var reason = document.getElementById('approvalRejectionReason').value.trim();
+                if (!reason) {
+                    alert('Alasan penolakan harus diisi!');
+                    return;
+                }
+                formData.append('rejection_reason', reason);
+            }
+
+            console.log('Submitting approval:', currentAction, 'requestId:', currentRequestId);
+
+            fetch(window.emsUrl('/dashboard/pengajuan_cuti_resign_action.php'), {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(response) {
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers.get('content-type'));
+                
+                // Check if response is JSON
+                var contentType = response.headers.get('content-type');
+                if (contentType && contentType.indexOf('application/json') !== -1) {
+                    return response.json();
+                } else {
+                    // Not JSON, return text for debugging
+                    return response.text().then(function(text) {
+                        throw new Error('Server returned HTML instead of JSON. Response: ' + text.substring(0, 200));
+                    });
+                }
+            })
+            .then(function(data) {
+                console.log('Response data:', data);
+                if (data.success) {
+                    alert(data.message || 'Aksi berhasil!');
+                    window.location.reload();
+                } else {
+                    alert(data.error || 'Terjadi kesalahan!');
+                }
+            })
+            .catch(function(error) {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan: ' + error.message);
+            });
+
+            closeModal();
+        });
+    }
+
+    // Close modal when clicking outside
+    var approvalModal = document.getElementById('approvalModal');
+    if (approvalModal) {
+        approvalModal.addEventListener('click', function(event) {
+            if (event.target === approvalModal) {
+                closeModal();
+            }
+        });
+    }
+
+    var detailModal = document.getElementById('detailModal');
+    if (detailModal) {
+        detailModal.addEventListener('click', function(event) {
+            if (event.target === detailModal) {
+                closeDetailModal();
+            }
+        });
+    }
+
+    console.log('Cuti/Resign system initialized');
 });
 </script>
+
+<!-- Modal untuk Approval -->
+<div id="approvalModal" class="modal-overlay hidden">
+    <div class="modal-card modal-frame-md request-modal-card">
+        <div class="request-modal-head">
+            <div>
+                <h3 id="approvalModalTitle" class="request-modal-title">Konfirmasi</h3>
+                <div class="request-modal-subtitle">Tinjau aksi approval sebelum dikirim.</div>
+            </div>
+            <button type="button" class="modal-close-btn request-modal-close" onclick="closeModal()" aria-label="Tutup">
+                <?= ems_icon('x-mark', 'h-4 w-4') ?>
+            </button>
+        </div>
+        <div class="request-modal-content modal-body">
+            <p id="approvalModalMessage" class="text-sm text-gray-600 mb-4"></p>
+
+            <div id="approvalRejectionSection" class="hidden mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Alasan Penolakan</label>
+                <textarea id="approvalRejectionReason" class="w-full border border-gray-300 rounded-lg p-2 text-sm" rows="3" placeholder="Masukkan alasan penolakan..."></textarea>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" onclick="closeModal()" class="btn-secondary">Batal</button>
+                <button type="button" id="approvalConfirmBtn" class="btn-success">Konfirmasi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal untuk Detail -->
+<div id="detailModal" class="modal-overlay hidden">
+    <div class="modal-card modal-frame-lg request-modal-card">
+        <div class="request-modal-head">
+            <div>
+                <h3 id="detailTitle" class="request-modal-title">Detail</h3>
+                <div class="request-modal-subtitle">Informasi lengkap pengajuan cuti atau resign.</div>
+            </div>
+            <button type="button" class="modal-close-btn request-modal-close" onclick="closeDetailModal()" aria-label="Tutup">
+                <?= ems_icon('x-mark', 'h-4 w-4') ?>
+            </button>
+        </div>
+        <div class="request-modal-content modal-body" id="detailContent">
+            <!-- Content will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -7,6 +7,9 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+// Block access for users on cuti
+require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
+
 $pageTitle = 'Rekap Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 
