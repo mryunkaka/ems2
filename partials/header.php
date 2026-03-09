@@ -60,6 +60,7 @@ if ($userId) {
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/design/tailwind/build.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/design/tailwind/inbox-modal.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/css/overrides.css'), ENT_QUOTES, 'UTF-8') ?>">
     <script defer src="<?= htmlspecialchars(ems_asset('/assets/vendor/alpine/alpine.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
@@ -132,14 +133,26 @@ if ($userId) {
 
         </header>
 
-        <div id="inboxModal" class="hidden inbox-modal-overlay">
-            <div class="inbox-modal-box">
-                <h3 id="modalTitle"></h3>
-                <p id="modalMessage"></p>
+        <div id="inboxModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="inbox-modal-box modal-shell modal-frame-md">
+                <div class="modal-head">
+                    <div class="min-w-0">
+                        <div id="modalTitle" class="modal-title"></div>
+                    </div>
+                    <button onclick="closeInboxModal()" type="button" class="modal-close-btn" aria-label="Tutup modal">
+                        <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                    </button>
+                </div>
 
-                <div class="inbox-modal-actions">
-                    <button onclick="closeInboxModal()" type="button" class="btn-secondary">Batal</button>
-                    <button onclick="deleteInbox()" class="btn-danger">Hapus</button>
+                <div class="modal-content">
+                    <div id="modalMessage" class="inbox-modal-message"></div>
+                </div>
+
+                <div class="modal-foot">
+                    <div class="inbox-modal-actions">
+                        <button onclick="closeInboxModal()" type="button" class="btn-secondary">Tutup</button>
+                        <button onclick="deleteInbox()" type="button" class="btn-danger">Hapus</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -512,11 +525,20 @@ if ($userId) {
             let currentInboxId = null;
 
             function openInboxModal(item) {
+                const modal = document.getElementById('inboxModal');
+                const deleteButton = modal ? modal.querySelector('.btn-danger') : null;
+
                 currentInboxId = item.id;
 
                 document.getElementById('modalTitle').textContent = item.title;
                 document.getElementById('modalMessage').innerHTML = item.message;
-                document.getElementById('inboxModal').classList.remove('hidden');
+                if (deleteButton) {
+                    deleteButton.textContent = 'Hapus';
+                }
+                if (modal) {
+                    modal.classList.remove('hidden');
+                    document.body.classList.add('modal-open');
+                }
 
                 fetch(window.emsUrl('/actions/read_inbox.php'), {
                     method: 'POST',
@@ -529,7 +551,11 @@ if ($userId) {
             }
 
             function closeInboxModal() {
-                document.getElementById('inboxModal').classList.add('hidden');
+                const modal = document.getElementById('inboxModal');
+                if (modal) {
+                    modal.classList.add('hidden');
+                }
+                document.body.classList.remove('modal-open');
             }
 
             function deleteInbox() {
@@ -545,6 +571,18 @@ if ($userId) {
                     loadInbox();
                 });
             }
+
+            document.getElementById('inboxModal')?.addEventListener('click', function(event) {
+                if (event.target === this) {
+                    closeInboxModal();
+                }
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    closeInboxModal();
+                }
+            });
         </script>
         <script>
             /* ======================================================
@@ -737,5 +775,3 @@ if ($userId) {
                 });
             });
         </script>
-
-

@@ -25,3 +25,5 @@ config/database.php
 Thumbs.db
 testsprite_tests
 .claude
+PRODUCT_SPECIFICATION.md
+PRODUCT_SPECIFICATION_CURRENT.md

@@ -1,0 +1,15 @@
+.inbox-modal-message {
+  white-space: pre-line;
+  font-size: 12px;
+  line-height: 1.75rem;
+  color: #334155;
+}
+
+.inbox-modal-message strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.inbox-modal-actions {
+  justify-content: flex-end;
+}

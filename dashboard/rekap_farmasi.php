@@ -3256,7 +3256,6 @@ include __DIR__ . '/../partials/sidebar.php';
             // USER OFFLINE: TAMPILKAN NOTICE
             // ===============================
             if (data.user_status === 'offline') {
-
                 showFairnessNotice(`
                         <strong>Status Anda OFFLINE</strong><br><br>
                         Anda tidak dapat melakukan transaksi selama status OFFLINE.<br>

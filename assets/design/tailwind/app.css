@@ -638,6 +638,18 @@
     @apply bg-sky-50/60;
   }
 
+  .inbox-modal-message {
+    @apply whitespace-pre-line text-sm leading-7 text-slate-700;
+  }
+
+  .inbox-modal-message strong {
+    @apply font-semibold text-slate-900;
+  }
+
+  .inbox-modal-actions {
+    @apply justify-end;
+  }
+
   .pulse {
     animation: ems-pulse 0.8s ease-in-out;
   }

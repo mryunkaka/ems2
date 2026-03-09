@@ -91,5 +91,53 @@ document.addEventListener("DOMContentLoaded", () => {
         },
       },
     });
+
+    const $ = window.jQuery;
+
+    function sanitizeDataTablePlaceholders(table) {
+      const tbody = table && table.tBodies ? table.tBodies[0] : null;
+      if (!tbody) return;
+
+      const rows = Array.from(tbody.rows || []);
+      if (rows.length !== 1) return;
+
+      const cells = rows[0].cells || [];
+      if (cells.length !== 1) return;
+
+      const cell = cells[0];
+      const colspan = parseInt(cell.getAttribute("colspan") || "1", 10);
+      const headerCount = table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells.length : 0;
+
+      if (colspan < 2 && headerCount > 1) return;
+
+      const message = (cell.textContent || "").trim();
+      if (message) {
+        table.dataset.dtEmptyTable = message;
+      }
+
+      tbody.innerHTML = "";
+    }
+
+    const originalDataTable = $.fn.DataTable;
+    $.fn.DataTable = function (...args) {
+      this.each(function () {
+        sanitizeDataTablePlaceholders(this);
+      });
+
+      const options = args[0] && typeof args[0] === "object" ? args[0] : null;
+      if (options) {
+        const selection = this;
+        selection.each(function () {
+          if (this.dataset.dtEmptyTable) {
+            options.language = options.language || {};
+            if (!options.language.emptyTable) {
+              options.language.emptyTable = this.dataset.dtEmptyTable;
+            }
+          }
+        });
+      }
+
+      return originalDataTable.apply(this, args);
+    };
   }
 });
