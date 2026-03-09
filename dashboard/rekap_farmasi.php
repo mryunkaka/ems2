@@ -1164,7 +1164,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 title="Klik untuk ubah status">
                                 <span class="dot"></span>
                                 <span id="farmasiStatusText">
-                                    <?= $isOnline ? 'ONLINE' : 'OFFLINE' ?>
+                                    <?= $isOnline ? ' ONLINE' : ' OFFLINE' ?>
                                 </span>
                             </span>
                         </div>
@@ -1230,19 +1230,21 @@ include __DIR__ . '/../partials/sidebar.php';
                             </small>
                         </div>
                         <div class="col">
-                            <label>Paket A / B (Combo)</label>
+                            <label>Pilihan Paket</label>
                             <select name="package_main" id="pkg_main">
-                                <option value="">-- Tidak Pakai Paket A/B --</option>
+                                <option value="">-- Tidak Pakai Paket --</option>
                                 <?php foreach ($paketAB as $pkg): ?>
                                     <option value="<?= (int)$pkg['id'] ?>">
                                         <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
                                     </option>
                                 <?php endforeach; ?>
+                                <option value="custom">Paket Custom</option>
                             </select>
+                            <small>Pilih paket combo atau gunakan Paket Custom untuk memilih item satu per satu.</small>
                         </div>
                     </div>
 
-                    <div class="row-form-2">
+                    <div class="row-form-2 hidden" id="customPackageRow">
                         <div class="col">
                             <label>Paket Bandage</label>
                             <select name="package_bandage" id="pkg_bandage">
@@ -1278,21 +1280,47 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
 
-                    <div class="total-item-info">
-                        <strong>Total item terpilih:</strong>
-                        Bandage (<span id="priceBandage">-</span>/pcs):
-                        <span id="totalBandage">0</span>,
-                        IFAKS (<span id="priceIfaks">-</span>/pcs):
-                        <span id="totalIfaks">0</span>,
-                        Painkiller (<span id="pricePainkiller">-</span>/pcs):
-                        <span id="totalPainkiller">0</span>,
-                        Bonus 40% (estimasi): <span id="totalBonus">0</span>
+                    <div class="total-item-info bg-white">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Ringkasan Item</div>
+                                <div class="meta-text-xs">Jumlah item dan bonus akan berubah otomatis sesuai mode paket aktif.</div>
+                            </div>
+                            <span class="badge-counter">Bonus 40%: <span id="totalBonus">0</span></span>
+                        </div>
+                        <div class="grid gap-2 mt-3 sm:grid-cols-2">
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <div class="meta-text-xs">Bandage</div>
+                                <div class="font-semibold text-slate-900"><span id="totalBandage">0</span> pcs</div>
+                                <div class="meta-text-xs">Harga satuan: <span id="priceBandage">-</span>/pcs</div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <div class="meta-text-xs">IFAKS</div>
+                                <div class="font-semibold text-slate-900"><span id="totalIfaks">0</span> pcs</div>
+                                <div class="meta-text-xs">Harga satuan: <span id="priceIfaks">-</span>/pcs</div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                <div class="meta-text-xs">Painkiller</div>
+                                <div class="font-semibold text-slate-900"><span id="totalPainkiller">0</span> pcs</div>
+                                <div class="meta-text-xs">Harga satuan: <span id="pricePainkiller">-</span>/pcs</div>
+                            </div>
+                            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                                <div class="meta-text-xs text-emerald-700">Mode Paket Aktif</div>
+                                <div class="font-semibold text-emerald-700" id="activePackageLabel">Paket A / B</div>
+                                <div class="meta-text-xs text-emerald-700">Pilih mode custom jika ingin atur item manual.</div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- DISPLAY KASIR: Total Harga besar -->
-                    <div class="total-display">
-                        <div class="total-display-label">Total yang harus dibayar</div>
-                        <div class="total-amount" id="totalPriceDisplay">$ 0</div>
+                    <div class="total-display border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <div class="flex flex-wrap items-end justify-between gap-3">
+                            <div>
+                                <div class="total-display-label text-emerald-700">Total yang harus dibayar</div>
+                                <div class="meta-text-xs text-emerald-700">Nominal akhir transaksi yang siap dikonfirmasi.</div>
+                            </div>
+                            <div class="total-amount mt-0 text-emerald-700" id="totalPriceDisplay">$ 0</div>
+                        </div>
                     </div>
 
                     <div class="action-row-wrap">
@@ -1331,14 +1359,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                     aria-label="Toggle suara activity">
                                     <?= ems_icon('bell', 'h-4 w-4') ?>
                                     <span class="text-[11px] font-bold" data-sound-label>On</span>
-                                </button>
-
-                                <button
-                                    id="btnCloseActivity"
-                                    class="activity-feed-close"
-                                    title="Tutup Activity"
-                                    aria-label="Tutup Activity">
-                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
                                 </button>
                             </div>
                         </div>
@@ -1772,6 +1792,7 @@ include __DIR__ . '/../partials/sidebar.php';
         let NOTICE_STATE = 'NONE';
 
         const STORAGE_KEY = 'farmasi_ems_form';
+        const DEFAULT_PACKAGE_MODE = 'combo';
 
         const FAIRNESS_STATE = {
             locked: false,
@@ -1855,12 +1876,70 @@ include __DIR__ . '/../partials/sidebar.php';
                 ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(function(id) {
                     const el = document.getElementById(id);
                     if (!el) return;
-                    if (data[id]) {
+                    if (typeof data[id] !== 'undefined') {
                         el.value = data[id];
                     }
                 });
             } catch (e) {
                 // abaikan
+            }
+        }
+
+        function getSelectedPackageMode() {
+            const mainEl = document.getElementById('pkg_main');
+            return mainEl && mainEl.value === 'custom' ? 'custom' : DEFAULT_PACKAGE_MODE;
+        }
+
+        function inferPackageMode() {
+            const customIds = ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'];
+            const hasCustomSelection = customIds.some(function(id) {
+                const el = document.getElementById(id);
+                return el && el.value;
+            });
+            if (hasCustomSelection) {
+                return 'custom';
+            }
+
+            const mainEl = document.getElementById('pkg_main');
+            if (mainEl && mainEl.value === 'custom') {
+                return 'custom';
+            }
+            if (mainEl && mainEl.value) {
+                return DEFAULT_PACKAGE_MODE;
+            }
+
+            return DEFAULT_PACKAGE_MODE;
+        }
+
+        function applyPackageMode(mode, options) {
+            const settings = options || {};
+            const preserveSelections = !!settings.preserveSelections;
+            const normalizedMode = mode === 'custom' ? 'custom' : DEFAULT_PACKAGE_MODE;
+            const mainEl = document.getElementById('pkg_main');
+            const customRow = document.getElementById('customPackageRow');
+            const activeLabel = document.getElementById('activePackageLabel');
+
+            if (customRow) {
+                customRow.classList.toggle('hidden', normalizedMode !== 'custom');
+            }
+            if (activeLabel) {
+                activeLabel.textContent = normalizedMode === 'custom' ? 'Custom' : 'Paket A / B';
+            }
+
+            if (!preserveSelections) {
+                if (normalizedMode === 'custom') {
+                    if (mainEl) {
+                        mainEl.value = 'custom';
+                    }
+                } else {
+                    ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(function(id) {
+                        const el = document.getElementById(id);
+                        if (el) el.value = '';
+                    });
+                    if (mainEl && mainEl.value === 'custom') {
+                        mainEl.value = '';
+                    }
+                }
             }
         }
 
@@ -1938,7 +2017,12 @@ include __DIR__ . '/../partials/sidebar.php';
 
             // Kumpulkan ID paket yang dipilih
             const ids = [];
-            ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(function(id) {
+            const activeMode = getSelectedPackageMode();
+            const activeIds = activeMode === 'custom' ?
+                ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'] :
+                ['pkg_main'];
+
+            activeIds.forEach(function(id) {
                 const el = document.getElementById(id);
                 if (el && el.value) {
                     ids.push(el.value);
@@ -2092,6 +2176,9 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function onPackageChange() {
+            applyPackageMode(getSelectedPackageMode(), {
+                preserveSelections: true
+            });
             saveFormState();
             recalcTotals();
         }
@@ -2113,6 +2200,9 @@ include __DIR__ . '/../partials/sidebar.php';
             ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
+            });
+            applyPackageMode(DEFAULT_PACKAGE_MODE, {
+                preserveSelections: true
             });
 
             // clear localStorage
@@ -2391,6 +2481,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 // Kalau transaksi sebelumnya gagal / batal, tetap restore agar user bisa koreksi
                 restoreFormState();
             }
+            applyPackageMode(inferPackageMode(), {
+                preserveSelections: true
+            });
 
             // Listener perubahan paket
             ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(function(id) {
@@ -2399,7 +2492,6 @@ include __DIR__ . '/../partials/sidebar.php';
                     el.addEventListener('change', onPackageChange);
                 }
             });
-
             // Listener nama konsumen → cek limit + save state
             const consumerInput = document.querySelector('input[name="consumer_name"]');
             if (consumerInput) {
@@ -2879,8 +2971,6 @@ include __DIR__ . '/../partials/sidebar.php';
             const container = document.getElementById('activityFeedList');
             if (!container) return;
 
-            const ACTIVITY_CLOSED_KEY = 'farmasi_activity_closed';
-
             const MAX_ITEMS = 10;
             let lastActivityHash = '';
 
@@ -3023,13 +3113,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             }
 
-            // Jika user sudah menutup activity (session-based)
-            if (sessionStorage.getItem(ACTIVITY_CLOSED_KEY) === '1') {
-                const wrapper = document.querySelector('.activity-feed-container');
-                if (wrapper) wrapper.style.display = 'none';
-                return; // STOP: tidak fetch, tidak render, tidak bunyi
-            }
-
             // ===============================
             // FETCH DARI SERVER
             // ===============================
@@ -3087,20 +3170,6 @@ include __DIR__ . '/../partials/sidebar.php';
 
             // UPDATE TIME SETIAP 10 DETIK
             setInterval(updateAllTimes, 10000);
-
-            const btnClose = document.getElementById('btnCloseActivity');
-            const wrapper = document.querySelector('.activity-feed-container');
-
-            if (btnClose && wrapper) {
-                btnClose.addEventListener('click', function() {
-                    // simpan status close (session only)
-                    sessionStorage.setItem(ACTIVITY_CLOSED_KEY, '1');
-
-                    // sembunyikan langsung
-                    wrapper.style.display = 'none';
-                });
-            }
-
 
         })();
     </script>
