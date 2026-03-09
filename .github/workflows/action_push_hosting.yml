@@ -33,8 +33,8 @@ jobs:
           server: ${{ secrets.SERVER }}
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
-          protocol: ftps
-          port: 21
+          protocol: sftp
+          port: 22
           server-dir: ./
           local-dir: ./
 
