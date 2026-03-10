@@ -60,7 +60,10 @@ if ((int)$user['is_verified'] === 0) {
 // CEK STATUS AKTIF USER (REIGNED/NONAKTIF)
 // =====================================================
 if ((int)$user['is_active'] === 0) {
-    $_SESSION['error'] = 'Akun Anda sudah dinonaktifkan. Hubungi administrator.';
+    $hasResigned = !empty($user['resigned_at']) || !empty(trim((string)($user['resign_reason'] ?? '')));
+    $_SESSION['error'] = $hasResigned
+        ? 'Akun Anda sudah dinonaktifkan. Hubungi administrator.'
+        : 'Akun Anda belum aktif. Silakan tunggu aktivasi manager.';
     header("Location: login.php");
     exit;
 }

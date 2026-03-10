@@ -3,52 +3,6 @@ session_start();
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
-function compressImageSmart(
-    string $sourcePath,
-    string $targetPath,
-    int $maxWidth = 1200,
-    int $targetSize = 300000,
-    int $minQuality = 70
-): bool {
-    $info = getimagesize($sourcePath);
-    if (!$info) return false;
-
-    $mime = $info['mime'];
-    if ($mime === 'image/jpeg') {
-        $src = imagecreatefromjpeg($sourcePath);
-    } elseif ($mime === 'image/png') {
-        $src = imagecreatefrompng($sourcePath);
-    } else {
-        return false;
-    }
-
-    $w = imagesx($src);
-    $h = imagesy($src);
-
-    if ($w > $maxWidth) {
-        $ratio = $maxWidth / $w;
-        $nw = $maxWidth;
-        $nh = (int)($h * $ratio);
-        $dst = imagecreatetruecolor($nw, $nh);
-        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
-        imagedestroy($src);
-    } else {
-        $dst = $src;
-    }
-
-    if ($mime === 'image/png') {
-        imagepng($dst, $targetPath, 7);
-    } else {
-        for ($q = 90; $q >= $minQuality; $q -= 5) {
-            imagejpeg($dst, $targetPath, $q);
-            if (filesize($targetPath) <= $targetSize) break;
-        }
-    }
-
-    imagedestroy($dst);
-    return true;
-}
-
 function alphaPos($char)
 {
     $char = strtoupper($char);
@@ -114,6 +68,7 @@ if ($check->fetch()) {
 }
 
 $is_verified = ($role === 'Staff') ? 1 : 0;
+$is_active = 0;
 
 $stmt = $pdo->prepare("
     INSERT INTO user_rh (
@@ -125,8 +80,9 @@ $stmt = $pdo->prepare("
         citizen_id,
         no_hp_ic,
         jenis_kelamin,
-        is_verified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_verified,
+        is_active
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
 $stmt->execute([
@@ -138,7 +94,8 @@ $stmt->execute([
     $citizenId,
     $noHpIc,
     $jenisKelamin,
-    $is_verified
+    $is_verified,
+    $is_active
 ]);
 
 $userId = $pdo->lastInsertId();
@@ -260,6 +217,6 @@ $params[] = $userId;
 
 $pdo->prepare($sql)->execute($params);
 
-$_SESSION['success'] = 'Registrasi berhasil';
+$_SESSION['success'] = 'Registrasi berhasil. Akun menunggu aktivasi manager sebelum bisa login.';
 header("Location: login.php");
 exit;
