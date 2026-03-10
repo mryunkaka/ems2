@@ -66,7 +66,7 @@ if (ems_can_access_division_menu($division, 'Human Resource')) {
         sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
         sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
         sidebarItem('/dashboard/tracking_cuti_resign.php', 'tracking_cuti_resign.php', 'Tracking Cuti & Resign', 'clock'),
-        sidebarItem('#', '', 'History Cuti & Resign', 'clock'),
+        sidebarItem('/dashboard/history_cuti_resign.php', 'history_cuti_resign.php', 'History Cuti & Resign', 'clipboard-document-list'),
         sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'receipt-percent'),
         sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
     ];
