@@ -3023,10 +3023,10 @@ include __DIR__ . '/../partials/sidebar.php';
             const container = document.getElementById('activityFeedList');
             if (!container) return;
 
-            const MAX_ITEMS = 10;
+            const MAX_ITEMS = 30;
             let lastActivityHash = '';
 
-            let lastActivityId = null;
+            let lastActivityKey = null;
             let isFirstLoad = true;
 
             const sound = document.getElementById('activitySound');
@@ -3057,7 +3057,22 @@ include __DIR__ . '/../partials/sidebar.php';
                 'online': 'ON',
                 'offline': 'OFF',
                 'force_offline': 'FORCE',
-                'delete': 'DEL'
+                'delete': 'DEL',
+                'leave_request': 'CUTI',
+                'leave_approved': 'OK',
+                'leave_rejected': 'NO',
+                'on_leave': 'IZIN',
+                'resign_request': 'RESIGN',
+                'resign': 'OUT',
+                'promotion_request': 'JBTN',
+                'promotion_approved': 'UP',
+                'promotion_rejected': 'NO',
+                'medical_record': 'RM',
+                'medical_service': 'EMS',
+                'account_created': 'NEW',
+                'applicant_new': 'DAFTAR',
+                'candidate_accepted': 'OK',
+                'candidate_rejected': 'FAIL'
             };
 
             // ===============================
@@ -3140,14 +3155,14 @@ include __DIR__ . '/../partials/sidebar.php';
                     return;
                 }
 
-                const newestId = newActivities[0].id;
+                const newestKey = `${newActivities[0].id}:${newActivities[0].timestamp}`;
 
                 // BUNYI HANYA JIKA ADA ACTIVITY BARU
-                if (!isFirstLoad && lastActivityId !== null && newestId > lastActivityId) {
+                if (!isFirstLoad && lastActivityKey !== null && newestKey !== lastActivityKey) {
                     playSound();
                 }
 
-                lastActivityId = newestId;
+                lastActivityKey = newestKey;
                 isFirstLoad = false;
 
                 // ===== LOGIC LAMA TETAP =====
