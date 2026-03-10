@@ -23,31 +23,6 @@ function sidebarItem(string $href, string $page, string $label, string $icon): a
     ];
 }
 
-function canSeeDivisionMenu(string $userDivision, string $targetDivision): bool
-{
-    if ($userDivision === '' || $targetDivision === '') {
-        return false;
-    }
-
-    if (in_array($userDivision, ['Executive', 'Secretary'], true)) {
-        return true;
-    }
-
-    if ($userDivision === $targetDivision) {
-        return true;
-    }
-
-    if ($userDivision === 'Human Capital' && in_array($targetDivision, ['Human Resource', 'Disciplinary Committee'], true)) {
-        return true;
-    }
-
-    if ($userDivision === 'Specialist Medical Authority' && $targetDivision === 'Forensic') {
-        return true;
-    }
-
-    return false;
-}
-
 $groupedNav = [
     'Utama' => [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
@@ -78,7 +53,7 @@ $groupedNav = [
     ],
 ];
 
-if (canSeeDivisionMenu($division, 'Executive')) {
+if (ems_can_access_division_menu($division, 'Executive')) {
     $groupedNav['Executive'] = [
         sidebarItem('#', '', 'Executive Briefing', 'clipboard-document-list'),
         sidebarItem('#', '', 'Strategic Reports', 'chart-bar'),
@@ -86,36 +61,37 @@ if (canSeeDivisionMenu($division, 'Executive')) {
     ];
 }
 
-if (canSeeDivisionMenu($division, 'Human Resource')) {
+if (ems_can_access_division_menu($division, 'Human Resource')) {
     $groupedNav['Human Resource'] = [
         sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
         sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
+        sidebarItem('/dashboard/tracking_cuti_resign.php', 'tracking_cuti_resign.php', 'Tracking Cuti & Resign', 'clock'),
         sidebarItem('#', '', 'History Cuti & Resign', 'clock'),
         sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'receipt-percent'),
         sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
     ];
 }
 
-if (canSeeDivisionMenu($division, 'Disciplinary Committee')) {
+if (ems_can_access_division_menu($division, 'Disciplinary Committee')) {
     $groupedNav['Disciplinary Committee'] = [
-        sidebarItem('#', '', 'Point Pelanggaran', 'clipboard-document-list'),
-        sidebarItem('#', '', 'Surat Peringatan', 'exclamation-triangle'),
-        sidebarItem('#', '', 'Disciplinary Cases', 'document-text'),
+        sidebarItem('/dashboard/disciplinary_indications.php', 'disciplinary_indications.php', 'Point Pelanggaran', 'clipboard-document-list'),
+        sidebarItem('/dashboard/disciplinary_warning_letters.php', 'disciplinary_warning_letters.php', 'Surat Peringatan', 'exclamation-triangle'),
+        sidebarItem('/dashboard/disciplinary_cases.php', 'disciplinary_cases.php', 'Disciplinary Cases', 'document-text'),
     ];
 }
 
-if (canSeeDivisionMenu($division, 'General Affair')) {
+if (ems_can_access_division_menu($division, 'General Affair')) {
     $groupedNav['General Affair'] = [
         sidebarItem('#', '', 'Sertifikat Heli Medis', 'document-text'),
         sidebarItem('/dashboard/event_manage.php', 'event_manage.php', 'Manajemen Event', 'wrench'),
         sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Manajemen Konsumsi', 'cake'),
-        sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Manajemen Gaji', 'banknotes'),
+        sidebarItem('/dashboard/rekap_gaji.php', 'rekap_gaji.php', 'Manajemen Gaji', 'banknotes'),
         sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
         sidebarItem('#', '', 'General Affair Visits', 'ticket'),
     ];
 }
 
-if (canSeeDivisionMenu($division, 'Specialist Medical Authority')) {
+if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
     $groupedNav['Specialist Medical Authority'] = [
         sidebarItem('#', '', 'Rekap Pelatihan Medis', 'clipboard-document-list'),
         sidebarItem('#', '', 'Penilaian Layak Naik Jabatan', 'check-circle'),
@@ -126,7 +102,7 @@ if (canSeeDivisionMenu($division, 'Specialist Medical Authority')) {
     ];
 }
 
-if (canSeeDivisionMenu($division, 'Forensic')) {
+if (ems_can_access_division_menu($division, 'Forensic')) {
     $groupedNav['Forensic'] = [
         sidebarItem('#', '', 'Data Pasien Private', 'lock-closed'),
         sidebarItem('#', '', 'Hasil Visum', 'document-text'),
@@ -134,7 +110,7 @@ if (canSeeDivisionMenu($division, 'Forensic')) {
     ];
 }
 
-if (canSeeDivisionMenu($division, 'Secretary')) {
+if (ems_can_access_division_menu($division, 'Secretary')) {
     $groupedNav['Secretary'] = [
         sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
         sidebarItem('#', '', 'Agenda Kunjungan Divisi', 'calendar-days'),

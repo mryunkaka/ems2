@@ -275,6 +275,91 @@ function ems_is_valid_division(?string $division): bool
     );
 }
 
+function ems_can_access_division_menu(?string $userDivision, ?string $targetDivision): bool
+{
+    $userDivision = ems_normalize_division($userDivision);
+    $targetDivision = ems_normalize_division($targetDivision);
+
+    if ($userDivision === '' || $targetDivision === '') {
+        return false;
+    }
+
+    if (in_array($userDivision, ['Executive', 'Secretary'], true)) {
+        return true;
+    }
+
+    if ($userDivision === $targetDivision) {
+        return true;
+    }
+
+    if ($userDivision === 'Human Capital' && in_array($targetDivision, ['Human Resource', 'Disciplinary Committee'], true)) {
+        return true;
+    }
+
+    if ($userDivision === 'Specialist Medical Authority' && $targetDivision === 'Forensic') {
+        return true;
+    }
+
+    return false;
+}
+
+function ems_require_division_access(array $targetDivisions, string $redirectTo = '/dashboard/index.php'): void
+{
+    $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
+
+    foreach ($targetDivisions as $targetDivision) {
+        if (ems_can_access_division_menu($userDivision, (string)$targetDivision)) {
+            return;
+        }
+    }
+
+    $_SESSION['flash_errors'][] = 'Akses division ditolak.';
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
+function ems_disciplinary_tolerance_options(): array
+{
+    return [
+        'tolerable' => 'Tolerable',
+        'non_tolerable' => 'Non Tolerable',
+    ];
+}
+
+function ems_disciplinary_recommendation_from_points(int $totalPoints, bool $hasNonTolerable): string
+{
+    if ($hasNonTolerable) {
+        return match (true) {
+            $totalPoints >= 80 => 'termination_review',
+            $totalPoints >= 60 => 'final_warning',
+            $totalPoints >= 35 => 'written_warning_2',
+            default => 'written_warning_1',
+        };
+    }
+
+    return match (true) {
+        $totalPoints >= 100 => 'termination_review',
+        $totalPoints >= 80 => 'final_warning',
+        $totalPoints >= 60 => 'written_warning_2',
+        $totalPoints >= 40 => 'written_warning_1',
+        $totalPoints >= 20 => 'verbal_warning',
+        default => 'coaching',
+    };
+}
+
+function ems_disciplinary_recommendation_label(string $recommendation): string
+{
+    return match ($recommendation) {
+        'coaching' => 'Coaching',
+        'verbal_warning' => 'Verbal Warning',
+        'written_warning_1' => 'Written Warning 1',
+        'written_warning_2' => 'Written Warning 2',
+        'final_warning' => 'Final Warning',
+        'termination_review' => 'Termination Review',
+        default => ucwords(str_replace('_', ' ', $recommendation)),
+    };
+}
+
 function ems_is_letter_receiver_role(?string $role): bool
 {
     return ems_normalize_role($role) !== 'staff';
