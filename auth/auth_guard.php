@@ -6,12 +6,29 @@ if (session_status() === PHP_SESSION_NONE) {
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+function authGuardUserRhHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$column] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$column];
+}
+
 if (isset($_SESSION['user_rh'])) {
     $uid = (int)($_SESSION['user_rh']['id'] ?? 0);
     if ($uid > 0) {
         try {
+            $hasDivisionColumn = authGuardUserRhHasColumn($pdo, 'division');
+            $divisionSelect = $hasDivisionColumn ? ', division' : '';
             $stmt = $pdo->prepare("
-                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date
+                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}
                 FROM user_rh 
                 WHERE id = ? 
                 LIMIT 1
@@ -24,6 +41,7 @@ if (isset($_SESSION['user_rh'])) {
                 $_SESSION['user_rh']['cuti_status'] = $row['cuti_status'] ?? null;
                 $_SESSION['user_rh']['cuti_start_date'] = $row['cuti_start_date'] ?? null;
                 $_SESSION['user_rh']['cuti_end_date'] = $row['cuti_end_date'] ?? null;
+                $_SESSION['user_rh']['division'] = ems_normalize_division($row['division'] ?? ($_SESSION['user_rh']['division'] ?? ''));
                 // Keep backward-compatible name keys in sync
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
@@ -64,14 +82,15 @@ if (!empty($_COOKIE['remember_login'])) {
 
             if ($user) {
                 $_SESSION['user_rh'] = [
-                    'id'       => $user['id'],
-                    'name'     => $user['full_name'],
-                    'role'     => $user['role'],
-                    'position' => ems_normalize_position($user['position'] ?? ''),
-                    'cuti_status' => $user['cuti_status'] ?? null,
-                    'cuti_start_date' => $user['cuti_start_date'] ?? null,
-                    'cuti_end_date' => $user['cuti_end_date'] ?? null
-                ];
+            'id'       => $user['id'],
+            'name'     => $user['full_name'],
+            'role'     => $user['role'],
+            'position' => ems_normalize_position($user['position'] ?? ''),
+            'division' => ems_normalize_division($user['division'] ?? ''),
+            'cuti_status' => $user['cuti_status'] ?? null,
+            'cuti_start_date' => $user['cuti_start_date'] ?? null,
+            'cuti_end_date' => $user['cuti_end_date'] ?? null
+        ];
                 return;
             }
         }

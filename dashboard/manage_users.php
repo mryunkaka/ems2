@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -11,18 +12,38 @@ $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
 
 // HARD GUARD: staff dilarang
-if ($role === 'Staff') {
+if (ems_is_staff_role($role)) {
     header('Location: setting_akun.php');
     exit;
 }
 
 $pageTitle = 'Manajemen User';
+$roleOptions = ems_role_options();
+$divisionOptions = ems_division_options();
+
+function manageUsersHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$column] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$column];
+}
 
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
+
+$hasDivisionColumn = manageUsersHasColumn($pdo, 'division');
+$divisionSelect = $hasDivisionColumn ? "u.division," : "NULL AS division,";
 
 // AMBIL SEMUA USER (SESUAI DATABASE)
 $users = $pdo->query("
@@ -31,6 +52,7 @@ $users = $pdo->query("
         u.full_name,
         u.position,
         u.role,
+        {$divisionSelect}
         u.is_active,
         u.tanggal_masuk,
 
@@ -136,6 +158,7 @@ uksort($usersByBatch, function ($a, $b) {
 	                        <option value="name">Nama</option>
 	                        <option value="position">Jabatan</option>
 	                        <option value="role">Role</option>
+	                        <option value="division">Division</option>
 	                        <option value="docs">Dokumen</option>
 	                        <option value="join">Tanggal Join</option>
 	                    </select>
@@ -180,6 +203,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Nama</th>
                                         <th>Jabatan</th>
                                         <th>Role</th>
+                                        <th>Division</th>
                                         <th>Tanggal Join</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
@@ -209,6 +233,7 @@ uksort($usersByBatch, function ($a, $b) {
 
 		                                        $posSearch = strtolower(trim((string)($u['position'] ?? '')));
 		                                        $roleSearch = strtolower(trim((string)($u['role'] ?? '')));
+		                                        $divisionSearch = strtolower(trim((string)ems_normalize_division($u['division'] ?? '')));
 		                                        $joinSearch = '';
 		                                        if (!empty($u['tanggal_masuk'])) {
 		                                            try {
@@ -223,6 +248,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                            strtolower((string)$u['full_name']),
 		                                            $posSearch,
 		                                            $roleSearch,
+		                                            $divisionSearch,
 		                                            $joinSearch,
 		                                            $docSearch,
 		                                        ])));
@@ -231,6 +257,7 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-search-name="<?= htmlspecialchars(strtolower($u['full_name'])) ?>"
 			                                            data-search-position="<?= htmlspecialchars($posSearch) ?>"
 			                                            data-search-role="<?= htmlspecialchars($roleSearch) ?>"
+			                                            data-search-division="<?= htmlspecialchars($divisionSearch) ?>"
 			                                            data-search-join="<?= htmlspecialchars($joinSearch) ?>"
 			                                            data-search-docs="<?= htmlspecialchars($docSearch) ?>"
 			                                            data-search-all="<?= htmlspecialchars($allSearch) ?>">
@@ -253,7 +280,8 @@ uksort($usersByBatch, function ($a, $b) {
                                             </td>
 
                                             <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
-                                            <td><?= htmlspecialchars($u['role']) ?></td>
+                                            <td><?= htmlspecialchars(ems_role_label($u['role'])) ?></td>
+                                            <td><?= htmlspecialchars(ems_normalize_division($u['division'] ?? '') ?: '-') ?></td>
                                             <td>
                                                 <?php if (!empty($u['tanggal_masuk'])): ?>
                                                     <div>
@@ -290,6 +318,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                     data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
                                                     data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
                                                     data-role="<?= strtolower(trim($u['role'])) ?>"
+                                                    data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
                                                     data-batch="<?= (int)($u['batch'] ?? 0) ?>"
                                                     data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
                                                     Edit
@@ -452,12 +481,21 @@ uksort($usersByBatch, function ($a, $b) {
 
 	            <label for="editRole">Role</label>
 	            <select name="role" id="editRole" autocomplete="off" required>
-                <option value="Staff">Staff</option>
-                <option value="Staff Manager">Staff Manager</option>
-                <option value="Manager">Manager</option>
-                <option value="Vice Director">Vice Director</option>
-                <option value="Director">Director</option>
+                <?php foreach ($roleOptions as $opt): ?>
+                    <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                        <?= htmlspecialchars($opt['label']) ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
+
+                <label for="editDivision">Division</label>
+                <select name="division" id="editDivision" autocomplete="organization" required>
+                    <?php foreach ($divisionOptions as $opt): ?>
+                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                            <?= htmlspecialchars($opt['label']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
 
 		            <label for="editNewPin">PIN Baru <small>(4 digit, kosongkan jika tidak ganti)</small></label>
 		            <input type="password"
@@ -537,12 +575,21 @@ uksort($usersByBatch, function ($a, $b) {
 
 	            <label for="addRole">Role</label>
 	            <select id="addRole" name="role" autocomplete="off" required>
-                <option value="Staff">Staff</option>
-                <option value="Staff Manager">Staff Manager</option>
-                <option value="Manager">Manager</option>
-                <option value="Vice Director">Vice Director</option>
-                <option value="Director">Director</option>
+                <?php foreach ($roleOptions as $opt): ?>
+                    <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                        <?= htmlspecialchars($opt['label']) ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
+
+                <label for="addDivision">Division</label>
+                <select id="addDivision" name="division" autocomplete="organization" required>
+                    <?php foreach ($divisionOptions as $opt): ?>
+                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                            <?= htmlspecialchars($opt['label']) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
 
 	            <label for="addBatch">Batch <small>(opsional)</small></label>
 	            <input type="number" id="addBatch" name="batch" autocomplete="off" min="1" max="26" placeholder="Contoh: 3">
@@ -613,8 +660,9 @@ uksort($usersByBatch, function ($a, $b) {
 
         const roleMap = {
             'staff': 'Staff',
-            'staff manager': 'Staff Manager',
-            'manager': 'Manager',
+            'assisten manager': 'Assisten Manager',
+            'lead manager': 'Lead Manager',
+            'head manager': 'Head Manager',
             'vice director': 'Vice Director',
             'director': 'Director'
         };
@@ -627,6 +675,7 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('editName').value = btn.dataset.name;
             document.getElementById('editPosition').value = btn.dataset.position;
             document.getElementById('editRole').value = roleMap[btn.dataset.role] || 'Staff';
+            document.getElementById('editDivision').value = btn.dataset.division || 'Executive';
 
             document.getElementById('editBatch').value = btn.dataset.batch || '';
             document.getElementById('editKodeMedis').value = btn.dataset.kode || '';
@@ -713,6 +762,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                name: 'Cari nama...',
 		                position: 'Cari jabatan...',
 		                role: 'Cari role...',
+		                division: 'Cari division...',
 		                docs: 'Cari dokumen (Sertifikat Heli, Operasi, Academy)...',
 		                join: 'Cari tanggal join...'
 		            };
@@ -760,6 +810,9 @@ uksort($usersByBatch, function ($a, $b) {
 		                                break;
 		                            case 'role':
 		                                haystack = getAttr('data-search-role');
+		                                break;
+		                            case 'division':
+		                                haystack = getAttr('data-search-division');
 		                                break;
 		                            case 'docs':
 		                                haystack = getAttr('data-search-docs');

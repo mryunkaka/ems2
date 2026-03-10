@@ -9,13 +9,30 @@ require_once __DIR__ . '/../config/helpers.php';
 $sessionUser = $_SESSION['user_rh'] ?? [];
 $sessionRole = $sessionUser['role'] ?? '';
 
-if ($sessionRole === 'Staff') {
+if (ems_is_staff_role($sessionRole)) {
     $_SESSION['flash_errors'][] = 'Akses ditolak.';
     header('Location: manage_users.php');
     exit;
 }
 
 $action = $_POST['action'] ?? '';
+
+function manageUsersActionHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$column] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$column];
+}
+
+$hasDivisionColumn = manageUsersActionHasColumn($pdo, 'division');
 
 /* =========================================================
    TAMBAH USER BARU
@@ -27,25 +44,24 @@ if ($action === 'add_user') {
 
     $name     = trim($_POST['full_name'] ?? '');
     $position = ems_normalize_position($_POST['position'] ?? '');
-    $role     = trim($_POST['role'] ?? '');
+    $role     = ems_role_label($_POST['role'] ?? '');
+    $division = ems_normalize_division($_POST['division'] ?? '');
     $batch    = (int)($_POST['batch'] ?? 0);
 
-    if ($name === '' || $position === '' || $role === '') {
+    if ($name === '' || $position === '' || $role === '' || $division === '') {
         $_SESSION['flash_errors'][] = 'Semua field wajib diisi.';
         header('Location: manage_users.php');
         exit;
     }
 
-    $allowedRoles = [
-        'Staff',
-        'Staff Manager',
-        'Manager',
-        'Vice Director',
-        'Director'
-    ];
-
-    if (!in_array($role, $allowedRoles, true)) {
+    if (!ems_is_valid_role($role)) {
         $_SESSION['flash_errors'][] = 'Role tidak valid.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!ems_is_valid_division($division)) {
+        $_SESSION['flash_errors'][] = 'Division tidak valid.';
         header('Location: manage_users.php');
         exit;
     }
@@ -65,20 +81,29 @@ if ($action === 'add_user') {
     // 1️⃣ INSERT USER TANPA KODE MEDIS DULU
     // (karena butuh ID user)
     // ===============================
+    $columns = ['full_name', 'position', 'role'];
+    $placeholders = ['?', '?', '?'];
+    $params = [$name, $position, $role];
+
+    if ($hasDivisionColumn) {
+        $columns[] = 'division';
+        $placeholders[] = '?';
+        $params[] = $division;
+    }
+
+    $columns = array_merge($columns, ['pin', 'batch', 'is_active', 'is_verified']);
+    $placeholders = array_merge($placeholders, ['?', '?', '1', '1']);
+    $params[] = password_hash($defaultPin, PASSWORD_BCRYPT);
+    $params[] = $batch > 0 ? $batch : null;
+
     $stmt = $pdo->prepare("
         INSERT INTO user_rh
-            (full_name, position, role, pin, batch, is_active, is_verified)
+            (" . implode(', ', $columns) . ")
         VALUES
-            (?, ?, ?, ?, ?, 1, 1)
+            (" . implode(', ', $placeholders) . ")
     ");
 
-    $stmt->execute([
-        $name,
-        $position,
-        $role,
-        password_hash($defaultPin, PASSWORD_BCRYPT),
-        $batch > 0 ? $batch : null
-    ]);
+    $stmt->execute($params);
 
     $newUserId = (int)$pdo->lastInsertId();
 
@@ -167,7 +192,7 @@ function generateKodeMedis(int $userId, string $fullName, int $batch): string
 
 if ($action === 'delete_kode_medis') {
 
-    if (!in_array($sessionRole, ['Director', 'Vice Director'], true)) {
+    if (!ems_is_director_role($sessionRole)) {
         echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
         exit;
     }
@@ -264,7 +289,7 @@ if ($action === 'reactivate') {
 if ($action === 'delete') {
 
     // Hanya Director & Vice Director
-    if (!in_array($sessionRole, ['Director', 'Vice Director'], true)) {
+    if (!ems_is_director_role($sessionRole)) {
         $_SESSION['flash_errors'][] = 'Hanya Director dan Vice Director yang dapat menghapus user.';
         header('Location: manage_users.php');
         exit;
@@ -299,25 +324,18 @@ if ($action === 'delete') {
 $userId   = (int)($_POST['user_id'] ?? 0);
 $name     = trim($_POST['full_name'] ?? '');
 $position = ems_normalize_position($_POST['position'] ?? '');
-$newRole  = trim($_POST['role'] ?? '');
+$newRole  = ems_role_label($_POST['role'] ?? '');
+$division = ems_normalize_division($_POST['division'] ?? '');
 $newPin   = $_POST['new_pin'] ?? '';
 $batch    = (int)($_POST['batch'] ?? 0);
 
-$allowedRoles = [
-    'Staff',
-    'Staff Manager',
-    'Manager',
-    'Vice Director',
-    'Director'
-];
-
-if (!in_array($newRole, $allowedRoles, true)) {
+if (!ems_is_valid_role($newRole)) {
     $_SESSION['flash_errors'][] = 'Role tidak valid.';
     header('Location: manage_users.php');
     exit;
 }
 
-if ($userId <= 0 || $name === '' || $position === '' || $newRole === '') {
+if ($userId <= 0 || $name === '' || $position === '' || $newRole === '' || $division === '') {
     $_SESSION['flash_errors'][] = 'Data tidak valid.';
     header('Location: manage_users.php');
     exit;
@@ -325,6 +343,12 @@ if ($userId <= 0 || $name === '' || $position === '' || $newRole === '') {
 
 if (!ems_is_valid_position($position)) {
     $_SESSION['flash_errors'][] = 'Jabatan tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+if (!ems_is_valid_division($division)) {
+    $_SESSION['flash_errors'][] = 'Division tidak valid.';
     header('Location: manage_users.php');
     exit;
 }
@@ -341,6 +365,11 @@ $currentKode = $stmt->fetchColumn();
    =============================== */
 $sql = "UPDATE user_rh SET full_name = ?, position = ?, role = ?";
 $params = [$name, $position, $newRole];
+
+if ($hasDivisionColumn) {
+    $sql .= ", division = ?";
+    $params[] = $division;
+}
 
 /* ===============================
    Update batch SELALU

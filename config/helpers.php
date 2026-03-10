@@ -167,20 +167,112 @@ function ems_next_position(?string $position): string
 function ems_normalize_role(?string $role): string
 {
     $raw = strtolower(trim((string)$role));
-    return preg_replace('/\s+/', ' ', $raw) ?: '';
+    $raw = preg_replace('/\s+/', ' ', $raw) ?: '';
+
+    return match ($raw) {
+        'staff' => 'staff',
+        'staff manager', 'assistant manager', 'assisten manager' => 'assisten manager',
+        'lead manager' => 'lead manager',
+        'manager', 'head manager' => 'head manager',
+        'vice director' => 'vice director',
+        'director' => 'director',
+        default => $raw,
+    };
 }
 
 function ems_role_label(?string $role): string
 {
     return match (ems_normalize_role($role)) {
         'staff' => 'Staff',
-        'staff manager' => 'Staff Manager',
-        'manager' => 'Manager',
+        'assisten manager' => 'Assisten Manager',
+        'lead manager' => 'Lead Manager',
+        'head manager' => 'Head Manager',
         'vice director' => 'Vice Director',
         'director' => 'Director',
         '' => '-',
         default => ucwords((string)$role),
     };
+}
+
+function ems_role_options(): array
+{
+    return [
+        ['value' => 'Staff', 'label' => 'Staff'],
+        ['value' => 'Assisten Manager', 'label' => 'Assisten Manager'],
+        ['value' => 'Lead Manager', 'label' => 'Lead Manager'],
+        ['value' => 'Head Manager', 'label' => 'Head Manager'],
+        ['value' => 'Vice Director', 'label' => 'Vice Director'],
+        ['value' => 'Director', 'label' => 'Director'],
+    ];
+}
+
+function ems_is_valid_role(?string $role): bool
+{
+    return in_array(
+        ems_role_label($role),
+        array_column(ems_role_options(), 'value'),
+        true
+    );
+}
+
+function ems_is_staff_role(?string $role): bool
+{
+    return ems_normalize_role($role) === 'staff';
+}
+
+function ems_is_manager_plus_role(?string $role): bool
+{
+    return in_array(
+        ems_normalize_role($role),
+        ['assisten manager', 'lead manager', 'head manager', 'vice director', 'director'],
+        true
+    );
+}
+
+function ems_is_director_role(?string $role): bool
+{
+    return in_array(ems_normalize_role($role), ['vice director', 'director'], true);
+}
+
+function ems_division_options(): array
+{
+    return [
+        ['value' => 'Executive', 'label' => 'Executive'],
+        ['value' => 'Secretary', 'label' => 'Secretary'],
+        ['value' => 'Human Capital', 'label' => 'Human Capital'],
+        ['value' => 'Disciplinary Committee', 'label' => 'Disciplinary Committee'],
+        ['value' => 'Human Resource', 'label' => 'Human Resource'],
+        ['value' => 'General Affair', 'label' => 'General Affair'],
+        ['value' => 'Specialist Medical Authority', 'label' => 'Specialist Medical Authority'],
+        ['value' => 'Forensic', 'label' => 'Forensic'],
+    ];
+}
+
+function ems_normalize_division(?string $division): string
+{
+    $raw = strtolower(trim((string)$division));
+    $raw = preg_replace('/\s+/', ' ', $raw) ?: '';
+
+    return match ($raw) {
+        'executive', 'devisi executive', 'divisi executive', 'division executive' => 'Executive',
+        'secretary', 'sekertaris', 'sekretaris', 'devisi sekertaris', 'divisi sekertaris', 'division secretary' => 'Secretary',
+        'human capital', 'devisi human capital', 'divisi human capital', 'division human capital' => 'Human Capital',
+        'human resource', 'devisi human resource', 'divisi human resource', 'division human resource' => 'Human Resource',
+        'disciplinary committee', 'discipline committee', 'disiplin committee', 'disiplin committe', 'deivisi disiplin committe', 'devisi disiplin committe', 'divisi disiplin committe', 'division disciplinary committee' => 'Disciplinary Committee',
+        'general affair', 'devisi general affair', 'divisi general affair', 'division general affair' => 'General Affair',
+        'specialist medical authority', 'devisi specialist medical authority', 'divisi specialist medical authority', 'division specialist medical authority' => 'Specialist Medical Authority',
+        'forensic', 'forensik', 'devisi forensic', 'divisi forensic', 'division forensic' => 'Forensic',
+        default => $division !== null ? trim($division) : '',
+    };
+}
+
+function ems_is_valid_division(?string $division): bool
+{
+    return in_array(
+        ems_normalize_division($division),
+        array_column(ems_division_options(), 'value'),
+        true
+    );
 }
 
 function ems_is_letter_receiver_role(?string $role): bool
@@ -616,7 +708,7 @@ function format_surat_resign(array $data): string
 function can_approve_cuti_resign(?string $role): bool
 {
     $normalizedRole = ems_normalize_role($role);
-    return in_array($normalizedRole, ['staff manager', 'manager', 'vice director', 'director'], true);
+    return in_array($normalizedRole, ['assisten manager', 'lead manager', 'head manager', 'vice director', 'director'], true);
 }
 
 /**

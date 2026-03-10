@@ -2,10 +2,8 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $position = strtolower(trim($_SESSION['user_rh']['position'] ?? ''));
+$division = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 $isTrainee = ($position === 'trainee');
-
-// Check if user is currently on cuti (session already refreshed by auth_guard)
-$isOnCuti = is_user_on_cuti_session();
 
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -15,139 +13,138 @@ function isActive($page)
     return $currentPage === $page ? 'active' : '';
 }
 
-$navItems = [
-    ['href' => '/dashboard/index.php', 'page' => 'index.php', 'label' => 'Dashboard', 'icon' => 'home'],
-    ['href' => '/dashboard/events.php', 'page' => 'events.php', 'label' => 'Event', 'icon' => 'ticket'],
-];
-
-if ($userRole !== 'staff') {
-    $navItems[] = ['href' => '/dashboard/event_manage.php', 'page' => 'event_manage.php', 'label' => 'Manajemen Event', 'icon' => 'wrench'];
-}
-
-// Hide these menus when user is on cuti
-$hiddenWhenCuti = [
-    'ems_services.php',        // Layanan Medis
-    'rekam_medis_list.php',    // Rekam Medis
-    'operasi_plastik.php',     // Operasi Plastik
-    'regulasi_medis.php',      // Regulasi Medis
-    'rekap_farmasi.php',       // Rekap Farmasi
-    'konsumen.php',            // Konsumen
-    'ranking.php',             // Ranking
-    'absensi_ems.php',         // Jam Kerja Web
-    'regulasi_farmasi.php',    // Regulasi Paket Farmasi
-];
-
-if (!$isOnCuti) {
-    $navItems[] = ['href' => '/dashboard/ems_services.php', 'page' => 'ems_services.php', 'label' => 'Layanan Medis', 'icon' => 'building-office-2'];
-    $navItems[] = ['href' => '/dashboard/rekam_medis_list.php', 'page' => 'rekam_medis_list.php', 'label' => 'Rekam Medis', 'icon' => 'clipboard-document-list'];
-    $navItems[] = ['href' => '/dashboard/rekap_farmasi.php', 'page' => 'rekap_farmasi.php', 'label' => 'Rekap Farmasi', 'icon' => 'beaker'];
-}
-
-$navItems = array_merge($navItems, [
-    ['href' => '/dashboard/reimbursement.php', 'page' => 'reimbursement.php', 'label' => 'Reimbursement', 'icon' => 'receipt-percent'],
-    ['href' => '/dashboard/restaurant_consumption.php', 'page' => 'restaurant_consumption.php', 'label' => 'Konsumsi Restoran', 'icon' => 'cake'],
-]);
-
-if (!$isOnCuti) {
-    $navItems[] = ['href' => '/dashboard/operasi_plastik.php', 'page' => 'operasi_plastik.php', 'label' => 'Operasi Plastik', 'icon' => 'building-office-2'];
-    $navItems[] = ['href' => '/dashboard/konsumen.php', 'page' => 'konsumen.php', 'label' => 'Konsumen', 'icon' => 'user-group'];
-    $navItems[] = ['href' => '/dashboard/ranking.php', 'page' => 'ranking.php', 'label' => 'Ranking', 'icon' => 'chart-bar'];
-    $navItems[] = ['href' => '/dashboard/absensi_ems.php', 'page' => 'absensi_ems.php', 'label' => 'Jam Kerja Web', 'icon' => 'clock'];
-}
-
-$navItems[] = ['href' => '/dashboard/gaji.php', 'page' => 'gaji.php', 'label' => 'Gaji', 'icon' => 'banknotes'];
-$navItems[] = ['href' => '/dashboard/pengajuan_jabatan.php', 'page' => 'pengajuan_jabatan.php', 'label' => 'Pengajuan Jabatan', 'icon' => 'arrow-up-tray'];
-$navItems[] = ['href' => '/dashboard/pengajuan_cuti_resign.php', 'page' => 'pengajuan_cuti_resign.php', 'label' => 'Pengajuan Cuti & Resign', 'icon' => 'calendar'];
-
-if ($userRole !== 'staff') {
-    if (!$isOnCuti) {
-        $navItems[] = ['href' => '/dashboard/validasi.php', 'page' => 'validasi.php', 'label' => 'Validasi', 'icon' => 'receipt-percent'];
-        $navItems[] = ['href' => '/dashboard/regulasi_medis.php', 'page' => 'regulasi_medis.php', 'label' => 'Regulasi Medis', 'icon' => 'document-text'];
-        $navItems[] = ['href' => '/dashboard/regulasi_farmasi.php', 'page' => 'regulasi_farmasi.php', 'label' => 'Regulasi Paket Farmasi', 'icon' => 'beaker'];
-    }
-    $navItems[] = ['href' => '/dashboard/persyaratan_jabatan.php', 'page' => 'persyaratan_jabatan.php', 'label' => 'Syarat Jabatan', 'icon' => 'wrench'];
-    $navItems[] = ['href' => '/dashboard/review_pengajuan_jabatan.php', 'page' => 'review_pengajuan_jabatan.php', 'label' => 'Review Jabatan', 'icon' => 'check-circle'];
-    $navItems[] = ['href' => '/dashboard/manage_users.php', 'page' => 'manage_users.php', 'label' => 'Manajemen User', 'icon' => 'user-group'];
-}
-
-if ($userRole !== 'staff') {
-    $navItems[] = ['href' => '/dashboard/surat_menyurat.php', 'page' => 'surat_menyurat.php', 'label' => 'Surat & Notulen', 'icon' => 'document-text'];
-    // Menu Monitoring Cuti & Resign (hanya untuk Manager+)
-    $navItems[] = ['href' => '/dashboard/tracking_cuti_resign.php', 'page' => 'tracking_cuti_resign.php', 'label' => 'Monitoring Cuti & Resign', 'icon' => 'chart-bar'];
-}
-
-$navItems[] = ['href' => '/dashboard/setting_akun.php', 'page' => 'setting_akun.php', 'label' => 'Setting Akun', 'icon' => 'cog-6-tooth'];
-
-if ($userRole !== 'staff') {
-    $navItems[] = ['href' => '/dashboard/candidates.php', 'page' => 'candidates.php', 'label' => 'Calon Kandidat', 'icon' => 'clipboard-document-list'];
-}
-
-// Trainee: hide all menu Farmasi (UI only).
-if ($isTrainee) {
-    $hiddenPages = [
-        'rekap_farmasi.php',
-        'regulasi_farmasi.php',
-        'konsumen.php',
-        'ranking.php',
-        'absensi_ems.php',
-        'gaji.php',
+function sidebarItem(string $href, string $page, string $label, string $icon): array
+{
+    return [
+        'href' => $href,
+        'page' => $page,
+        'label' => $label,
+        'icon' => $icon,
     ];
-    $navItems = array_values(array_filter($navItems, function ($it) use ($hiddenPages) {
-        return !in_array($it['page'] ?? '', $hiddenPages, true);
-    }));
 }
 
-// Re-group for sidebar rendering (UI-only; href/page remain the contract).
+function canSeeDivisionMenu(string $userDivision, string $targetDivision): bool
+{
+    if ($userDivision === '' || $targetDivision === '') {
+        return false;
+    }
+
+    if (in_array($userDivision, ['Executive', 'Secretary'], true)) {
+        return true;
+    }
+
+    if ($userDivision === $targetDivision) {
+        return true;
+    }
+
+    if ($userDivision === 'Human Capital' && in_array($targetDivision, ['Human Resource', 'Disciplinary Committee'], true)) {
+        return true;
+    }
+
+    if ($userDivision === 'Specialist Medical Authority' && $targetDivision === 'Forensic') {
+        return true;
+    }
+
+    return false;
+}
+
 $groupedNav = [
-    'Utama' => [],
-    'Medis' => [],
-    'Farmasi' => [],
-    'Keuangan' => [],
-    'Administrasi' => [],
-    'Pengaturan' => [],
+    'Utama' => [
+        sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+        sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket'),
+    ],
+    'Medis' => [
+        sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
+        sidebarItem('/dashboard/rekam_medis_list.php', 'rekam_medis_list.php', 'Rekam Medis', 'clipboard-document-list'),
+        sidebarItem('/dashboard/operasi_plastik.php', 'operasi_plastik.php', 'Operasi Plastik', 'building-office-2'),
+    ],
+    'Farmasi' => [
+        sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
+        sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
+        sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
+        sidebarItem('/dashboard/absensi_ems.php', 'absensi_ems.php', 'Jam Kerja Web', 'clock'),
+    ],
+    'Keuangan' => [
+        sidebarItem('/dashboard/reimbursement.php', 'reimbursement.php', 'Reimbursement', 'receipt-percent'),
+        sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Konsumsi Restoran', 'cake'),
+        sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
+    ],
+    'Administrasi' => [
+        sidebarItem('/dashboard/pengajuan_jabatan.php', 'pengajuan_jabatan.php', 'Pengajuan Jabatan', 'arrow-up-tray'),
+        sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
+    ],
+    'Pengaturan' => [
+        sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
+    ],
 ];
 
-foreach ($navItems as $it) {
-    switch ($it['page']) {
-        case 'index.php':
-        case 'events.php':
-        case 'event_manage.php':
-            $groupedNav['Utama'][] = $it;
-            break;
-        case 'ems_services.php':
-        case 'operasi_plastik.php':
-        case 'rekam_medis_list.php':
-        case 'regulasi_medis.php':
-            $groupedNav['Medis'][] = $it;
-            break;
-        case 'rekap_farmasi.php':
-        case 'regulasi_farmasi.php':
-        case 'konsumen.php':
-        case 'ranking.php':
-        case 'absensi_ems.php':
-            $groupedNav['Farmasi'][] = $it;
-            break;
-        case 'reimbursement.php':
-        case 'restaurant_consumption.php':
-        case 'gaji.php':
-            $groupedNav['Keuangan'][] = $it;
-            break;
-        case 'validasi.php':
-        case 'manage_users.php':
-        case 'candidates.php':
-        case 'pengajuan_jabatan.php':
-        case 'persyaratan_jabatan.php':
-        case 'review_pengajuan_jabatan.php':
-        case 'surat_menyurat.php':
-        case 'pengajuan_cuti_resign.php':
-        case 'tracking_cuti_resign.php':
-            $groupedNav['Administrasi'][] = $it;
-            break;
-        case 'setting_akun.php':
-        default:
-            $groupedNav['Pengaturan'][] = $it;
-            break;
-    }
+if (canSeeDivisionMenu($division, 'Executive')) {
+    $groupedNav['Executive'] = [
+        sidebarItem('#', '', 'Executive Briefing', 'clipboard-document-list'),
+        sidebarItem('#', '', 'Strategic Reports', 'chart-bar'),
+        sidebarItem('#', '', 'Executive Visits', 'ticket'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'Human Resource')) {
+    $groupedNav['Human Resource'] = [
+        sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
+        sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
+        sidebarItem('#', '', 'History Cuti & Resign', 'clock'),
+        sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'receipt-percent'),
+        sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'Disciplinary Committee')) {
+    $groupedNav['Disciplinary Committee'] = [
+        sidebarItem('#', '', 'Point Pelanggaran', 'clipboard-document-list'),
+        sidebarItem('#', '', 'Surat Peringatan', 'exclamation-triangle'),
+        sidebarItem('#', '', 'Disciplinary Cases', 'document-text'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'General Affair')) {
+    $groupedNav['General Affair'] = [
+        sidebarItem('#', '', 'Sertifikat Heli Medis', 'document-text'),
+        sidebarItem('/dashboard/event_manage.php', 'event_manage.php', 'Manajemen Event', 'wrench'),
+        sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Manajemen Konsumsi', 'cake'),
+        sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Manajemen Gaji', 'banknotes'),
+        sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
+        sidebarItem('#', '', 'General Affair Visits', 'ticket'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'Specialist Medical Authority')) {
+    $groupedNav['Specialist Medical Authority'] = [
+        sidebarItem('#', '', 'Rekap Pelatihan Medis', 'clipboard-document-list'),
+        sidebarItem('#', '', 'Penilaian Layak Naik Jabatan', 'check-circle'),
+        sidebarItem('/dashboard/pengajuan_jabatan.php', 'pengajuan_jabatan.php', 'Pengajuan Jabatan', 'arrow-up-tray'),
+        sidebarItem('/dashboard/persyaratan_jabatan.php', 'persyaratan_jabatan.php', 'Syarat Jabatan', 'wrench'),
+        sidebarItem('/dashboard/review_pengajuan_jabatan.php', 'review_pengajuan_jabatan.php', 'Review Jabatan', 'check-circle'),
+        sidebarItem('#', '', 'Otorisasi Medis Spesialis', 'check'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'Forensic')) {
+    $groupedNav['Forensic'] = [
+        sidebarItem('#', '', 'Data Pasien Private', 'lock-closed'),
+        sidebarItem('#', '', 'Hasil Visum', 'document-text'),
+        sidebarItem('#', '', 'Arsip Forensic', 'inbox'),
+    ];
+}
+
+if (canSeeDivisionMenu($division, 'Secretary')) {
+    $groupedNav['Secretary'] = [
+        sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
+        sidebarItem('#', '', 'Agenda Kunjungan Divisi', 'calendar-days'),
+        sidebarItem('#', '', 'Koordinasi Internal Divisi', 'user-group'),
+        sidebarItem('#', '', 'Rekap Surat Rahasia', 'inbox'),
+    ];
+}
+
+if ($isTrainee) {
+    $groupedNav['Pengaturan'][] = sidebarItem('#', '', 'Info Trainee', 'information-circle');
 }
 ?>
 

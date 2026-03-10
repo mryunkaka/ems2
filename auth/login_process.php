@@ -117,7 +117,8 @@ $_SESSION['user_rh'] = [
     'id'       => $user['id'],
     'name'     => $user['full_name'],
     'role'     => $user['role'],
-    'position' => ems_normalize_position($user['position'] ?? '')
+    'position' => ems_normalize_position($user['position'] ?? ''),
+    'division' => ems_normalize_division($user['division'] ?? '')
 ];
 
 // =====================================================
