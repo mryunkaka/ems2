@@ -88,15 +88,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" name="action" value="create_case">
                     <input type="hidden" name="redirect_to" value="disciplinary_cases.php">
 
-                    <label for="subjectUserId">User Terkait</label>
-                    <select id="subjectUserId" name="subject_user_id" required>
-                        <option value="">Pilih user</option>
-                        <?php foreach ($users as $subject): ?>
-                            <option value="<?= (int)$subject['id'] ?>">
-                                <?= htmlspecialchars($subject['full_name']) ?> | <?= htmlspecialchars(ems_role_label($subject['role'])) ?> | <?= htmlspecialchars(ems_normalize_division($subject['division'] ?? '')) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label for="subjectUserSearch">User Terkait</label>
+                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
+                        <input type="text" id="subjectUserSearch" data-user-autocomplete-input placeholder="Ketik nama user..." required>
+                        <input type="hidden" id="subjectUserId" name="subject_user_id" data-user-autocomplete-hidden>
+                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                    </div>
 
                     <label for="caseName">Nama Case</label>
                     <input type="text" id="caseName" name="case_name" required placeholder="Contoh: Pelanggaran Absensi Januari">

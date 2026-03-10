@@ -42,7 +42,6 @@ $groupedNav = [
     'Keuangan' => [
         sidebarItem('/dashboard/reimbursement.php', 'reimbursement.php', 'Reimbursement', 'receipt-percent'),
         sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Konsumsi Restoran', 'cake'),
-        sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
     ],
     'Administrasi' => [
         sidebarItem('/dashboard/pengajuan_jabatan.php', 'pengajuan_jabatan.php', 'Pengajuan Jabatan', 'arrow-up-tray'),
@@ -52,6 +51,10 @@ $groupedNav = [
         sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
     ],
 ];
+
+if ($division !== 'General Affair') {
+    $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
+}
 
 if (ems_can_access_division_menu($division, 'Executive')) {
     $groupedNav['Executive'] = [
@@ -82,12 +85,11 @@ if (ems_can_access_division_menu($division, 'Disciplinary Committee')) {
 
 if (ems_can_access_division_menu($division, 'General Affair')) {
     $groupedNav['General Affair'] = [
-        sidebarItem('#', '', 'Sertifikat Heli Medis', 'document-text'),
+        sidebarItem('/dashboard/sertifikat_heli.php', 'sertifikat_heli.php', 'Sertifikat Heli Medis', 'document-text'),
         sidebarItem('/dashboard/event_manage.php', 'event_manage.php', 'Manajemen Event', 'wrench'),
-        sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Manajemen Konsumsi', 'cake'),
-        sidebarItem('/dashboard/rekap_gaji.php', 'rekap_gaji.php', 'Manajemen Gaji', 'banknotes'),
-        sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
-        sidebarItem('#', '', 'General Affair Visits', 'ticket'),
+        sidebarItem('/dashboard/restaurant_settings.php', 'restaurant_settings.php', 'Manajemen Konsumsi', 'cake'),
+        sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
+        sidebarItem('/dashboard/general_affair_visits.php', 'general_affair_visits.php', 'General Affair Visits', 'ticket'),
     ];
 }
 

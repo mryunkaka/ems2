@@ -111,15 +111,18 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
             <form method="GET" class="history-filter-form">
                 <div class="history-filter-field">
-                    <label for="historyUserId">Nama User</label>
-                    <select id="historyUserId" name="user_id" required>
-                        <option value="">Pilih user untuk melihat history</option>
-                        <?php foreach ($users as $u): ?>
-                            <option value="<?= (int)$u['id'] ?>" <?= $selectedUserId === (int)$u['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($u['full_name']) ?> | <?= htmlspecialchars(ems_role_label($u['role'])) ?> | <?= htmlspecialchars(ems_normalize_division($u['division'] ?? '')) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label for="historyUserSearch">Nama User</label>
+                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
+                        <input
+                            type="text"
+                            id="historyUserSearch"
+                            data-user-autocomplete-input
+                            placeholder="Ketik nama user untuk melihat history..."
+                            value="<?= htmlspecialchars((string)($selectedUser['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                            required>
+                        <input type="hidden" id="historyUserId" name="user_id" value="<?= $selectedUserId > 0 ? $selectedUserId : '' ?>" data-user-autocomplete-hidden>
+                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                    </div>
                 </div>
 
                 <div class="history-filter-actions">

@@ -136,6 +136,139 @@ document.addEventListener("DOMContentLoaded", () => {
     const cleanUrl = window.location.origin + window.location.pathname;
     window.history.replaceState({}, document.title, cleanUrl);
   }
+
+  /* =========================
+     USER AUTOCOMPLETE
+     ========================= */
+  window.emsInitUserAutocomplete =
+    window.emsInitUserAutocomplete ||
+    function (root = document) {
+      const wrappers = Array.from(
+        root.querySelectorAll("[data-user-autocomplete]:not([data-autocomplete-ready])")
+      );
+
+      wrappers.forEach((wrapper) => {
+        const input = wrapper.querySelector("[data-user-autocomplete-input]");
+        const hidden = wrapper.querySelector("[data-user-autocomplete-hidden]");
+        const list = wrapper.querySelector("[data-user-autocomplete-list]");
+        const scope = (wrapper.getAttribute("data-autocomplete-scope") || "all").trim();
+        const minChars = Number(wrapper.getAttribute("data-autocomplete-min") || "2");
+        const required = wrapper.hasAttribute("data-autocomplete-required");
+        let timer = null;
+
+        if (!input || !hidden || !list) return;
+        wrapper.setAttribute("data-autocomplete-ready", "1");
+
+        function clearList() {
+          list.innerHTML = "";
+          list.style.display = "none";
+        }
+
+        function setValidation() {
+          if (required && input.value.trim() !== "" && !hidden.value) {
+            input.setCustomValidity("Pilih nama dari daftar autocomplete.");
+          } else {
+            input.setCustomValidity("");
+          }
+        }
+
+        function renderItems(items) {
+          list.innerHTML = "";
+          if (!Array.isArray(items) || !items.length) {
+            clearList();
+            return;
+          }
+
+          items.forEach((item) => {
+            const option = document.createElement("div");
+            option.className = "medic-suggestion-item";
+            option.innerHTML =
+              '<div><strong>' +
+              String(item.full_name || "") +
+              "</strong></div>" +
+              '<small style="color:#64748b;">' +
+              [item.position, item.division].filter(Boolean).join(" | ") +
+              "</small>";
+
+            option.addEventListener("click", () => {
+              hidden.value = String(item.id || "");
+              input.value = String(item.full_name || "");
+              setValidation();
+              clearList();
+            });
+
+            list.appendChild(option);
+          });
+
+          list.style.display = "block";
+        }
+
+        async function searchUsers(query) {
+          if (!query || query.length < minChars) {
+            clearList();
+            return;
+          }
+
+          try {
+            const url =
+              window.emsUrl("/ajax/search_user_rh.php") +
+              "?q=" +
+              encodeURIComponent(query) +
+              "&scope=" +
+              encodeURIComponent(scope);
+            const response = await fetch(url, {
+              credentials: "same-origin",
+              headers: { Accept: "application/json" },
+            });
+            if (!response.ok) {
+              clearList();
+              return;
+            }
+
+            const data = await response.json();
+            renderItems(data);
+          } catch (e) {
+            clearList();
+          }
+        }
+
+        input.addEventListener("focus", () => {
+          if (list.children.length > 0) {
+            list.style.display = "block";
+          }
+        });
+
+        input.addEventListener("input", () => {
+          hidden.value = "";
+          setValidation();
+          clearTimeout(timer);
+          const query = input.value.trim();
+          timer = setTimeout(() => searchUsers(query), 180);
+        });
+
+        input.addEventListener("blur", () => {
+          setTimeout(() => {
+            clearList();
+            setValidation();
+          }, 150);
+        });
+
+        const form = input.closest("form");
+        if (form) {
+          form.addEventListener("submit", (event) => {
+            setValidation();
+            if (!form.checkValidity()) {
+              event.preventDefault();
+              try {
+                form.reportValidity();
+              } catch (e) {}
+            }
+          });
+        }
+      });
+    };
+
+  window.emsInitUserAutocomplete(document);
 });
 
 /* =========================================

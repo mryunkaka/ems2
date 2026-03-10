@@ -30,23 +30,12 @@ if (!$record) {
     exit;
 }
 
-// Get doctors (DPJP - min co_asst ke atas)
-$doctors = $pdo->query("
-    SELECT id, full_name, position 
-    FROM user_rh 
-    WHERE position IN ('co_asst', 'general_practitioner', 'specialist', '(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
-    AND is_active = 1
-    ORDER BY full_name ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-// Get assistants (min paramedic ke atas)
-$assistants = $pdo->query("
-    SELECT id, full_name, position 
-    FROM user_rh 
-    WHERE position IN ('paramedic', 'co_asst', 'general_practitioner', 'specialist')
-    AND is_active = 1
-    ORDER BY full_name ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+$doctorName = '';
+if (!empty($record['doctor_id'])) {
+    $stmt = $pdo->prepare("SELECT full_name FROM user_rh WHERE id = ? LIMIT 1");
+    $stmt->execute([(int)$record['doctor_id']]);
+    $doctorName = (string)($stmt->fetchColumn() ?: '');
+}
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -240,16 +229,11 @@ include __DIR__ . '/../partials/sidebar.php';
                         <!-- Dokter DPJP -->
                         <div class="form-group">
                             <label class="form-label">Dokter DPJP <span class="text-danger">*</span></label>
-                            <select name="doctor_id" class="form-input" required>
-                                <option value="">Pilih Dokter</option>
-                                <?php foreach ($doctors as $doctor): ?>
-                                    <option value="<?= $doctor['id'] ?>" 
-                                            <?= $record['doctor_id'] == $doctor['id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($doctor['full_name']) ?> 
-                                        (<?= htmlspecialchars($doctor['position']) ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="doctor" data-autocomplete-required>
+                                <input type="text" class="form-input" data-user-autocomplete-input placeholder="Ketik nama dokter..." value="<?= htmlspecialchars($doctorName, ENT_QUOTES, 'UTF-8') ?>" required>
+                                <input type="hidden" name="doctor_id" value="<?= (int)$record['doctor_id'] ?>" data-user-autocomplete-hidden>
+                                <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                            </div>
                             <p class="text-xs text-gray-500 mt-1">Minimal jabatan: Co.Ast ke atas</p>
                         </div>
                         
@@ -337,6 +321,10 @@ window.quill = null;
 
 // Initialize Quill Editor when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    if (window.emsInitUserAutocomplete) {
+        window.emsInitUserAutocomplete(document);
+    }
+
     window.quill = new Quill('#editor-container', {
         theme: 'snow',
         modules: {

@@ -11,24 +11,6 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 $pageTitle = 'Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 
-// Get doctors (DPJP - min co_asst ke atas)
-$doctors = $pdo->query("
-    SELECT id, full_name, position 
-    FROM user_rh 
-    WHERE position IN ('co_asst', 'general_practitioner', 'specialist', '(Co.Ast)', 'Dokter Umum', 'Dokter Spesialis')
-    AND is_active = 1
-    ORDER BY full_name ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-// Get assistants (min paramedic ke atas)
-$assistants = $pdo->query("
-    SELECT id, full_name, position 
-    FROM user_rh 
-    WHERE position IN ('paramedic', 'co_asst', 'general_practitioner', 'specialist')
-    AND is_active = 1
-    ORDER BY full_name ASC
-")->fetchAll(PDO::FETCH_ASSOC);
-
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 $saved = $_GET['saved'] ?? 0;
@@ -182,15 +164,11 @@ include __DIR__ . '/../partials/sidebar.php';
                         <!-- Dokter DPJP -->
                         <div class="form-group">
                             <label class="form-label">Dokter DPJP <span class="text-danger">*</span></label>
-                            <select name="doctor_id" class="form-input" required>
-                                <option value="">Pilih Dokter</option>
-                                <?php foreach ($doctors as $doctor): ?>
-                                    <option value="<?= $doctor['id'] ?>">
-                                        <?= htmlspecialchars($doctor['full_name']) ?>
-                                        (<?= htmlspecialchars($doctor['position']) ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
+                            <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="doctor" data-autocomplete-required>
+                                <input type="text" class="form-input" data-user-autocomplete-input placeholder="Ketik nama dokter..." required>
+                                <input type="hidden" name="doctor_id" data-user-autocomplete-hidden>
+                                <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                            </div>
                             <p class="text-xs text-gray-500 mt-1">Minimal jabatan: Co.Ast ke atas</p>
                         </div>
 
@@ -219,15 +197,11 @@ include __DIR__ . '/../partials/sidebar.php';
                             <!-- Default 2 asisten -->
                             <div class="assistant-row grid grid-cols-12 gap-2 mb-2">
                                 <div class="col-span-11">
-                                    <select name="assistant_ids[]" class="form-input assistant-select">
-                                        <option value="">Pilih Asisten 1</option>
-                                        <?php foreach ($assistants as $assistant): ?>
-                                            <option value="<?= $assistant['id'] ?>">
-                                                <?= htmlspecialchars($assistant['full_name']) ?>
-                                                (<?= htmlspecialchars($assistant['position']) ?>)
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                                        <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten 1...">
+                                        <input type="hidden" name="assistant_ids[]" data-user-autocomplete-hidden>
+                                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                                    </div>
                                 </div>
                                 <div class="col-span-1 flex items-center">
                                     <span class="text-gray-400 text-sm">#1</span>
@@ -235,15 +209,11 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="assistant-row grid grid-cols-12 gap-2 mb-2">
                                 <div class="col-span-11">
-                                    <select name="assistant_ids[]" class="form-input assistant-select">
-                                        <option value="">Pilih Asisten 2</option>
-                                        <?php foreach ($assistants as $assistant): ?>
-                                            <option value="<?= $assistant['id'] ?>">
-                                                <?= htmlspecialchars($assistant['full_name']) ?>
-                                                (<?= htmlspecialchars($assistant['position']) ?>)
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
+                                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                                        <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten 2...">
+                                        <input type="hidden" name="assistant_ids[]" data-user-autocomplete-hidden>
+                                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                                    </div>
                                 </div>
                                 <div class="col-span-1 flex items-center">
                                     <button type="button" onclick="removeAssistant(this)" class="text-red-500 hover:text-red-700" title="Hapus">
@@ -495,15 +465,11 @@ include __DIR__ . '/../partials/sidebar.php';
         newRow.className = 'assistant-row grid grid-cols-12 gap-2 mb-2';
         newRow.innerHTML = `
         <div class="col-span-11">
-            <select name="assistant_ids[]" class="form-input assistant-select">
-                <option value="">Pilih Asisten ${assistantCount}</option>
-                <?php foreach ($assistants as $assistant): ?>
-                    <option value="<?= $assistant['id'] ?>">
-                        <?= htmlspecialchars($assistant['full_name']) ?> 
-                        (<?= htmlspecialchars($assistant['position']) ?>)
-                    </option>
-                <?php endforeach; ?>
-            </select>
+            <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten ${assistantCount}...">
+                <input type="hidden" name="assistant_ids[]" data-user-autocomplete-hidden>
+                <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+            </div>
         </div>
         <div class="col-span-1 flex items-center">
             <button type="button" onclick="removeAssistant(this)" class="text-red-500 hover:text-red-700" title="Hapus">
@@ -514,6 +480,9 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     `;
         container.appendChild(newRow);
+        if (window.emsInitUserAutocomplete) {
+            window.emsInitUserAutocomplete(newRow);
+        }
     }
 
     // Remove assistant row
@@ -542,8 +511,10 @@ include __DIR__ . '/../partials/sidebar.php';
             patient_status: document.querySelector('[name="patient_status"]')?.value || '',
             medical_result_html: window.quill ? window.quill.root.innerHTML : '',
             doctor_id: document.querySelector('[name="doctor_id"]')?.value || '',
+            doctor_name: document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]')?.value || '',
             operasi_type: document.querySelector('[name="operasi_type"]:checked')?.value || '',
-            assistant_ids: Array.from(document.querySelectorAll('[name="assistant_ids[]"]:checked')).map(el => el.value),
+            assistant_ids: Array.from(document.querySelectorAll('[name="assistant_ids[]"]')).map(el => el.value || ''),
+            assistant_names: Array.from(document.querySelectorAll('.assistant-select')).map(el => el.value || ''),
             saved_at: new Date().toISOString()
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(formData));
@@ -593,6 +564,19 @@ include __DIR__ . '/../partials/sidebar.php';
             }
             if (formData.doctor_id && document.querySelector('[name="doctor_id"]')) {
                 document.querySelector('[name="doctor_id"]').value = formData.doctor_id;
+            }
+            if (formData.doctor_name && document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]')) {
+                document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]').value = formData.doctor_name;
+            }
+            if (Array.isArray(formData.assistant_ids)) {
+                document.querySelectorAll('[name="assistant_ids[]"]').forEach((input, index) => {
+                    input.value = formData.assistant_ids[index] || '';
+                });
+            }
+            if (Array.isArray(formData.assistant_names)) {
+                document.querySelectorAll('.assistant-select').forEach((input, index) => {
+                    input.value = formData.assistant_names[index] || '';
+                });
             }
             if (formData.operasi_type && document.querySelector(`[name="operasi_type"][value="${formData.operasi_type}"]`)) {
                 document.querySelector(`[name="operasi_type"][value="${formData.operasi_type}"]`).checked = true;
@@ -659,6 +643,9 @@ include __DIR__ . '/../partials/sidebar.php';
             document.querySelectorAll('[name="assistant_ids[]"]').forEach(select => {
                 select.value = '';
             });
+            document.querySelectorAll('.assistant-select').forEach(input => {
+                input.value = '';
+            });
 
             // Show success message
             alert('✓ Data draft berhasil dihapus. Form sudah dikosongkan.');
@@ -704,6 +691,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
         // Set template as default content
         window.quill.clipboard.dangerouslyPasteHTML(medicalTemplate);
+        if (window.emsInitUserAutocomplete) {
+            window.emsInitUserAutocomplete(document);
+        }
 
         // Auto-load from localStorage (no confirm dialog)
         loadFromLocalStorage();

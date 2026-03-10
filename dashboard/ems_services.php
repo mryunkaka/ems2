@@ -696,21 +696,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div id="dpjpSection" class="hidden">
 
                     <label>DPJP / Dokter Penanggung Jawab</label>
-                    <select name="dpjp_name" id="dpjpName">
-                        <option value="">-- Pilih Nama --</option>
-                        <?php
-                        $doctors = $pdo->query("
-                            SELECT full_name 
-                            FROM user_rh 
-                            ORDER BY full_name
-                        ")->fetchAll(PDO::FETCH_ASSOC);
-                        foreach ($doctors as $d) {
-                            echo '<option value="' . htmlspecialchars($d['full_name']) . '">'
-                                . htmlspecialchars($d['full_name'])
-                                . '</option>';
-                        }
-                        ?>
-                    </select>
+                    <input type="text" name="dpjp_name" id="dpjpName" list="dpjpDatalist" placeholder="Ketik nama DPJP...">
+                    <datalist id="dpjpDatalist"></datalist>
 
                     <div id="teamInputs"></div>
 
@@ -1104,18 +1091,19 @@ include __DIR__ . '/../partials/sidebar.php';
             wrap.innerHTML = '';
 
             const count = Math.max(parseInt(teamCountEl.value) || 1, 1);
-            const dpjpSelect = document.getElementById('dpjpName');
 
             for (let i = 1; i <= count; i++) {
-                const select = document.createElement('select');
-                select.name = 'team_names[]';
-                select.innerHTML = dpjpSelect.innerHTML;
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.name = 'team_names[]';
+                input.setAttribute('list', 'dpjpDatalist');
+                input.placeholder = `Ketik nama tim ${i}...`;
 
                 const label = document.createElement('label');
                 label.textContent = `Nama Tim ${i}`;
 
                 wrap.appendChild(label);
-                wrap.appendChild(select);
+                wrap.appendChild(input);
             }
 
             const total = parseInt(totalEl.value) || 0;
@@ -1369,6 +1357,53 @@ include __DIR__ . '/../partials/sidebar.php';
         }, 5000);
 
     });
+</script>
+
+<script>
+    (function() {
+        const datalist = document.getElementById('dpjpDatalist');
+        const input = document.getElementById('dpjpName');
+        if (!datalist || !input) return;
+
+        let timer = null;
+        let lastQ = '';
+
+        function setOptions(items) {
+            datalist.innerHTML = '';
+            (items || []).forEach((it) => {
+                const option = document.createElement('option');
+                option.value = it.full_name || '';
+                option.textContent = it.position_label ? `(${it.position_label})` : '';
+                datalist.appendChild(option);
+            });
+        }
+
+        async function search(q) {
+            if (!q || q.length < 2 || q === lastQ) return;
+            lastQ = q;
+
+            try {
+                const res = await fetch(`/ajax/search_dpjp.php?q=${encodeURIComponent(q)}`, {
+                    credentials: 'same-origin'
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                setOptions(Array.isArray(data) ? data : []);
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        document.addEventListener('input', function(e) {
+            const el = e.target;
+            if (!(el instanceof HTMLInputElement)) return;
+            if (el.id !== 'dpjpName' && el.name !== 'team_names[]') return;
+
+            const q = (el.value || '').trim();
+            clearTimeout(timer);
+            timer = setTimeout(() => search(q), 180);
+        });
+    })();
 </script>
 
 <script>
