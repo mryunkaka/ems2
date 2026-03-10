@@ -75,7 +75,7 @@ try {
 
                 <div class="card card-section">
                     <div class="card-header">Data Surat Masuk / Janji Pertemuan</div>
-                    <form method="POST" action="<?= htmlspecialchars(ems_url('/actions/submit_surat_instansi.php'), ENT_QUOTES, 'UTF-8') ?>" class="form">
+                    <form method="POST" action="<?= htmlspecialchars(ems_url('/actions/submit_surat_instansi.php'), ENT_QUOTES, 'UTF-8') ?>" enctype="multipart/form-data" class="form">
                         <?= csrfField(); ?>
 
                         <div class="row-form-2">
@@ -124,6 +124,25 @@ try {
                         <label>Catatan Tambahan</label>
                         <textarea name="notes" rows="4" placeholder="Contoh: membawa proposal kerja sama / konfirmasi ulang via telepon"></textarea>
 
+                        <div class="doc-upload-wrapper m-0">
+                            <div class="doc-upload-header">
+                                <label class="text-sm font-semibold text-slate-900">Lampiran Surat Masuk</label>
+                                <span class="badge-muted-mini">Opsional, bisa beberapa file</span>
+                            </div>
+                            <div class="doc-upload-input">
+                                <label for="incomingAttachments" class="file-upload-label">
+                                    <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                                    <span class="file-text">
+                                        <strong>Pilih lampiran</strong>
+                                        <small>JPG / PNG, multi file</small>
+                                    </span>
+                                </label>
+                                <input type="file" id="incomingAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                                <div class="file-selected-name" data-for="incomingAttachments"></div>
+                                <div id="incomingAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                            </div>
+                        </div>
+
                         <div class="modal-actions mt-4">
                             <button type="submit" class="btn-success"><?= ems_icon('document-text', 'h-4 w-4') ?> <span>Kirim Surat</span></button>
                         </div>
@@ -132,6 +151,60 @@ try {
             </div>
         </section>
     </main>
+<script>
+    (function() {
+        function setupMultiImagePreview(inputId, previewId) {
+            const input = document.getElementById(inputId);
+            const preview = document.getElementById(previewId);
+            const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+            if (!input || !preview || !nameBox) return;
+
+            let objectUrls = [];
+
+            function clearPreview() {
+                objectUrls.forEach(function(url) {
+                    try { URL.revokeObjectURL(url); } catch (_) {}
+                });
+                objectUrls = [];
+                preview.innerHTML = '';
+                nameBox.textContent = '';
+                nameBox.classList.add('hidden');
+            }
+
+            input.addEventListener('change', function() {
+                clearPreview();
+
+                const files = Array.from(this.files || []);
+                if (!files.length) {
+                    return;
+                }
+
+                nameBox.textContent = files.length + ' file dipilih';
+                nameBox.classList.remove('hidden');
+
+                files.forEach(function(file) {
+                    if (!String(file.type || '').startsWith('image/')) {
+                        return;
+                    }
+
+                    const url = URL.createObjectURL(file);
+                    objectUrls.push(url);
+
+                    const item = document.createElement('div');
+                    item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
+                    item.innerHTML = `
+                        <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
+                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                    `;
+                    preview.appendChild(item);
+                });
+            });
+        }
+
+        setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview');
+    })();
+</script>
+
 </body>
 
 </html>

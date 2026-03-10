@@ -32,6 +32,88 @@ function generate_outgoing_letter_code(): string
     return 'SK-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
 }
 
+function normalizeMultiUpload(array $fileBag): array
+{
+    if (!isset($fileBag['name']) || !is_array($fileBag['name'])) {
+        return [];
+    }
+
+    $files = [];
+    $count = count($fileBag['name']);
+    for ($i = 0; $i < $count; $i++) {
+        $error = (int)($fileBag['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+
+        $files[] = [
+            'name' => $fileBag['name'][$i] ?? '',
+            'type' => $fileBag['type'][$i] ?? '',
+            'tmp_name' => $fileBag['tmp_name'][$i] ?? '',
+            'error' => $error,
+            'size' => (int)($fileBag['size'][$i] ?? 0),
+        ];
+    }
+
+    return $files;
+}
+
+function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files): void
+{
+    if ($outgoingLetterId <= 0 || empty($files)) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO outgoing_letter_attachments
+            (outgoing_letter_id, file_path, file_name, sort_order)
+        VALUES
+            (?, ?, ?, ?)
+    ");
+
+    $storedPaths = [];
+
+    try {
+        foreach (array_values($files) as $index => $file) {
+            $path = uploadAndCompressFile($file, 'letters/outgoing', 400000, 5000000);
+            if (!$path) {
+                throw new Exception('Lampiran surat keluar gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+            }
+
+            $storedPaths[] = $path;
+            $stmt->execute([
+                $outgoingLetterId,
+                $path,
+                trim((string)($file['name'] ?? '')) ?: null,
+                $index + 1,
+            ]);
+        }
+    } catch (Throwable $e) {
+        foreach ($storedPaths as $path) {
+            $fullPath = __DIR__ . '/../' . ltrim($path, '/');
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+        throw $e;
+    }
+}
+
+function deleteStoredFiles(array $paths): void
+{
+    foreach ($paths as $path) {
+        $path = trim((string)$path);
+        if ($path === '') {
+            continue;
+        }
+
+        $fullPath = __DIR__ . '/../' . ltrim($path, '/');
+        if (is_file($fullPath)) {
+            @unlink($fullPath);
+        }
+    }
+}
+
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
@@ -96,6 +178,7 @@ try {
         $letterBody = trim((string)($_POST['letter_body'] ?? ''));
         $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
         $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
+        $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
 
         if ($institutionName === '' || $subject === '' || $letterBody === '') {
             throw new Exception('Data surat keluar belum lengkap.');
@@ -109,6 +192,8 @@ try {
             }
             $timeValue = $timeObj->format('H:i:s');
         }
+
+        $pdo->beginTransaction();
 
         $stmt = $pdo->prepare("
             INSERT INTO outgoing_letters
@@ -130,6 +215,11 @@ try {
             $timeValue,
             $userId,
         ]);
+
+        $outgoingLetterId = (int)$pdo->lastInsertId();
+        saveOutgoingAttachments($pdo, $outgoingLetterId, $attachmentFiles);
+
+        $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Surat keluar berhasil disimpan.';
         surat_redirect();
@@ -185,8 +275,91 @@ try {
         surat_redirect();
     }
 
+    if ($action === 'delete_incoming_letter') {
+        $letterId = (int)($_POST['letter_id'] ?? 0);
+        if ($letterId <= 0) {
+            throw new Exception('Surat masuk tidak valid.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM incoming_letters WHERE id = ? LIMIT 1");
+        $stmt->execute([$letterId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Surat masuk tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("SELECT file_path FROM incoming_letter_attachments WHERE incoming_letter_id = ?");
+        $stmt->execute([$letterId]);
+        $paths = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+        $stmt = $pdo->prepare("UPDATE outgoing_letters SET incoming_letter_id = NULL WHERE incoming_letter_id = ?");
+        $stmt->execute([$letterId]);
+
+        $stmt = $pdo->prepare("UPDATE meeting_minutes SET incoming_letter_id = NULL WHERE incoming_letter_id = ?");
+        $stmt->execute([$letterId]);
+
+        $stmt = $pdo->prepare("DELETE FROM incoming_letters WHERE id = ?");
+        $stmt->execute([$letterId]);
+
+        $pdo->commit();
+        deleteStoredFiles($paths);
+        $_SESSION['flash_messages'][] = 'Surat masuk berhasil dihapus.';
+        surat_redirect();
+    }
+
+    if ($action === 'delete_outgoing_letter') {
+        $letterId = (int)($_POST['letter_id'] ?? 0);
+        if ($letterId <= 0) {
+            throw new Exception('Surat keluar tidak valid.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM outgoing_letters WHERE id = ? LIMIT 1");
+        $stmt->execute([$letterId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Surat keluar tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("SELECT file_path FROM outgoing_letter_attachments WHERE outgoing_letter_id = ?");
+        $stmt->execute([$letterId]);
+        $paths = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+
+        $stmt = $pdo->prepare("UPDATE meeting_minutes SET outgoing_letter_id = NULL WHERE outgoing_letter_id = ?");
+        $stmt->execute([$letterId]);
+
+        $stmt = $pdo->prepare("DELETE FROM outgoing_letters WHERE id = ?");
+        $stmt->execute([$letterId]);
+
+        $pdo->commit();
+        deleteStoredFiles($paths);
+        $_SESSION['flash_messages'][] = 'Surat keluar berhasil dihapus.';
+        surat_redirect();
+    }
+
+    if ($action === 'delete_meeting_minutes') {
+        $minutesId = (int)($_POST['minutes_id'] ?? 0);
+        if ($minutesId <= 0) {
+            throw new Exception('Notulen tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM meeting_minutes WHERE id = ?");
+        $stmt->execute([$minutesId]);
+
+        if ($stmt->rowCount() <= 0) {
+            throw new Exception('Notulen tidak ditemukan.');
+        }
+
+        $_SESSION['flash_messages'][] = 'Notulen berhasil dihapus.';
+        surat_redirect();
+    }
+
     throw new Exception('Aksi tidak dikenali.');
 } catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $_SESSION['flash_errors'][] = 'Gagal memproses: ' . $e->getMessage();
     surat_redirect();
 }

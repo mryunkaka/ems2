@@ -31,6 +31,73 @@ function generate_incoming_letter_code(): string
     return 'SM-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
 }
 
+function normalizeMultiUpload(array $fileBag): array
+{
+    if (!isset($fileBag['name']) || !is_array($fileBag['name'])) {
+        return [];
+    }
+
+    $files = [];
+    $count = count($fileBag['name']);
+    for ($i = 0; $i < $count; $i++) {
+        $error = (int)($fileBag['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+
+        $files[] = [
+            'name' => $fileBag['name'][$i] ?? '',
+            'type' => $fileBag['type'][$i] ?? '',
+            'tmp_name' => $fileBag['tmp_name'][$i] ?? '',
+            'error' => $error,
+            'size' => (int)($fileBag['size'][$i] ?? 0),
+        ];
+    }
+
+    return $files;
+}
+
+function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files): void
+{
+    if ($incomingLetterId <= 0 || empty($files)) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO incoming_letter_attachments
+            (incoming_letter_id, file_path, file_name, sort_order)
+        VALUES
+            (?, ?, ?, ?)
+    ");
+
+    $storedPaths = [];
+
+    try {
+        foreach (array_values($files) as $index => $file) {
+            $path = uploadAndCompressFile($file, 'letters/incoming', 400000, 5000000);
+            if (!$path) {
+                throw new Exception('Lampiran surat masuk gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+            }
+
+            $storedPaths[] = $path;
+            $stmt->execute([
+                $incomingLetterId,
+                $path,
+                trim((string)($file['name'] ?? '')) ?: null,
+                $index + 1,
+            ]);
+        }
+    } catch (Throwable $e) {
+        foreach ($storedPaths as $path) {
+            $fullPath = __DIR__ . '/../' . ltrim($path, '/');
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+        throw $e;
+    }
+}
+
 $institutionName = trim((string)($_POST['institution_name'] ?? ''));
 $senderName = trim((string)($_POST['sender_name'] ?? ''));
 $senderPhone = trim((string)($_POST['sender_phone'] ?? ''));
@@ -39,6 +106,7 @@ $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
 $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
 $targetUserId = (int)($_POST['target_user_id'] ?? 0);
 $notes = trim((string)($_POST['notes'] ?? ''));
+$attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
 
 if (
     $institutionName === '' ||
@@ -63,6 +131,8 @@ if (!$dateObj || $dateObj->format('Y-m-d') !== $appointmentDate || !$timeObj) {
 }
 
 try {
+    $pdo->beginTransaction();
+
     $stmt = $pdo->prepare("
         SELECT id, full_name, role
         FROM user_rh
@@ -104,11 +174,19 @@ try {
         substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 64),
     ]);
 
+    $incomingLetterId = (int)$pdo->lastInsertId();
+    saveIncomingAttachments($pdo, $incomingLetterId, $attachmentFiles);
+
+    $pdo->commit();
+
     redirect_public_form([
         'success' => '1',
         'code' => $letterCode,
     ]);
 } catch (Throwable $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     redirect_public_form([
         'error' => 'Gagal menyimpan surat. Silakan coba lagi.',
     ]);
