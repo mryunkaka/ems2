@@ -144,7 +144,7 @@ uksort($usersByBatch, function ($a, $b) {
                         placeholder="Cari nama..."
                         class="toolbar-input">
 
-                    <button id="btnExportText" class="btn-secondary">
+                    <button id="btnExportText" class="btn-secondary" type="button">
                         <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
                     </button>
 
@@ -924,205 +924,190 @@ uksort($usersByBatch, function ($a, $b) {
 </script>
 
 <script>
-	    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        function toRoman(num) {
+            const map = [
+                [1000, 'M'],
+                [900, 'CM'],
+                [500, 'D'],
+                [400, 'CD'],
+                [100, 'C'],
+                [90, 'XC'],
+                [50, 'L'],
+                [40, 'XL'],
+                [10, 'X'],
+                [9, 'IX'],
+                [5, 'V'],
+                [4, 'IV'],
+                [1, 'I']
+            ];
 
-	        const btn = document.getElementById('btnExportText');
-	        if (!btn) return;
+            let n = Number(num);
+            if (!Number.isFinite(n) || n <= 0) return '';
+            n = Math.floor(n);
 
-	        btn.addEventListener('click', function() {
+            let out = '';
+            for (const [value, roman] of map) {
+                while (n >= value) {
+                    out += roman;
+                    n -= value;
+                }
+            }
+            return out;
+        }
 
-	            function toRoman(num) {
-	                const map = [
-	                    [1000, 'M'],
-	                    [900, 'CM'],
-	                    [500, 'D'],
-	                    [400, 'CD'],
-	                    [100, 'C'],
-	                    [90, 'XC'],
-	                    [50, 'L'],
-	                    [40, 'XL'],
-	                    [10, 'X'],
-	                    [9, 'IX'],
-	                    [5, 'V'],
-	                    [4, 'IV'],
-	                    [1, 'I']
-	                ];
+        function getBatchHeaderTitle(batchCard) {
+            const header = batchCard ? batchCard.querySelector('.batch-card-header') : null;
+            if (!header) return '';
 
-	                let n = Number(num);
-	                if (!Number.isFinite(n) || n <= 0) return '';
-	                n = Math.floor(n);
+            const firstTextNode = header.childNodes && header.childNodes[0];
+            const raw = firstTextNode && firstTextNode.textContent ? firstTextNode.textContent : header.textContent;
+            return String(raw || '').replace(/\s+/g, ' ').trim();
+        }
 
-	                let out = '';
-	                for (const [value, roman] of map) {
-	                    while (n >= value) {
-	                        out += roman;
-	                        n -= value;
-	                    }
-	                }
-	                return out;
-	            }
+        function getDataTableInstance(table) {
+            if (!table || !window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) {
+                return null;
+            }
 
-	            function getBatchHeaderTitle(batchCard) {
-	                const header = batchCard?.querySelector('.card-header');
-	                if (!header) return '';
+            const checker =
+                (jQuery.fn.dataTable && typeof jQuery.fn.dataTable.isDataTable === 'function')
+                    ? jQuery.fn.dataTable.isDataTable
+                    : ((jQuery.fn.DataTable && typeof jQuery.fn.DataTable.isDataTable === 'function')
+                        ? jQuery.fn.DataTable.isDataTable
+                        : null);
 
-	                const firstTextNode = header.childNodes && header.childNodes[0];
-	                const raw = firstTextNode && firstTextNode.textContent ? firstTextNode.textContent : header.textContent;
-	                return String(raw || '').replace(/\s+/g, ' ').trim();
-	            }
+            if (!checker || !checker(table)) {
+                return null;
+            }
 
-	            let output = '';
+            return jQuery(table).DataTable();
+        }
 
-	            // LOOP SETIAP TABEL BATCH
-	            document.querySelectorAll('.user-batch-table').forEach(table => {
+        function collectVisibleRows(table) {
+            return Array.from(table.querySelectorAll('tbody tr')).filter(function(row) {
+                return window.getComputedStyle(row).display !== 'none';
+            });
+        }
 
-	                // ambil instance DataTable
-	                const dt = (window.jQuery && jQuery.fn && jQuery.fn.DataTable && jQuery.fn.DataTable.isDataTable(table)) ?
-	                    jQuery(table).DataTable() :
-	                    null;
+        function withExpandedTable(table, work) {
+            const dt = getDataTableInstance(table);
+            let originalLength = null;
 
-                // simpan pageLength awal
-                let originalLength = null;
+            if (dt) {
+                originalLength = dt.page.len();
+                dt.page.len(-1).draw(false);
+            }
 
-                if (dt) {
-                    originalLength = dt.page.len();
-                    dt.page.len(-1).draw(false); // tampilkan SEMUA row
+            try {
+                return work();
+            } finally {
+                if (dt && originalLength !== null) {
+                    dt.page.len(originalLength).draw(false);
+                }
+            }
+        }
+
+        function downloadText(filename, content) {
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        document.body.addEventListener('click', function(e) {
+            const exportAllBtn = e.target.closest('#btnExportText');
+            if (exportAllBtn) {
+                let output = '';
+
+                document.querySelectorAll('.user-batch-table').forEach(function(table) {
+                    const batchCard = table.closest('.batch-card');
+                    if (batchCard && window.getComputedStyle(batchCard).display === 'none') {
+                        return;
+                    }
+
+                    withExpandedTable(table, function() {
+                        const rows = collectVisibleRows(table);
+                        if (!rows.length) {
+                            return;
+                        }
+
+                        const batchTitleRaw = getBatchHeaderTitle(batchCard);
+                        const lines = [];
+                        let no = 1;
+
+                        rows.forEach(function(row) {
+                            const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
+                            const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
+                            const noStr = String(no).padStart(2, '0');
+                            lines.push(`${noStr}. ${nama} (${jabatan})`);
+                            no++;
+                        });
+
+                        if (!lines.length) {
+                            return;
+                        }
+
+                        let batchTitleOut = batchTitleRaw;
+                        const match = batchTitleRaw.match(/^Batch\s+(\d+)\b/i);
+                        if (match) {
+                            const roman = toRoman(parseInt(match[1], 10));
+                            batchTitleOut = roman ? `BATCH ${roman}` : 'BATCH';
+                        } else if (/tanpa\s+batch/i.test(batchTitleRaw)) {
+                            batchTitleOut = 'TANPA BATCH';
+                        } else {
+                            batchTitleOut = (batchTitleRaw || 'BATCH').toUpperCase();
+                        }
+
+                        output += batchTitleOut + '\n' + lines.join('\n') + '\n\n';
+                    });
+                });
+
+                if (!output.trim()) {
+                    alert('Tidak ada data untuk diexport.');
+                    return;
                 }
 
-	                const batchCard = table.closest('.card');
-	                if (batchCard && window.getComputedStyle(batchCard).display === 'none') {
-	                    // kembalikan pageLength semula
-	                    if (dt && originalLength !== null) {
-	                        dt.page.len(originalLength).draw(false);
-	                    }
-	                    return;
-	                }
-
-	                const batchTitleRaw = getBatchHeaderTitle(batchCard);
-	                const rows = table.querySelectorAll('tbody tr');
-
-	                if (!rows.length) return;
-
-	                const lines = [];
-
-	                let no = 1;
-		                rows.forEach(row => {
-		                    if (window.getComputedStyle(row).display === 'none') return;
-		                    const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
-		                    const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
-
-		                    const noStr = String(no).padStart(2, '0');
-		                    lines.push(`${noStr}. ${nama} (${jabatan})`);
-		                    no++;
-		                });
-
-	                if (lines.length > 0) {
-	                    let batchTitleOut = batchTitleRaw;
-	                    const m = batchTitleRaw.match(/^Batch\s+(\d+)\b/i);
-	                    if (m) {
-	                        const roman = toRoman(parseInt(m[1], 10));
-	                        batchTitleOut = roman ? `BATCH ${roman}` : 'BATCH';
-	                    } else if (/tanpa\s+batch/i.test(batchTitleRaw)) {
-	                        batchTitleOut = 'TANPA BATCH';
-	                    } else {
-	                        batchTitleOut = (batchTitleRaw || 'BATCH').toUpperCase();
-	                    }
-
-	                    output += batchTitleOut + '\n';
-	                    output += lines.join('\n') + '\n\n';
-	                }
-
-	                // kembalikan pageLength semula
-	                if (dt && originalLength !== null) {
-	                    dt.page.len(originalLength).draw(false);
-	                }
-            });
-
-            if (!output.trim()) {
-                alert('Tidak ada data untuk diexport.');
+                downloadText('daftar_medis.txt', output);
                 return;
             }
 
-            // download TXT
-            const blob = new Blob([output], {
-                type: 'text/plain;charset=utf-8;'
-            });
-            const url = URL.createObjectURL(blob);
+            const exportNoBatchBtn = e.target.closest('#btnExportTanpaBatch');
+            if (exportNoBatchBtn) {
+                const batchCard = exportNoBatchBtn.closest('.batch-card');
+                const table = batchCard ? batchCard.querySelector('.user-batch-table') : null;
+                if (!table) {
+                    alert('Tabel Tanpa Batch tidak ditemukan.');
+                    return;
+                }
 
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'daftar_medis.txt';
-            document.body.appendChild(a);
-            a.click();
+                const lines = withExpandedTable(table, function() {
+                    const rows = collectVisibleRows(table);
+                    let no = 1;
 
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-	        });
+                    return rows.map(function(row) {
+                        const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
+                        const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
+                        const noStr = String(no++).padStart(2, '0');
+                        return `${noStr}. ${nama} (${jabatan})`;
+                    });
+                });
 
-	    });
-	</script>
+                if (!lines.length) {
+                    alert('Tidak ada data Tanpa Batch untuk diexport.');
+                    return;
+                }
 
-	<script>
-	    document.addEventListener('DOMContentLoaded', function() {
-	        const btn = document.getElementById('btnExportTanpaBatch');
-	        if (!btn) return;
-
-	        btn.addEventListener('click', function() {
-	            const batchCard = btn.closest('.card');
-	            const table = batchCard ? batchCard.querySelector('.user-batch-table') : null;
-	            if (!table) return;
-
-	            // ambil instance DataTable (kalau ada)
-	            const dt = (window.jQuery && jQuery.fn && jQuery.fn.DataTable && jQuery.fn.DataTable.isDataTable(table)) ?
-	                jQuery(table).DataTable() :
-	                null;
-
-	            // simpan pageLength awal
-	            let originalLength = null;
-	            if (dt) {
-	                originalLength = dt.page.len();
-	                dt.page.len(-1).draw(false); // tampilkan SEMUA row
-	            }
-
-	            const rows = table.querySelectorAll('tbody tr');
-	            const lines = [];
-	            let no = 1;
-
-	            rows.forEach(row => {
-	                if (window.getComputedStyle(row).display === 'none') return;
-	                const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
-	                const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
-	                const noStr = String(no).padStart(2, '0');
-	                lines.push(`${noStr}. ${nama} (${jabatan})`);
-	                no++;
-	            });
-
-	            // kembalikan pageLength semula
-	            if (dt && originalLength !== null) {
-	                dt.page.len(originalLength).draw(false);
-	            }
-
-	            if (!lines.length) {
-	                alert('Tidak ada data Tanpa Batch untuk diexport.');
-	                return;
-	            }
-
-	            const output = 'TANPA BATCH\n' + lines.join('\n') + '\n';
-
-	            const blob = new Blob([output], {type: 'text/plain;charset=utf-8;'});
-	            const url = URL.createObjectURL(blob);
-
-	            const a = document.createElement('a');
-	            a.href = url;
-	            a.download = 'tanpa_batch.txt';
-	            document.body.appendChild(a);
-	            a.click();
-
-	            document.body.removeChild(a);
-	            URL.revokeObjectURL(url);
-	        });
-	    });
-	</script>
+                downloadText('tanpa_batch.txt', 'TANPA BATCH\n' + lines.join('\n') + '\n');
+            }
+        });
+    });
+</script>
 
 
 	<?php include __DIR__ . '/../partials/footer.php'; ?>
