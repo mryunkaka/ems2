@@ -20,6 +20,21 @@ $pageTitle = 'Validasi User';
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 
+// Sinkronisasi data lama:
+// user yang sudah terverifikasi tetapi belum aktif akan diaktifkan,
+// kecuali yang memang sudah resign/nonaktif permanen.
+try {
+    $pdo->exec("
+        UPDATE user_rh
+        SET is_active = 1
+        WHERE is_verified = 1
+          AND is_active = 0
+          AND (resigned_at IS NULL OR resigned_at = '0000-00-00 00:00:00')
+    ");
+} catch (Throwable $e) {
+    // Abaikan agar halaman tetap bisa dibuka.
+}
+
 // =======================
 // QUERY SEMUA USER
 // =======================
@@ -30,6 +45,7 @@ $stmt = $pdo->query("
         role,
         position,
         is_verified,
+        is_active,
         created_at
     FROM user_rh
     ORDER BY 
@@ -74,10 +90,15 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
 
 	                                <td>
-	                                    <?php if ((int)$u['is_verified'] === 1): ?>
+	                                    <?php if ((int)$u['is_verified'] === 1 && (int)$u['is_active'] === 1): ?>
 	                                        <div class="status-box verified">
 	                                            <span class="icon"><?= ems_icon('check-circle', 'h-4 w-4') ?></span>
 	                                            Terverifikasi
+	                                        </div>
+	                                    <?php elseif ((int)$u['is_verified'] === 1): ?>
+	                                        <div class="status-box pending">
+	                                            <span class="icon"><?= ems_icon('clock', 'h-4 w-4') ?></span>
+	                                            Verifikasi OK, belum aktif
 	                                        </div>
 	                                    <?php else: ?>
 	                                        <div class="status-box pending">

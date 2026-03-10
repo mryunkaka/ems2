@@ -19,8 +19,14 @@ if ($id <= 0 || !in_array($act, ['approve', 'reject'])) {
 
 $status = ($act === 'approve') ? 1 : 0;
 
-$stmt = $pdo->prepare("UPDATE user_rh SET is_verified = ? WHERE id = ?");
-$stmt->execute([$status, $id]);
+$stmt = $pdo->prepare("
+    UPDATE user_rh
+    SET
+        is_verified = ?,
+        is_active = ?
+    WHERE id = ?
+");
+$stmt->execute([$status, $status, $id]);
 
 header("Location: validasi.php");
 exit;
