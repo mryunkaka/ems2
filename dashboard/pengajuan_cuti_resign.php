@@ -235,11 +235,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if (!$myCutiRequests): ?>
-                                    <tr>
-                                        <td colspan="5" class="muted-placeholder">Belum ada pengajuan cuti.</td>
-                                    </tr>
-                                <?php else: ?>
+                                <?php if ($myCutiRequests): ?>
                                     <?php foreach ($myCutiRequests as $req): ?>
                                         <?php
                                         $badge = get_status_badge($req['status']);
@@ -277,6 +273,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endif; ?>
                             </tbody>
                         </table>
+                        <?php if (!$myCutiRequests): ?>
+                            <div class="muted-placeholder p-4">Belum ada pengajuan cuti.</div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -344,11 +343,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php if (!$myResignRequests): ?>
-                                    <tr>
-                                        <td colspan="5" class="muted-placeholder">Belum ada pengajuan resign.</td>
-                                    </tr>
-                                <?php else: ?>
+                                <?php if ($myResignRequests): ?>
                                     <?php foreach ($myResignRequests as $req): ?>
                                         <?php
                                         $badge = get_status_badge($req['status']);
@@ -388,6 +383,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endif; ?>
                             </tbody>
                         </table>
+                        <?php if (!$myResignRequests): ?>
+                            <div class="muted-placeholder p-4">Belum ada pengajuan resign.</div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
