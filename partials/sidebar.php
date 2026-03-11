@@ -56,6 +56,10 @@ if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
 }
 
+if ($division !== 'Medis') {
+    $groupedNav['Utama'][] = sidebarItem('/dashboard/surat_monitoring.php', 'surat_monitoring.php', 'Monitoring Surat', 'inbox');
+}
+
 if (ems_can_access_division_menu($division, 'Human Resource')) {
     $groupedNav['Human Resource'] = [
         sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
