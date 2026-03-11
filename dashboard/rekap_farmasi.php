@@ -36,11 +36,19 @@ function formatJoinDurationDetailed(?string $tanggalMasuk): string
         }
 
         $diff = $start->diff($now);
-        $days = (int)$diff->days;
-        $hours = (int)$diff->h;
-        $minutes = (int)$diff->i;
+        $months = ((int)$diff->y * 12) + (int)$diff->m;
+        $days = (int)$diff->d;
+        $hours = ((int)$diff->h) + (((int)$diff->days) * 24);
 
-        return "{$days} hari {$hours} jam {$minutes} menit";
+        if ($months >= 1) {
+            return "{$months} bulan {$days} hari";
+        }
+
+        if ((int)$diff->days >= 1) {
+            return "{$diff->days} hari";
+        }
+
+        return "{$hours} jam";
     } catch (Throwable $e) {
         return '-';
     }

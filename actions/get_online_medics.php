@@ -17,7 +17,20 @@ function onlineMedicsJoinDurationText(?string $tanggalMasuk): string
         }
 
         $diff = $start->diff($now);
-        return (int)$diff->days . ' hari ' . (int)$diff->h . ' jam ' . (int)$diff->i . ' menit';
+        $months = ((int)$diff->y * 12) + (int)$diff->m;
+        $days = (int)$diff->d;
+        $totalDays = (int)$diff->days;
+        $hours = ((int)$diff->h) + ($totalDays * 24);
+
+        if ($months >= 1) {
+            return $months . ' bulan ' . $days . ' hari';
+        }
+
+        if ($totalDays >= 1) {
+            return $totalDays . ' hari';
+        }
+
+        return $hours . ' jam';
     } catch (Throwable $e) {
         return '-';
     }
