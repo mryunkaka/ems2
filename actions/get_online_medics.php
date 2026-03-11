@@ -3,15 +3,44 @@ session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+function onlineMedicsJoinDurationText(?string $tanggalMasuk): string
+{
+    if (empty($tanggalMasuk)) {
+        return '-';
+    }
+
+    try {
+        $start = new DateTime((string)$tanggalMasuk);
+        $now = new DateTime();
+        if ($start > $now) {
+            return '-';
+        }
+
+        $diff = $start->diff($now);
+        return (int)$diff->days . ' hari ' . (int)$diff->h . ' jam ' . (int)$diff->i . ' menit';
+    } catch (Throwable $e) {
+        return '-';
+    }
+}
+
 try {
     $stmt = $pdo->query("
         SELECT
             ufs.user_id,
             ur.full_name AS medic_name,
             ur.position AS medic_jabatan,
+            ur.role AS medic_role,
+            ur.division AS medic_division,
+            ur.batch AS medic_batch,
+            ur.tanggal_masuk,
             COUNT(s.id) AS total_transaksi,
             COALESCE(SUM(s.price), 0) AS total_pendapatan,
             FLOOR(COALESCE(SUM(s.price), 0) * 0.4) AS bonus_40,
+            (
+                SELECT COUNT(*)
+                FROM sales
+                WHERE medic_user_id = ufs.user_id
+            ) AS total_transaksi_semua,
             (
                 SELECT COUNT(*)
                 FROM sales
@@ -41,7 +70,7 @@ try {
             ON s.medic_user_id = ufs.user_id
            AND DATE(s.created_at) = CURDATE()
         WHERE ufs.status = 'online'
-        GROUP BY ufs.user_id, ur.full_name, ur.position
+        GROUP BY ufs.user_id, ur.full_name, ur.position, ur.role, ur.division, ur.batch, ur.tanggal_masuk
         ORDER BY total_transaksi ASC, total_pendapatan ASC
     ");
 
@@ -55,6 +84,10 @@ try {
         $row['weekly_transaksi'] = (int)($row['weekly_transaksi'] ?? 0);
         $row['weekly_online_seconds'] = $sec;
         $row['weekly_online_text'] = "{$jam}j {$menit}m {$detik}d";
+        $row['join_duration_text'] = onlineMedicsJoinDurationText($row['tanggal_masuk'] ?? null);
+        $row['medic_role_label'] = ems_role_label($row['medic_role'] ?? '');
+        $row['medic_division_label'] = ems_normalize_division($row['medic_division'] ?? '') ?: '-';
+        $row['medic_position_label'] = ems_position_label($row['medic_jabatan'] ?? '');
     }
     unset($row);
 

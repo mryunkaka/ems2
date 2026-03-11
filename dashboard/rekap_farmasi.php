@@ -21,6 +21,31 @@ function formatDuration($seconds)
     return "{$hours}j {$minutes}m";
 }
 
+function formatJoinDurationDetailed(?string $tanggalMasuk): string
+{
+    if (empty($tanggalMasuk)) {
+        return '-';
+    }
+
+    try {
+        $start = new DateTime((string)$tanggalMasuk);
+        $now = new DateTime();
+
+        if ($start > $now) {
+            return '-';
+        }
+
+        $diff = $start->diff($now);
+        $days = (int)$diff->days;
+        $hours = (int)$diff->h;
+        $minutes = (int)$diff->i;
+
+        return "{$days} hari {$hours} jam {$minutes} menit";
+    } catch (Throwable $e) {
+        return '-';
+    }
+}
+
 // Helper log function
 function app_log($message)
 {
@@ -107,6 +132,28 @@ if (empty($user['name']) || empty($user['position'])) {
 $medicName    = $user['name'] ?? '';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
+$userId       = (int)($user['id'] ?? 0);
+
+$stmtCurrentUser = $pdo->prepare("
+    SELECT tanggal_masuk, citizen_id, batch
+    FROM user_rh
+    WHERE id = ?
+    LIMIT 1
+");
+$stmtCurrentUser->execute([$userId]);
+$currentUserProfile = $stmtCurrentUser->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$missingProfileFields = [];
+if (empty($currentUserProfile['tanggal_masuk'])) {
+    $missingProfileFields[] = 'Tanggal join ke Roxwood Hospital';
+}
+if (empty($currentUserProfile['citizen_id'])) {
+    $missingProfileFields[] = 'Citizen ID';
+}
+if (empty($currentUserProfile['batch'])) {
+    $missingProfileFields[] = 'Batch';
+}
+$profileIncompleteForFarmasi = !empty($missingProfileFields);
 
 // ===============================
 // VALIDASI AKSES REKAP FARMASI
@@ -291,8 +338,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 3) Tambah transaksi penjualan (bisa beberapa paket sekaligus)
     if ($action === 'add_sale') {
-        $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
-
         // ===============================
         // COOLDOWN ANTI-SPAM (SERVER - SESSION BASED)
         // ===============================
@@ -321,6 +366,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             !hash_equals($_SESSION['tx_token'], $postedToken)
         ) {
             $errors[] = 'Permintaan tidak valid atau sudah diproses.';
+        } elseif ($profileIncompleteForFarmasi) {
+            $errors[] = 'Transaksi tidak dapat disimpan. Lengkapi dulu: ' . implode(', ', $missingProfileFields) . '.';
         } else {
 
             unset($_SESSION['tx_token']);
@@ -822,9 +869,14 @@ $stmtOnlineMedics = $pdo->query("
         ufs.user_id,
         ur.full_name AS medic_name,
         ur.position  AS medic_jabatan,
+        ur.role AS medic_role,
+        ur.division AS medic_division,
+        ur.batch AS medic_batch,
+        ur.tanggal_masuk,
         COUNT(s.id)  AS total_transaksi,
         COALESCE(SUM(s.price),0) AS total_pendapatan,
         FLOOR(COALESCE(SUM(s.price),0) * 0.4) AS bonus_40,
+        (SELECT COUNT(*) FROM sales WHERE medic_user_id = ufs.user_id) AS total_transaksi_semua,
         
         -- TAMBAHAN: HITUNG TRANSAKSI MINGGU INI
         (SELECT COUNT(*)
@@ -849,7 +901,7 @@ $stmtOnlineMedics = $pdo->query("
         ON s.medic_user_id = ufs.user_id
        AND DATE(s.created_at) = CURDATE()
     WHERE ufs.status = 'online'
-    GROUP BY ufs.user_id, ur.full_name, ur.position
+    GROUP BY ufs.user_id, ur.full_name, ur.position, ur.role, ur.division, ur.batch, ur.tanggal_masuk
     ORDER BY total_transaksi ASC, total_pendapatan ASC
 ");
 
@@ -862,6 +914,10 @@ foreach ($onlineMedics as &$m) {
     $minutes = floor(($seconds % 3600) / 60);
     $secs = $seconds % 60;
     $m['weekly_online_text'] = "{$hours}j {$minutes}m {$secs}d";
+    $m['join_duration_text'] = formatJoinDurationDetailed($m['tanggal_masuk'] ?? null);
+    $m['medic_role_label'] = ems_role_label($m['medic_role'] ?? '');
+    $m['medic_division_label'] = ems_normalize_division($m['medic_division'] ?? '') ?: '-';
+    $m['medic_position_label'] = ems_position_label($m['medic_jabatan'] ?? '');
 }
 unset($m);
 
@@ -1241,6 +1297,15 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div id="cooldownNotice" class="notice-box notice-info">
                 </div>
 
+                <?php if ($profileIncompleteForFarmasi): ?>
+                    <div id="profileRequirementNotice" class="notice-box notice-danger" style="display: block;">
+                        <strong>Data profil belum lengkap</strong><br><br>
+                        Transaksi farmasi belum bisa disimpan karena data berikut belum diisi:
+                        <strong><?= htmlspecialchars(implode(', ', $missingProfileFields)) ?></strong>.<br>
+                        Silakan lengkapi data tersebut di <strong>Setting Akun</strong> terlebih dahulu.
+                    </div>
+                <?php endif; ?>
+
                 <!-- NOTICE FAIRNESS (GLOBAL, TIDAK TERPENGARUH INPUT) -->
                 <div id="fairnessNotice" class="notice-box notice-warning">
                 </div>
@@ -1376,7 +1441,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
 
                     <div class="action-row-wrap">
-                        <button type="button" id="btnSubmit" class="btn-success" onclick="handleSaveClick();">
+                        <button type="button" id="btnSubmit" class="btn-success<?= $profileIncompleteForFarmasi ? ' btn-disabled' : '' ?>" onclick="handleSaveClick();" <?= $profileIncompleteForFarmasi ? 'disabled' : '' ?>>
                             Simpan Transaksi
                         </button>
 
@@ -1393,26 +1458,11 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="farmasi-side-grid">
                 <div class="activity-feed-container">
 
-                    <audio id="activitySound" preload="auto">
-                        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/activity.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
-                    </audio>
-
                     <div class="activity-feed-card">
 
                         <!-- HEADER -->
                         <div class="activity-feed-header">
                             <span class="activity-feed-title"><?= ems_icon('document-text', 'h-4 w-4 text-primary') ?> Aktivitas</span>
-
-                            <div class="flex items-center gap-2">
-                                <button
-                                    id="btnToggleActivitySound"
-                                    class="activity-sound-btn"
-                                    title="Matikan suara activity"
-                                    aria-label="Toggle suara activity">
-                                    <?= ems_icon('bell', 'h-4 w-4') ?>
-                                    <span class="text-[11px] font-bold" data-sound-label>On</span>
-                                </button>
-                            </div>
                         </div>
 
                         <div class="activity-feed-list" id="activityFeedList"></div>
@@ -1447,21 +1497,31 @@ include __DIR__ . '/../partials/sidebar.php';
 
                             <?php foreach ($onlineMedics as $m): ?>
                                 <div class="online-medic-row">
-                                    <div class="medic-main">
-                                        <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
+                                    <div class="online-medic-main">
+                                        <div class="online-medic-head">
+                                            <div class="online-medic-identity">
+                                                <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
+                                                <div class="online-medic-subtitle">
+                                                    <?= htmlspecialchars($m['medic_position_label']) ?> •
+                                                    <?= htmlspecialchars($m['medic_role_label']) ?> •
+                                                    <?= htmlspecialchars($m['medic_division_label']) ?>
+                                                </div>
+                                            </div>
+                                            <div class="online-medic-badges">
+                                                <span class="weekly-badge">Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx</span>
+                                                <span class="weekly-badge weekly-badge-muted">Batch <?= !empty($m['medic_batch']) ? (int)$m['medic_batch'] : '-' ?></span>
+                                            </div>
+                                        </div>
 
-                                        <span class="weekly-badge">
-                                            Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx
-                                        </span>
-
-                                        <span class="weekly-online"
-                                            data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
-                                            data-user-id="<?= (int)$m['user_id'] ?>">
-                                            Online: <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
-                                        </span>
-
-                                        <div class="medic-role">
-                                            <?= htmlspecialchars($m['medic_jabatan']) ?>
+                                        <div class="online-medic-inline-meta">
+                                            <span><strong>Join:</strong> <?= htmlspecialchars($m['join_duration_text']) ?></span>
+                                            <span><strong>Online:</strong>
+                                                <strong class="weekly-online"
+                                                    data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
+                                                    data-user-id="<?= (int)$m['user_id'] ?>">
+                                                    <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
+                                                </strong>
+                                            </span>
                                         </div>
 
                                         <button
@@ -1469,16 +1529,27 @@ include __DIR__ . '/../partials/sidebar.php';
                                             class="btn-force-offline"
                                             data-user-id="<?= (int)$m['user_id'] ?>"
                                             data-name="<?= htmlspecialchars($m['medic_name']) ?>"
-                                            data-jabatan="<?= htmlspecialchars($m['medic_jabatan']) ?>">
+                                            data-jabatan="<?= htmlspecialchars($m['medic_position_label']) ?>">
                                             <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
                                         </button>
                                     </div>
 
-                                    <div class="medic-stats">
-                                        <div class="tx"><?= (int)$m['total_transaksi'] ?> trx</div>
-                                        <div class="amount"><?= dollar((int)$m['total_pendapatan']) ?></div>
-                                        <div class="bonus text-success-xs">
-                                            Bonus: <?= dollar((int)$m['bonus_40']) ?>
+                                    <div class="online-medic-stats">
+                                        <div class="online-medic-stat-card">
+                                            <span class="online-medic-stat-label">Transaksi Hari Ini</span>
+                                            <strong class="tx"><?= (int)$m['total_transaksi'] ?> trx</strong>
+                                        </div>
+                                        <div class="online-medic-stat-card">
+                                            <span class="online-medic-stat-label">Total Seluruh Transaksi</span>
+                                            <strong><?= (int)($m['total_transaksi_semua'] ?? 0) ?> trx</strong>
+                                        </div>
+                                        <div class="online-medic-stat-card">
+                                            <span class="online-medic-stat-label">Pendapatan Hari Ini</span>
+                                            <strong class="amount"><?= dollar((int)$m['total_pendapatan']) ?></strong>
+                                        </div>
+                                        <div class="online-medic-stat-card online-medic-stat-card-success">
+                                            <span class="online-medic-stat-label">Bonus Hari Ini</span>
+                                            <strong class="bonus text-success-xs"><?= dollar((int)$m['bonus_40']) ?></strong>
                                         </div>
                                     </div>
                                 </div>
@@ -1824,6 +1895,12 @@ include __DIR__ . '/../partials/sidebar.php';
         const EXISTING_CONSUMERS = <?= json_encode($consumerNames, JSON_UNESCAPED_UNICODE); ?>;
         // Flag dari PHP: apakah form perlu dikosongkan setelah transaksi sukses?
         const SHOULD_CLEAR_FORM = <?= $shouldClearForm ? 'true' : 'false'; ?>;
+        const PROFILE_INCOMPLETE = <?= $profileIncompleteForFarmasi ? 'true' : 'false'; ?>;
+        const PROFILE_NOTICE_TEXT = <?= json_encode(
+            $profileIncompleteForFarmasi
+                ? 'Transaksi belum bisa disimpan. Lengkapi dulu: ' . implode(', ', $missingProfileFields) . '.'
+                : ''
+        ) ?>;
 
         // Konstanta batas harian
         const MAX_BANDAGE = 30;
@@ -1869,6 +1946,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 return '$ ' + new Intl.NumberFormat('en-US').format(num);
             }
             return '$ ' + num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        function applyProfileRequirementLock() {
+            const btnSubmit = document.getElementById('btnSubmit');
+            if (!PROFILE_INCOMPLETE || !btnSubmit) return;
+
+            btnSubmit.disabled = true;
+            btnSubmit.classList.add('btn-disabled');
         }
 
         function getBaseTotalsForConsumer(name) {
@@ -2009,34 +2094,22 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function showFairnessNotice(html) {
             const box = document.getElementById('fairnessNotice');
-            const btn = document.getElementById('btnSubmit');
             if (!box) return;
 
             FAIRNESS_STATE.locked = false;
 
             box.innerHTML = html;
             box.style.display = 'block';
-
-            // if (btn) {
-            //     btn.disabled = true;
-            //     btn.classList.add('btn-disabled');
-            // }
         }
 
         function clearFairnessNotice() {
             const box = document.getElementById('fairnessNotice');
-            const btn = document.getElementById('btnSubmit');
 
             FAIRNESS_STATE.locked = false;
 
             if (box) {
                 box.style.display = 'none';
                 box.innerHTML = '';
-            }
-
-            if (btn) {
-                btn.disabled = false;
-                btn.classList.remove('btn-disabled');
             }
         }
 
@@ -2134,7 +2207,11 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             if (btnSubmit) {
-                btnSubmit.disabled = false;
+                if (PROFILE_INCOMPLETE) {
+                    applyProfileRequirementLock();
+                } else {
+                    btnSubmit.disabled = false;
+                }
             }
 
             let detail = [];
@@ -2268,8 +2345,12 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             if (btnSubmit) {
-                btnSubmit.disabled = false;
-                btnSubmit.classList.remove('btn-disabled');
+                if (PROFILE_INCOMPLETE) {
+                    applyProfileRequirementLock();
+                } else {
+                    btnSubmit.disabled = false;
+                    btnSubmit.classList.remove('btn-disabled');
+                }
             }
 
             IS_OVER_LIMIT = false;
@@ -2283,6 +2364,12 @@ include __DIR__ . '/../partials/sidebar.php';
             const btnSubmit = document.getElementById('btnSubmit');
             const form = document.getElementById('saleForm');
             const consumerInput = document.getElementById('consumerNameInput');
+
+            if (PROFILE_INCOMPLETE) {
+                alert(PROFILE_NOTICE_TEXT || 'Lengkapi data profil terlebih dahulu.');
+                applyProfileRequirementLock();
+                return;
+            }
 
             const cname = formatConsumerName(consumerInput.value);
             consumerInput.value = cname;
@@ -2389,6 +2476,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 form.submit();
             }
         }
+
+        applyProfileRequirementLock();
 
         function confirmBulkDelete() {
             const checked = document.querySelectorAll('.row-check:checked').length;
@@ -2902,7 +2991,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     id: m.user_id,
                     name: m.medic_name,
                     tx: m.total_transaksi,
-                    seconds: m.weekly_online_seconds
+                    seconds: m.weekly_online_seconds,
+                    allTx: m.total_transaksi_semua,
+                    batch: m.medic_batch,
+                    role: m.medic_role_label,
+                    division: m.medic_division_label
                 })));
 
                 // ⬇️ SKIP RENDER KALAU DATA SAMA
@@ -2924,25 +3017,48 @@ include __DIR__ . '/../partials/sidebar.php';
                     const row = document.createElement('div');
                     row.className = 'online-medic-row';
                     row.innerHTML = `
-                <div class="medic-main">
-                    <strong>${escapeHtml(m.medic_name)}</strong>
-                    <span class="weekly-badge">Minggu ini: ${m.weekly_transaksi} trx</span>
-                    <span class="weekly-online" data-seconds="${m.weekly_online_seconds}" data-user-id="${m.user_id}">
-                        Online: ${m.weekly_online_text}
-                    </span>
-                    <div class="medic-role">${escapeHtml(m.medic_jabatan)}</div>
+                <div class="online-medic-main">
+                    <div class="online-medic-head">
+                        <div class="online-medic-identity">
+                            <strong>${escapeHtml(m.medic_name)}</strong>
+                            <div class="online-medic-subtitle">
+                                ${escapeHtml(m.medic_position_label || m.medic_jabatan || '-')} •
+                                ${escapeHtml(m.medic_role_label || '-')} •
+                                ${escapeHtml(m.medic_division_label || '-')}
+                            </div>
+                        </div>
+                        <div class="online-medic-badges">
+                            <span class="weekly-badge">Minggu ini: ${m.weekly_transaksi} trx</span>
+                            <span class="weekly-badge weekly-badge-muted">Batch ${m.medic_batch ? escapeHtml(String(m.medic_batch)) : '-'}</span>
+                        </div>
+                    </div>
+                    <div class="online-medic-inline-meta">
+                        <span><strong>Join:</strong> ${escapeHtml(m.join_duration_text || '-')}</span>
+                        <span><strong>Online:</strong> <strong class="weekly-online" data-seconds="${m.weekly_online_seconds}" data-user-id="${m.user_id}">${escapeHtml(m.weekly_online_text)}</strong></span>
+                    </div>
                     <button type="button" class="btn-force-offline"
                         data-user-id="${m.user_id}"
                         data-name="${escapeHtml(m.medic_name)}"
-                        data-jabatan="${escapeHtml(m.medic_jabatan)}">
+                        data-jabatan="${escapeHtml(m.medic_position_label || m.medic_jabatan || '-')}">
                         Force Offline
                     </button>
                 </div>
-                <div class="medic-stats">
-                    <div class="tx">${m.total_transaksi} trx</div>
-                    <div class="amount">$ ${Number(m.total_pendapatan).toLocaleString()}</div>
-                    <div class="bonus text-success-xs">
-                        Bonus: $ ${Number(m.bonus_40).toLocaleString()}
+                <div class="online-medic-stats">
+                    <div class="online-medic-stat-card">
+                        <span class="online-medic-stat-label">Transaksi Hari Ini</span>
+                        <strong class="tx">${m.total_transaksi} trx</strong>
+                    </div>
+                    <div class="online-medic-stat-card">
+                        <span class="online-medic-stat-label">Total Seluruh Transaksi</span>
+                        <strong>${m.total_transaksi_semua} trx</strong>
+                    </div>
+                    <div class="online-medic-stat-card">
+                        <span class="online-medic-stat-label">Pendapatan Hari Ini</span>
+                        <strong class="amount">$ ${Number(m.total_pendapatan).toLocaleString()}</strong>
+                    </div>
+                    <div class="online-medic-stat-card online-medic-stat-card-success">
+                        <span class="online-medic-stat-label">Bonus Hari Ini</span>
+                        <strong class="bonus text-success-xs">$ ${Number(m.bonus_40).toLocaleString()}</strong>
                     </div>
                 </div>
             `;
@@ -2976,7 +3092,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     const minutes = Math.floor((totalSeconds % 3600) / 60);
                     const seconds = totalSeconds % 60;
 
-                    span.textContent = `Online: ${hours}j ${minutes}m ${seconds}d`;
+                    span.textContent = `${hours}j ${minutes}m ${seconds}d`;
                 });
             }
 
@@ -3029,24 +3145,8 @@ include __DIR__ . '/../partials/sidebar.php';
             let lastActivityKey = null;
             let isFirstLoad = true;
 
-            const sound = document.getElementById('activitySound');
-
             function playSound() {
-                if (!sound) {
-                    return;
-                }
-
-                if (localStorage.getItem('activity_sound_muted') === '1' || sound.muted) {
-                    return;
-                }
-
-                try {
-                    sound.currentTime = 0;
-                    const playback = sound.play();
-                    if (playback && typeof playback.catch === 'function') {
-                        playback.catch(function() {});
-                    }
-                } catch (e) {}
+                return;
             }
 
             // ===============================
@@ -3158,10 +3258,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 const newestKey = `${newActivities[0].id}:${newActivities[0].timestamp}`;
 
                 // BUNYI HANYA JIKA ADA ACTIVITY BARU
-                if (!isFirstLoad && lastActivityKey !== null && newestKey !== lastActivityKey) {
-                    playSound();
-                }
-
                 lastActivityKey = newestKey;
                 isFirstLoad = false;
 
@@ -3240,33 +3336,6 @@ include __DIR__ . '/../partials/sidebar.php';
 
         })();
     </script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const audio = document.getElementById('activitySound');
-            const btn = document.getElementById('btnToggleActivitySound');
-            const label = btn ? btn.querySelector('[data-sound-label]') : null;
-
-            if (!audio || !btn || !label) return;
-
-            let muted = localStorage.getItem('activity_sound_muted') === '1';
-
-            function syncUI() {
-                audio.muted = muted;
-                label.textContent = muted ? 'Off' : 'On';
-                btn.classList.toggle('is-muted', muted);
-                btn.title = muted ? 'Aktifkan suara activity' : 'Matikan suara activity';
-            }
-
-            syncUI();
-
-            btn.addEventListener('click', () => {
-                muted = !muted;
-                localStorage.setItem('activity_sound_muted', muted ? '1' : '0');
-                syncUI();
-            });
-        });
-    </script>
-
 </section>
 <script>
     function koreksiNamaKonsumen(oldName, newName) {
@@ -3388,22 +3457,6 @@ include __DIR__ . '/../partials/sidebar.php';
             if (stateKey === lastState) return;
             lastState = stateKey;
 
-            // ===============================
-            // USER OFFLINE: TAMPILKAN NOTICE
-            // ===============================
-            if (data.user_status === 'offline') {
-                showFairnessNotice(`
-                        <strong>Status Anda OFFLINE</strong><br><br>
-                        Anda tidak dapat melakukan transaksi selama status OFFLINE.<br>
-                        Silakan Klik Tombol <strong>OFFLINE</strong> untuk merubah status menjadi <strong>ONLINE</strong> untuk melanjutkan.
-                    `);
-
-                return;
-            }
-
-            // ===============================
-            // User online: pastikan notice offline hilang
-            // ===============================
             clearFairnessNotice();
 
             // ===============================

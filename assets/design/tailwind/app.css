@@ -14,7 +14,12 @@
 
   body {
     @apply min-h-screen bg-background font-sans text-base text-text;
-    background-image: linear-gradient(180deg, #0c4a6e 0%, #075985 30%, #e0f2fe 100%);
+    background-image: linear-gradient(
+      180deg,
+      #0c4a6e 0%,
+      #075985 30%,
+      #e0f2fe 100%
+    );
     background-attachment: fixed;
   }
 
@@ -983,6 +988,10 @@
     @apply w-full justify-center;
   }
 
+  .manage-user-action-stack {
+    @apply flex min-w-[118px] flex-col gap-2;
+  }
+
   .interview-workspace {
     @apply grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)];
   }
@@ -1929,8 +1938,8 @@
   }
 
   .activity-feed-list {
-    /* Keep the panel compact: show ~2 items then scroll (mobile-first). */
-    max-height: 196px;
+    height: 180px;
+    max-height: 180px;
     @apply flex-1 overflow-y-auto;
   }
 
@@ -1992,9 +2001,11 @@
   }
 
   .online-medics-list {
-    /* Keep the panel compact: show ~2 rows then scroll. */
-    max-height: 196px;
-    @apply flex-1 space-y-2 overflow-y-auto;
+    height: 180px;
+    max-height: 180px;
+    scroll-snap-type: y mandatory;
+    scroll-padding-top: 8px;
+    @apply flex flex-1 flex-col gap-2 overflow-y-auto pr-1;
   }
 
   .card-online-medics {
@@ -2003,28 +2014,80 @@
 
   .farmasi-side-grid {
     /* Extra bottom spacing so it doesn't touch "Total Transaksi Hari Ini". */
-    @apply mb-8 mt-4 grid items-stretch gap-4 md:grid-cols-2;
+    @apply mb-4 mt-4 grid items-stretch gap-4 md:grid-cols-2;
   }
 
   .online-medic-row {
-    @apply flex flex-col justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:flex-row md:items-center md:gap-4 md:p-4;
+    scroll-snap-align: start;
+    @apply grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 md:p-3;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .medic-main {
-    @apply flex flex-1 flex-col gap-2;
+  @screen md {
+    .online-medic-row {
+      grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
+      @apply items-start;
+    }
   }
 
-  .medic-role {
-    @apply text-sm text-muted;
+  .online-medic-main {
+    @apply flex flex-col gap-1.5;
   }
 
-  .medic-stats {
-    @apply grid min-w-0 gap-1 text-left text-sm md:min-w-[180px] md:text-right;
+  .online-medic-head {
+    @apply flex flex-col gap-1 md:flex-row md:items-start md:justify-between;
+  }
+
+  .online-medic-identity {
+    @apply flex flex-col gap-1;
+  }
+
+  .online-medic-identity strong {
+    @apply text-sm font-bold text-slate-900;
+  }
+
+  .online-medic-subtitle {
+    @apply text-xs text-muted;
+  }
+
+  .online-medic-badges {
+    @apply flex flex-wrap gap-1.5;
+  }
+
+  .online-medic-inline-meta {
+    @apply flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600;
+  }
+
+  .online-medic-inline-meta strong {
+    @apply text-slate-900;
+  }
+
+  .weekly-badge-muted {
+    @apply border-slate-200 bg-slate-100 text-slate-700;
+  }
+
+  .online-medic-stats {
+    @apply grid min-w-0 gap-1.5 sm:grid-cols-2;
+  }
+
+  .online-medic-stat-card {
+    @apply rounded-xl border border-slate-200 bg-white px-2.5 py-1.5;
+  }
+
+  .online-medic-stat-card-success {
+    @apply border-emerald-200 bg-emerald-50;
+  }
+
+  .online-medic-stat-label {
+    @apply block text-[10px] font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .online-medic-stat-card strong {
+    @apply mt-0.5 block text-xs font-bold text-slate-900;
   }
 
   .card-online-medics .btn-force-offline {
-    /* Keep row compact on mobile; avoid full-width button which makes rows too tall. */
-    @apply btn-compact w-fit md:w-auto;
+    @apply btn-compact mt-0.5 w-fit px-2 py-1 text-[10px];
   }
 
   .medic-info {

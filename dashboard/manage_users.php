@@ -312,37 +312,39 @@ uksort($usersByBatch, function ($a, $b) {
                                                 ?>
                                             </td>
                                             <td>
-                                                <button
-                                                    class="btn-secondary btn-edit-user"
-                                                    data-id="<?= (int)$u['id'] ?>"
-                                                    data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
-                                                    data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
-                                                    data-role="<?= strtolower(trim($u['role'])) ?>"
-                                                    data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
-                                                    data-batch="<?= (int)($u['batch'] ?? 0) ?>"
-                                                    data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
-                                                    Edit
-                                                </button>
+                                                <div class="manage-user-action-stack">
+                                                    <button
+                                                        class="btn-secondary btn-sm candidate-action-btn btn-edit-user"
+                                                        data-id="<?= (int)$u['id'] ?>"
+                                                        data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                        data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
+                                                        data-role="<?= strtolower(trim($u['role'])) ?>"
+                                                        data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
+                                                        data-batch="<?= (int)($u['batch'] ?? 0) ?>"
+                                                        data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
+                                                        Edit
+                                                    </button>
 
-                                                <?php if ($u['is_active']): ?>
-                                                    <button class="btn-resign btn-resign-user"
+                                                    <?php if ($u['is_active']): ?>
+                                                        <button class="btn-resign btn-sm candidate-action-btn btn-resign-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
+                                                            Resign
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn-success btn-sm candidate-action-btn btn-reactivate-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
+                                                            Kembali
+                                                        </button>
+                                                    <?php endif; ?>
+
+                                                    <button class="btn-danger btn-sm candidate-action-btn btn-delete-user"
                                                         data-id="<?= (int)$u['id'] ?>"
                                                         data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                        Resign
+                                                        Hapus
                                                     </button>
-                                                <?php else: ?>
-                                                    <button class="btn-success btn-reactivate-user"
-                                                        data-id="<?= (int)$u['id'] ?>"
-                                                        data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                        Kembali
-                                                    </button>
-                                                <?php endif; ?>
-
-                                                <button class="btn-danger btn-delete-user"
-                                                    data-id="<?= (int)$u['id'] ?>"
-                                                    data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                    Hapus
-                                                </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     <?php endforeach; ?>
@@ -1009,15 +1011,6 @@ uksort($usersByBatch, function ($a, $b) {
             return out;
         }
 
-        function getBatchHeaderTitle(batchCard) {
-            const header = batchCard ? batchCard.querySelector('.batch-card-header') : null;
-            if (!header) return '';
-
-            const firstTextNode = header.childNodes && header.childNodes[0];
-            const raw = firstTextNode && firstTextNode.textContent ? firstTextNode.textContent : header.textContent;
-            return String(raw || '').replace(/\s+/g, ' ').trim();
-        }
-
         function getDataTableInstance(table) {
             if (!table || !window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) {
                 return null;
@@ -1073,10 +1066,21 @@ uksort($usersByBatch, function ($a, $b) {
             URL.revokeObjectURL(url);
         }
 
+        function exportTimestamp() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+        }
+
         document.body.addEventListener('click', function(e) {
             const exportAllBtn = e.target.closest('#btnExportText');
             if (exportAllBtn) {
-                let output = '';
+                const sections = [];
 
                 document.querySelectorAll('.user-batch-table').forEach(function(table) {
                     const batchCard = table.closest('.batch-card');
@@ -1090,43 +1094,29 @@ uksort($usersByBatch, function ($a, $b) {
                             return;
                         }
 
-                        const batchTitleRaw = getBatchHeaderTitle(batchCard);
-                        const lines = [];
+                        const batchCardHeader = batchCard?.querySelector('.batch-card-header')?.innerText || '';
+                        const batchMatch = batchCardHeader.match(/Batch\s+(\d+)/i);
+                        const sectionTitle = batchMatch ? `Batch ${batchMatch[1]}` : 'Tanpa Batch';
+                        const sectionLines = [];
                         let no = 1;
 
                         rows.forEach(function(row) {
                             const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
-                            const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
                             const noStr = String(no).padStart(2, '0');
-                            lines.push(`${noStr}. ${nama} (${jabatan})`);
+                            sectionLines.push(`${noStr}. ${nama}`);
                             no++;
                         });
 
-                        if (!lines.length) {
-                            return;
-                        }
-
-                        let batchTitleOut = batchTitleRaw;
-                        const match = batchTitleRaw.match(/^Batch\s+(\d+)\b/i);
-                        if (match) {
-                            const roman = toRoman(parseInt(match[1], 10));
-                            batchTitleOut = roman ? `BATCH ${roman}` : 'BATCH';
-                        } else if (/tanpa\s+batch/i.test(batchTitleRaw)) {
-                            batchTitleOut = 'TANPA BATCH';
-                        } else {
-                            batchTitleOut = (batchTitleRaw || 'BATCH').toUpperCase();
-                        }
-
-                        output += batchTitleOut + '\n' + lines.join('\n') + '\n\n';
+                        sections.push(`${sectionTitle}\n${sectionLines.join('\n')}`);
                     });
                 });
 
-                if (!output.trim()) {
+                if (!sections.length) {
                     alert('Tidak ada data untuk diexport.');
                     return;
                 }
 
-                downloadText('daftar_medis.txt', output);
+                downloadText(`daftar_medis_${exportTimestamp()}.txt`, sections.join('\n\n') + '\n');
                 return;
             }
 
@@ -1145,9 +1135,8 @@ uksort($usersByBatch, function ($a, $b) {
 
                     return rows.map(function(row) {
                         const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
-                        const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
                         const noStr = String(no++).padStart(2, '0');
-                        return `${noStr}. ${nama} (${jabatan})`;
+                        return `${noStr}. ${nama}`;
                     });
                 });
 
@@ -1156,7 +1145,7 @@ uksort($usersByBatch, function ($a, $b) {
                     return;
                 }
 
-                downloadText('tanpa_batch.txt', 'TANPA BATCH\n' + lines.join('\n') + '\n');
+                downloadText(`tanpa_batch_${exportTimestamp()}.txt`, 'Tanpa Batch\n' + lines.join('\n') + '\n');
             }
         });
     });
