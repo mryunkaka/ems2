@@ -12,58 +12,6 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/session_helper.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 
-function compressImageSmart(
-    string $sourcePath,
-    string $targetPath,
-    int $maxWidth = 1200,
-    int $targetSize = 300000,
-    int $minQuality = 70
-): bool {
-    $info = getimagesize($sourcePath);
-    if (!$info) return false;
-
-    $mime = $info['mime'];
-    if ($mime === 'image/jpeg') {
-        $src = imagecreatefromjpeg($sourcePath);
-    } elseif ($mime === 'image/png') {
-        $src = imagecreatefrompng($sourcePath);
-    } else {
-        return false;
-    }
-
-    $w = imagesx($src);
-    $h = imagesy($src);
-
-    if ($w > $maxWidth) {
-        $ratio = $maxWidth / $w;
-        $nw = $maxWidth;
-        $nh = (int)($h * $ratio);
-        $dst = imagecreatetruecolor($nw, $nh);
-        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
-        imagedestroy($src);
-    } else {
-        $dst = $src;
-    }
-
-    if ($mime === 'image/png') {
-        imagepng($dst, $targetPath, 7);
-    } else {
-        for ($q = 90; $q >= $minQuality; $q -= 5) {
-            imagejpeg($dst, $targetPath, $q);
-            if (filesize($targetPath) <= $targetSize) break;
-        }
-    }
-
-    imagedestroy($dst);
-    return true;
-}
-
-function slugFolder(string $name): string
-{
-    $name = strtolower(trim($name));
-    $name = preg_replace('/[^a-z0-9\s\-]/', '', $name);
-    return preg_replace('/\s+/', '-', $name);
-}
 
 /*
 |--------------------------------------------------------------------------
