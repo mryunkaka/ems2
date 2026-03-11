@@ -195,7 +195,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?= date('d/m/Y H:i', strtotime($record['created_at'])) ?>
                                         </td>
                                         <td class="font-semibold">
-                                            <?= htmlspecialchars((string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)))) ?>
+                                            <?php $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT))); ?>
+                                            <a href="<?= $isForensicPrivate ? 'forensic_medical_records_view.php' : 'rekam_medis_view.php' ?>?id=<?= (int)$record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" class="text-primary hover:underline">
+                                                <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?>
+                                            </a>
                                         </td>
                                         <td class="font-semibold">
                                             <?= htmlspecialchars($record['patient_name']) ?>
