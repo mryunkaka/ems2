@@ -3458,16 +3458,24 @@ include __DIR__ . '/../partials/sidebar.php';
             function createPollingTask(config) {
                 const interval = config.interval || 3000;
                 const maxInterval = config.maxInterval || 30000;
+                const runWhenHidden = !!config.runWhenHidden;
                 let stopped = false;
                 let timer = null;
                 let inFlight = false;
                 let failCount = 0;
+                let lastFailureStatus = 0;
+
+                function canPollNow() {
+                    return runWhenHidden || !document.hidden;
+                }
 
                 function nextDelay() {
                     if (failCount <= 0) {
                         return interval;
                     }
-                    return Math.min(maxInterval, interval * Math.pow(2, Math.min(failCount - 1, 4)));
+
+                    const multiplier = (lastFailureStatus === 507 || lastFailureStatus >= 500) ? 4 : 2;
+                    return Math.min(maxInterval, interval * multiplier * Math.pow(2, Math.min(failCount - 1, 3)));
                 }
 
                 function schedule(delay) {
@@ -3485,6 +3493,11 @@ include __DIR__ . '/../partials/sidebar.php';
                         return;
                     }
 
+                    if (!canPollNow()) {
+                        schedule(interval);
+                        return;
+                    }
+
                     inFlight = true;
 
                     try {
@@ -3494,11 +3507,13 @@ include __DIR__ . '/../partials/sidebar.php';
 
                         if (result.ok) {
                             failCount = 0;
+                            lastFailureStatus = 0;
                             if (config.onSuccess) {
                                 config.onSuccess(result.data, result);
                             }
                         } else {
                             failCount += 1;
+                            lastFailureStatus = parseInt(result.status || 0, 10);
                             if (config.onError) {
                                 config.onError(result, failCount);
                             } else {
@@ -3517,6 +3532,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 return {
                     start: function() {
+                        document.addEventListener('visibilitychange', handleVisibilityChange);
                         schedule(0);
                     },
                     stop: function() {
@@ -3524,11 +3540,28 @@ include __DIR__ . '/../partials/sidebar.php';
                         if (timer) {
                             clearTimeout(timer);
                         }
+                        document.removeEventListener('visibilitychange', handleVisibilityChange);
                     },
                     trigger: function() {
                         schedule(0);
                     }
                 };
+
+                function handleVisibilityChange() {
+                    if (stopped) {
+                        return;
+                    }
+
+                    if (canPollNow()) {
+                        schedule(1000);
+                        return;
+                    }
+
+                    if (timer) {
+                        clearTimeout(timer);
+                        timer = null;
+                    }
+                }
             }
 
             window.EMSRealtime = {
@@ -3696,9 +3729,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const medicsPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_online_medics.php'),
-                interval: 3000,
-                maxInterval: 30000,
-                timeoutMs: 7000,
+                interval: 15000,
+                maxInterval: 180000,
+                timeoutMs: 6000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
                         handleMedicsError({
@@ -3896,9 +3929,9 @@ include __DIR__ . '/../partials/sidebar.php';
             // ===============================
             const activitiesPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_activities.php'),
-                interval: 3000,
-                maxInterval: 30000,
-                timeoutMs: 7000,
+                interval: 20000,
+                maxInterval: 180000,
+                timeoutMs: 6000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
                         handleActivityError({
@@ -4001,9 +4034,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const statusPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_farmasi_status.php'),
-            interval: 5000,
-            maxInterval: 30000,
-            timeoutMs: 7000,
+            interval: 15000,
+            maxInterval: 120000,
+            timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.status !== 'string') {
                     return;
@@ -4103,9 +4136,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const fairnessPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_fairness_status.php'),
-            interval: 3000,
-            maxInterval: 30000,
-            timeoutMs: 7000,
+            interval: 20000,
+            maxInterval: 120000,
+            timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.user_status !== 'string') {
                     return;
@@ -4169,9 +4202,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const cooldownPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_global_cooldown.php'),
-            interval: 3000,
-            maxInterval: 30000,
-            timeoutMs: 7000,
+            interval: 10000,
+            maxInterval: 90000,
+            timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.active === 'undefined') {
                     clearCooldownUI();

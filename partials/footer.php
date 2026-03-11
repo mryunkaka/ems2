@@ -59,6 +59,11 @@ window.addEventListener('resize', function() {
 	        }
 
 	        async function runOnce() {
+	            if (document.hidden) {
+	                schedule(60000);
+	                return;
+	            }
+
 	            if (inFlight) return;
 	            inFlight = true;
 
@@ -97,13 +102,18 @@ window.addEventListener('resize', function() {
 	                }
 	            } finally {
 	                inFlight = false;
-	                const base = 5000;
+	                const base = 30000;
 	                const backoff = Math.min(300000, 60000 * Math.pow(2, Math.min(Math.max(0, failCount - 1), 3)));
 	                schedule(failCount ? backoff : base);
 	            }
 	        }
 
 	        runOnce();
+	        document.addEventListener('visibilitychange', () => {
+	            if (!document.hidden) {
+	                runOnce();
+	            }
+	        });
 	        window.addEventListener('online', () => {
 	            failCount = 0;
 	            runOnce();
@@ -152,4 +162,3 @@ window.addEventListener('resize', function() {
 </body>
 
 </html>
-

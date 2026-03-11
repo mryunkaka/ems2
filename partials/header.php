@@ -374,6 +374,11 @@ if ($userId) {
             }
 
             async function runFarmasiNotifOnce() {
+                if (document.hidden) {
+                    scheduleFarmasiNotif(60000);
+                    return;
+                }
+
                 if (farmasiNotifInFlight) return;
                 farmasiNotifInFlight = true;
 
@@ -403,7 +408,7 @@ if ($userId) {
                     }
                 } finally {
                     farmasiNotifInFlight = false;
-                    const base = 5000;
+                    const base = 30000;
                     const backoff = Math.min(300000, 60000 * Math.pow(2, Math.min(Math.max(0, farmasiNotifFailCount - 1), 3)));
                     scheduleFarmasiNotif(farmasiNotifFailCount ? backoff : base);
                 }
@@ -411,6 +416,12 @@ if ($userId) {
 
             document.addEventListener('DOMContentLoaded', () => {
                 runFarmasiNotifOnce();
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    runFarmasiNotifOnce();
+                }
             });
 
             window.addEventListener('online', () => {
@@ -430,6 +441,10 @@ if ($userId) {
              * HANYA update last_activity_at jika status ONLINE
              */
             async function sendHeartbeat() {
+                if (document.hidden) {
+                    return;
+                }
+
                 try {
                     const res = await fetch(window.emsUrl('/actions/heartbeat.php'), {
                         method: 'POST',
@@ -457,8 +472,8 @@ if ($userId) {
             function startHeartbeat() {
                 if (heartbeatTimer) return;
 
-                // Setiap 15 detik (aman dan ringan)
-                heartbeatTimer = setInterval(sendHeartbeat, 15000);
+                // Setiap 30 detik, dan hanya saat tab aktif
+                heartbeatTimer = setInterval(sendHeartbeat, 30000);
             }
 
             /**
@@ -683,6 +698,11 @@ if ($userId) {
                 };
 
                 const runOnce = async () => {
+                    if (document.hidden) {
+                        schedule(60000);
+                        return;
+                    }
+
                     if (inboxInFlight) return;
                     inboxInFlight = true;
 
@@ -716,13 +736,20 @@ if ($userId) {
                         }
                     } finally {
                         inboxInFlight = false;
-                        const base = 10000;
+                        const base = 30000;
                         const backoff = Math.min(300000, 60000 * Math.pow(2, Math.min(Math.max(0, inboxFailCount - 1), 3)));
                         schedule(inboxFailCount ? backoff : base);
                     }
                 };
 
                 runOnce(); // langsung sekali saat load
+
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        inboxFailCount = 0;
+                        runOnce();
+                    }
+                });
 
                 window.addEventListener('online', () => {
                     inboxFailCount = 0;
