@@ -56,14 +56,6 @@ if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
 }
 
-if (ems_can_access_division_menu($division, 'Executive')) {
-    $groupedNav['Executive'] = [
-        sidebarItem('#', '', 'Executive Briefing', 'clipboard-document-list'),
-        sidebarItem('#', '', 'Strategic Reports', 'chart-bar'),
-        sidebarItem('#', '', 'Executive Visits', 'ticket'),
-    ];
-}
-
 if (ems_can_access_division_menu($division, 'Human Resource')) {
     $groupedNav['Human Resource'] = [
         sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
@@ -115,9 +107,9 @@ if (ems_can_access_division_menu($division, 'Forensic')) {
 if (ems_can_access_division_menu($division, 'Secretary')) {
     $groupedNav['Secretary'] = [
         sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
-        sidebarItem('#', '', 'Agenda Kunjungan Divisi', 'calendar-days'),
-        sidebarItem('#', '', 'Koordinasi Internal Divisi', 'user-group'),
-        sidebarItem('#', '', 'Rekap Surat Rahasia', 'inbox'),
+        sidebarItem('/dashboard/secretary_visit_agenda.php', 'secretary_visit_agenda.php', 'Agenda Kunjungan Divisi', 'calendar-days'),
+        sidebarItem('/dashboard/secretary_internal_coordination.php', 'secretary_internal_coordination.php', 'Koordinasi Internal Divisi', 'user-group'),
+        sidebarItem('/dashboard/secretary_confidential_letters.php', 'secretary_confidential_letters.php', 'Rekap Surat Rahasia', 'inbox'),
     ];
 }
 
