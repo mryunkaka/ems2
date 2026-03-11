@@ -91,6 +91,28 @@ $questions = [
 ];
 
 $pageTitle = 'Detail Kandidat';
+
+function candidateDisplayLabel(?string $value): string
+{
+    $value = (string)($value ?? '');
+
+    return match (strtolower($value)) {
+        'ai_completed' => 'Menunggu',
+        'interview' => 'Interview',
+        'final_review' => 'Final Review',
+        'accepted' => 'Diterima',
+        'rejected' => 'Ditolak',
+        'recommended' => 'Direkomendasikan',
+        'not_recommended' => 'Tidak Direkomendasikan',
+        'follow_up_required' => 'Perlu Tindak Lanjut',
+        'proceed' => 'Lanjut Interview',
+        'reject' => 'Ditolak Sistem',
+        'lolos' => 'Lolos',
+        'tidak_lolos' => 'Tidak Lolos',
+        '' => '-',
+        default => ucwords(str_replace('_', ' ', $value)),
+    };
+}
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
@@ -104,9 +126,9 @@ $pageTitle = 'Detail Kandidat';
         <div class="card">
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong>
             <div class="meta-text">
-                Status: <?= $candidate['status'] ?> |
+                Status: <?= htmlspecialchars(candidateDisplayLabel($candidate['status'])) ?> |
                 Skor: <?= $result['score_total'] ?> |
-                Keputusan: <?= strtoupper($result['decision']) ?>
+                Keputusan: <?= htmlspecialchars(candidateDisplayLabel($result['decision'])) ?>
             </div>
         </div>
 

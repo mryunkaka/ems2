@@ -58,6 +58,17 @@ if (isset($_SESSION['user_rh'])) {
     } else {
         $_SESSION['user_rh']['position'] = ems_normalize_position($_SESSION['user_rh']['position'] ?? '');
     }
+
+    $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
+    $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
+    if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
+        ems_enforce_dashboard_page_access(
+            $_SESSION['user_rh']['division'] ?? '',
+            $currentScript,
+            '/dashboard/index.php'
+        );
+    }
+
     return;
 }
 

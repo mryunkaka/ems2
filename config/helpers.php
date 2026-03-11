@@ -237,6 +237,7 @@ function ems_is_director_role(?string $role): bool
 function ems_division_options(): array
 {
     return [
+        ['value' => 'Medis', 'label' => 'Medis'],
         ['value' => 'Executive', 'label' => 'Executive'],
         ['value' => 'Secretary', 'label' => 'Secretary'],
         ['value' => 'Human Capital', 'label' => 'Human Capital'],
@@ -254,6 +255,7 @@ function ems_normalize_division(?string $division): string
     $raw = preg_replace('/\s+/', ' ', $raw) ?: '';
 
     return match ($raw) {
+        'medis', 'medical', 'devisi medis', 'divisi medis', 'division medis' => 'Medis',
         'executive', 'devisi executive', 'divisi executive', 'division executive' => 'Executive',
         'secretary', 'sekertaris', 'sekretaris', 'devisi sekertaris', 'divisi sekertaris', 'division secretary' => 'Secretary',
         'human capital', 'devisi human capital', 'divisi human capital', 'division human capital' => 'Human Capital',
@@ -316,6 +318,58 @@ function ems_require_division_access(array $targetDivisions, string $redirectTo 
     $_SESSION['flash_errors'][] = 'Akses division ditolak.';
     header('Location: ' . $redirectTo);
     exit;
+}
+
+function ems_division_allowed_dashboard_pages(?string $division): ?array
+{
+    $division = ems_normalize_division($division);
+
+    if ($division !== 'Medis') {
+        return null;
+    }
+
+    return [
+        'index.php',
+        'events.php',
+        'event_participants.php',
+        'ems_services.php',
+        'rekam_medis_list.php',
+        'rekam_medis.php',
+        'rekam_medis_edit.php',
+        'rekam_medis_action.php',
+        'rekam_medis_edit_action.php',
+        'rekam_medis_delete.php',
+        'operasi_plastik.php',
+        'rekap_farmasi.php',
+        'rekap_farmasi_v2.php',
+        'konsumen.php',
+        'ranking.php',
+        'absensi_ems.php',
+        'reimbursement.php',
+        'restaurant_consumption.php',
+        'gaji.php',
+        'rekap_gaji.php',
+        'pengajuan_jabatan.php',
+        'pengajuan_jabatan_action.php',
+        'pengajuan_cuti_resign.php',
+        'pengajuan_cuti_resign_action.php',
+        'setting_akun.php',
+        'setting_akun_action.php',
+    ];
+}
+
+function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
+{
+    $allowedPages = ems_division_allowed_dashboard_pages($division);
+    if ($allowedPages === null) {
+        return;
+    }
+
+    if (!in_array($scriptName, $allowedPages, true)) {
+        $_SESSION['flash_errors'][] = 'Akses halaman ditolak untuk division Anda.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
 }
 
 function ems_disciplinary_tolerance_options(): array

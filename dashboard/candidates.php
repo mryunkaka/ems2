@@ -18,6 +18,41 @@ if (strtolower($role) === 'staff') {
 
 $pageTitle = 'Calon Kandidat';
 
+function candidateStatusMeta(string $status): array
+{
+    return match ($status) {
+        'ai_completed' => ['label' => 'Menunggu', 'class' => 'badge-warning'],
+        'interview' => ['label' => 'Interview', 'class' => 'badge-info'],
+        'final_review' => ['label' => 'Final Review', 'class' => 'badge-info'],
+        'accepted' => ['label' => 'Diterima', 'class' => 'badge-success'],
+        'rejected' => ['label' => 'Ditolak', 'class' => 'badge-danger'],
+        default => [
+            'label' => ucwords(str_replace('_', ' ', $status)),
+            'class' => 'badge-secondary',
+        ],
+    };
+}
+
+function candidateDecisionMeta(?string $decision): array
+{
+    $decision = (string)($decision ?? '');
+
+    return match (strtolower($decision)) {
+        'recommended' => ['label' => 'Direkomendasikan', 'class' => 'badge-success'],
+        'not_recommended' => ['label' => 'Tidak Direkomendasikan', 'class' => 'badge-danger'],
+        'follow_up_required' => ['label' => 'Perlu Tindak Lanjut', 'class' => 'badge-warning'],
+        'lolos' => ['label' => 'Lolos', 'class' => 'badge-success'],
+        'tidak_lolos' => ['label' => 'Tidak Lolos', 'class' => 'badge-danger'],
+        'proceed' => ['label' => 'Lanjut Interview', 'class' => 'badge-info'],
+        'reject' => ['label' => 'Ditolak Sistem', 'class' => 'badge-danger'],
+        '' => ['label' => '-', 'class' => 'badge-secondary'],
+        default => [
+            'label' => ucwords(str_replace('_', ' ', $decision)),
+            'class' => 'badge-secondary',
+        ],
+    };
+}
+
 /* ===============================
    SELESAI INTERVIEW (DARI LIST)
    =============================== */
@@ -182,8 +217,16 @@ $candidates = $pdo->query("
 
 <section class="content">
     <div class="page page-shell-md">
-        <h1 class="page-title">Daftar Calon Kandidat</h1>
-        <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h1 class="page-title">Daftar Calon Kandidat</h1>
+                <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
+            </div>
+            <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
+                <?= ems_icon('plus', 'h-4 w-4') ?>
+                <span>Kandidat Baru</span>
+            </a>
+        </div>
 
         <div class="card">
             <div class="card-header">Calon Kandidat</div>
@@ -221,26 +264,10 @@ $candidates = $pdo->query("
                                 );
                             }
 
-                            switch ($c['status']) {
-                                case 'ai_completed':
-                                    $statusBadge = '<span class="badge-warning">Menunggu</span>';
-                                    break;
-                                case 'interview':
-                                    $statusBadge = '<span class="badge-info">Interview</span>';
-                                    break;
-                                case 'final_review':
-                                    $statusBadge = '<span class="badge-info">Final Review</span>';
-                                    break;
-                                case 'accepted':
-                                    $statusBadge = '<span class="badge-success">Diterima</span>';
-                                    break;
-                                case 'rejected':
-                                    $statusBadge = '<span class="badge-danger">Ditolak</span>';
-                                    break;
-                                default:
-                                    $statusBadge = '<span class="badge badge-secondary">' . htmlspecialchars(strtoupper($c['status'])) . '</span>';
-                                    break;
-                            }
+                            $statusMeta = candidateStatusMeta((string)$c['status']);
+                            $statusBadge = '<span class="' . htmlspecialchars($statusMeta['class']) . '">' . htmlspecialchars($statusMeta['label']) . '</span>';
+                            $finalDecisionMeta = candidateDecisionMeta($c['final_result']);
+                            $aiDecisionMeta = candidateDecisionMeta($c['ai_decision']);
                             ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
@@ -271,62 +298,64 @@ $candidates = $pdo->query("
                                 </td>
                                 <td>
                                     <?php if ($c['final_result']): ?>
-                                        <span class="badge badge-<?= $c['final_result'] === 'lolos' ? 'success' : 'danger' ?>">
-                                            <?= strtoupper($c['final_result']) ?>
+                                        <span class="<?= htmlspecialchars($finalDecisionMeta['class']) ?>">
+                                            <?= htmlspecialchars($finalDecisionMeta['label']) ?>
                                         </span>
                                     <?php else: ?>
-                                        <span class="badge badge-secondary">
-                                            <?= strtoupper($c['ai_decision'] ?? '-') ?>
+                                        <span class="<?= htmlspecialchars($aiDecisionMeta['class']) ?>">
+                                            <?= htmlspecialchars($aiDecisionMeta['label']) ?>
                                         </span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="whitespace-nowrap">
+                                <td class="action-cell">
+                                    <div class="candidate-action-stack">
                                     <?php if ($c['status'] === 'ai_completed'): ?>
-                                        <form method="post" class="inline">
+                                        <form method="post">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="proceed">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn btn-primary" onclick="return confirm('Lanjutkan ke tahap wawancara?')">
+                                            <button type="submit" class="btn-primary btn-sm candidate-action-btn" onclick="return confirm('Lanjutkan ke tahap wawancara?')">
                                                 <?= ems_icon('arrow-right', 'h-4 w-4') ?>
-                                                <span>Lanjut Wawancara</span>
+                                                <span>Lanjut</span>
                                             </button>
                                         </form>
 
-                                        <form method="post" class="inline">
+                                        <form method="post">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="reject">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn btn-danger" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')">
+                                            <button type="submit" class="btn-danger btn-sm candidate-action-btn" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')">
                                                 <?= ems_icon('x-mark', 'h-4 w-4') ?>
-                                                <span>Tidak Diterima</span>
+                                                <span>Tolak</span>
                                             </button>
                                         </form>
                                     <?php endif; ?>
 
                                     <?php if (in_array($c['status'], ['interview'], true)): ?>
-                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn btn-primary">
+                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn-primary btn-sm candidate-action-btn">
                                             <?= ems_icon('microphone', 'h-4 w-4') ?>
                                             <span>Interview</span>
                                         </a>
                                     <?php endif; ?>
 
                                     <?php if ($c['status'] === 'interview'): ?>
-                                        <form method="post" class="inline">
+                                        <form method="post">
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="finish_interview" value="1">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-warning btn-finish-interview" data-total-hr="<?= (int)$c['total_hr'] ?>">
+                                            <button type="submit" class="btn-warning btn-sm btn-finish-interview candidate-action-btn" data-total-hr="<?= (int)$c['total_hr'] ?>">
                                                 Selesai
                                             </button>
                                         </form>
                                     <?php endif; ?>
 
                                     <?php if ($c['status'] === 'final_review' || in_array($c['status'], ['accepted', 'rejected'], true)): ?>
-                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn btn-success">
+                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm candidate-action-btn">
                                             <?= ems_icon('check-badge', 'h-4 w-4') ?>
                                             <span>Keputusan</span>
                                         </a>
                                     <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

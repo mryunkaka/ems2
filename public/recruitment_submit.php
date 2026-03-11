@@ -75,6 +75,18 @@ foreach ($required as $field) {
    =============================== */
 $icName  = trim($_POST['ic_name']);
 $icPhone = trim($_POST['ic_phone']);
+$citizenId = trim($_POST['citizen_id'] ?? '');
+$jenisKelamin = trim($_POST['jenis_kelamin'] ?? '');
+
+if ($citizenId === '' || $jenisKelamin === '') {
+    http_response_code(400);
+    exit;
+}
+
+if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
+    http_response_code(400);
+    exit;
+}
 
 $folderName = slugName($icName) . '_' . $icPhone;
 
@@ -87,16 +99,18 @@ try {
        =============================== */
     $stmt = $pdo->prepare("
         INSERT INTO medical_applicants (
-            ic_name, ooc_age, ic_phone,
+            ic_name, citizen_id, jenis_kelamin, ooc_age, ic_phone,
             medical_experience, city_duration, online_schedule,
             other_city_responsibility, motivation, work_principle,
             academy_ready, rule_commitment, duty_duration,
             status
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'ai_test')
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'ai_test')
     ");
 
     $stmt->execute([
         $icName,
+        $citizenId,
+        $jenisKelamin,
         $_POST['ooc_age'],
         $icPhone,
         $_POST['medical_experience'] ?? null,
