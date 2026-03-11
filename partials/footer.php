@@ -30,6 +30,7 @@ window.addEventListener('resize', function() {
 	        let timer = null;
 	        let failCount = 0;
 	        let inFlight = false;
+            let pauseUntil = 0;
 
 	        async function safeFetchJSON(url, options = {}, timeoutMs = 6000) {
 	            if (navigator.onLine === false) return null;
@@ -59,6 +60,12 @@ window.addEventListener('resize', function() {
 	        }
 
 	        async function runOnce() {
+	            const pauseRemaining = Math.max(0, pauseUntil - Date.now());
+	            if (pauseRemaining > 0) {
+	                schedule(pauseRemaining);
+	                return;
+	            }
+
 	            if (document.hidden) {
 	                schedule(60000);
 	                return;
@@ -72,6 +79,7 @@ window.addEventListener('resize', function() {
 		                const data = await safeFetchJSON(window.emsUrl('/auth/check_session.php'));
 		                if (!data) {
 		                    failCount++;
+                            pauseUntil = Date.now() + 300000;
 		                    if (beforeFail === 0) {
 		                        window.emsLogOnce('session-check-backoff', 'Session check sementara gagal dimuat, polling dibackoff.');
 		                    }
@@ -79,6 +87,7 @@ window.addEventListener('resize', function() {
 		                }
 
 	                failCount = 0;
+                    pauseUntil = 0;
 
 	                if (!data.valid) {
 	                    document.body.innerHTML = `
@@ -111,6 +120,11 @@ window.addEventListener('resize', function() {
 	        runOnce();
 	        document.addEventListener('visibilitychange', () => {
 	            if (!document.hidden) {
+                    const pauseRemaining = Math.max(0, pauseUntil - Date.now());
+                    if (pauseRemaining > 0) {
+                        schedule(pauseRemaining);
+                        return;
+                    }
 	                runOnce();
 	            }
 	        });

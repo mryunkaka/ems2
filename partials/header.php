@@ -367,6 +367,7 @@ if ($userId) {
             // Polling aman (backoff jika server tidak bisa diakses)
             let farmasiNotifFailCount = 0;
             let farmasiNotifInFlight = false;
+            let farmasiNotifPauseUntil = 0;
 
             function scheduleFarmasiNotif(nextMs) {
                 if (notifTimer) clearTimeout(notifTimer);
@@ -374,6 +375,12 @@ if ($userId) {
             }
 
             async function runFarmasiNotifOnce() {
+                const pauseRemaining = Math.max(0, farmasiNotifPauseUntil - Date.now());
+                if (pauseRemaining > 0) {
+                    scheduleFarmasiNotif(pauseRemaining);
+                    return;
+                }
+
                 if (document.hidden) {
                     scheduleFarmasiNotif(60000);
                     return;
@@ -387,6 +394,7 @@ if ($userId) {
                     const notif = await safeFetchJSON(window.emsUrl('/actions/check_farmasi_notif.php'));
                     if (!notif) {
                         farmasiNotifFailCount++;
+                        farmasiNotifPauseUntil = Date.now() + 300000;
                         if (beforeFail === 0) {
                             window.emsLogOnce('farmasi-notif-backoff', 'Farmasi notif sementara gagal dimuat, polling dibackoff.');
                         }
@@ -394,6 +402,7 @@ if ($userId) {
                     }
 
                     farmasiNotifFailCount = 0;
+                    farmasiNotifPauseUntil = 0;
 
                     if (notif.status && notif.status === 'offline') {
                         removeModal();
@@ -420,6 +429,11 @@ if ($userId) {
 
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden) {
+                    const pauseRemaining = Math.max(0, farmasiNotifPauseUntil - Date.now());
+                    if (pauseRemaining > 0) {
+                        scheduleFarmasiNotif(pauseRemaining);
+                        return;
+                    }
                     runFarmasiNotifOnce();
                 }
             });
@@ -698,6 +712,12 @@ if ($userId) {
                 };
 
                 const runOnce = async () => {
+                    const pauseRemaining = Math.max(0, (window.__emsInboxPauseUntil || 0) - Date.now());
+                    if (pauseRemaining > 0) {
+                        schedule(pauseRemaining);
+                        return;
+                    }
+
                     if (document.hidden) {
                         schedule(60000);
                         return;
@@ -711,6 +731,7 @@ if ($userId) {
                         const data = await safeFetchJSON(window.emsUrl('/actions/get_inbox.php'));
                         if (!data) {
                             inboxFailCount++;
+                            window.__emsInboxPauseUntil = Date.now() + 300000;
                             if (beforeFail === 0) {
                                 window.emsLogOnce('inbox-backoff', 'Inbox sementara gagal dimuat, polling dibackoff.');
                             }
@@ -718,6 +739,7 @@ if ($userId) {
                         }
 
                         inboxFailCount = 0;
+                        window.__emsInboxPauseUntil = 0;
 
                         // Update badge
                         inboxBadge.textContent = data.unread;
@@ -746,6 +768,11 @@ if ($userId) {
 
                 document.addEventListener('visibilitychange', () => {
                     if (!document.hidden) {
+                        const pauseRemaining = Math.max(0, (window.__emsInboxPauseUntil || 0) - Date.now());
+                        if (pauseRemaining > 0) {
+                            schedule(pauseRemaining);
+                            return;
+                        }
                         inboxFailCount = 0;
                         runOnce();
                     }

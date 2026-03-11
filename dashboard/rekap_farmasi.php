@@ -3459,17 +3459,28 @@ include __DIR__ . '/../partials/sidebar.php';
                 const interval = config.interval || 3000;
                 const maxInterval = config.maxInterval || 30000;
                 const runWhenHidden = !!config.runWhenHidden;
+                const serverErrorPauseMs = config.serverErrorPauseMs || 300000;
                 let stopped = false;
                 let timer = null;
                 let inFlight = false;
                 let failCount = 0;
                 let lastFailureStatus = 0;
+                let pauseUntil = 0;
 
                 function canPollNow() {
                     return runWhenHidden || !document.hidden;
                 }
 
+                function getPauseRemaining() {
+                    return Math.max(0, pauseUntil - Date.now());
+                }
+
                 function nextDelay() {
+                    const pauseRemaining = getPauseRemaining();
+                    if (pauseRemaining > 0) {
+                        return pauseRemaining;
+                    }
+
                     if (failCount <= 0) {
                         return interval;
                     }
@@ -3490,6 +3501,12 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 async function run() {
                     if (stopped || inFlight) {
+                        return;
+                    }
+
+                    const pauseRemaining = getPauseRemaining();
+                    if (pauseRemaining > 0) {
+                        schedule(pauseRemaining);
                         return;
                     }
 
@@ -3514,6 +3531,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         } else {
                             failCount += 1;
                             lastFailureStatus = parseInt(result.status || 0, 10);
+                            if (lastFailureStatus === 507 || lastFailureStatus >= 500) {
+                                pauseUntil = Date.now() + serverErrorPauseMs;
+                            }
                             if (config.onError) {
                                 config.onError(result, failCount);
                             } else {
@@ -3553,7 +3573,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     }
 
                     if (canPollNow()) {
-                        schedule(1000);
+                        schedule(getPauseRemaining() || 1000);
                         return;
                     }
 
