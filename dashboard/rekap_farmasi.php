@@ -53,6 +53,205 @@ function app_log($message)
     error_log($line, 3, __DIR__ . '/../storage/error_log.txt');
 }
 
+function farmasiConsumerNameComparable(string $name): string
+{
+    $name = preg_replace('/\d+/u', ' ', $name);
+    $name = preg_replace("/[^\p{L}\s'\-]/u", ' ', $name);
+    $name = preg_replace('/\s+/u', ' ', (string)$name);
+
+    return trim(mb_strtolower($name, 'UTF-8'));
+}
+
+function farmasiConsumerNameDisplay(string $name): string
+{
+    $normalized = farmasiConsumerNameComparable($name);
+    if ($normalized === '') {
+        return '';
+    }
+
+    return mb_convert_case($normalized, MB_CASE_TITLE, 'UTF-8');
+}
+
+function farmasiConsumerNameKey(string $name): string
+{
+    $normalized = farmasiConsumerNameComparable($name);
+    if ($normalized === '') {
+        return '';
+    }
+
+    $tokens = preg_split('/\s+/u', $normalized) ?: [];
+    $tokens = array_values(array_filter($tokens, static function ($token) {
+        return $token !== '';
+    }));
+    sort($tokens, SORT_STRING);
+
+    return implode(' ', $tokens);
+}
+
+function farmasiAsciiLower(string $value): string
+{
+    $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    if ($ascii === false) {
+        $ascii = $value;
+    }
+
+    return strtolower($ascii);
+}
+
+function farmasiNormalizeLooseAscii(string $value): string
+{
+    $value = farmasiAsciiLower($value);
+    $value = preg_replace('/([a-z])\1+/i', '$1', $value);
+    $value = preg_replace('/\s+/u', ' ', $value);
+
+    return trim((string)$value);
+}
+
+function farmasiTokenDistance(string $left, string $right): int
+{
+    $left = farmasiNormalizeLooseAscii($left);
+    $right = farmasiNormalizeLooseAscii($right);
+
+    if ($left === $right) {
+        return 0;
+    }
+
+    return levenshtein($left, $right);
+}
+
+function farmasiTokenEquivalent(string $left, string $right): bool
+{
+    $left = farmasiNormalizeLooseAscii($left);
+    $right = farmasiNormalizeLooseAscii($right);
+
+    if ($left === '' || $right === '') {
+        return false;
+    }
+
+    if ($left === $right) {
+        return true;
+    }
+
+    if (str_contains($left, $right) || str_contains($right, $left)) {
+        return true;
+    }
+
+    $distance = levenshtein($left, $right);
+    $maxLen = max(strlen($left), strlen($right));
+
+    if ($maxLen <= 5) {
+        return $distance <= 1;
+    }
+
+    if ($maxLen <= 8) {
+        return $distance <= 2;
+    }
+
+    return $distance <= 3;
+}
+
+function farmasiConsumerNamesEquivalent(string $inputName, string $existingName): bool
+{
+    $inputComparable = farmasiConsumerNameComparable($inputName);
+    $existingComparable = farmasiConsumerNameComparable($existingName);
+
+    if ($inputComparable === '' || $existingComparable === '') {
+        return false;
+    }
+
+    if ($inputComparable === $existingComparable) {
+        return true;
+    }
+
+    $inputKey = farmasiConsumerNameKey($inputComparable);
+    $existingKey = farmasiConsumerNameKey($existingComparable);
+    if ($inputKey !== '' && $inputKey === $existingKey) {
+        return true;
+    }
+
+    $inputAscii = farmasiNormalizeLooseAscii($inputComparable);
+    $existingAscii = farmasiNormalizeLooseAscii($existingComparable);
+    $distance = levenshtein($inputAscii, $existingAscii);
+    $maxLen = max(strlen($inputAscii), strlen($existingAscii));
+
+    if ($maxLen <= 8) {
+        if ($distance <= 1) {
+            return true;
+        }
+    } elseif ($maxLen <= 14) {
+        if ($distance <= 2) {
+            return true;
+        }
+    } elseif ($distance <= 3) {
+        return true;
+    }
+
+    $inputTokens = preg_split('/\s+/u', $inputComparable) ?: [];
+    $existingTokens = preg_split('/\s+/u', $existingComparable) ?: [];
+
+    if (count($inputTokens) !== count($existingTokens) || empty($inputTokens)) {
+        return false;
+    }
+
+    sort($inputTokens, SORT_STRING);
+    sort($existingTokens, SORT_STRING);
+
+    $matched = 0;
+    $totalDistance = 0;
+
+    foreach ($inputTokens as $index => $token) {
+        $other = $existingTokens[$index] ?? '';
+        if (!farmasiTokenEquivalent($token, $other)) {
+            return false;
+        }
+        $matched++;
+        $totalDistance += farmasiTokenDistance($token, $other);
+    }
+
+    if ($matched === 0) {
+        return false;
+    }
+
+    return $totalDistance <= max(2, $matched * 2);
+}
+
+function farmasiFindEquivalentConsumerNames(string $canonicalName, array $existingNames): array
+{
+    $matches = [];
+
+    foreach ($existingNames as $existingName) {
+        if (!is_string($existingName)) {
+            continue;
+        }
+
+        $existingName = trim($existingName);
+        if ($existingName === '') {
+            continue;
+        }
+
+        if (strcasecmp($existingName, $canonicalName) === 0) {
+            continue;
+        }
+
+        if (farmasiConsumerNamesEquivalent($canonicalName, $existingName)) {
+            $matches[] = $existingName;
+        }
+    }
+
+    return array_values(array_unique($matches));
+}
+
+function fetchDistinctConsumerNames(PDO $pdo): array
+{
+    return $pdo->query("
+        SELECT DISTINCT consumer_name
+        FROM sales
+        WHERE consumer_name IS NOT NULL
+          AND consumer_name <> ''
+        ORDER BY consumer_name ASC
+    ")->fetchAll(PDO::FETCH_COLUMN);
+}
+
 function ensureFarmasiOnline(PDO $pdo, int $userId, string $medicName, string $medicJabatan, bool $confirmActivity = false): void
 {
     if ($userId <= 0) {
@@ -200,6 +399,7 @@ $clearFormNextLoad = false;
 
 // Tanggal lokal hari ini (WITA)
 $todayDate = date('Y-m-d');
+$consumerNames = fetchDistinctConsumerNames($pdo);
 
 // ===============================
 // TOTAL TRANSAKSI MINGGU BERJALAN (SENIN–MINGGU)
@@ -233,28 +433,6 @@ $redirectAfterPost = false;
 // ======================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-
-    // ===============================
-    // AUTO MERGE KONSUMEN (WAJIB ADA)
-    // ===============================
-    $autoMerge = (
-        isset($_POST['auto_merge']) &&
-        $_POST['auto_merge'] === '1' &&
-        isset($_POST['merge_targets']) &&
-        $_POST['merge_targets'] !== ''
-    );
-
-    $mergeTargets = [];
-
-    if ($autoMerge) {
-        $decoded = json_decode($_POST['merge_targets'], true);
-        if (is_array($decoded) && count($decoded) > 0) {
-            $mergeTargets = $decoded;
-        } else {
-            // kalau JSON rusak → MATIKAN auto merge
-            $autoMerge = false;
-        }
-    }
 
     // 2.6) Hapus banyak transaksi (checkbox + bulk delete)
     if ($action === 'delete_selected') {
@@ -386,7 +564,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ===============================
                 // AMBIL INPUT + NORMALISASI NAMA
                 // ===============================
-                $consumerName = ucwords(strtolower(trim($_POST['consumer_name'] ?? '')));
+                $rawConsumerName = trim((string)($_POST['consumer_name'] ?? ''));
+                $consumerName = farmasiConsumerNameDisplay($rawConsumerName);
+                $mergeTargets = [];
 
 
                 $packageMainRaw = trim((string)($_POST['package_main'] ?? ''));
@@ -400,6 +580,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($consumerName === '') {
                     $errors[] = "Nama konsumen wajib diisi.";
+                } else {
+                    if (preg_match('/\d/u', $rawConsumerName)) {
+                        $warnings[] = "Angka pada nama konsumen dihapus otomatis. Nama disimpan sebagai {$consumerName}.";
+                    }
+
+                    $autoMerge = (
+                        isset($_POST['auto_merge']) &&
+                        $_POST['auto_merge'] === '1' &&
+                        isset($_POST['merge_targets']) &&
+                        $_POST['merge_targets'] !== ''
+                    );
+                    if ($autoMerge) {
+                        $decoded = json_decode($_POST['merge_targets'], true);
+                        if (is_array($decoded)) {
+                            $mergeTargets = array_values(array_unique(array_filter($decoded, static function ($item) use ($consumerName) {
+                                return is_string($item) && trim($item) !== '' && strcasecmp(trim($item), $consumerName) !== 0;
+                            })));
+                        }
+                    }
                 }
 
                 // ===============================
@@ -437,10 +636,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                $transactionStarted = false;
+
                 // ===============================
                 // HITUNG TOTAL ITEM BARU
                 // ===============================
                 if (empty($errors)) {
+                    $pdo->beginTransaction();
+                    $transactionStarted = true;
+
+                    if (!empty($mergeTargets)) {
+                        $stmtMerge = $pdo->prepare("
+                            UPDATE sales
+                            SET consumer_name = :new
+                            WHERE consumer_name = :old
+                        ");
+
+                        $merged = 0;
+                        foreach ($mergeTargets as $old) {
+                            $old = trim((string)$old);
+                            if ($old === '' || strcasecmp($old, $consumerName) === 0) {
+                                continue;
+                            }
+
+                            $stmtMerge->execute([
+                                ':new' => $consumerName,
+                                ':old' => $old
+                            ]);
+                            $merged += $stmtMerge->rowCount();
+                        }
+
+                        if ($merged > 0) {
+                            $warnings[] = "{$merged} transaksi lama digabung ke {$consumerName}.";
+                        }
+                    }
+
                     $addBandage = 0;
                     $addIfaks   = 0;
                     $addPain    = 0;
@@ -461,8 +691,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             COALESCE(SUM(qty_ifaks),0)      AS total_ifaks,
                             COALESCE(SUM(qty_painkiller),0) AS total_painkiller
                         FROM sales
-                        WHERE LOWER(consumer_name) = LOWER(:name)
-                        AND DATE(created_at) = :today
+                        WHERE DATE(created_at) = :today
+                          AND (
+                              LOWER(consumer_name) = LOWER(:name)
+                              OR LOWER(REPLACE(TRIM(consumer_name), '  ', ' ')) = LOWER(:name)
+                          )
                     ");
                     $stmt->execute([
                         ':name'  => $consumerName,
@@ -514,37 +747,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     if ($overLimit && !$forceOverLimit) {
                         $errors[] = "Transaksi dibatalkan karena melebihi batas harian.";
-                    }
-                }
-
-                // ===============================
-                // AUTO MERGE KONSUMEN
-                // ===============================
-                if (empty($errors) && $autoMerge && !empty($mergeTargets)) {
-
-                    $stmtMerge = $pdo->prepare("
-            UPDATE sales 
-            SET consumer_name = :new
-            WHERE consumer_name = :old
-        ");
-
-                    $merged = 0;
-
-                    foreach ($mergeTargets as $old) {
-                        if (!is_string($old)) continue;
-                        $old = trim($old);
-                        if ($old === '' || strcasecmp($old, $consumerName) === 0) continue;
-
-                        $stmtMerge->execute([
-                            ':new' => $consumerName,
-                            ':old' => $old
-                        ]);
-
-                        $merged += $stmtMerge->rowCount();
-                    }
-
-                    if ($merged > 0) {
-                        $warnings[] = "{$merged} transaksi lama digabung ke {$consumerName}.";
                     }
                 }
 
@@ -748,6 +950,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messages[] = "Transaksi {$consumerName} berhasil disimpan (" . count($selectedIds) . " paket).";
                         $clearFormNextLoad = true;
                     } catch (PDOException $e) {
+                        if ($transactionStarted && $pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+
                         $dbMessage = $e->getMessage();
                         if (
                             $e->getCode() === '23000' &&
@@ -768,6 +974,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             );
                             $errors[] = 'Terjadi kesalahan sistem saat menyimpan transaksi.';
                         }
+                    } catch (Throwable $e) {
+                        if ($transactionStarted && $pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+                        app_log('[FARMASI TRANSACTION ERROR] ' . $e->getMessage());
+                        $errors[] = 'Terjadi kesalahan sistem saat memproses transaksi.';
+                    }
+                }
+
+                if ($transactionStarted && $pdo->inTransaction()) {
+                    if (empty($errors)) {
+                        $pdo->commit();
+                    } else {
+                        $pdo->rollBack();
                     }
                 }
             }
@@ -856,13 +1076,6 @@ foreach ($packages as $p) {
         $pricePerPcs['painkiller'] = (int)($p['price'] / max(1, $p['painkiller_qty']));
     }
 }
-
-// Ambil nama konsumen unik untuk datalist
-$consumerNames = $pdo->query("
-    SELECT DISTINCT consumer_name 
-    FROM sales 
-    ORDER BY consumer_name ASC
-")->fetchAll(PDO::FETCH_COLUMN);
 
 $stmtOnlineMedics = $pdo->query("
     SELECT
@@ -975,12 +1188,20 @@ $dailyTotalsRows = $stmtDailyTotals->fetchAll(PDO::FETCH_ASSOC);
 
 $dailyTotalsJS = [];
 foreach ($dailyTotalsRows as $row) {
-    $key = mb_strtolower(trim($row['consumer_name']));
-    $dailyTotalsJS[$key] = [
-        'bandage'    => (int)$row['total_bandage'],
-        'ifaks'      => (int)$row['total_ifaks'],
-        'painkiller' => (int)$row['total_painkiller'],
-    ];
+    $key = farmasiConsumerNameKey((string)$row['consumer_name']);
+    if ($key === '') {
+        continue;
+    }
+    if (!isset($dailyTotalsJS[$key])) {
+        $dailyTotalsJS[$key] = [
+            'bandage'    => 0,
+            'ifaks'      => 0,
+            'painkiller' => 0,
+        ];
+    }
+    $dailyTotalsJS[$key]['bandage'] += (int)$row['total_bandage'];
+    $dailyTotalsJS[$key]['ifaks'] += (int)$row['total_ifaks'];
+    $dailyTotalsJS[$key]['painkiller'] += (int)$row['total_painkiller'];
 }
 
 // Detail transaksi harian per konsumen (untuk ditampilkan di warning JS)
@@ -995,12 +1216,19 @@ $stmtDailyDetail->execute([':today' => $todayDate]);
 $detailRows = $stmtDailyDetail->fetchAll(PDO::FETCH_ASSOC);
 
 $dailyDetailJS = [];
+$dailyDetailByNameJS = [];
+$todayConsumerNamesJS = [];
 foreach ($detailRows as $row) {
-    $key = mb_strtolower(trim($row['consumer_name']));
+    $key = farmasiConsumerNameKey((string)$row['consumer_name']);
+    if ($key === '') {
+        continue;
+    }
+    $displayName = trim((string)$row['consumer_name']);
     if (!isset($dailyDetailJS[$key])) {
         $dailyDetailJS[$key] = [];
     }
     $dailyDetailJS[$key][] = [
+        'consumer_name' => $displayName,
         'medic'      => $row['medic_name'],
         'package'    => $row['package_name'],
         'time'       => formatTanggalID($row['created_at']),
@@ -1008,6 +1236,22 @@ foreach ($detailRows as $row) {
         'ifaks'      => (int)$row['qty_ifaks'],
         'painkiller' => (int)$row['qty_painkiller'],
     ];
+
+    if ($displayName !== '') {
+        if (!isset($dailyDetailByNameJS[$displayName])) {
+            $dailyDetailByNameJS[$displayName] = [];
+        }
+        $dailyDetailByNameJS[$displayName][] = [
+            'consumer_name' => $displayName,
+            'medic'      => $row['medic_name'],
+            'package'    => $row['package_name'],
+            'time'       => formatTanggalID($row['created_at']),
+            'bandage'    => (int)$row['qty_bandage'],
+            'ifaks'      => (int)$row['qty_ifaks'],
+            'painkiller' => (int)$row['qty_painkiller'],
+        ];
+        $todayConsumerNamesJS[$displayName] = $displayName;
+    }
 }
 
 // Ambil data transaksi sesuai filter tanggal.
@@ -1358,6 +1602,33 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <option value="custom">Paket Custom</option>
                             </select>
                             <small>Pilih paket combo atau gunakan Paket Custom untuk memilih item satu per satu.</small>
+                        </div>
+                    </div>
+
+                    <div id="consumerMergeModal" class="modal-overlay hidden">
+                        <div class="modal-box modal-shell max-w-2xl">
+                            <div class="modal-head px-5 py-4">
+                                <div class="modal-title inline-flex items-center gap-2">
+                                    <?= ems_icon('users', 'h-5 w-5') ?> <span>Konfirmasi Merge Nama</span>
+                                </div>
+                                <button type="button" id="closeConsumerMergeModal" class="btn-danger btn-compact">
+                                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
+                                </button>
+                            </div>
+                            <div class="modal-content p-5">
+                                <p class="meta-text mb-3">
+                                    Sistem menemukan nama mirip yang bisa digabung ke nama terbaru. Hapus kandidat yang tidak boleh ikut berubah.
+                                </p>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 mb-4">
+                                    <div class="meta-text-xs">Nama terbaru yang akan dipakai</div>
+                                    <div id="mergeConsumerTargetName" class="text-base font-semibold text-slate-800">-</div>
+                                </div>
+                                <div id="mergeConsumerCandidateList" class="flex flex-wrap gap-2"></div>
+                                <div class="modal-actions mt-5">
+                                    <button type="button" id="cancelConsumerMergeBtn" class="btn-secondary">Batal</button>
+                                    <button type="button" id="confirmConsumerMergeBtn" class="btn-success">Lanjut Simpan</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1869,9 +2140,105 @@ include __DIR__ . '/../partials/sidebar.php';
         function normalizeName(str) {
             return (str || '')
                 .toLowerCase()
+                .replace(/\d+/g, ' ')
                 .replace(/[^a-z\s]/g, '') // hapus simbol
                 .replace(/\s+/g, ' ') // rapikan spasi
                 .trim();
+        }
+
+        function normalizeLooseName(str) {
+            return normalizeName(str)
+                .replace(/([a-z])\1+/g, '$1')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function getConsumerIdentityKey(str) {
+            const normalized = normalizeLooseName(str);
+            if (!normalized) return '';
+            return normalized
+                .split(' ')
+                .filter(Boolean)
+                .sort()
+                .join(' ');
+        }
+
+        function levenshteinDistance(a, b) {
+            a = normalizeLooseName(a);
+            b = normalizeLooseName(b);
+
+            if (a === b) return 0;
+            if (!a.length) return b.length;
+            if (!b.length) return a.length;
+
+            const matrix = Array.from({
+                length: b.length + 1
+            }, () => []);
+
+            for (let i = 0; i <= b.length; i++) matrix[i][0] = i;
+            for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    const cost = b.charAt(i - 1) === a.charAt(j - 1) ? 0 : 1;
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j - 1] + cost
+                    );
+                }
+            }
+
+            return matrix[b.length][a.length];
+        }
+
+        function tokenEquivalent(left, right) {
+            const a = normalizeLooseName(left);
+            const b = normalizeLooseName(right);
+            if (!a || !b) return false;
+            if (a === b) return true;
+            if (a.includes(b) || b.includes(a)) return true;
+
+            const distance = levenshteinDistance(a, b);
+            const maxLen = Math.max(a.length, b.length);
+            if (maxLen <= 5) return distance <= 1;
+            if (maxLen <= 8) return distance <= 2;
+            return distance <= 3;
+        }
+
+        function namesEquivalent(left, right) {
+            const a = normalizeLooseName(left);
+            const b = normalizeLooseName(right);
+            if (!a || !b) return false;
+            if (a === b) return true;
+
+            const keyA = getConsumerIdentityKey(a);
+            const keyB = getConsumerIdentityKey(b);
+            if (keyA && keyA === keyB) return true;
+
+            const directDistance = levenshteinDistance(a, b);
+            const maxLen = Math.max(a.length, b.length);
+            if ((maxLen <= 8 && directDistance <= 1) ||
+                (maxLen <= 14 && directDistance <= 2) ||
+                directDistance <= 3) {
+                return true;
+            }
+
+            const tokensA = a.split(' ').filter(Boolean).sort();
+            const tokensB = b.split(' ').filter(Boolean).sort();
+            if (tokensA.length !== tokensB.length || tokensA.length === 0) {
+                return false;
+            }
+
+            let totalDistance = 0;
+            for (let i = 0; i < tokensA.length; i++) {
+                if (!tokenEquivalent(tokensA[i], tokensB[i])) {
+                    return false;
+                }
+                totalDistance += levenshteinDistance(tokensA[i], tokensB[i]);
+            }
+
+            return totalDistance <= Math.max(2, tokensA.length * 2);
         }
 
         function findSimilarConsumers(input, consumers) {
@@ -1879,13 +2246,17 @@ include __DIR__ . '/../partials/sidebar.php';
             if (!keyword || keyword.length < 3) return [];
 
             const tokens = keyword.split(' ');
+            const keywordKey = getConsumerIdentityKey(input);
 
             return consumers.filter(name => {
                 const normalized = normalizeName(name);
+                const currentKey = getConsumerIdentityKey(name);
 
                 // aturan DataTables-like:
                 // 1. keyword ada di nama
                 if (normalized.includes(keyword)) return true;
+                if (keywordKey && currentKey === keywordKey) return true;
+                if (namesEquivalent(input, name)) return true;
 
                 // 2. semua token ada di nama
                 return tokens.every(t => normalized.includes(t));
@@ -1913,12 +2284,17 @@ include __DIR__ . '/../partials/sidebar.php';
         // Total harian per konsumen dari PHP (key = nama kecil trim)
         const DAILY_TOTALS = <?= json_encode($dailyTotalsJS, JSON_UNESCAPED_UNICODE); ?>;
         const DAILY_DETAIL = <?= json_encode($dailyDetailJS, JSON_UNESCAPED_UNICODE); ?>;
+        const DAILY_DETAIL_BY_NAME = <?= json_encode($dailyDetailByNameJS, JSON_UNESCAPED_UNICODE); ?>;
+        const TODAY_CONSUMER_NAMES = <?= json_encode(array_values($todayConsumerNamesJS), JSON_UNESCAPED_UNICODE); ?>;
         // Flag global: apakah pilihan saat ini menyebabkan melewati batas harian
         let IS_OVER_LIMIT = false;
         let PRIORITY_LOCK = false;
         let LAST_CONSUMER_NAME = '';
         let CONSUMER_LOCK = false;
         let NOTICE_STATE = 'NONE';
+        let ACTIVE_MERGE_CANDIDATES = [];
+        let ACTIVE_MERGE_SOURCE_NAME = '';
+        let ACTIVE_MERGE_ENABLED = false;
 
         const STORAGE_KEY = 'farmasi_ems_form';
         const DEFAULT_PACKAGE_MODE = 'combo';
@@ -1964,7 +2340,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     painkiller: 0
                 };
             }
-            const key = name.trim().toLowerCase();
+            const key = getConsumerIdentityKey(name);
             const data = DAILY_TOTALS[key];
             if (!data) {
                 return {
@@ -2085,6 +2461,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
             return name
                 .toLowerCase()
+                .replace(/\d+/g, ' ')
+                .replace(/[^a-z\s]/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim()
                 .split(' ')
@@ -2134,6 +2512,66 @@ include __DIR__ . '/../partials/sidebar.php';
 
             box.style.display = 'none';
             box.innerHTML = '';
+        }
+
+        function updateSimilarConsumerBox() {
+            const input = document.getElementById('consumerNameInput');
+            const box = document.getElementById('similarConsumerBox');
+
+            if (!input || !box) {
+                return;
+            }
+
+            const currentName = formatConsumerName(input.value || '');
+            const similar = findSimilarConsumers(currentName, EXISTING_CONSUMERS)
+                .filter(name => formatConsumerName(name) !== currentName)
+                .slice(0, 6);
+
+            if (!currentName || currentName.length < 3 || similar.length === 0) {
+                box.innerHTML = '';
+                ACTIVE_MERGE_CANDIDATES = [];
+                ACTIVE_MERGE_SOURCE_NAME = currentName;
+                ACTIVE_MERGE_ENABLED = false;
+                syncMergeHiddenFields();
+                return;
+            }
+
+            if (ACTIVE_MERGE_SOURCE_NAME !== currentName) {
+                ACTIVE_MERGE_SOURCE_NAME = currentName;
+                ACTIVE_MERGE_CANDIDATES = similar.slice();
+                ACTIVE_MERGE_ENABLED = false;
+            } else {
+                const currentSet = new Set(ACTIVE_MERGE_CANDIDATES);
+                ACTIVE_MERGE_CANDIDATES = similar.filter(function(name) {
+                    return currentSet.has(name);
+                });
+            }
+
+            syncMergeHiddenFields();
+
+            const chips = ACTIVE_MERGE_CANDIDATES.map(function(name) {
+                return `<span class="consumer-similar-chip inline-flex items-center gap-2" data-merge-candidate="${escapeHtml(name)}">
+                    <button type="button" class="btn-secondary btn-sm" data-consumer-name="${escapeHtml(name)}">${escapeHtml(name)}</button>
+                    <button type="button" class="btn-error btn-sm" data-remove-merge="${escapeHtml(name)}">x</button>
+                </span>`;
+            }).join('');
+
+            box.innerHTML =
+                `<div class="meta-text-xs mb-2">Nama mirip terdeteksi. Pilih yang ingin digabung ke nama terbaru ini. Klik <strong>x</strong> untuk mengecualikan nama yang terasa berbeda.</div>` +
+                `<div class="flex flex-wrap gap-2">${chips}</div>`;
+        }
+
+        function syncMergeHiddenFields() {
+            const autoMergeInput = document.getElementById('auto_merge');
+            const mergeTargetsInput = document.getElementById('merge_targets');
+            if (!autoMergeInput || !mergeTargetsInput) {
+                return;
+            }
+
+            autoMergeInput.value = ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0 ? '1' : '0';
+            mergeTargetsInput.value = ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0
+                ? JSON.stringify(ACTIVE_MERGE_CANDIDATES)
+                : '';
         }
 
         function recalcTotals() {
@@ -2216,19 +2654,28 @@ include __DIR__ . '/../partials/sidebar.php';
 
             let detail = [];
             let alreadyBoughtToday = false;
+            let exactBoughtToday = false;
+            let similarTodayNames = [];
 
             if (!cname || cname.length < 3) {
                 clearConsumerNotice(); // HANYA consumer
                 IS_OVER_LIMIT = false;
                 return;
             } else {
-                const key = cname.trim().toLowerCase();
+                const key = getConsumerIdentityKey(cname);
                 detail = DAILY_DETAIL[key] || [];
-                alreadyBoughtToday = detail.length > 0;
+                exactBoughtToday = TODAY_CONSUMER_NAMES.some(function(name) {
+                    return normalizeName(name) === normalizeName(cname);
+                });
+                similarTodayNames = findSimilarConsumers(cname, TODAY_CONSUMER_NAMES)
+                    .filter(function(name) {
+                        return normalizeName(name) !== normalizeName(cname);
+                    })
+                    .slice(0, 6);
+                alreadyBoughtToday = exactBoughtToday || (ACTIVE_MERGE_ENABLED && similarTodayNames.length > 0);
             }
 
-            // PRIORITY 2: 1 KONSUMEN = 1 TRANSAKSI/HARI (hanya kalau nama sudah diisi)
-            if (alreadyBoughtToday) {
+            if (exactBoughtToday) {
                 IS_OVER_LIMIT = false;
                 CONSUMER_LOCK = true;
 
@@ -2302,6 +2749,60 @@ include __DIR__ . '/../partials/sidebar.php';
                 showConsumerNotice(html);
                 return; // STOP: tidak lanjut ke proses lain
             }
+
+            if (!exactBoughtToday && similarTodayNames.length > 0) {
+                IS_OVER_LIMIT = false;
+                CONSUMER_LOCK = false;
+
+                const selectedNames = ACTIVE_MERGE_ENABLED ? ACTIVE_MERGE_CANDIDATES.slice() : [];
+                const mergedDetail = selectedNames.flatMap(function(name) {
+                    return DAILY_DETAIL_BY_NAME[name] || [];
+                });
+
+                let html = '';
+                html += '<strong>' + escapeHtml(cname) + '</strong> memiliki nama yang mirip dengan transaksi hari ini.<br>';
+                html += 'Periksa dulu apakah nama di bawah ini adalah orang yang sama.<br><br>';
+
+                html += '<strong>Kandidat nama mirip:</strong>';
+                html += '<div class="flex flex-wrap gap-2 mt-2 mb-3">';
+                html += similarTodayNames.map(function(name) {
+                    const excluded = !ACTIVE_MERGE_CANDIDATES.includes(name);
+                    return '<span class="consumer-similar-chip inline-flex items-center gap-2 ' + (excluded ? 'opacity-60' : '') + '">' +
+                        '<span class="btn-secondary btn-sm">' + escapeHtml(name) + '</span>' +
+                        '<button type="button" class="btn-error btn-sm" data-notice-remove-merge="' + escapeHtml(name) + '">x</button>' +
+                        '</span>';
+                }).join('');
+                html += '</div>';
+
+                html += '<div class="flex flex-wrap gap-2 mb-3">';
+                html += '<button type="button" class="btn-primary btn-sm" data-enable-name-merge="1">Merge Nama</button>';
+                if (ACTIVE_MERGE_ENABLED) {
+                    html += '<button type="button" class="btn-secondary btn-sm" data-disable-name-merge="1">Jangan Merge</button>';
+                }
+                html += '</div>';
+
+                if (ACTIVE_MERGE_ENABLED) {
+                    html += '<strong>Mode merge aktif.</strong> Jika disimpan, nama yang dipilih akan diarahkan ke <strong>' + escapeHtml(cname) + '</strong>.<br><br>';
+
+                    if (mergedDetail.length > 0) {
+                        html += '<strong>Detail pembelian dari nama yang dipilih:</strong>';
+                        html += '<ul class="notice-detail-list">';
+                        mergedDetail.forEach(function(d) {
+                            html += '<li class="notice-detail-item">' +
+                                '<strong>' + escapeHtml(d.consumer_name || '-') + ' - ' + escapeHtml(d.package || '-') + '</strong><br>' +
+                                '<small>Waktu: ' + escapeHtml(d.time || '-') +
+                                ' &nbsp;|&nbsp; Medis: ' + escapeHtml(d.medic || '-') + '</small>' +
+                                '</li>';
+                        });
+                        html += '</ul>';
+                    }
+                } else {
+                    html += '<small class="notice-detail-help">Transaksi belum diblokir. Klik <strong>Merge Nama</strong> hanya jika nama mirip ini memang orang yang sama.</small>';
+                }
+
+                showConsumerNotice(html);
+                return;
+            }
         }
 
         function onPackageChange() {
@@ -2373,6 +2874,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const cname = formatConsumerName(consumerInput.value);
             consumerInput.value = cname;
+            updateSimilarConsumerBox();
 
             const baseTotals = getBaseTotalsForConsumer(cname);
             const hasPrevious = (baseTotals.bandage + baseTotals.ifaks + baseTotals.painkiller) > 0;
@@ -2445,6 +2947,13 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 if (cname) {
                     msg += "Nama konsumen: " + cname + "\n\n";
+
+                    if (ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0) {
+                        msg +=
+                            "Nama yang akan digabung ke nama ini:\n- " +
+                            ACTIVE_MERGE_CANDIDATES.join("\n- ") +
+                            "\n\n";
+                    }
 
                     if (hasPrevious) {
                         msg +=
@@ -2639,8 +3148,72 @@ include __DIR__ . '/../partials/sidebar.php';
                 ['input', 'change', 'blur'].forEach(function(evt) {
                     consumerInput.addEventListener(evt, function() {
                         saveFormState();
+                        updateSimilarConsumerBox();
                         recalcTotals();
                     });
+                });
+            }
+
+            const similarConsumerBox = document.getElementById('similarConsumerBox');
+            if (similarConsumerBox) {
+                similarConsumerBox.addEventListener('click', function(event) {
+                    const removeBtn = event.target.closest('[data-remove-merge]');
+                    if (removeBtn) {
+                        const nameToRemove = removeBtn.getAttribute('data-remove-merge') || '';
+                        ACTIVE_MERGE_CANDIDATES = ACTIVE_MERGE_CANDIDATES.filter(function(name) {
+                            return name !== nameToRemove;
+                        });
+                        syncMergeHiddenFields();
+                        updateSimilarConsumerBox();
+                        recalcTotals();
+                        return;
+                    }
+
+                    const btn = event.target.closest('[data-consumer-name]');
+                    if (!btn) return;
+
+                    const consumerInput = document.getElementById('consumerNameInput');
+                    if (!consumerInput) return;
+
+                    consumerInput.value = formatConsumerName(btn.getAttribute('data-consumer-name') || '');
+                    ACTIVE_MERGE_CANDIDATES = [];
+                    ACTIVE_MERGE_ENABLED = false;
+                    saveFormState();
+                    syncMergeHiddenFields();
+                    updateSimilarConsumerBox();
+                    recalcTotals();
+                });
+            }
+
+            const consumerNotice = document.getElementById('consumerNotice');
+            if (consumerNotice) {
+                consumerNotice.addEventListener('click', function(event) {
+                    const removeBtn = event.target.closest('[data-notice-remove-merge]');
+                    if (removeBtn) {
+                        const nameToRemove = removeBtn.getAttribute('data-notice-remove-merge') || '';
+                        ACTIVE_MERGE_CANDIDATES = ACTIVE_MERGE_CANDIDATES.filter(function(name) {
+                            return name !== nameToRemove;
+                        });
+                        syncMergeHiddenFields();
+                        updateSimilarConsumerBox();
+                        recalcTotals();
+                        return;
+                    }
+
+                    const enableBtn = event.target.closest('[data-enable-name-merge]');
+                    if (enableBtn) {
+                        ACTIVE_MERGE_ENABLED = true;
+                        syncMergeHiddenFields();
+                        recalcTotals();
+                        return;
+                    }
+
+                    const disableBtn = event.target.closest('[data-disable-name-merge]');
+                    if (disableBtn) {
+                        ACTIVE_MERGE_ENABLED = false;
+                        syncMergeHiddenFields();
+                        recalcTotals();
+                    }
                 });
             }
 
@@ -2650,6 +3223,8 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             updateCustomDateVisibility();
+            updateSimilarConsumerBox();
+            syncMergeHiddenFields();
             recalcTotals(); // hitung awal berdasarkan form yang dipulihkan
             renderPricePerPcs();
             updateSalesTableFooterTotalsFallback();
