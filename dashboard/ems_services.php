@@ -1048,6 +1048,22 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const dpjpSection = document.getElementById('dpjpSection');
 
+        const requiredElements = [
+            serviceType,
+            serviceDetail,
+            qtyEl,
+            paymentType,
+            locationInput,
+            priceEl,
+            totalEl,
+            totalUI
+        ];
+
+        if (requiredElements.some((el) => !el)) {
+            console.warn('EMS services form elements are incomplete; core script skipped.');
+            return;
+        }
+
         /* ========= VALIDASI KOORDINAT ========= */
         locationInput.addEventListener('input', () => {
             locationInput.value = locationInput.value.replace(/\D/g, '').slice(0, 4);
@@ -1422,6 +1438,13 @@ include __DIR__ . '/../partials/sidebar.php';
         const serviceType = document.getElementById('serviceType');
         const serviceDetail = document.getElementById('serviceDetail');
         const operasiTingkat = document.getElementById('operasiTingkat');
+        const priceInput = document.getElementById('price');
+        const totalInput = document.getElementById('total');
+
+        if (!serviceType || !serviceDetail || !priceInput || !totalInput) {
+            console.warn('EMS services persistence skipped because required elements are missing.');
+            return;
+        }
 
         /* ===== SAVE FORM ===== */
         function saveForm() {
@@ -1563,8 +1586,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const totalDisplay = document.getElementById('totalDisplay');
             if (totalDisplay) totalDisplay.textContent = '$0';
 
-            document.getElementById('price').value = 0;
-            document.getElementById('total').value = 0;
+            priceInput.value = 0;
+            totalInput.value = 0;
 
             document.querySelectorAll('.med-check').forEach(cb => {
                 cb.checked = false;
@@ -1608,6 +1631,18 @@ include __DIR__ . '/../partials/sidebar.php';
     document.addEventListener('DOMContentLoaded', function() {
         if (!(window.jQuery && jQuery.fn.DataTable)) return;
 
+        const rekapTable = document.getElementById('rekapTable');
+        const rekapTotalFooter = document.getElementById('rekapTotalFooter');
+        const dateFilter = document.getElementById('dateFilter');
+        const dateFrom = document.getElementById('dateFrom');
+        const dateTo = document.getElementById('dateTo');
+        const btnApply = document.getElementById('applyCustomDate');
+
+        if (!rekapTable || !rekapTotalFooter || !dateFilter || !dateFrom || !dateTo || !btnApply) {
+            console.warn('EMS services table/filter script skipped because required elements are missing.');
+            return;
+        }
+
         jQuery('#rekapTable').DataTable({
             order: [
                 [1, 'desc']
@@ -1627,15 +1662,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         return sum + parseInt(td.getAttribute('data-order') || 0, 10);
                     }, 0);
 
-                document.getElementById('rekapTotalFooter').innerHTML =
-                    '$' + total.toLocaleString();
+                rekapTotalFooter.innerHTML = '$' + total.toLocaleString();
             }
         });
-
-        const dateFilter = document.getElementById('dateFilter');
-        const dateFrom = document.getElementById('dateFrom');
-        const dateTo = document.getElementById('dateTo');
-        const btnApply = document.getElementById('applyCustomDate');
 
         dateFilter.value = 'today';
 
@@ -1672,6 +1701,10 @@ include __DIR__ . '/../partials/sidebar.php';
     document.addEventListener('DOMContentLoaded', () => {
         const checkAll = document.getElementById('checkAll');
         const deleteBtn = document.getElementById('btnDeleteSelected');
+
+        if (!checkAll || !deleteBtn) {
+            return;
+        }
 
         function updateButton() {
             const checked = document.querySelectorAll('.row-check:checked').length;

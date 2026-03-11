@@ -28,29 +28,33 @@ if ($eventId > 0) {
 }
 
 $event = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$event) {
-    die('Tidak ada event aktif.');
-}
-
-$eventId = (int)$event['id'];
+$eventUnavailable = !$event;
+$eventId = (int)($event['id'] ?? 0);
 
 /*
 |--------------------------------------------------------------------------
 | STATISTIK PESERTA
 |--------------------------------------------------------------------------
 */
-$statStmt = $pdo->prepare("
-    SELECT
-        COUNT(ep.id) AS total,
-        SUM(CASE WHEN u.jenis_kelamin = 'Laki-laki' THEN 1 ELSE 0 END) AS laki,
-        SUM(CASE WHEN u.jenis_kelamin = 'Perempuan' THEN 1 ELSE 0 END) AS perempuan
-    FROM event_participants ep
-    LEFT JOIN user_rh u ON u.id = ep.user_id
-    WHERE ep.event_id = ?
-");
-$statStmt->execute([$eventId]);
-$stat = $statStmt->fetch(PDO::FETCH_ASSOC);
+$stat = [
+    'total' => 0,
+    'laki' => 0,
+    'perempuan' => 0,
+];
+
+if (!$eventUnavailable) {
+    $statStmt = $pdo->prepare("
+        SELECT
+            COUNT(ep.id) AS total,
+            SUM(CASE WHEN u.jenis_kelamin = 'Laki-laki' THEN 1 ELSE 0 END) AS laki,
+            SUM(CASE WHEN u.jenis_kelamin = 'Perempuan' THEN 1 ELSE 0 END) AS perempuan
+        FROM event_participants ep
+        LEFT JOIN user_rh u ON u.id = ep.user_id
+        WHERE ep.event_id = ?
+    ");
+    $statStmt->execute([$eventId]);
+    $stat = $statStmt->fetch(PDO::FETCH_ASSOC);
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -66,7 +70,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 | PROSES DAFTAR EVENT
 |--------------------------------------------------------------------------
 */
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (!$eventUnavailable && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $nama   = trim($_POST['nama_lengkap'] ?? '');
     $batch  = trim($_POST['batch'] ?? '');
@@ -160,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <head>
     <meta charset="UTF-8">
-    <title>Daftar Event</title>
+    <title><?= $eventUnavailable ? 'Event Tidak Tersedia' : 'Daftar Event' ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link rel="stylesheet" href="/assets/design/tailwind/build.css">
@@ -170,6 +174,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="login-wrapper">
 	    <div class="page page-shell">
+        <?php if ($eventUnavailable): ?>
+            <?php
+            $dashboardHref = !empty($_SESSION['user_rh']) ? '/dashboard/index.php' : '/auth/login.php';
+            $dashboardLabel = !empty($_SESSION['user_rh']) ? 'Kembali ke Dashboard' : 'Kembali ke Login';
+            ?>
+            <div class="modal-overlay" style="position:static;display:flex;min-height:72vh;padding:24px;">
+                <div class="modal-box modal-shell modal-frame-md" style="margin:auto;">
+                    <div class="modal-head">
+                        <div class="modal-title inline-flex items-center gap-2">
+                            <?= ems_icon('exclamation-triangle', 'h-5 w-5 text-warning') ?>
+                            <span>Event Belum Tersedia</span>
+                        </div>
+                    </div>
+                    <div class="modal-content">
+                        <div class="card" style="background:linear-gradient(180deg,#fff8eb 0%,#fff 100%);border:1px solid rgba(245,158,11,.22);">
+                            <div class="meta-text-xs" style="color:#b45309;">Pemberitahuan</div>
+                            <div class="text-sm text-slate-700" style="margin-top:10px;line-height:1.7;">
+                                Saat ini belum ada event aktif yang tersedia dari menu <strong>Event</strong>.
+                                Silakan tunggu event berikutnya dibuka atau hubungi pengelola event untuk informasi lebih lanjut.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-foot">
+                        <div class="modal-actions justify-end">
+                            <a href="<?= htmlspecialchars($dashboardHref, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                                <?= htmlspecialchars($dashboardLabel, ENT_QUOTES, 'UTF-8') ?>
+                            </a>
+                            <?php if (!empty($_SESSION['user_rh'])): ?>
+                                <a href="/dashboard/event_manage.php" class="btn btn-warning">
+                                    <?= ems_icon('wrench-screwdriver', 'h-4 w-4') ?> Kelola Event
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
 
         <h1 class="page-title">Daftar Event</h1>
         <p class="page-subtitle">Pendaftaran terbuka tanpa login</p>
@@ -340,6 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
         </div>
+        <?php endif; ?>
 
     </div>
     </div>
