@@ -93,41 +93,15 @@ include __DIR__ . '/../partials/sidebar.php';
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="save_private_patient">
                     <input type="hidden" name="redirect_to" value="forensic_private_patients.php">
-
-                    <label>Nama Pasien</label>
-                    <input type="text" name="patient_name" required>
-
-                    <div class="row-form-2">
-                        <div>
-                            <label>No. Rekam Medis</label>
-                            <div class="ems-form-group relative">
-                                <input type="text" id="forensicMedicalRecordSearch" name="medical_record_no" placeholder="Ketik nama / citizen ID / no rekam medis">
-                                <input type="hidden" name="medical_record_id" id="forensicMedicalRecordId">
-                                <div id="forensicMedicalRecordList" class="consumer-search-dropdown consumer-search-dropdown-field hidden"></div>
-                            </div>
-                            <div class="meta-text-xs mt-1">
-                                <a href="forensic_medical_records_list.php" class="text-primary">Lihat rekam medis private</a>
-                            </div>
-                        </div>
-                        <div>
-                            <label>No. Identitas</label>
-                            <input type="text" name="identity_number">
-                        </div>
+                    <label>No. Rekam Medis</label>
+                    <div class="ems-form-group relative">
+                        <input type="text" id="forensicMedicalRecordSearch" name="medical_record_no" placeholder="Ketik nama / citizen ID / no rekam medis" required>
+                        <input type="hidden" name="medical_record_id" id="forensicMedicalRecordId">
+                        <div id="forensicMedicalRecordList" class="consumer-search-dropdown consumer-search-dropdown-field hidden"></div>
                     </div>
-
-                    <div class="row-form-2">
-                        <div>
-                            <label>Tanggal Lahir</label>
-                            <input type="date" name="birth_date">
-                        </div>
-                        <div>
-                            <label>Gender</label>
-                            <select name="gender">
-                                <option value="unknown">Unknown</option>
-                                <option value="male">Male</option>
-                                <option value="female">Female</option>
-                            </select>
-                        </div>
+                    <div class="meta-text-xs mt-1">
+                        Data pasien private akan otomatis diambil dari rekam medis private yang dipilih.
+                        <a href="forensic_medical_records_list.php" class="text-primary">Lihat rekam medis private</a>
                     </div>
 
                     <label>Jenis Kasus</label>
@@ -212,6 +186,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><span class="<?= htmlspecialchars($confMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($confMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
+                                        <div class="inline-flex gap-2 items-center">
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_case_status">
@@ -224,6 +199,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </select>
                                             <button type="submit" class="btn-secondary btn-sm">Status</button>
                                         </form>
+                                        <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen kasus forensic ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="delete_private_patient">
+                                            <input type="hidden" name="redirect_to" value="forensic_private_patients.php">
+                                            <input type="hidden" name="case_id" value="<?= (int) $case['id'] ?>">
+                                            <button type="submit" class="btn-error btn-sm">Hapus</button>
+                                        </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

@@ -162,6 +162,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td class="whitespace-pre-line"><?= htmlspecialchars((string) $row['finding_summary'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
+                                        <div class="inline-flex gap-2 items-center">
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_visum_status">
@@ -174,6 +175,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </select>
                                             <button type="submit" class="btn-secondary btn-sm">Status</button>
                                         </form>
+                                        <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen hasil visum ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="delete_visum">
+                                            <input type="hidden" name="redirect_to" value="forensic_visum_results.php">
+                                            <input type="hidden" name="visum_id" value="<?= (int) $row['id'] ?>">
+                                            <button type="submit" class="btn-error btn-sm">Hapus</button>
+                                        </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

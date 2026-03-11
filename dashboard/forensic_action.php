@@ -71,11 +71,7 @@ if ($userId <= 0) {
 try {
     if ($action === 'save_private_patient') {
         $medicalRecordId = (int) ($_POST['medical_record_id'] ?? 0);
-        $patientName = trim((string) ($_POST['patient_name'] ?? ''));
         $medicalRecordNo = trim((string) ($_POST['medical_record_no'] ?? ''));
-        $identityNumber = trim((string) ($_POST['identity_number'] ?? ''));
-        $birthDate = forensicDateOrNull($_POST['birth_date'] ?? null);
-        $gender = forensicAssertAllowed(trim((string) ($_POST['gender'] ?? 'unknown')), ['male', 'female', 'unknown'], 'Gender tidak valid.');
         $caseType = trim((string) ($_POST['case_type'] ?? ''));
         $incidentDate = forensicDateOrNull($_POST['incident_date'] ?? null);
         $incidentLocation = trim((string) ($_POST['incident_location'] ?? ''));
@@ -83,19 +79,45 @@ try {
         $status = forensicAssertAllowed(trim((string) ($_POST['status'] ?? 'draft')), ['draft', 'active', 'closed', 'archived'], 'Status kasus tidak valid.');
         $notes = trim((string) ($_POST['notes'] ?? ''));
 
-        if ($patientName === '' || $caseType === '' || $incidentDate === null || $incidentLocation === '') {
+        if ($medicalRecordId <= 0 || $caseType === '' || $incidentDate === null || $incidentLocation === '') {
             throw new Exception('Data kasus forensic wajib lengkap.');
         }
 
-        if ($medicalRecordId > 0) {
-            $stmt = $pdo->prepare("SELECT record_code FROM medical_records WHERE id = ? AND COALESCE(visibility_scope, 'standard') = 'forensic_private' LIMIT 1");
-            $stmt->execute([$medicalRecordId]);
-            $recordCode = $stmt->fetchColumn();
-            if (!$recordCode) {
-                throw new Exception('Rekam medis private tidak ditemukan.');
-            }
-            $medicalRecordNo = (string) $recordCode;
+        $stmt = $pdo->prepare("
+            SELECT
+                record_code,
+                patient_name,
+                patient_citizen_id,
+                patient_dob,
+                patient_gender
+            FROM medical_records
+            WHERE id = ?
+              AND COALESCE(visibility_scope, 'standard') = 'forensic_private'
+            LIMIT 1
+        ");
+        $stmt->execute([$medicalRecordId]);
+        $medicalRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$medicalRecord) {
+            throw new Exception('Rekam medis private tidak ditemukan.');
         }
+
+        $medicalRecordNo = trim((string) ($medicalRecord['record_code'] ?? ''));
+        if ($medicalRecordNo === '') {
+            $medicalRecordNo = 'MR-' . str_pad((string) $medicalRecordId, 6, '0', STR_PAD_LEFT);
+        }
+
+        $patientName = trim((string) ($medicalRecord['patient_name'] ?? ''));
+        if ($patientName === '') {
+            throw new Exception('Nama pasien pada rekam medis private tidak valid.');
+        }
+
+        $identityNumber = trim((string) ($medicalRecord['patient_citizen_id'] ?? ''));
+        $birthDate = forensicDateOrNull($medicalRecord['patient_dob'] ?? null);
+        $gender = match ((string) ($medicalRecord['patient_gender'] ?? '')) {
+            'Laki-laki' => 'male',
+            'Perempuan' => 'female',
+            default => 'unknown',
+        };
 
         $stmt = $pdo->prepare("
             INSERT INTO forensic_private_patients
@@ -136,6 +158,25 @@ try {
         $stmt->execute([$status, $userId, $caseId]);
 
         $_SESSION['flash_messages'][] = 'Status kasus forensic diperbarui.';
+        forensicRedirect('forensic_private_patients.php');
+    }
+
+    if ($action === 'delete_private_patient') {
+        $caseId = (int) ($_POST['case_id'] ?? 0);
+        if ($caseId <= 0) {
+            throw new Exception('Kasus forensic tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM forensic_private_patients WHERE id = ? LIMIT 1");
+        $stmt->execute([$caseId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Kasus forensic tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM forensic_private_patients WHERE id = ?");
+        $stmt->execute([$caseId]);
+
+        $_SESSION['flash_messages'][] = 'Kasus forensic berhasil dihapus permanen.';
         forensicRedirect('forensic_private_patients.php');
     }
 
@@ -191,6 +232,25 @@ try {
         forensicRedirect('forensic_visum_results.php');
     }
 
+    if ($action === 'delete_visum') {
+        $visumId = (int) ($_POST['visum_id'] ?? 0);
+        if ($visumId <= 0) {
+            throw new Exception('Data visum tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM forensic_visum_results WHERE id = ? LIMIT 1");
+        $stmt->execute([$visumId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Data visum tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM forensic_visum_results WHERE id = ?");
+        $stmt->execute([$visumId]);
+
+        $_SESSION['flash_messages'][] = 'Hasil visum berhasil dihapus permanen.';
+        forensicRedirect('forensic_visum_results.php');
+    }
+
     if ($action === 'save_archive') {
         $privatePatientId = (int) ($_POST['private_patient_id'] ?? 0);
         $visumResultId = (int) ($_POST['visum_result_id'] ?? 0);
@@ -242,6 +302,25 @@ try {
         $stmt->execute([$status, $userId, $archiveId]);
 
         $_SESSION['flash_messages'][] = 'Status arsip forensic diperbarui.';
+        forensicRedirect('forensic_archive.php');
+    }
+
+    if ($action === 'delete_archive') {
+        $archiveId = (int) ($_POST['archive_id'] ?? 0);
+        if ($archiveId <= 0) {
+            throw new Exception('Arsip forensic tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM forensic_archives WHERE id = ? LIMIT 1");
+        $stmt->execute([$archiveId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Arsip forensic tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM forensic_archives WHERE id = ?");
+        $stmt->execute([$archiveId]);
+
+        $_SESSION['flash_messages'][] = 'Arsip forensic berhasil dihapus permanen.';
         forensicRedirect('forensic_archive.php');
     }
 

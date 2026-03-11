@@ -137,7 +137,7 @@ try {
          patient_gender, patient_address, patient_status, ktp_file_path, 
          mri_file_path, medical_result_html, doctor_id, assistant_id, 
          operasi_type, visibility_scope, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
