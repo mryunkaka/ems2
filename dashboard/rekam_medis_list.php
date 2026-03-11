@@ -12,6 +12,26 @@ require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $pageTitle = 'Rekap Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
+$mode = trim($_GET['mode'] ?? 'standard');
+$isForensicPrivate = ($mode === 'forensic_private');
+
+if ($isForensicPrivate) {
+    ems_require_division_access(['Forensic'], '/dashboard/index.php');
+}
+
+function medicalRecordsHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM medical_records LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$column] = (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$column];
+}
 
 // Get pagination
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -22,12 +42,41 @@ $offset = ($page - 1) * $perPage;
 $search = trim($_GET['search'] ?? '');
 
 // Build query
+$hasVisibilityScope = medicalRecordsHasColumn($pdo, 'visibility_scope');
+$hasRecordCode = medicalRecordsHasColumn($pdo, 'record_code');
+$hasPatientCitizenId = medicalRecordsHasColumn($pdo, 'patient_citizen_id');
+
 $whereClause = '1=1';
+$migrationMissing = false;
+
+if ($hasVisibilityScope) {
+    $whereClause .= $isForensicPrivate
+        ? " AND COALESCE(r.visibility_scope, 'standard') = 'forensic_private'"
+        : " AND COALESCE(r.visibility_scope, 'standard') = 'standard'";
+} elseif ($isForensicPrivate) {
+    $whereClause .= " AND 1=0";
+    $migrationMissing = true;
+}
 $params = [];
 
 if ($search !== '') {
-    $whereClause .= ' AND (r.patient_name LIKE ? OR r.patient_occupation LIKE ?)';
+    $searchParts = [
+        'r.patient_name LIKE ?',
+        'r.patient_occupation LIKE ?',
+    ];
     $params = ["%$search%", "%$search%"];
+
+    if ($hasPatientCitizenId) {
+        $searchParts[] = "COALESCE(r.patient_citizen_id, '') LIKE ?";
+        $params[] = "%$search%";
+    }
+
+    if ($hasRecordCode) {
+        $searchParts[] = "COALESCE(r.record_code, '') LIKE ?";
+        $params[] = "%$search%";
+    }
+
+    $whereClause .= ' AND (' . implode(' OR ', $searchParts) . ')';
 }
 
 // Get total records
@@ -60,6 +109,10 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
+if ($migrationMissing) {
+    $errors[] = 'Kolom rekam medis private belum tersedia. Jalankan SQL `docs/sql/06_2026-03-11_forensic_private_medical_records.sql` terlebih dahulu.';
+}
+
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
@@ -68,10 +121,10 @@ include __DIR__ . '/../partials/sidebar.php';
     <div class="page page-shell">
         <div class="flex justify-between items-center mb-4">
             <div>
-                <h1 class="page-title">Rekap Rekam Medis</h1>
-                <p class="page-subtitle">Daftar semua rekam medis pasien</p>
+                <h1 class="page-title"><?= $isForensicPrivate ? 'Rekap Rekam Medis Private' : 'Rekap Rekam Medis' ?></h1>
+                <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private yang hanya bisa diakses division forensic' : 'Daftar semua rekam medis pasien' ?></p>
             </div>
-            <a href="rekam_medis.php" class="btn-primary">
+            <a href="<?= $isForensicPrivate ? 'forensic_medical_records.php' : 'rekam_medis.php' ?>" class="btn-primary">
                 <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
@@ -92,7 +145,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card-body">
                 <form method="GET" action="" class="flex gap-2">
                     <input type="text" name="search" class="form-input flex-1" 
-                           placeholder="Cari nama pasien atau pekerjaan..." 
+                           placeholder="Cari nama pasien, citizen ID, atau no rekam medis..." 
                            value="<?= htmlspecialchars($search) ?>" />
                     <button type="submit" class="btn-primary">
                         <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,7 +154,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         Cari
                     </button>
                     <?php if ($search): ?>
-                        <a href="rekam_medis_list.php" class="btn-secondary">Reset</a>
+                        <a href="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" class="btn-secondary">Reset</a>
                     <?php endif; ?>
                 </form>
             </div>
@@ -116,8 +169,8 @@ include __DIR__ . '/../partials/sidebar.php';
                         <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
-                        <p class="text-gray-500">Belum ada rekam medis</p>
-                        <a href="rekam_medis.php" class="btn-primary mt-4">Tambah Rekam Medis Pertama</a>
+                        <p class="text-gray-500"><?= $isForensicPrivate ? 'Belum ada rekam medis private' : 'Belum ada rekam medis' ?></p>
+                        <a href="<?= $isForensicPrivate ? 'forensic_medical_records.php' : 'rekam_medis.php' ?>" class="btn-primary mt-4">Tambah Rekam Medis Pertama</a>
                     </div>
                 <?php else: ?>
                     <div class="overflow-x-auto">
@@ -125,8 +178,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             <thead>
                                 <tr>
                                     <th class="text-left">Tanggal Dibuat</th>
+                                    <th class="text-left">No. Rekam Medis</th>
                                     <th class="text-left">Nama Pasien</th>
                                     <th class="text-left">Pekerjaan</th>
+                                    <th class="text-left">Citizen ID</th>
                                     <th class="text-left">Jenis Kelamin</th>
                                     <th class="text-left">Dokter DPJP</th>
                                     <th class="text-left">Jenis Operasi</th>
@@ -140,10 +195,16 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?= date('d/m/Y H:i', strtotime($record['created_at'])) ?>
                                         </td>
                                         <td class="font-semibold">
+                                            <?= htmlspecialchars((string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)))) ?>
+                                        </td>
+                                        <td class="font-semibold">
                                             <?= htmlspecialchars($record['patient_name']) ?>
                                         </td>
                                         <td>
                                             <?= htmlspecialchars($record['patient_occupation']) ?>
+                                        </td>
+                                        <td>
+                                            <?= htmlspecialchars((string)(($hasPatientCitizenId ? ($record['patient_citizen_id'] ?? null) : null) ?: '-')) ?>
                                         </td>
                                         <td>
                                             <span class="badge badge-<?= $record['patient_gender'] === 'Laki-laki' ? 'info' : 'pink' ?>">
@@ -163,14 +224,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td class="text-center">
                                             <div class="flex justify-center gap-2">
-                                                <a href="rekam_medis_edit.php?id=<?= $record['id'] ?>" 
+                                                <a href="rekam_medis_edit.php?id=<?= $record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
                                                    class="btn-primary btn-sm" 
                                                    title="Edit">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                                                     </svg>
                                                 </a>
-                                                <button onclick="confirmDelete(<?= $record['id'] ?>, '<?= htmlspecialchars($record['patient_name'], ENT_QUOTES) ?>')" 
+                                                <button onclick="confirmDelete(<?= $record['id'] ?>, '<?= htmlspecialchars($record['patient_name'], ENT_QUOTES) ?>', '<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>')" 
                                                         class="btn-error btn-sm" 
                                                         title="Hapus">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,7 +254,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="flex gap-2">
                                 <?php if ($page > 1): ?>
-                                    <a href="?page=<?= $page - 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?>" 
+                                    <a href="?page=<?= $page - 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
                                        class="btn-secondary btn-sm">
                                         <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
@@ -204,7 +265,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                                 <?php for ($i = 1; $i <= $totalPages; $i++): ?>
                                     <?php if ($i == 1 || $i == $totalPages || abs($i - $page) <= 2): ?>
-                                        <a href="?page=<?= $i ?><?= $search ? '&search=' . urlencode($search) : '' ?>" 
+                                        <a href="?page=<?= $i ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
                                            class="btn-sm <?= $i == $page ? 'btn-primary' : 'btn-secondary' ?>">
                                             <?= $i ?>
                                         </a>
@@ -214,7 +275,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endfor; ?>
 
                                 <?php if ($page < $totalPages): ?>
-                                    <a href="?page=<?= $page + 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?>" 
+                                    <a href="?page=<?= $page + 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
                                        class="btn-secondary btn-sm">
                                         Selanjutnya
                                         <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -232,9 +293,10 @@ include __DIR__ . '/../partials/sidebar.php';
 </section>
 
 <script>
-function confirmDelete(id, name) {
+function confirmDelete(id, name, mode) {
     if (confirm(`Apakah Anda yakin ingin menghapus rekam medis pasien "${name}"?\n\nData yang dihapus tidak dapat dikembalikan.`)) {
-        window.location.href = `rekam_medis_delete.php?id=${id}`;
+        const suffix = mode === 'forensic_private' ? '&mode=forensic_private' : '';
+        window.location.href = `rekam_medis_delete.php?id=${id}${suffix}`;
     }
 }
 </script>

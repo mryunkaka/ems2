@@ -10,12 +10,18 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Edit Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
+$mode = trim($_GET['mode'] ?? 'standard');
+$isForensicPrivate = ($mode === 'forensic_private');
+
+if ($isForensicPrivate) {
+    ems_require_division_access(['Forensic'], '/dashboard/index.php');
+}
 
 // Get record ID
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
     $_SESSION['flash_errors'][] = 'ID rekam medis tidak valid.';
-    header('Location: rekam_medis_list.php');
+    header('Location: ' . ($isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php'));
     exit;
 }
 
@@ -26,6 +32,19 @@ $record = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$record) {
     $_SESSION['flash_errors'][] = 'Rekam medis tidak ditemukan.';
+    header('Location: ' . ($isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php'));
+    exit;
+}
+
+$recordScope = $record['visibility_scope'] ?? 'standard';
+if ($isForensicPrivate && $recordScope !== 'forensic_private') {
+    $_SESSION['flash_errors'][] = 'Rekam medis private tidak ditemukan.';
+    header('Location: forensic_medical_records_list.php');
+    exit;
+}
+
+if (!$isForensicPrivate && $recordScope === 'forensic_private') {
+    $_SESSION['flash_errors'][] = 'Akses rekam medis private ditolak.';
     header('Location: rekam_medis_list.php');
     exit;
 }
@@ -49,10 +68,10 @@ include __DIR__ . '/../partials/sidebar.php';
     <div class="page page-shell">
         <div class="flex justify-between items-center mb-4">
             <div>
-                <h1 class="page-title">Edit Rekam Medis</h1>
+                <h1 class="page-title"><?= $isForensicPrivate ? 'Edit Rekam Medis Private' : 'Edit Rekam Medis' ?></h1>
                 <p class="page-subtitle">Edit data rekam medis pasien <?= htmlspecialchars($record['patient_name']) ?></p>
             </div>
-            <a href="rekam_medis_list.php" class="btn-secondary">
+            <a href="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" class="btn-secondary">
                 <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                 </svg>
@@ -71,6 +90,9 @@ include __DIR__ . '/../partials/sidebar.php';
         <form method="POST" action="rekam_medis_edit_action.php" enctype="multipart/form-data" x-data="medicalForm()">
             <?= csrfField() ?>
             <input type="hidden" name="id" value="<?= $record['id'] ?>" />
+            <input type="hidden" name="visibility_scope" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>" />
+            <input type="hidden" name="redirect_to" value="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" />
+            <input type="hidden" name="mode" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>" />
             
             <!-- CARD 1: DATA PASIEN -->
             <div class="card card-section mb-4">
@@ -82,6 +104,12 @@ include __DIR__ . '/../partials/sidebar.php';
                             <label class="form-label">Nama <span class="text-danger">*</span></label>
                             <input type="text" name="patient_name" class="form-input" 
                                    value="<?= htmlspecialchars($record['patient_name']) ?>" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Citizen ID</label>
+                            <input type="text" name="patient_citizen_id" class="form-input" 
+                                   value="<?= htmlspecialchars($record['patient_citizen_id'] ?? '') ?>" />
                         </div>
                         
                         <!-- Pekerjaan -->

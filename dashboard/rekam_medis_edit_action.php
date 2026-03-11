@@ -19,6 +19,7 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
 
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
+$userDivision = ems_normalize_division($user['division'] ?? '');
 
 if ($userId <= 0) {
     $_SESSION['flash_errors'][] = 'Session tidak valid.';
@@ -41,16 +42,24 @@ try {
     if (!$record) {
         throw new Exception('Rekam medis tidak ditemukan.');
     }
+
+    $recordScope = $record['visibility_scope'] ?? 'standard';
+    if ($recordScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
+        throw new Exception('Akses rekam medis private ditolak.');
+    }
     
     // =====================
     // 1. VALIDATION
     // =====================
     
     $patientName = trim($_POST['patient_name'] ?? '');
+    $patientCitizenId = trim($_POST['patient_citizen_id'] ?? '');
     $patientDob = $_POST['patient_dob'] ?? '';
     $patientGender = $_POST['patient_gender'] ?? '';
     $doctorId = (int)($_POST['doctor_id'] ?? 0);
     $operasiType = $_POST['operasi_type'] ?? 'minor';
+    $visibilityScope = $_POST['visibility_scope'] ?? ($record['visibility_scope'] ?? 'standard');
+    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis_list.php');
     
     if ($patientName === '') {
         throw new Exception('Nama pasien wajib diisi.');
@@ -88,6 +97,14 @@ try {
     
     if (!in_array($operasiType, ['major', 'minor'])) {
         throw new Exception('Jenis operasi tidak valid.');
+    }
+
+    if (!in_array($visibilityScope, ['standard', 'forensic_private'], true)) {
+        throw new Exception('Scope rekam medis tidak valid.');
+    }
+
+    if ($visibilityScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
+        throw new Exception('Akses rekam medis private ditolak.');
     }
     
     // =====================
@@ -135,6 +152,7 @@ try {
     $stmt = $pdo->prepare("
         UPDATE medical_records 
         SET patient_name = ?,
+            patient_citizen_id = ?,
             patient_occupation = ?,
             patient_dob = ?,
             patient_phone = ?,
@@ -146,12 +164,14 @@ try {
             medical_result_html = ?,
             doctor_id = ?,
             operasi_type = ?,
+            visibility_scope = ?,
             updated_at = NOW()
         WHERE id = ?
     ");
     
     $stmt->execute([
         $patientName,
+        $patientCitizenId !== '' ? $patientCitizenId : null,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),
@@ -163,15 +183,18 @@ try {
         $medicalResultHtml,
         $doctorId,
         $operasiType,
+        $visibilityScope,
         $id
     ]);
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil diupdate.';
-    header('Location: rekam_medis_list.php');
+    header('Location: ' . $redirectTo);
     exit;
     
 } catch (Exception $e) {
     $_SESSION['flash_errors'][] = $e->getMessage();
-    header('Location: rekam_medis_edit.php?id=' . ($id ?? 0));
+    $mode = trim($_POST['mode'] ?? '');
+    $suffix = $mode !== '' ? '&mode=' . urlencode($mode) : '';
+    header('Location: rekam_medis_edit.php?id=' . ($id ?? 0) . $suffix);
     exit;
 }

@@ -105,9 +105,10 @@ if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
 
 if (ems_can_access_division_menu($division, 'Forensic')) {
     $groupedNav['Forensic'] = [
-        sidebarItem('#', '', 'Data Pasien Private', 'lock-closed'),
-        sidebarItem('#', '', 'Hasil Visum', 'document-text'),
-        sidebarItem('#', '', 'Arsip Forensic', 'inbox'),
+        sidebarItem('/dashboard/forensic_medical_records_list.php', 'forensic_medical_records_list.php', 'Rekam Medis Private', 'clipboard-document-list'),
+        sidebarItem('/dashboard/forensic_private_patients.php', 'forensic_private_patients.php', 'Data Pasien Private', 'lock-closed'),
+        sidebarItem('/dashboard/forensic_visum_results.php', 'forensic_visum_results.php', 'Hasil Visum', 'document-text'),
+        sidebarItem('/dashboard/forensic_archive.php', 'forensic_archive.php', 'Arsip Forensic', 'inbox'),
     ];
 }
 

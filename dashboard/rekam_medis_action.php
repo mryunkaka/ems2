@@ -22,6 +22,7 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
 // Get user from session
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
+$userDivision = ems_normalize_division($user['division'] ?? '');
 
 if ($userId <= 0) {
     $_SESSION['flash_errors'][] = 'Session tidak valid.';
@@ -35,10 +36,13 @@ try {
     // =====================
     
     $patientName = trim($_POST['patient_name'] ?? '');
+    $patientCitizenId = trim($_POST['patient_citizen_id'] ?? '');
     $patientDob = $_POST['patient_dob'] ?? '';
     $patientGender = $_POST['patient_gender'] ?? '';
     $doctorId = (int)($_POST['doctor_id'] ?? 0);
     $operasiType = $_POST['operasi_type'] ?? 'minor';
+    $visibilityScope = $_POST['visibility_scope'] ?? 'standard';
+    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
     
     // Required fields validation
     if ($patientName === '') {
@@ -77,6 +81,14 @@ try {
     
     if (!in_array($operasiType, ['major', 'minor'])) {
         throw new Exception('Jenis operasi tidak valid.');
+    }
+
+    if (!in_array($visibilityScope, ['standard', 'forensic_private'], true)) {
+        throw new Exception('Scope rekam medis tidak valid.');
+    }
+
+    if ($visibilityScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
+        throw new Exception('Akses rekam medis private ditolak.');
     }
     
     // =====================
@@ -121,15 +133,17 @@ try {
     
     $stmt = $pdo->prepare("
         INSERT INTO medical_records 
-        (patient_name, patient_occupation, patient_dob, patient_phone, 
+        (record_code, patient_name, patient_citizen_id, patient_occupation, patient_dob, patient_phone, 
          patient_gender, patient_address, patient_status, ktp_file_path, 
          mri_file_path, medical_result_html, doctor_id, assistant_id, 
-         operasi_type, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         operasi_type, visibility_scope, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
+        'MR-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2))),
         $patientName,
+        $patientCitizenId !== '' ? $patientCitizenId : null,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),
@@ -142,6 +156,7 @@ try {
         $doctorId,
         $assistantId,
         $operasiType,
+        $visibilityScope,
         $userId
     ]);
     
@@ -151,11 +166,12 @@ try {
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil disimpan.';
     
-    header('Location: rekam_medis.php?saved=1');
+    header('Location: ' . $redirectTo . '?saved=1');
     exit;
     
 } catch (Exception $e) {
     $_SESSION['flash_errors'][] = $e->getMessage();
-    header('Location: rekam_medis.php');
+    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
+    header('Location: ' . $redirectTo);
     exit;
 }
