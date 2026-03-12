@@ -126,7 +126,7 @@ try {
 
                         <div class="doc-upload-wrapper m-0">
                             <div class="doc-upload-header">
-                                <label class="text-sm font-semibold text-slate-900">Lampiran Surat Masuk</label>
+                                <label class="text-sm font-semibold text-slate-900">Lampiran Surat Masuk & Surat Keramaian ( Jika Membutuhkan Tenaga Medis untuk berjaga )</label>
                                 <span class="badge-muted-mini">Opsional, bisa beberapa file</span>
                             </div>
                             <div class="doc-upload-input">
@@ -151,59 +151,61 @@ try {
             </div>
         </section>
     </main>
-<script>
-    (function() {
-        function setupMultiImagePreview(inputId, previewId) {
-            const input = document.getElementById(inputId);
-            const preview = document.getElementById(previewId);
-            const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
-            if (!input || !preview || !nameBox) return;
+    <script>
+        (function() {
+            function setupMultiImagePreview(inputId, previewId) {
+                const input = document.getElementById(inputId);
+                const preview = document.getElementById(previewId);
+                const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+                if (!input || !preview || !nameBox) return;
 
-            let objectUrls = [];
+                let objectUrls = [];
 
-            function clearPreview() {
-                objectUrls.forEach(function(url) {
-                    try { URL.revokeObjectURL(url); } catch (_) {}
-                });
-                objectUrls = [];
-                preview.innerHTML = '';
-                nameBox.textContent = '';
-                nameBox.classList.add('hidden');
-            }
-
-            input.addEventListener('change', function() {
-                clearPreview();
-
-                const files = Array.from(this.files || []);
-                if (!files.length) {
-                    return;
+                function clearPreview() {
+                    objectUrls.forEach(function(url) {
+                        try {
+                            URL.revokeObjectURL(url);
+                        } catch (_) {}
+                    });
+                    objectUrls = [];
+                    preview.innerHTML = '';
+                    nameBox.textContent = '';
+                    nameBox.classList.add('hidden');
                 }
 
-                nameBox.textContent = files.length + ' file dipilih';
-                nameBox.classList.remove('hidden');
+                input.addEventListener('change', function() {
+                    clearPreview();
 
-                files.forEach(function(file) {
-                    if (!String(file.type || '').startsWith('image/')) {
+                    const files = Array.from(this.files || []);
+                    if (!files.length) {
                         return;
                     }
 
-                    const url = URL.createObjectURL(file);
-                    objectUrls.push(url);
+                    nameBox.textContent = files.length + ' file dipilih';
+                    nameBox.classList.remove('hidden');
 
-                    const item = document.createElement('div');
-                    item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
-                    item.innerHTML = `
+                    files.forEach(function(file) {
+                        if (!String(file.type || '').startsWith('image/')) {
+                            return;
+                        }
+
+                        const url = URL.createObjectURL(file);
+                        objectUrls.push(url);
+
+                        const item = document.createElement('div');
+                        item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
+                        item.innerHTML = `
                         <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
                         <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
                     `;
-                    preview.appendChild(item);
+                        preview.appendChild(item);
+                    });
                 });
-            });
-        }
+            }
 
-        setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview');
-    })();
-</script>
+            setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview');
+        })();
+    </script>
 
 </body>
 
