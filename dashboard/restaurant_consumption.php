@@ -438,6 +438,19 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 </section>
 
 <script>
+    async function parseActionJson(res) {
+        const raw = await res.text();
+        if (!res.ok || !raw) {
+            throw new Error('Respons server kosong atau tidak valid');
+        }
+
+        try {
+            return JSON.parse(raw);
+        } catch (err) {
+            throw new Error('Respons server bukan JSON yang valid');
+        }
+    }
+
     function deleteConsumption(id) {
         if (!confirm('Yakin hapus data konsumsi ini? Data akan hilang permanen!')) return;
 
@@ -448,7 +461,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 },
                 body: 'id=' + encodeURIComponent(id)
             })
-            .then(res => res.json())
+            .then(parseActionJson)
             .then(data => {
                 if (data.success) {
                     alert('Data berhasil dihapus!');
@@ -472,7 +485,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 },
                 body: 'id=' + encodeURIComponent(id)
             })
-            .then(res => res.json())
+            .then(parseActionJson)
             .then(data => {
                 if (data.success) {
                     alert('Konsumsi berhasil disetujui!');
@@ -496,7 +509,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 },
                 body: 'id=' + encodeURIComponent(id)
             })
-            .then(res => res.json())
+            .then(parseActionJson)
             .then(data => {
                 if (data.success) {
                     alert('Konsumsi berhasil ditandai lunas!');
@@ -517,7 +530,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 <div id="consumptionModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-md">
         <div class="modal-head">
-            <div class="modal-title">Input Konsumsi Restoran</div>
+            <div class="modal-title">Input Konsumsi Restorans</div>
             <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
                 <?= ems_icon('x-mark', 'h-5 w-5') ?>
             </button>
@@ -832,7 +845,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                     method: 'POST',
                     body: formData
                 })
-                .then(res => res.json())
+                .then(parseActionJson)
                 .then(data => {
                     if (data.success) {
                         alert(data.message || 'Konsumsi berhasil dicatat!');

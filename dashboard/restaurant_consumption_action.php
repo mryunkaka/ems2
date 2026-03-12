@@ -17,7 +17,7 @@ header('Content-Type: application/json');
  * Khusus untuk KTP Restoran: PNG dikonversi ke JPEG
  * =====================================================
  */
-function compressImageSmart(
+function compressRestaurantKtpImage(
     string $sourcePath,
     string $targetPath,
     int $maxWidth = 800,
@@ -132,8 +132,8 @@ if ($action === 'create') {
             $filename = 'ktp_' . time() . '_' . $userId . '.jpg';
             $finalPath = $uploadDir . $filename;
 
-            // Kompres gambar dengan fungsi compressImageSmart (target 300KB, agresif)
-            if (!compressImageSmart($tmpPath, $finalPath, 800, 300000, 50)) {
+            // Kompres gambar KTP dengan preset agresif khusus restoran
+            if (!compressRestaurantKtpImage($tmpPath, $finalPath, 800, 300000, 50)) {
                 throw new Exception('Gagal memproses file KTP');
             }
 

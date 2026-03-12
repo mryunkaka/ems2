@@ -310,6 +310,33 @@ if ($userId) {
             // =========================
             // CEK NOTIF + DEADLINE NYATA
             // =========================
+            async function safeParseJSONResponse(res) {
+                if (!res || !res.ok) return null;
+
+                const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+                const raw = await res.text();
+                if (!raw) return null;
+
+                if (contentType.includes('application/json')) {
+                    try {
+                        return JSON.parse(raw);
+                    } catch (e) {
+                        return null;
+                    }
+                }
+
+                const trimmed = raw.trim();
+                if (!trimmed || trimmed.startsWith('<')) {
+                    return null;
+                }
+
+                try {
+                    return JSON.parse(trimmed);
+                } catch (e) {
+                    return null;
+                }
+            }
+
             async function safeFetchJSON(url, options = {}, timeoutMs = 6000) {
                 if (navigator.onLine === false) return null;
 
@@ -324,8 +351,7 @@ if ($userId) {
                         signal: controller.signal
                     });
 
-                    if (!res.ok) return null;
-                    return await res.json();
+                    return await safeParseJSONResponse(res);
                 } catch (e) {
                     return null;
                 } finally {
@@ -460,12 +486,14 @@ if ($userId) {
                 }
 
                 try {
-                    const res = await fetch(window.emsUrl('/actions/heartbeat.php'), {
+                    const data = await safeFetchJSON(window.emsUrl('/actions/heartbeat.php'), {
                         method: 'POST',
                         cache: 'no-store'
                     });
 
-                    const data = await res.json();
+                    if (!data) {
+                        return;
+                    }
 
                     // Jika user sudah offline
                     if (!data.active) {
