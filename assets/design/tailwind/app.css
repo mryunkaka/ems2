@@ -1450,6 +1450,79 @@
     @apply mt-1.5 hidden rounded-xl border border-orange-300 bg-orange-50 p-2.5 text-sm;
   }
 
+  .consumer-merge-notice {
+    @apply my-3 hidden rounded-3xl border border-rose-200/80 p-5 shadow-soft;
+    background: linear-gradient(135deg, rgba(255, 251, 251, 0.96), rgba(255, 245, 245, 0.98));
+  }
+
+  .consumer-merge-notice__header {
+    @apply flex items-start gap-4;
+  }
+
+  .consumer-merge-notice__icon {
+    @apply grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-rose-200 bg-white text-rose-700 shadow;
+  }
+
+  .consumer-merge-notice__intro {
+    @apply min-w-0 flex-1;
+  }
+
+  .consumer-merge-notice__title {
+    @apply text-[15px] font-bold leading-6 text-rose-900;
+  }
+
+  .consumer-merge-notice__text {
+    @apply mt-1 whitespace-pre-line text-sm leading-relaxed text-rose-800;
+  }
+
+  .consumer-merge-notice__body {
+    @apply mt-4 space-y-4;
+  }
+
+  .consumer-merge-notice__actions {
+    @apply mt-4 flex flex-wrap gap-2;
+  }
+
+  .consumer-merge-notice__foot {
+    @apply mt-4 border-t border-rose-200/80 pt-3 text-sm leading-relaxed text-rose-800;
+  }
+
+  .consumer-merge-notice__section-label {
+    @apply text-sm font-semibold text-rose-900;
+  }
+
+  .consumer-merge-notice__chip-row {
+    @apply mt-2 flex flex-wrap gap-2;
+  }
+
+  .consumer-merge-notice__hint {
+    @apply rounded-2xl border border-sky-200 bg-white/80 px-4 py-3 text-sm text-slate-700;
+  }
+
+  .consumer-merge-notice__summary-grid {
+    @apply grid gap-3 sm:grid-cols-2;
+  }
+
+  .consumer-merge-notice__summary-card {
+    @apply rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow;
+  }
+
+  .consumer-merge-notice__summary-name {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .consumer-merge-notice__summary-meta {
+    @apply mt-1 text-xs text-slate-600;
+  }
+
+  .consumer-similar-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2 py-1 shadow transition;
+  }
+
+  .consumer-similar-chip.is-excluded {
+    @apply border-slate-200/80 bg-slate-100 opacity-60;
+  }
+
   .notice-detail-list {
     @apply mt-1.5 list-disc pl-[18px];
   }

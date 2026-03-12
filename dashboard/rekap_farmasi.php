@@ -313,6 +313,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../assets/design/ui/component.php';
 
 // Block access for users on cuti
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
@@ -408,6 +409,44 @@ $clearFormNextLoad = false;
 // Tanggal lokal hari ini (WITA)
 $todayDate = date('Y-m-d');
 $consumerNames = fetchDistinctConsumerNames($pdo);
+$allConsumerSummaryJS = [];
+
+try {
+    $consumerSummaryRows = $pdo->query("
+        SELECT
+            consumer_name,
+            COUNT(*) AS total_transactions,
+            MAX(created_at) AS last_transaction_at
+        FROM sales
+        WHERE consumer_name IS NOT NULL
+          AND consumer_name <> ''
+        GROUP BY consumer_name
+    ")->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($consumerSummaryRows as $summaryRow) {
+        $displayName = farmasiConsumerNameDisplay((string) ($summaryRow['consumer_name'] ?? ''));
+        if ($displayName === '') {
+            continue;
+        }
+
+        $existing = $allConsumerSummaryJS[$displayName] ?? [
+            'transactions' => 0,
+            'last_transaction_at' => null,
+            'last_transaction_label' => '-',
+        ];
+
+        $existing['transactions'] += (int) ($summaryRow['total_transactions'] ?? 0);
+        $lastAt = (string) ($summaryRow['last_transaction_at'] ?? '');
+        if ($lastAt !== '' && ($existing['last_transaction_at'] === null || strtotime($lastAt) > strtotime((string) $existing['last_transaction_at']))) {
+            $existing['last_transaction_at'] = $lastAt;
+            $existing['last_transaction_label'] = date('d M Y H:i', strtotime($lastAt));
+        }
+
+        $allConsumerSummaryJS[$displayName] = $existing;
+    }
+} catch (Throwable $e) {
+    $allConsumerSummaryJS = [];
+}
 
 // ===============================
 // TOTAL TRANSAKSI MINGGU BERJALAN (SENIN–MINGGU)
@@ -441,6 +480,103 @@ $redirectAfterPost = false;
 // ======================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+
+    if ($action === 'merge_consumer_names') {
+        header('Content-Type: application/json; charset=UTF-8');
+
+        try {
+            if (!validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
+                throw new RuntimeException('Token CSRF tidak valid.');
+            }
+
+            $rawCanonicalName = trim((string) ($_POST['consumer_name'] ?? ''));
+            $canonicalName = farmasiConsumerNameDisplay($rawCanonicalName);
+            if ($canonicalName === '') {
+                throw new RuntimeException('Nama tujuan merge wajib diisi.');
+            }
+
+            $decodedTargets = json_decode((string) ($_POST['merge_targets'] ?? '[]'), true);
+            if (!is_array($decodedTargets)) {
+                throw new RuntimeException('Target merge tidak valid.');
+            }
+
+            $mergeTargets = array_values(array_unique(array_filter(array_map(static function ($item) use ($canonicalName) {
+                if (!is_string($item)) {
+                    return '';
+                }
+
+                $name = farmasiConsumerNameDisplay(trim($item));
+                if ($name === '' || strcasecmp($name, $canonicalName) === 0) {
+                    return '';
+                }
+
+                return $name;
+            }, $decodedTargets))));
+
+            if ($mergeTargets === []) {
+                throw new RuntimeException('Tidak ada nama yang bisa digabung.');
+            }
+
+            $pdo->beginTransaction();
+
+            $stmtMerge = $pdo->prepare("
+                UPDATE sales
+                SET consumer_name = :new
+                WHERE consumer_name = :old
+            ");
+
+            $merged = 0;
+            foreach ($mergeTargets as $oldName) {
+                $stmtMerge->execute([
+                    ':new' => $canonicalName,
+                    ':old' => $oldName,
+                ]);
+                $merged += $stmtMerge->rowCount();
+            }
+
+            $pdo->commit();
+
+            try {
+                $description = "Merge nama konsumen ke {$canonicalName}: " . implode(', ', $mergeTargets);
+                $logActivity = $pdo->prepare("
+                    INSERT INTO farmasi_activities
+                        (activity_type, medic_user_id, medic_name, description)
+                    VALUES (?, ?, ?, ?)
+                ");
+                $logActivity->execute([
+                    'update',
+                    $_SESSION['user_rh']['id'] ?? 0,
+                    $medicName,
+                    $description,
+                ]);
+            } catch (Throwable $e) {
+                error_log('[ACTIVITY LOG ERROR] ' . $e->getMessage());
+            }
+
+            $_SESSION['flash_messages'][] = $merged > 0
+                ? "{$merged} transaksi berhasil digabung ke {$canonicalName}."
+                : "Tidak ada transaksi yang berubah, tetapi nama sudah dicek.";
+
+            echo json_encode([
+                'success' => true,
+                'merged_count' => $merged,
+                'canonical_name' => $canonicalName,
+                'merged_names' => $mergeTargets,
+            ], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+
+            http_response_code(422);
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE);
+        }
+
+        exit;
+    }
 
     // 2.6) Hapus banyak transaksi (checkbox + bulk delete)
     if ($action === 'delete_selected') {
@@ -1563,8 +1699,12 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
 
                 <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT NAMA) -->
-                <div id="consumerNotice" class="notice-box notice-danger">
-                </div>
+                <?php
+                ems_component('ui/consumer-merge-notice', [
+                    'id' => 'consumerNotice',
+                    'variant' => 'danger',
+                ]);
+                ?>
 
                 <?php
                 // ===============================
@@ -2271,7 +2411,8 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         }
 
-        const EXISTING_CONSUMERS = <?= json_encode($consumerNames, JSON_UNESCAPED_UNICODE); ?>;
+        let EXISTING_CONSUMERS = <?= json_encode($consumerNames, JSON_UNESCAPED_UNICODE); ?>;
+        const CSRF_TOKEN = <?= json_encode(generateCsrfToken(), JSON_UNESCAPED_UNICODE); ?>;
         // Flag dari PHP: apakah form perlu dikosongkan setelah transaksi sukses?
         const SHOULD_CLEAR_FORM = <?= $shouldClearForm ? 'true' : 'false'; ?>;
         const PROFILE_INCOMPLETE = <?= $profileIncompleteForFarmasi ? 'true' : 'false'; ?>;
@@ -2293,6 +2434,7 @@ include __DIR__ . '/../partials/sidebar.php';
         const DAILY_TOTALS = <?= json_encode($dailyTotalsJS, JSON_UNESCAPED_UNICODE); ?>;
         const DAILY_DETAIL = <?= json_encode($dailyDetailJS, JSON_UNESCAPED_UNICODE); ?>;
         const DAILY_DETAIL_BY_NAME = <?= json_encode($dailyDetailByNameJS, JSON_UNESCAPED_UNICODE); ?>;
+        const CONSUMER_HISTORY_SUMMARY = <?= json_encode($allConsumerSummaryJS, JSON_UNESCAPED_UNICODE); ?>;
         const TODAY_CONSUMER_NAMES = <?= json_encode(array_values($todayConsumerNamesJS), JSON_UNESCAPED_UNICODE); ?>;
         // Flag global: apakah pilihan saat ini menyebabkan melewati batas harian
         let IS_OVER_LIMIT = false;
@@ -2502,13 +2644,23 @@ include __DIR__ . '/../partials/sidebar.php';
         // ===============================
         // Consumer notice (lokal)
         // ===============================
-        function showConsumerNotice(html) {
+        function showConsumerNotice(payload) {
             const box = document.getElementById('consumerNotice');
             if (!box) return;
 
-            CONSUMER_LOCK = true;
+            const titleEl = document.getElementById('consumerNoticeTitle');
+            const textEl = document.getElementById('consumerNoticeText');
+            const bodyEl = document.getElementById('consumerNoticeBody');
+            const actionsEl = document.getElementById('consumerNoticeActions');
+            const footEl = document.getElementById('consumerNoticeFoot');
 
-            box.innerHTML = html;
+            CONSUMER_LOCK = !!(payload && payload.locked);
+
+            if (titleEl) titleEl.innerHTML = payload && payload.title ? payload.title : '';
+            if (textEl) textEl.innerHTML = payload && payload.text ? payload.text : '';
+            if (bodyEl) bodyEl.innerHTML = payload && payload.body ? payload.body : '';
+            if (actionsEl) actionsEl.innerHTML = payload && payload.actions ? payload.actions : '';
+            if (footEl) footEl.innerHTML = payload && payload.foot ? payload.foot : '';
             box.style.display = 'block';
         }
 
@@ -2516,10 +2668,94 @@ include __DIR__ . '/../partials/sidebar.php';
             const box = document.getElementById('consumerNotice');
             if (!box) return;
 
+            const titleEl = document.getElementById('consumerNoticeTitle');
+            const textEl = document.getElementById('consumerNoticeText');
+            const bodyEl = document.getElementById('consumerNoticeBody');
+            const actionsEl = document.getElementById('consumerNoticeActions');
+            const footEl = document.getElementById('consumerNoticeFoot');
+
             CONSUMER_LOCK = false;
 
             box.style.display = 'none';
-            box.innerHTML = '';
+            if (titleEl) titleEl.innerHTML = '';
+            if (textEl) textEl.innerHTML = '';
+            if (bodyEl) bodyEl.innerHTML = '';
+            if (actionsEl) actionsEl.innerHTML = '';
+            if (footEl) footEl.innerHTML = '';
+        }
+
+        function renderConsumerSummaryCards(names) {
+            if (!Array.isArray(names) || names.length === 0) {
+                return '';
+            }
+
+            const cards = names.map(function(name) {
+                const summary = CONSUMER_HISTORY_SUMMARY[name] || null;
+                const totalTransactions = summary ? parseInt(summary.transactions || 0, 10) : 0;
+                const lastLabel = summary && summary.last_transaction_label ? summary.last_transaction_label : '-';
+
+                return `<article class="consumer-merge-notice__summary-card">
+                    <div class="consumer-merge-notice__summary-name">${escapeHtml(name)}</div>
+                    <div class="consumer-merge-notice__summary-meta">Total transaksi: <strong>${totalTransactions}</strong></div>
+                    <div class="consumer-merge-notice__summary-meta">Terakhir tercatat: <strong>${escapeHtml(lastLabel)}</strong></div>
+                </article>`;
+            }).join('');
+
+            return `<div class="consumer-merge-notice__summary-grid">${cards}</div>`;
+        }
+
+        async function executeImmediateNameMerge() {
+            const consumerInput = document.getElementById('consumerNameInput');
+            const canonicalName = formatConsumerName(consumerInput ? consumerInput.value : '');
+
+            if (!canonicalName) {
+                alert('Nama tujuan merge tidak valid.');
+                return;
+            }
+
+            if (!Array.isArray(ACTIVE_MERGE_CANDIDATES) || ACTIVE_MERGE_CANDIDATES.length === 0) {
+                alert('Tidak ada kandidat nama yang dipilih untuk digabung.');
+                return;
+            }
+
+            const payload = new URLSearchParams();
+            payload.set('action', 'merge_consumer_names');
+            payload.set('csrf_token', CSRF_TOKEN);
+            payload.set('consumer_name', canonicalName);
+            payload.set('merge_targets', JSON.stringify(ACTIVE_MERGE_CANDIDATES));
+
+            try {
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: payload.toString(),
+                });
+
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result && result.message ? result.message : 'Gagal merge nama.');
+                }
+
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        consumer_name: canonicalName,
+                        pkg_main: document.getElementById('pkg_main') ? document.getElementById('pkg_main').value || '' : '',
+                        pkg_bandage: document.getElementById('pkg_bandage') ? document.getElementById('pkg_bandage').value || '' : '',
+                        pkg_ifaks: document.getElementById('pkg_ifaks') ? document.getElementById('pkg_ifaks').value || '' : '',
+                        pkg_painkiller: document.getElementById('pkg_painkiller') ? document.getElementById('pkg_painkiller').value || '' : '',
+                    }));
+                } catch (e) {
+                    // abaikan localStorage error
+                }
+
+                alert((result.merged_count || 0) + ' transaksi berhasil digabung ke ' + result.canonical_name + '.');
+                window.location.reload();
+            } catch (error) {
+                alert(error && error.message ? error.message : 'Gagal merge nama.');
+            }
         }
 
         function updateSimilarConsumerBox() {
@@ -2659,9 +2895,8 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             let detail = [];
-            let alreadyBoughtToday = false;
             let exactBoughtToday = false;
-            let similarTodayNames = [];
+            let similarHistoricalNames = [];
 
             if (!cname || cname.length < 3) {
                 clearConsumerNotice(); // HANYA consumer
@@ -2673,34 +2908,25 @@ include __DIR__ . '/../partials/sidebar.php';
                 exactBoughtToday = TODAY_CONSUMER_NAMES.some(function(name) {
                     return normalizeName(name) === normalizeName(cname);
                 });
-                similarTodayNames = findSimilarConsumers(cname, TODAY_CONSUMER_NAMES)
+                similarHistoricalNames = findSimilarConsumers(cname, EXISTING_CONSUMERS)
                     .filter(function(name) {
                         return normalizeName(name) !== normalizeName(cname);
                     })
                     .slice(0, 6);
-                alreadyBoughtToday = exactBoughtToday || (ACTIVE_MERGE_ENABLED && similarTodayNames.length > 0);
             }
 
             if (exactBoughtToday) {
                 IS_OVER_LIMIT = false;
                 CONSUMER_LOCK = true;
 
-                let html = '';
-
-                html += '<strong>' + escapeHtml(cname) + '</strong> ';
-                html += 'sudah melakukan <strong>1 transaksi hari ini</strong>.<br>';
-                html += 'Transaksi tambahan <strong>tidak diperbolehkan</strong>.<br><br>';
-
-                // ===============================
-                // DETAIL TRANSAKSI HARI INI
-                // ===============================
-                html += '<strong>Detail pembelian hari ini:</strong>';
-                html += '<ul class="notice-detail-list">';
+                let bodyHtml = '';
+                bodyHtml += '<div class="consumer-merge-notice__section-label">Detail pembelian hari ini</div>';
+                bodyHtml += '<ul class="notice-detail-list">';
 
                 detail.forEach(function(d) {
                     const waktu = d.time ? d.time : '-';
 
-                    html += '<li class="notice-detail-item">' +
+                    bodyHtml += '<li class="notice-detail-item">' +
                         '<strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
                         '<small>' +
                         'Waktu: ' + escapeHtml(waktu) +
@@ -2709,14 +2935,14 @@ include __DIR__ . '/../partials/sidebar.php';
                         '</li>';
                 });
 
-                html += '</ul>';
+                bodyHtml += '</ul>';
 
                 // ===============================
                 // INFO TAMBAHAN & ATURAN SISTEM
                 // ===============================
-                html += '<small class="notice-detail-help">';
-                html += 'Silakan konfirmasi ke konsumen bahwa pembelian telah dilakukan ';
-                html += 'pada waktu dan petugas medis yang tercantum di atas.<br><br>';
+                let footHtml = '';
+                footHtml += 'Silakan konfirmasi ke konsumen bahwa pembelian telah dilakukan ';
+                footHtml += 'pada waktu dan petugas medis yang tercantum di atas.<br><br>';
 
                 // Hitung jam reset (00:00 besok)
                 const now = new Date();
@@ -2738,75 +2964,73 @@ include __DIR__ . '/../partials/sidebar.php';
                     nextDay.getFullYear() +
                     ' 00:00';
 
-                html += 'Transaksi baru dapat dilakukan kembali pada ';
-                html += '<strong>' + nextDateStr + '</strong>.<br><br>';
+                footHtml += 'Transaksi baru dapat dilakukan kembali pada ';
+                footHtml += '<strong>' + nextDateStr + '</strong>.<br><br>';
 
-                html += '<strong>Ketentuan Sistem:</strong><br>';
-                html += 'Perhitungan batas transaksi didasarkan pada ';
-                html += '<strong>tanggal kalender</strong>, ';
-                html += 'bukan durasi 24 jam sejak transaksi terakhir. ';
-                html += 'Transaksi setelah pergantian hari (pukul 00:00) ';
-                html += 'dianggap sebagai transaksi hari berikutnya.';
-                html += '</small>';
+                footHtml += '<strong>Ketentuan Sistem:</strong><br>';
+                footHtml += 'Perhitungan batas transaksi didasarkan pada ';
+                footHtml += '<strong>tanggal kalender</strong>, ';
+                footHtml += 'bukan durasi 24 jam sejak transaksi terakhir. ';
+                footHtml += 'Transaksi setelah pergantian hari (pukul 00:00) ';
+                footHtml += 'dianggap sebagai transaksi hari berikutnya.';
 
                 // ===============================
                 // TAMPILKAN NOTICE KONSUMEN
                 // ===============================
-                showConsumerNotice(html);
+                showConsumerNotice({
+                    title: '<strong>' + escapeHtml(cname) + '</strong> sudah melakukan <strong>1 transaksi hari ini</strong>.',
+                    text: 'Transaksi tambahan tidak diperbolehkan sampai pergantian hari.',
+                    body: bodyHtml,
+                    actions: '',
+                    foot: footHtml,
+                    locked: true
+                });
                 return; // STOP: tidak lanjut ke proses lain
             }
 
-            if (!exactBoughtToday && similarTodayNames.length > 0) {
+            if (!exactBoughtToday && similarHistoricalNames.length > 0) {
                 IS_OVER_LIMIT = false;
                 CONSUMER_LOCK = false;
 
                 const selectedNames = ACTIVE_MERGE_ENABLED ? ACTIVE_MERGE_CANDIDATES.slice() : [];
-                const mergedDetail = selectedNames.flatMap(function(name) {
-                    return DAILY_DETAIL_BY_NAME[name] || [];
-                });
-
-                let html = '';
-                html += '<strong>' + escapeHtml(cname) + '</strong> memiliki nama yang mirip dengan transaksi hari ini.<br>';
-                html += 'Periksa dulu apakah nama di bawah ini adalah orang yang sama.<br><br>';
-
-                html += '<strong>Kandidat nama mirip:</strong>';
-                html += '<div class="flex flex-wrap gap-2 mt-2 mb-3">';
-                html += similarTodayNames.map(function(name) {
+                let bodyHtml = '';
+                bodyHtml += '<div><div class="consumer-merge-notice__section-label">Kandidat nama mirip dari seluruh riwayat transaksi</div>';
+                bodyHtml += '<div class="consumer-merge-notice__chip-row">';
+                bodyHtml += similarHistoricalNames.map(function(name) {
                     const excluded = !ACTIVE_MERGE_CANDIDATES.includes(name);
-                    return '<span class="consumer-similar-chip inline-flex items-center gap-2 ' + (excluded ? 'opacity-60' : '') + '">' +
+                    return '<span class="consumer-similar-chip ' + (excluded ? 'is-excluded' : '') + '">' +
                         '<span class="btn-secondary btn-sm">' + escapeHtml(name) + '</span>' +
                         '<button type="button" class="btn-error btn-sm" data-notice-remove-merge="' + escapeHtml(name) + '">x</button>' +
                         '</span>';
                 }).join('');
-                html += '</div>';
+                bodyHtml += '</div></div>';
 
-                html += '<div class="flex flex-wrap gap-2 mb-3">';
-                html += '<button type="button" class="btn-primary btn-sm" data-enable-name-merge="1">Merge Nama</button>';
-                if (ACTIVE_MERGE_ENABLED) {
-                    html += '<button type="button" class="btn-secondary btn-sm" data-disable-name-merge="1">Jangan Merge</button>';
+                if (ACTIVE_MERGE_ENABLED && selectedNames.length > 0) {
+                    bodyHtml += '<div><div class="consumer-merge-notice__section-label">Ringkasan nama yang akan digabung</div>';
+                    bodyHtml += renderConsumerSummaryCards(selectedNames);
+                    bodyHtml += '</div>';
                 }
-                html += '</div>';
 
+                let actionsHtml = '<button type="button" class="btn-primary btn-sm" data-enable-name-merge="1">Merge Nama</button>';
                 if (ACTIVE_MERGE_ENABLED) {
-                    html += '<strong>Mode merge aktif.</strong> Jika disimpan, nama yang dipilih akan diarahkan ke <strong>' + escapeHtml(cname) + '</strong>.<br><br>';
+                    actionsHtml += '<button type="button" class="btn-secondary btn-sm" data-disable-name-merge="1">Jangan Merge</button>';
+                }
 
-                    if (mergedDetail.length > 0) {
-                        html += '<strong>Detail pembelian dari nama yang dipilih:</strong>';
-                        html += '<ul class="notice-detail-list">';
-                        mergedDetail.forEach(function(d) {
-                            html += '<li class="notice-detail-item">' +
-                                '<strong>' + escapeHtml(d.consumer_name || '-') + ' - ' + escapeHtml(d.package || '-') + '</strong><br>' +
-                                '<small>Waktu: ' + escapeHtml(d.time || '-') +
-                                ' &nbsp;|&nbsp; Medis: ' + escapeHtml(d.medic || '-') + '</small>' +
-                                '</li>';
-                        });
-                        html += '</ul>';
-                    }
+                let footHtml = '';
+                if (ACTIVE_MERGE_ENABLED) {
+                    footHtml += '<strong>Mode merge aktif.</strong> Jika disimpan, semua nama yang dipilih akan diarahkan ke <strong>' + escapeHtml(cname) + '</strong>.';
                 } else {
-                    html += '<small class="notice-detail-help">Transaksi belum diblokir. Klik <strong>Merge Nama</strong> hanya jika nama mirip ini memang orang yang sama.</small>';
+                    footHtml += '<div class="consumer-merge-notice__hint">Transaksi belum diblokir. Klik <strong>Merge Nama</strong> hanya jika nama mirip ini memang orang yang sama.</div>';
                 }
 
-                showConsumerNotice(html);
+                showConsumerNotice({
+                    title: '<strong>' + escapeHtml(cname) + '</strong> memiliki nama yang mirip dengan riwayat transaksi lain.',
+                    text: 'Periksa dulu apakah kandidat di bawah ini memang orang yang sama agar typo atau salah penulisan bisa diperbaiki ke semua hari.',
+                    body: bodyHtml,
+                    actions: actionsHtml,
+                    foot: footHtml,
+                    locked: false
+                });
                 return;
             }
         }
@@ -3193,7 +3417,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const consumerNotice = document.getElementById('consumerNotice');
             if (consumerNotice) {
-                consumerNotice.addEventListener('click', function(event) {
+                consumerNotice.addEventListener('click', async function(event) {
                     const removeBtn = event.target.closest('[data-notice-remove-merge]');
                     if (removeBtn) {
                         const nameToRemove = removeBtn.getAttribute('data-notice-remove-merge') || '';
@@ -3208,9 +3432,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     const enableBtn = event.target.closest('[data-enable-name-merge]');
                     if (enableBtn) {
-                        ACTIVE_MERGE_ENABLED = true;
-                        syncMergeHiddenFields();
-                        recalcTotals();
+                        await executeImmediateNameMerge();
                         return;
                     }
 
