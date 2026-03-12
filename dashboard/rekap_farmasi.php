@@ -1493,7 +1493,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card">
                 <div class="card-header card-header-actions card-header-flex">
                     <div class="card-header-actions-title">
-                        Input Transaksi Baru
+                        Input Transaksi Barus
                     </div>
                 </div>
 
@@ -2276,10 +2276,10 @@ include __DIR__ . '/../partials/sidebar.php';
         const SHOULD_CLEAR_FORM = <?= $shouldClearForm ? 'true' : 'false'; ?>;
         const PROFILE_INCOMPLETE = <?= $profileIncompleteForFarmasi ? 'true' : 'false'; ?>;
         const PROFILE_NOTICE_TEXT = <?= json_encode(
-            $profileIncompleteForFarmasi
-                ? 'Transaksi belum bisa disimpan. Lengkapi dulu: ' . implode(', ', $missingProfileFields) . '.'
-                : ''
-        ) ?>;
+                                        $profileIncompleteForFarmasi
+                                            ? 'Transaksi belum bisa disimpan. Lengkapi dulu: ' . implode(', ', $missingProfileFields) . '.'
+                                            : ''
+                                    ) ?>;
 
         // Konstanta batas harian
         const MAX_BANDAGE = 30;
@@ -2577,9 +2577,9 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             autoMergeInput.value = ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0 ? '1' : '0';
-            mergeTargetsInput.value = ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0
-                ? JSON.stringify(ACTIVE_MERGE_CANDIDATES)
-                : '';
+            mergeTargetsInput.value = ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0 ?
+                JSON.stringify(ACTIVE_MERGE_CANDIDATES) :
+                '';
         }
 
         function recalcTotals() {
@@ -2589,9 +2589,7 @@ include __DIR__ . '/../partials/sidebar.php';
             // Kumpulkan ID paket yang dipilih
             const ids = [];
             const activeMode = getSelectedPackageMode();
-            const activeIds = activeMode === 'custom' ?
-                ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'] :
-                ['pkg_main'];
+            const activeIds = activeMode === 'custom' ? ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'] : ['pkg_main'];
 
             activeIds.forEach(function(id) {
                 const el = document.getElementById(id);

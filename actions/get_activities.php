@@ -495,6 +495,13 @@ try {
 
     $activities = $selectedActivities;
 
+    usort($activities, static function (array $a, array $b): int {
+        if ($a['timestamp'] === $b['timestamp']) {
+            return strcmp($b['id'], $a['id']);
+        }
+        return $b['timestamp'] <=> $a['timestamp'];
+    });
+
     foreach ($activities as &$activity) {
         $activity['time_ago'] = formatActivityTimeAgo((int)$activity['timestamp']);
         unset($activity['created_at']);
