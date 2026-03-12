@@ -37,6 +37,11 @@ if (!$record) {
 }
 
 $recordScope = $record['visibility_scope'] ?? 'standard';
+if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== (int) ($user['id'] ?? 0)) {
+    $_SESSION['flash_errors'][] = 'Hanya pembuat rekam medis yang dapat mengedit data ini.';
+    header('Location: rekam_medis_view.php?id=' . $id);
+    exit;
+}
 if ($isForensicPrivate && $recordScope !== 'forensic_private') {
     $_SESSION['flash_errors'][] = 'Rekam medis private tidak ditemukan.';
     header('Location: forensic_medical_records_list.php');
@@ -54,6 +59,14 @@ if (!empty($record['doctor_id'])) {
     $stmt = $pdo->prepare("SELECT full_name FROM user_rh WHERE id = ? LIMIT 1");
     $stmt->execute([(int)$record['doctor_id']]);
     $doctorName = (string)($stmt->fetchColumn() ?: '');
+}
+
+$assistants = ems_get_medical_record_assistants($pdo, (int) $record['id'], isset($record['assistant_id']) ? (int) $record['assistant_id'] : null);
+if ($assistants === []) {
+    $assistants = [
+        ['id' => 0, 'full_name' => '', 'position' => ''],
+        ['id' => 0, 'full_name' => '', 'position' => ''],
+    ];
 }
 
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -284,12 +297,56 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                         </div>
                     </div>
+
+                    <div class="mt-4">
+                        <label class="form-label">Asisten Operasi</label>
+                        <div id="assistants-container">
+                            <?php foreach ($assistants as $index => $assistant): ?>
+                                <div class="assistant-row grid grid-cols-12 gap-2 mb-2">
+                                    <div class="col-span-11">
+                                        <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                                            <input
+                                                type="text"
+                                                class="form-input assistant-select"
+                                                data-user-autocomplete-input
+                                                placeholder="Ketik nama asisten <?= $index + 1 ?>..."
+                                                value="<?= htmlspecialchars((string) ($assistant['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                            <input
+                                                type="hidden"
+                                                name="assistant_ids[]"
+                                                value="<?= (int) ($assistant['id'] ?? 0) ?>"
+                                                data-user-autocomplete-hidden>
+                                            <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-span-1 flex items-center">
+                                        <?php if ($index === 0): ?>
+                                            <span class="text-gray-400 text-sm">#1</span>
+                                        <?php else: ?>
+                                            <button type="button" onclick="removeAssistant(this)" class="text-red-500 hover:text-red-700" title="Hapus">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                                </svg>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" onclick="addAssistant()" class="btn-secondary btn-sm mt-2">
+                            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Tambah Asisten
+                        </button>
+                        <p class="text-xs text-gray-500 mt-1">Minimal jabatan: Paramedic ke atas</p>
+                    </div>
                 </div>
             </div>
 
             <!-- ACTION BUTTONS -->
             <div class="flex justify-end gap-3 mt-6">
-                <a href="rekam_medis_list.php" class="btn-secondary">Batal</a>
+                <a href="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" class="btn-secondary">Batal</a>
                 <button type="submit" class="btn-primary">
                     <svg class="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -306,6 +363,50 @@ include __DIR__ . '/../partials/sidebar.php';
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 
 <script>
+let assistantCount = <?= count($assistants) ?>;
+
+function addAssistant() {
+    assistantCount++;
+    const container = document.getElementById('assistants-container');
+    const row = document.createElement('div');
+    row.className = 'assistant-row grid grid-cols-12 gap-2 mb-2';
+    row.innerHTML = `
+        <div class="col-span-11">
+            <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten ${assistantCount}...">
+                <input type="hidden" name="assistant_ids[]" value="0" data-user-autocomplete-hidden>
+                <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+            </div>
+        </div>
+        <div class="col-span-1 flex items-center">
+            <button type="button" onclick="removeAssistant(this)" class="text-red-500 hover:text-red-700" title="Hapus">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+            </button>
+        </div>
+    `;
+    container.appendChild(row);
+
+    if (window.emsInitUserAutocomplete) {
+        window.emsInitUserAutocomplete(row);
+    }
+}
+
+function removeAssistant(button) {
+    const container = document.getElementById('assistants-container');
+    const rows = container.querySelectorAll('.assistant-row');
+    if (rows.length <= 1) {
+        return;
+    }
+
+    const row = button.closest('.assistant-row');
+    if (row) {
+        row.remove();
+        assistantCount = container.querySelectorAll('.assistant-row').length;
+    }
+}
+
 // Global previewImage function for file upload preview
 window.previewImage = function(event, previewId) {
     const file = event.target.files[0];
@@ -375,7 +476,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Sync content to textarea before form submit
-    document.querySelector('form').addEventListener('submit', function() {
+    document.querySelector('form').addEventListener('submit', function(event) {
         const htmlContent = window.quill.root.innerHTML;
         document.getElementById('medical_result_html').value = htmlContent;
         

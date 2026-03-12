@@ -44,6 +44,9 @@ try {
     }
 
     $recordScope = $record['visibility_scope'] ?? 'standard';
+    if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
+        throw new Exception('Hanya pembuat rekam medis yang dapat mengedit data ini.');
+    }
     if ($recordScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
         throw new Exception('Akses rekam medis private ditolak.');
     }
@@ -144,6 +147,7 @@ try {
     
     $medicalResultHtml = $_POST['medical_result_html'] ?? '';
     $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
+    $assistantIds = ems_normalize_assistant_ids((array) ($_POST['assistant_ids'] ?? []));
     
     // =====================
     // 5. UPDATE DATABASE
@@ -186,6 +190,8 @@ try {
         $visibilityScope,
         $id
     ]);
+
+    ems_save_medical_record_assistants($pdo, $id, $assistantIds);
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil diupdate.';
     header('Location: ' . $redirectTo);

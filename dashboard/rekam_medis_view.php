@@ -65,6 +65,10 @@ if (!$isForensicPrivate && $recordScope === 'forensic_private') {
 $recordCode = (string)(($record['record_code'] ?? null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
 $backUrl = $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php';
 $editUrl = 'rekam_medis_edit.php?id=' . (int)$record['id'] . ($isForensicPrivate ? '&mode=forensic_private' : '');
+$assistants = ems_get_medical_record_assistants($pdo, (int) $record['id'], isset($record['assistant_id']) ? (int) $record['assistant_id'] : null);
+$canEditRecord = $recordScope === 'forensic_private'
+    ? ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')
+    : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
@@ -91,10 +95,12 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?= ems_icon('chevron-left', 'h-4 w-4') ?>
                         <span>Kembali</span>
                     </a>
-                    <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-primary">
-                        <?= ems_icon('document-text', 'h-4 w-4') ?>
-                        <span>Edit</span>
-                    </a>
+                    <?php if ($canEditRecord): ?>
+                        <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-primary">
+                            <?= ems_icon('document-text', 'h-4 w-4') ?>
+                            <span>Edit</span>
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="medical-view-meta-grid">
@@ -180,8 +186,17 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Asisten Operasi</span>
-                                <strong><?= htmlspecialchars((string)($record['assistant_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
-                                <div class="meta-text-xs"><?= htmlspecialchars((string)($record['assistant_position'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php if ($assistants !== []): ?>
+                                    <?php foreach ($assistants as $assistant): ?>
+                                        <div class="medical-assistant-item">
+                                            <strong><?= htmlspecialchars((string) ($assistant['full_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                            <div class="meta-text-xs"><?= htmlspecialchars((string) ($assistant['position'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <strong>-</strong>
+                                    <div class="meta-text-xs">-</div>
+                                <?php endif; ?>
                             </div>
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Diinput Oleh</span>
@@ -345,6 +360,12 @@ include __DIR__ . '/../partials/sidebar.php';
 .medical-stack {
     display: grid;
     gap: 1rem;
+}
+
+.medical-assistant-item + .medical-assistant-item {
+    margin-top: 0.85rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed rgba(148, 163, 184, 0.35);
 }
 
 .medical-document-card__head {

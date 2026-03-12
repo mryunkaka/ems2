@@ -18,6 +18,150 @@ function avatarColorFromName(string $name): string
     return "hsl($hue, 70%, 45%)";
 }
 
+function ems_table_exists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+    $key = strtolower(trim($table));
+
+    if ($key === '') {
+        return false;
+    }
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$table]);
+    $cache[$key] = (bool) $stmt->fetchColumn();
+
+    return $cache[$key];
+}
+
+function ems_ensure_medical_record_assistants_table(PDO $pdo): void
+{
+    static $ensured = false;
+
+    if ($ensured) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS medical_record_assistants (
+            id INT(11) NOT NULL AUTO_INCREMENT,
+            medical_record_id INT(11) NOT NULL,
+            assistant_user_id INT(11) NOT NULL,
+            sort_order INT(11) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_mra_record_id (medical_record_id),
+            KEY idx_mra_assistant_user_id (assistant_user_id),
+            KEY idx_mra_sort_order (sort_order),
+            CONSTRAINT fk_mra_record FOREIGN KEY (medical_record_id) REFERENCES medical_records(id) ON DELETE CASCADE,
+            CONSTRAINT fk_mra_assistant FOREIGN KEY (assistant_user_id) REFERENCES user_rh(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    ");
+
+    $ensured = true;
+}
+
+function ems_normalize_assistant_ids(array $assistantIds): array
+{
+    $normalized = [];
+
+    foreach ($assistantIds as $assistantId) {
+        $assistantId = (int) $assistantId;
+        if ($assistantId <= 0) {
+            continue;
+        }
+
+        if (in_array($assistantId, $normalized, true)) {
+            continue;
+        }
+
+        $normalized[] = $assistantId;
+    }
+
+    return $normalized;
+}
+
+function ems_save_medical_record_assistants(PDO $pdo, int $recordId, array $assistantIds): void
+{
+    if ($recordId <= 0) {
+        return;
+    }
+
+    ems_ensure_medical_record_assistants_table($pdo);
+
+    $assistantIds = ems_normalize_assistant_ids($assistantIds);
+
+    $deleteStmt = $pdo->prepare('DELETE FROM medical_record_assistants WHERE medical_record_id = ?');
+    $deleteStmt->execute([$recordId]);
+
+    if ($assistantIds !== []) {
+        $insertStmt = $pdo->prepare("
+            INSERT INTO medical_record_assistants (medical_record_id, assistant_user_id, sort_order)
+            VALUES (?, ?, ?)
+        ");
+
+        foreach ($assistantIds as $index => $assistantId) {
+            $insertStmt->execute([$recordId, $assistantId, $index + 1]);
+        }
+    }
+
+    $primaryAssistantId = $assistantIds[0] ?? null;
+    $updateStmt = $pdo->prepare('UPDATE medical_records SET assistant_id = ? WHERE id = ?');
+    $updateStmt->execute([$primaryAssistantId, $recordId]);
+}
+
+function ems_get_medical_record_assistants(PDO $pdo, int $recordId, ?int $fallbackAssistantId = null): array
+{
+    $assistants = [];
+
+    if ($recordId > 0 && ems_table_exists($pdo, 'medical_record_assistants')) {
+        $stmt = $pdo->prepare("
+            SELECT
+                mra.assistant_user_id AS id,
+                u.full_name,
+                u.position,
+                mra.sort_order
+            FROM medical_record_assistants mra
+            INNER JOIN user_rh u ON u.id = mra.assistant_user_id
+            WHERE mra.medical_record_id = ?
+            ORDER BY mra.sort_order ASC, u.full_name ASC
+        ");
+        $stmt->execute([$recordId]);
+        $assistants = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    if ($assistants === [] && (int) $fallbackAssistantId > 0) {
+        $stmt = $pdo->prepare("
+            SELECT
+                id,
+                full_name,
+                position,
+                1 AS sort_order
+            FROM user_rh
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([(int) $fallbackAssistantId]);
+        $fallback = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($fallback) {
+            $assistants[] = $fallback;
+        }
+    }
+
+    foreach ($assistants as &$assistant) {
+        $assistant['id'] = (int) ($assistant['id'] ?? 0);
+        $assistant['position'] = ems_position_label($assistant['position'] ?? '');
+        $assistant['full_name'] = (string) ($assistant['full_name'] ?? '');
+    }
+    unset($assistant);
+
+    return $assistants;
+}
+
 function formatTanggalID($datetime)
 {
     if (!$datetime) return '-';
@@ -335,6 +479,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'event_participants.php',
         'ems_services.php',
         'rekam_medis_list.php',
+        'rekam_medis_view.php',
         'rekam_medis.php',
         'rekam_medis_edit.php',
         'rekam_medis_action.php',

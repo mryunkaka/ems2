@@ -128,8 +128,8 @@ try {
     // =====================
     
     // Handle multiple assistants - get first one for assistant_id (backward compatibility)
-    $assistantIds = $_POST['assistant_ids'] ?? [];
-    $assistantId = !empty($assistantIds[0]) ? (int)$assistantIds[0] : null;
+    $assistantIds = ems_normalize_assistant_ids((array) ($_POST['assistant_ids'] ?? []));
+    $assistantId = $assistantIds[0] ?? null;
     
     $stmt = $pdo->prepare("
         INSERT INTO medical_records 
@@ -159,6 +159,9 @@ try {
         $visibilityScope,
         $userId
     ]);
+
+    $recordId = (int) $pdo->lastInsertId();
+    ems_save_medical_record_assistants($pdo, $recordId, $assistantIds);
     
     // =====================
     // 6. SUCCESS

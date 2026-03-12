@@ -38,6 +38,9 @@ try {
     }
     
     $recordScope = $record['visibility_scope'] ?? 'standard';
+    if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
+        throw new Exception('Hanya pembuat rekam medis yang dapat menghapus data ini.');
+    }
     if ($recordScope === 'forensic_private' && !ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')) {
         throw new Exception('Akses rekam medis private ditolak.');
     }
