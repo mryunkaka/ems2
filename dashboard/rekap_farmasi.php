@@ -1493,7 +1493,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card">
                 <div class="card-header card-header-actions card-header-flex">
                     <div class="card-header-actions-title">
-                        Input Transaksi Barus
+                        Input Transaksi Baru
                     </div>
                 </div>
 
