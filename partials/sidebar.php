@@ -27,6 +27,7 @@ $groupedNav = [
     'Utama' => [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
         sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket'),
+        sidebarItem('/dashboard/struktur_organisasi.php', 'struktur_organisasi.php', 'Struktur Organisasi', 'building-office-2'),
     ],
     'Medis' => [
         sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
