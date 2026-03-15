@@ -241,6 +241,10 @@ if ($willChangePin) {
 
 $stmt = $pdo->prepare("
     SELECT 
+        file_ktp,
+        file_sim,
+        file_kta,
+        file_skb,
         sertifikat_heli,
         sertifikat_operasi,
         dokumen_lainnya
@@ -320,6 +324,10 @@ function deleteOldFileIfExists($dbPath)
 }
 
 $docFields = [
+    'file_ktp',
+    'file_sim',
+    'file_kta',
+    'file_skb',
     'sertifikat_heli',
     'sertifikat_operasi',
 ];
@@ -364,7 +372,7 @@ foreach ($docFields as $field) {
 }
 
 // ===============================
-// SERTIFIKAT MEDICAL ACADEMY (MULTI)
+// FILE LAINNYA (MULTI)
 // Disimpan sebagai JSON di kolom dokumen_lainnya
 // ===============================
 $existingAcademyDocs = ensureAcademyDocIds(parseAcademyDocs($userDb['dokumen_lainnya'] ?? ''));
@@ -413,14 +421,14 @@ for ($i = 0; $i < $max; $i++) {
     if ($id !== '' && isset($existingById[$id])) {
         $doc = $existingById[$id];
         $path = (string)($doc['path'] ?? '');
-        $finalName = $name !== '' ? $name : (string)($doc['name'] ?? 'Sertifikat Academy');
+        $finalName = $name !== '' ? $name : (string)($doc['name'] ?? 'File Lainnya');
 
         if ($hasFile) {
             if ($path !== '') deleteOldFileIfExists($path);
 
             $info = getimagesize($fileTmp);
             if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
-                $_SESSION['flash_errors'][] = "Sertifikat Academy harus JPG atau PNG.";
+                $_SESSION['flash_errors'][] = "File lainnya harus JPG atau PNG.";
                 header('Location: setting_akun.php');
                 exit;
             }
@@ -429,7 +437,7 @@ for ($i = 0; $i < $max; $i++) {
             $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
 
             if (!compressImageSmart($fileTmp, $finalPath)) {
-                $_SESSION['flash_errors'][] = "Gagal memproses Sertifikat Academy.";
+                $_SESSION['flash_errors'][] = "Gagal memproses file lainnya.";
                 header('Location: setting_akun.php');
                 exit;
             }
@@ -439,7 +447,7 @@ for ($i = 0; $i < $max; $i++) {
 
         $academyFinal[] = [
             'id' => $id,
-            'name' => $finalName !== '' ? $finalName : 'Sertifikat Academy',
+            'name' => $finalName !== '' ? $finalName : 'File Lainnya',
             'path' => $path,
         ];
         $seen[$id] = true;
@@ -460,7 +468,7 @@ for ($i = 0; $i < $max; $i++) {
 
     $info = getimagesize($fileTmp);
     if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
-        $_SESSION['flash_errors'][] = "Sertifikat Academy harus JPG atau PNG.";
+        $_SESSION['flash_errors'][] = "File lainnya harus JPG atau PNG.";
         header('Location: setting_akun.php');
         exit;
     }
@@ -469,14 +477,14 @@ for ($i = 0; $i < $max; $i++) {
     $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
 
     if (!compressImageSmart($fileTmp, $finalPath)) {
-        $_SESSION['flash_errors'][] = "Gagal memproses Sertifikat Academy.";
+        $_SESSION['flash_errors'][] = "Gagal memproses file lainnya.";
         header('Location: setting_akun.php');
         exit;
     }
 
     $academyFinal[] = [
         'id' => $id,
-        'name' => ($name !== '' ? $name : 'Sertifikat Academy'),
+        'name' => ($name !== '' ? $name : 'File Lainnya'),
         'path' => 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext,
     ];
     $seen[$id] = true;
@@ -488,14 +496,14 @@ foreach ($existingAcademyDocs as $d) {
     if ($id === '' || isset($seen[$id])) continue;
     $academyFinal[] = [
         'id' => $id,
-        'name' => (string)($d['name'] ?? 'Sertifikat Academy'),
+        'name' => (string)($d['name'] ?? 'File Lainnya'),
         'path' => (string)($d['path'] ?? ''),
     ];
 }
 
 $academyJson = json_encode($academyFinal, JSON_UNESCAPED_UNICODE);
 if ($academyJson === false) {
-    $_SESSION['flash_errors'][] = 'Gagal menyimpan data Sertifikat Academy.';
+    $_SESSION['flash_errors'][] = 'Gagal menyimpan data file lainnya.';
     header('Location: setting_akun.php');
     exit;
 }
@@ -520,7 +528,7 @@ $params = [
     $noHpIc
 ];
 
-// Dokumen Academy (JSON)
+// File lainnya (JSON)
 $sql .= ", dokumen_lainnya = ?";
 $params[] = $academyJson;
 

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Dokumen Academy disimpan di kolom `user_rh.dokumen_lainnya`.
+ * Dokumen tambahan disimpan di kolom `user_rh.dokumen_lainnya`.
  * Format baru: JSON array of objects: [{id, name, path}]
  * Format lama: string path (single file) -> akan dinormalisasi saat dipakai.
  */
@@ -30,7 +30,7 @@ function parseAcademyDocs(?string $raw): array
                 if ($path === '') continue;
                 $out[] = [
                     'id' => $id !== '' ? $id : null,
-                    'name' => $name !== '' ? $name : 'Sertifikat Academy',
+                    'name' => $name !== '' ? $name : 'File Lainnya',
                     'path' => $path,
                 ];
             }
@@ -41,7 +41,7 @@ function parseAcademyDocs(?string $raw): array
     // Legacy: path string tunggal
     return [[
         'id' => null,
-        'name' => 'Sertifikat Academy',
+        'name' => 'File Lainnya',
         'path' => $raw,
     ]];
 }
@@ -63,7 +63,7 @@ function ensureAcademyDocIds(array $docs): array
         if ($id === '') $id = academyDocIdFromPath($path);
         $out[] = [
             'id' => $id,
-            'name' => (string)($d['name'] ?? 'Sertifikat Academy'),
+            'name' => (string)($d['name'] ?? 'File Lainnya'),
             'path' => $path,
         ];
     }

@@ -59,6 +59,10 @@ $users = $pdo->query("
         u.batch,
         u.kode_nomor_induk_rs,
 
+        u.file_ktp,
+        u.file_sim,
+        u.file_kta,
+        u.file_skb,
         u.sertifikat_heli,
         u.sertifikat_operasi,
         u.dokumen_lainnya,
@@ -213,13 +217,17 @@ uksort($usersByBatch, function ($a, $b) {
 	                                    <?php foreach ($batchUsers as $i => $u): ?>
 	                                        <?php
 	                                        $docs = [
+	                                            'KTP' => $u['file_ktp'] ?? null,
+	                                            'SIM' => $u['file_sim'] ?? null,
+	                                            'KTA' => $u['file_kta'] ?? null,
+	                                            'SKB' => $u['file_skb'] ?? null,
 	                                            'SERTIFIKAT HELI' => $u['sertifikat_heli'] ?? null,
 	                                            'SERTIFIKAT OPERASI' => $u['sertifikat_operasi'] ?? null,
 	                                        ];
 
 	                                        $academyDocs = parseAcademyDocs($u['dokumen_lainnya'] ?? '');
 	                                        foreach ($academyDocs as $ad) {
-	                                            $label = 'ACADEMY: ' . ($ad['name'] ?? 'Sertifikat Academy');
+	                                            $label = trim((string)($ad['name'] ?? 'File Lainnya'));
 	                                            $docs[$label] = $ad['path'] ?? null;
 	                                        }
 
@@ -765,7 +773,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                position: 'Cari jabatan...',
 		                role: 'Cari role...',
 		                division: 'Cari division...',
-		                docs: 'Cari dokumen (Sertifikat Heli, Operasi, Academy)...',
+		                docs: 'Cari dokumen (KTP, SIM, KTA, SKB, Heli, Operasi, File Lainnya)...',
 		                join: 'Cari tanggal join...'
 		            };
 	            searchInput.placeholder = map[mode] || 'Cari...';

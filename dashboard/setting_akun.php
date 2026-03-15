@@ -45,7 +45,7 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$academyDocs = ensureAcademyDocIds(parseAcademyDocs($userDb['dokumen_lainnya'] ?? ''));
+$otherDocs = ensureAcademyDocIds(parseAcademyDocs($userDb['dokumen_lainnya'] ?? ''));
 
 $citizenId    = $userDb['citizen_id'] ?? '';
 $jenisKelamin = $userDb['jenis_kelamin'] ?? '';
@@ -255,30 +255,34 @@ DOKUMEN PENDUKUNG
 
                 <hr class="section-divider">
                 <h3 class="section-form-title">Dokumen Pendukung</h3>
-                <p class="text-muted">Unggah sertifikat (PNG / JPG)</p>
+                <p class="text-muted">Unggah dokumen pendukung (PNG / JPG)</p>
 
                 <?php
+                renderDocInput('Upload KTP', 'file_ktp', $userDb['file_ktp']);
+                renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb']);
+                renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
+                renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta']);
                 renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli']);
                 renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi']);
                 ?>
 
                 <div class="doc-upload-wrapper doc-upload-dashed">
                     <div class="doc-upload-header doc-upload-header-stack">
-                        <label class="doc-label">Sertifikat Medical Academy</label>
+                        <label class="doc-label">File Lainnya</label>
                         <small class="text-muted doc-upload-meta">
-                            Nama dokumen diisi sendiri. Bisa upload banyak sertifikat academy (paramedic, co-ass, operasi plastik, dll).
+                            Nama dokumen diisi sendiri. Bisa upload banyak file tambahan sesuai kebutuhan.
                         </small>
                     </div>
 
                     <div id="academyDocsContainer" class="academy-list">
-                        <?php if (empty($academyDocs)): ?>
+                        <?php if (empty($otherDocs)): ?>
                             <div class="academy-doc-row" data-row="academy">
                                 <input type="hidden" name="academy_doc_id[]" value="">
 
                                 <div class="row-form-2 academy-grid">
                                     <div>
-                                        <label>Nama Sertifikat Academy</label>
-                                        <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Academy Paramedic">
+                                        <label>Nama File Lainnya</label>
+                                        <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
                                     </div>
                                     <div>
                                         <label>File</label>
@@ -301,23 +305,23 @@ DOKUMEN PENDUKUNG
                                 </div>
                             </div>
                         <?php else: ?>
-                            <?php foreach ($academyDocs as $idx => $ad): ?>
+                            <?php foreach ($otherDocs as $idx => $ad): ?>
                                 <div class="academy-doc-row" data-row="academy">
                                     <input type="hidden" name="academy_doc_id[]" value="<?= htmlspecialchars($ad['id'] ?? '') ?>">
 
                                     <div class="row-form-2 academy-grid">
                                         <div>
-                                            <label>Nama Sertifikat Academy</label>
+                                            <label>Nama File Lainnya</label>
                                             <input type="text"
                                                 name="academy_doc_name[]"
                                                 value="<?= htmlspecialchars($ad['name'] ?? '') ?>"
-                                                placeholder="Contoh: Sertifikat Academy Paramedic">
+                                                placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
                                             <div class="academy-doc-preview">
                                                 <span class="badge-success-mini">Sudah diunggah</span>
                                                 <a href="#"
                                                     class="btn-link btn-preview-doc"
                                                     data-src="/<?= htmlspecialchars($ad['path'] ?? '') ?>"
-                                                    data-title="<?= htmlspecialchars($ad['name'] ?? 'Sertifikat Academy') ?>">
+                                                    data-title="<?= htmlspecialchars($ad['name'] ?? 'File Lainnya') ?>">
                                                     Lihat dokumen
                                                 </a>
                                             </div>
@@ -350,7 +354,7 @@ DOKUMEN PENDUKUNG
 
                     <div class="action-row-end">
                         <button type="button" id="btnAddAcademyDoc" class="btn-secondary button-compact">
-                            <?= ems_icon('plus', 'h-4 w-4') ?> Tambah Sertifikat Academy
+                            <?= ems_icon('plus', 'h-4 w-4') ?> Tambah File Lainnya
                         </button>
                     </div>
                 </div>
@@ -457,8 +461,8 @@ DOKUMEN PENDUKUNG
 	                    <input type="hidden" name="academy_doc_id[]" value="">
 	                    <div class="row-form-2 academy-grid">
 	                        <div>
-	                            <label>Nama Sertifikat Academy</label>
-	                            <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Academy Co-ass">
+	                            <label>Nama File Lainnya</label>
+	                            <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
 	                        </div>
 	                        <div>
 	                            <label>File</label>
