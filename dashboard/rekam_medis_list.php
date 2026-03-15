@@ -33,6 +33,12 @@ function medicalRecordsHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function medicalRecordValue(mixed $value, string $fallback = '-'): string
+{
+    $value = trim((string) ($value ?? ''));
+    return $value !== '' ? $value : $fallback;
+}
+
 // Get pagination
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 20;
@@ -232,6 +238,16 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td class="text-center">
                                             <div class="flex justify-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    class="btn-secondary btn-sm btn-medical-record-detail"
+                                                    data-modal-title="<?= htmlspecialchars('Detail Rekam Medis ' . $recordCode, ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-modal-subtitle="<?= htmlspecialchars($isForensicPrivate ? 'Review keseluruhan rekam medis private forensic.' : 'Review keseluruhan rekam medis pasien.', ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-template-id="medical-record-detail-<?= (int) $record['id'] ?>"
+                                                    title="Detail">
+                                                    <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                    <span>Detail</span>
+                                                </button>
                                                 <?php if ($canEditRecord): ?>
                                                     <a href="rekam_medis_edit.php?id=<?= $record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
                                                        class="btn-primary btn-sm" 
@@ -253,6 +269,66 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </div>
                                         </td>
                                     </tr>
+                                    <template id="medical-record-detail-<?= (int) $record['id'] ?>">
+                                        <div class="forensic-detail-shell">
+                                            <div class="forensic-detail-hero">
+                                                <div class="forensic-detail-panel">
+                                                    <div class="forensic-detail-label">Identitas Pasien</div>
+                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_name']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    <div class="forensic-detail-meta">
+                                                        No. rekam medis: <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?><br>
+                                                        Citizen ID: <?= htmlspecialchars(medicalRecordValue($record['patient_citizen_id'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                        Dibuat: <?= htmlspecialchars(medicalRecordValue($record['created_at']), ENT_QUOTES, 'UTF-8') ?>
+                                                    </div>
+                                                </div>
+                                                <div class="forensic-detail-panel">
+                                                    <div class="forensic-detail-label">Tim Medis</div>
+                                                    <div class="forensic-detail-badges">
+                                                        <span class="badge-info"><?= htmlspecialchars(medicalRecordValue($record['patient_gender']), ENT_QUOTES, 'UTF-8') ?></span>
+                                                        <span class="<?= ($record['operasi_type'] ?? '') === 'major' ? 'badge-danger' : 'badge-warning' ?>">
+                                                            <?= htmlspecialchars(($record['operasi_type'] ?? '') === 'major' ? 'MAYOR' : 'MINOR', ENT_QUOTES, 'UTF-8') ?>
+                                                        </span>
+                                                    </div>
+                                                    <div class="forensic-detail-meta">
+                                                        DPJP: <?= htmlspecialchars(medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                        Asisten: <?= htmlspecialchars(medicalRecordValue($record['assistant_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                        Dibuat oleh: <?= htmlspecialchars(medicalRecordValue($record['created_by_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="forensic-detail-grid">
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Pekerjaan</div>
+                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_occupation']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Tanggal Lahir</div>
+                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_dob'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Nomor Telepon</div>
+                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_phone'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Status Pasien</div>
+                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_status'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                            </div>
+
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Alamat</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_address'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+
+                                            <div class="forensic-detail-block is-richtext">
+                                                <div class="forensic-detail-label">Hasil Rekam Medis</div>
+                                                <div class="forensic-detail-richtext">
+                                                    <?= $record['medical_result_html'] ?: '<p class="forensic-detail-value is-muted">Belum ada hasil rekam medis.</p>' ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -304,6 +380,26 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<div id="medicalRecordDetailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
+        <div class="forensic-detail-head">
+            <div class="min-w-0">
+                <div id="medicalRecordDetailTitle" class="forensic-detail-title">Detail Rekam Medis</div>
+                <div id="medicalRecordDetailSubtitle" class="forensic-detail-subtitle"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-medical-record-close" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div id="medicalRecordDetailBody" class="forensic-detail-content"></div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-medical-record-close">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function confirmDelete(id, name, mode) {
     if (confirm(`Apakah Anda yakin ingin menghapus rekam medis pasien "${name}"?\n\nData yang dihapus tidak dapat dikembalikan.`)) {
@@ -311,6 +407,52 @@ function confirmDelete(id, name, mode) {
         window.location.href = `rekam_medis_delete.php?id=${id}${suffix}`;
     }
 }
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('medicalRecordDetailModal');
+    const title = document.getElementById('medicalRecordDetailTitle');
+    const subtitle = document.getElementById('medicalRecordDetailSubtitle');
+    const body = document.getElementById('medicalRecordDetailBody');
+
+    if (!modal || !title || !subtitle || !body) {
+        return;
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        body.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    }
+
+    document.body.addEventListener('click', function (event) {
+        const trigger = event.target.closest('.btn-medical-record-detail');
+        if (trigger) {
+            const template = document.getElementById(trigger.getAttribute('data-template-id') || '');
+            if (!template) {
+                return;
+            }
+
+            title.textContent = trigger.getAttribute('data-modal-title') || 'Detail Rekam Medis';
+            subtitle.textContent = trigger.getAttribute('data-modal-subtitle') || '';
+            body.innerHTML = template.innerHTML;
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return;
+        }
+
+        if (event.target === modal || event.target.closest('.btn-medical-record-close')) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+});
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

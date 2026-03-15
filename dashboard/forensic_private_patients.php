@@ -19,9 +19,10 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 function forensicCaseStatusMeta(string $status): array
 {
     return match ($status) {
+        'draft' => ['label' => 'DRAFT', 'class' => 'badge-warning'],
         'active' => ['label' => 'ACTIVE', 'class' => 'badge-counter'],
         'closed' => ['label' => 'CLOSED', 'class' => 'badge-success'],
-        'archived' => ['label' => 'ARCHIVED', 'class' => 'badge-muted'],
+        'archived' => ['label' => 'ARCHIVED', 'class' => 'badge-secondary'],
         default => ['label' => strtoupper($status), 'class' => 'badge-muted'],
     };
 }
@@ -29,10 +30,17 @@ function forensicCaseStatusMeta(string $status): array
 function forensicConfidentialityMeta(string $level): array
 {
     return match ($level) {
+        'confidential' => ['label' => 'CONFIDENTIAL', 'class' => 'badge-info'],
         'sealed' => ['label' => 'SEALED', 'class' => 'badge-danger'],
         'restricted' => ['label' => 'RESTRICTED', 'class' => 'badge-warning'],
         default => ['label' => strtoupper($level), 'class' => 'badge-muted'],
     };
+}
+
+function forensicTextValue(mixed $value, string $fallback = '-'): string
+{
+    $value = trim((string) ($value ?? ''));
+    return $value !== '' ? $value : $fallback;
 }
 
 $summary = ['total' => 0, 'active' => 0, 'sealed' => 0, 'archived' => 0];
@@ -187,6 +195,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
                                         <div class="inline-flex gap-2 items-center">
+                                        <button
+                                            type="button"
+                                            class="btn-primary btn-sm btn-forensic-detail"
+                                            data-modal-title="<?= htmlspecialchars('Detail Kasus ' . (string) $case['case_code'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-modal-subtitle="<?= htmlspecialchars('Review keseluruhan data pasien private dan administrasi forensic.', ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= ems_icon('eye', 'h-4 w-4') ?>
+                                            <span>Detail</span>
+                                        </button>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_case_status">
@@ -206,6 +222,54 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="hidden" name="case_id" value="<?= (int) $case['id'] ?>">
                                             <button type="submit" class="btn-error btn-sm">Hapus</button>
                                         </form>
+                                        <div class="hidden forensic-detail-template">
+                                            <div class="forensic-detail-shell">
+                                                <div class="forensic-detail-hero">
+                                                    <div class="forensic-detail-panel">
+                                                        <div class="forensic-detail-label">Identitas Kasus</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicTextValue($case['patient_name']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                        <div class="forensic-detail-meta">
+                                                            Kode kasus: <?= htmlspecialchars(forensicTextValue($case['case_code']), ENT_QUOTES, 'UTF-8') ?><br>
+                                                            Rekam medis: <?= htmlspecialchars(forensicTextValue($case['linked_record_code'] ?: $case['medical_record_no']), ENT_QUOTES, 'UTF-8') ?><br>
+                                                            Citizen ID: <?= htmlspecialchars(forensicTextValue($case['linked_record_citizen_id']), ENT_QUOTES, 'UTF-8') ?>
+                                                        </div>
+                                                    </div>
+                                                    <div class="forensic-detail-panel">
+                                                        <div class="forensic-detail-label">Status</div>
+                                                        <div class="forensic-detail-badges">
+                                                            <span class="<?= htmlspecialchars($confMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($confMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                        </div>
+                                                        <div class="forensic-detail-meta">
+                                                            Dibuat oleh: <?= htmlspecialchars(forensicTextValue($case['created_by_name']), ENT_QUOTES, 'UTF-8') ?><br>
+                                                            Tanggal input: <?= htmlspecialchars(forensicTextValue($case['created_at']), ENT_QUOTES, 'UTF-8') ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="forensic-detail-grid">
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Jenis Kasus</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicTextValue($case['case_type']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Tanggal Kejadian</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicTextValue($case['incident_date']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Lokasi Kejadian</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicTextValue($case['incident_location']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Nama Rekam Medis Terkait</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicTextValue($case['linked_record_name']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                </div>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Catatan</div>
+                                                    <div class="forensic-detail-value<?= trim((string) ($case['notes'] ?? '')) === '' ? ' is-muted' : '' ?>"><?= htmlspecialchars(forensicTextValue($case['notes']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -217,6 +281,26 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<div id="forensicDetailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
+        <div class="forensic-detail-head">
+            <div class="min-w-0">
+                <div id="forensicDetailModalTitle" class="forensic-detail-title">Detail</div>
+                <div id="forensicDetailModalSubtitle" class="forensic-detail-subtitle"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div id="forensicDetailModalBody" class="forensic-detail-content"></div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -307,6 +391,52 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('click', function (event) {
         if (!list.contains(event.target) && event.target !== input) {
             closeList();
+        }
+    });
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('forensicDetailModal');
+    const title = document.getElementById('forensicDetailModalTitle');
+    const subtitle = document.getElementById('forensicDetailModalSubtitle');
+    const body = document.getElementById('forensicDetailModalBody');
+
+    if (!modal || !title || !subtitle || !body) {
+        return;
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        body.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    }
+
+    document.body.addEventListener('click', function (event) {
+        const trigger = event.target.closest('.btn-forensic-detail');
+        if (trigger) {
+            const template = trigger.parentElement ? trigger.parentElement.querySelector('.forensic-detail-template') : null;
+            if (!template) {
+                return;
+            }
+
+            title.textContent = trigger.getAttribute('data-modal-title') || 'Detail';
+            subtitle.textContent = trigger.getAttribute('data-modal-subtitle') || '';
+            body.innerHTML = template.innerHTML;
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return;
+        }
+
+        if (event.target === modal || event.target.closest('.btn-cancel')) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
         }
     });
 });

@@ -18,10 +18,17 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 function forensicArchiveStatusMeta(string $status): array
 {
     return match ($status) {
+        'stored' => ['label' => 'STORED', 'class' => 'badge-warning'],
         'sealed' => ['label' => 'SEALED', 'class' => 'badge-danger'],
         'released' => ['label' => 'RELEASED', 'class' => 'badge-success'],
-        default => ['label' => strtoupper($status), 'class' => 'badge-muted'],
+        default => ['label' => strtoupper($status), 'class' => 'badge-secondary'],
     };
+}
+
+function forensicArchiveValue(mixed $value, string $fallback = '-'): string
+{
+    $value = trim((string) ($value ?? ''));
+    return $value !== '' ? $value : $fallback;
 }
 
 $cases = [];
@@ -162,6 +169,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
                                         <div class="inline-flex gap-2 items-center">
+                                        <button
+                                            type="button"
+                                            class="btn-primary btn-sm btn-forensic-detail"
+                                            data-modal-title="<?= htmlspecialchars('Detail Arsip ' . (string) $archive['archive_code'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-modal-subtitle="<?= htmlspecialchars('Review dokumen arsip forensic beserta referensi kasus dan visum.', ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= ems_icon('eye', 'h-4 w-4') ?>
+                                            <span>Detail</span>
+                                        </button>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_archive_status">
@@ -181,6 +196,44 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="hidden" name="archive_id" value="<?= (int) $archive['id'] ?>">
                                             <button type="submit" class="btn-error btn-sm">Hapus</button>
                                         </form>
+                                        <div class="hidden forensic-detail-template">
+                                            <div class="forensic-detail-shell">
+                                                <div class="forensic-detail-hero">
+                                                    <div class="forensic-detail-panel">
+                                                        <div class="forensic-detail-label">Identitas Arsip</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicArchiveValue($archive['archive_title']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                        <div class="forensic-detail-meta">
+                                                            Kode arsip: <?= htmlspecialchars(forensicArchiveValue($archive['archive_code']), ENT_QUOTES, 'UTF-8') ?><br>
+                                                            Tipe dokumen: <?= htmlspecialchars(forensicArchiveValue($archive['document_type']), ENT_QUOTES, 'UTF-8') ?><br>
+                                                            Dibuat: <?= htmlspecialchars(forensicArchiveValue($archive['created_at']), ENT_QUOTES, 'UTF-8') ?>
+                                                        </div>
+                                                    </div>
+                                                    <div class="forensic-detail-panel">
+                                                        <div class="forensic-detail-label">Status Arsip</div>
+                                                        <div class="forensic-detail-badges">
+                                                            <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                        </div>
+                                                        <div class="forensic-detail-meta">
+                                                            Retensi sampai: <?= htmlspecialchars(forensicArchiveValue($archive['retention_until']), ENT_QUOTES, 'UTF-8') ?>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="forensic-detail-grid">
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Referensi Kasus</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicArchiveValue($archive['case_code']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                    <div class="forensic-detail-block">
+                                                        <div class="forensic-detail-label">Referensi Visum</div>
+                                                        <div class="forensic-detail-value"><?= htmlspecialchars(forensicArchiveValue($archive['visum_code']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                    </div>
+                                                </div>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">Catatan Arsip</div>
+                                                    <div class="forensic-detail-value<?= trim((string) ($archive['notes'] ?? '')) === '' ? ' is-muted' : '' ?>"><?= htmlspecialchars(forensicArchiveValue($archive['notes']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -193,6 +246,26 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<div id="forensicDetailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
+        <div class="forensic-detail-head">
+            <div class="min-w-0">
+                <div id="forensicDetailModalTitle" class="forensic-detail-title">Detail</div>
+                <div id="forensicDetailModalSubtitle" class="forensic-detail-subtitle"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div id="forensicDetailModalBody" class="forensic-detail-content"></div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     if (window.jQuery && $.fn.DataTable) {
@@ -204,6 +277,52 @@ document.addEventListener('DOMContentLoaded', function () {
             order: [[0, 'desc']]
         });
     }
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('forensicDetailModal');
+    const title = document.getElementById('forensicDetailModalTitle');
+    const subtitle = document.getElementById('forensicDetailModalSubtitle');
+    const body = document.getElementById('forensicDetailModalBody');
+
+    if (!modal || !title || !subtitle || !body) {
+        return;
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        body.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    }
+
+    document.body.addEventListener('click', function (event) {
+        const trigger = event.target.closest('.btn-forensic-detail');
+        if (trigger) {
+            const template = trigger.parentElement ? trigger.parentElement.querySelector('.forensic-detail-template') : null;
+            if (!template) {
+                return;
+            }
+
+            title.textContent = trigger.getAttribute('data-modal-title') || 'Detail';
+            subtitle.textContent = trigger.getAttribute('data-modal-subtitle') || '';
+            body.innerHTML = template.innerHTML;
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return;
+        }
+
+        if (event.target === modal || event.target.closest('.btn-cancel')) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
 });
 </script>
 
