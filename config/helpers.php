@@ -493,6 +493,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'absensi_ems.php',
         'reimbursement.php',
         'restaurant_consumption.php',
+        'restaurant_consumption_action.php',
         'gaji.php',
         'rekap_gaji.php',
         'pengajuan_jabatan.php',

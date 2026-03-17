@@ -444,6 +444,17 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             throw new Error('Respons server kosong atau tidak valid');
         }
 
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        const isHtmlResponse = contentType.includes('text/html') || /^\s*</.test(raw);
+
+        if (isHtmlResponse) {
+            if (res.redirected || /<title>\s*login|<form[^>]+login|<!doctype html/i.test(raw)) {
+                throw new Error('Session atau akses Anda tidak valid. Silakan refresh halaman lalu login lagi.');
+            }
+
+            throw new Error('Server mengirim halaman HTML, bukan JSON. Kemungkinan akses endpoint tertolak.');
+        }
+
         try {
             return JSON.parse(raw);
         } catch (err) {
