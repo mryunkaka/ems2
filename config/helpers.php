@@ -502,6 +502,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'pengajuan_cuti_resign_action.php',
         'setting_akun.php',
         'setting_akun_action.php',
+        'input_dokumen_medis.php',
+        'input_dokumen_medis_action.php',
     ];
 }
 

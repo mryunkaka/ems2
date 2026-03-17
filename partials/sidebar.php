@@ -53,6 +53,10 @@ $groupedNav = [
     ],
 ];
 
+if (!ems_is_staff_role($userRole)) {
+    $groupedNav['Utama'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
+}
+
 if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
 }

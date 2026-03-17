@@ -508,6 +508,8 @@ if ($academyJson === false) {
     exit;
 }
 
+ensureUserDokumenLainnyaColumnSupportsJson($pdo);
+
 /*
 |--------------------------------------------------------------------------
 | UPDATE DATA USER

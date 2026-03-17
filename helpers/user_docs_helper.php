@@ -76,3 +76,27 @@ function sanitizeAcademyDocName(string $name): string
     $name = str_replace(["\r", "\n", "\t"], ' ', $name);
     return $name;
 }
+
+function ensureUserDokumenLainnyaColumnSupportsJson(PDO $pdo): void
+{
+    static $ensured = false;
+
+    if ($ensured) {
+        return;
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute(['dokumen_lainnya']);
+    $column = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$column) {
+        return;
+    }
+
+    $type = strtolower((string)($column['Type'] ?? ''));
+    if (str_starts_with($type, 'varchar(')) {
+        $pdo->exec("ALTER TABLE user_rh MODIFY dokumen_lainnya TEXT NULL");
+    }
+
+    $ensured = true;
+}
