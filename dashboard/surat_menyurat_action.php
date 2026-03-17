@@ -32,6 +32,48 @@ function generate_outgoing_letter_code(): string
     return 'SK-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
 }
 
+function surat_table_has_column(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+
+    $key = $table . '.' . $column;
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM {$table} LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$key] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$key];
+}
+
+function surat_normalize_division_scope(?string $value): string
+{
+    $raw = trim((string)$value);
+    $normalizedRaw = strtolower(preg_replace('/\s+/', ' ', $raw) ?: '');
+
+    if ($normalizedRaw === '' || in_array($normalizedRaw, ['all', 'all division', 'all divisi', 'semua', 'semua divisi'], true)) {
+        return 'All Divisi';
+    }
+
+    $division = ems_normalize_division($raw);
+    if (!ems_is_valid_division($division)) {
+        throw new Exception('Divisi surat tidak valid.');
+    }
+
+    return $division;
+}
+
+function surat_revision_label(int $count): ?string
+{
+    if ($count <= 0) {
+        return null;
+    }
+
+    return sprintf('revisi-%02d', $count);
+}
+
 function normalizeMultiUpload(array $fileBag): array
 {
     if (!isset($fileBag['name']) || !is_array($fileBag['name'])) {
@@ -114,6 +156,17 @@ function deleteStoredFiles(array $paths): void
     }
 }
 
+function surat_require_revision_columns(PDO $pdo, string $table): void
+{
+    $requiredColumns = ['revision_count', 'revision_label', 'updated_at', 'updated_by'];
+
+    foreach ($requiredColumns as $column) {
+        if (!surat_table_has_column($pdo, $table, $column)) {
+            throw new Exception('Kolom revisi belum tersedia. Jalankan file SQL terbaru di docs/sql terlebih dahulu.');
+        }
+    }
+}
+
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
@@ -178,6 +231,7 @@ try {
         $letterBody = trim((string)($_POST['letter_body'] ?? ''));
         $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
         $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
+        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
 
         if ($institutionName === '' || $subject === '' || $letterBody === '') {
@@ -195,15 +249,19 @@ try {
 
         $pdo->beginTransaction();
 
-        $stmt = $pdo->prepare("
-            INSERT INTO outgoing_letters
-                (outgoing_code, incoming_letter_id, institution_name, recipient_name,
-                 recipient_contact, subject, letter_body, appointment_date, appointment_time,
-                 created_by)
-            VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
+        $insertColumns = [
+            'outgoing_code',
+            'incoming_letter_id',
+            'institution_name',
+            'recipient_name',
+            'recipient_contact',
+            'subject',
+            'letter_body',
+            'appointment_date',
+            'appointment_time',
+            'created_by',
+        ];
+        $insertValues = [
             generate_outgoing_letter_code(),
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $institutionName,
@@ -214,7 +272,21 @@ try {
             $appointmentDate !== '' ? $appointmentDate : null,
             $timeValue,
             $userId,
-        ]);
+        ];
+
+        if (surat_table_has_column($pdo, 'outgoing_letters', 'division_scope')) {
+            $insertColumns[] = 'division_scope';
+            $insertValues[] = $divisionScope;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+        $stmt = $pdo->prepare("
+            INSERT INTO outgoing_letters
+                (" . implode(', ', $insertColumns) . ")
+            VALUES
+                ($placeholders)
+        ");
+        $stmt->execute($insertValues);
 
         $outgoingLetterId = (int)$pdo->lastInsertId();
         saveOutgoingAttachments($pdo, $outgoingLetterId, $attachmentFiles);
@@ -222,6 +294,94 @@ try {
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Surat keluar berhasil disimpan.';
+        surat_redirect();
+    }
+
+    if ($action === 'edit_outgoing_letter') {
+        surat_require_revision_columns($pdo, 'outgoing_letters');
+
+        $letterId = (int)($_POST['letter_id'] ?? 0);
+        $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
+        $institutionName = trim((string)($_POST['institution_name'] ?? ''));
+        $recipientName = trim((string)($_POST['recipient_name'] ?? ''));
+        $recipientContact = trim((string)($_POST['recipient_contact'] ?? ''));
+        $subject = trim((string)($_POST['subject'] ?? ''));
+        $letterBody = trim((string)($_POST['letter_body'] ?? ''));
+        $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
+        $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
+        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+
+        if ($letterId <= 0 || $institutionName === '' || $subject === '' || $letterBody === '') {
+            throw new Exception('Data edit surat keluar belum lengkap.');
+        }
+
+        $timeValue = null;
+        if ($appointmentTime !== '') {
+            $timeObj = DateTime::createFromFormat('H:i', $appointmentTime);
+            if (!$timeObj) {
+                throw new Exception('Jam surat keluar tidak valid.');
+            }
+            $timeValue = $timeObj->format('H:i:s');
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT id, revision_count
+            FROM outgoing_letters
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$letterId]);
+        $letter = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$letter) {
+            throw new Exception('Surat keluar tidak ditemukan.');
+        }
+
+        $revisionCount = (int)($letter['revision_count'] ?? 0) + 1;
+        $revisionLabel = surat_revision_label($revisionCount);
+
+        $assignments = [
+            'incoming_letter_id = ?',
+            'institution_name = ?',
+            'recipient_name = ?',
+            'recipient_contact = ?',
+            'subject = ?',
+            'letter_body = ?',
+            'appointment_date = ?',
+            'appointment_time = ?',
+            'revision_count = ?',
+            'revision_label = ?',
+            'updated_at = NOW()',
+            'updated_by = ?',
+        ];
+        $params = [
+            $incomingLetterId > 0 ? $incomingLetterId : null,
+            $institutionName,
+            $recipientName !== '' ? $recipientName : null,
+            $recipientContact !== '' ? $recipientContact : null,
+            $subject,
+            $letterBody,
+            $appointmentDate !== '' ? $appointmentDate : null,
+            $timeValue,
+            $revisionCount,
+            $revisionLabel,
+            $userId,
+        ];
+
+        if (surat_table_has_column($pdo, 'outgoing_letters', 'division_scope')) {
+            $assignments[] = 'division_scope = ?';
+            $params[] = $divisionScope;
+        }
+
+        $params[] = $letterId;
+        $stmt = $pdo->prepare("
+            UPDATE outgoing_letters
+            SET " . implode(",\n                ", $assignments) . "
+            WHERE id = ?
+        ");
+        $stmt->execute($params);
+
+        $_SESSION['flash_messages'][] = 'Surat keluar berhasil diubah. ' . $revisionLabel . ' tersimpan.';
         surat_redirect();
     }
 
@@ -235,6 +395,7 @@ try {
         $summary = trim((string)($_POST['summary'] ?? ''));
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
+        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
 
         if (
             $meetingTitle === '' ||
@@ -251,14 +412,19 @@ try {
             throw new Exception('Jam notulen tidak valid.');
         }
 
-        $stmt = $pdo->prepare("
-            INSERT INTO meeting_minutes
-                (incoming_letter_id, outgoing_letter_id, meeting_title, meeting_date,
-                 meeting_time, participants, summary, decisions, follow_up, created_by)
-            VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
+        $insertColumns = [
+            'incoming_letter_id',
+            'outgoing_letter_id',
+            'meeting_title',
+            'meeting_date',
+            'meeting_time',
+            'participants',
+            'summary',
+            'decisions',
+            'follow_up',
+            'created_by',
+        ];
+        $insertValues = [
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $outgoingLetterId > 0 ? $outgoingLetterId : null,
             $meetingTitle,
@@ -269,9 +435,117 @@ try {
             $decisions !== '' ? $decisions : null,
             $followUp !== '' ? $followUp : null,
             $userId,
-        ]);
+        ];
+
+        if (surat_table_has_column($pdo, 'meeting_minutes', 'division_scope')) {
+            $insertColumns[] = 'division_scope';
+            $insertValues[] = $divisionScope;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+        $stmt = $pdo->prepare("
+            INSERT INTO meeting_minutes
+                (" . implode(', ', $insertColumns) . ")
+            VALUES
+                ($placeholders)
+        ");
+        $stmt->execute($insertValues);
 
         $_SESSION['flash_messages'][] = 'Notulen pertemuan berhasil disimpan.';
+        surat_redirect();
+    }
+
+    if ($action === 'edit_meeting_minutes') {
+        surat_require_revision_columns($pdo, 'meeting_minutes');
+
+        $minutesId = (int)($_POST['minutes_id'] ?? 0);
+        $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
+        $outgoingLetterId = (int)($_POST['outgoing_letter_id'] ?? 0);
+        $meetingTitle = trim((string)($_POST['meeting_title'] ?? ''));
+        $meetingDate = trim((string)($_POST['meeting_date'] ?? ''));
+        $meetingTime = trim((string)($_POST['meeting_time'] ?? ''));
+        $participants = trim((string)($_POST['participants'] ?? ''));
+        $summary = trim((string)($_POST['summary'] ?? ''));
+        $decisions = trim((string)($_POST['decisions'] ?? ''));
+        $followUp = trim((string)($_POST['follow_up'] ?? ''));
+        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+
+        if (
+            $minutesId <= 0 ||
+            $meetingTitle === '' ||
+            $meetingDate === '' ||
+            $meetingTime === '' ||
+            $participants === '' ||
+            $summary === ''
+        ) {
+            throw new Exception('Data edit notulen belum lengkap.');
+        }
+
+        $timeObj = DateTime::createFromFormat('H:i', $meetingTime);
+        if (!$timeObj) {
+            throw new Exception('Jam notulen tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT id, revision_count
+            FROM meeting_minutes
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$minutesId]);
+        $minutes = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$minutes) {
+            throw new Exception('Notulen tidak ditemukan.');
+        }
+
+        $revisionCount = (int)($minutes['revision_count'] ?? 0) + 1;
+        $revisionLabel = surat_revision_label($revisionCount);
+
+        $assignments = [
+            'incoming_letter_id = ?',
+            'outgoing_letter_id = ?',
+            'meeting_title = ?',
+            'meeting_date = ?',
+            'meeting_time = ?',
+            'participants = ?',
+            'summary = ?',
+            'decisions = ?',
+            'follow_up = ?',
+            'revision_count = ?',
+            'revision_label = ?',
+            'updated_at = NOW()',
+            'updated_by = ?',
+        ];
+        $params = [
+            $incomingLetterId > 0 ? $incomingLetterId : null,
+            $outgoingLetterId > 0 ? $outgoingLetterId : null,
+            $meetingTitle,
+            $meetingDate,
+            $timeObj->format('H:i:s'),
+            $participants,
+            $summary,
+            $decisions !== '' ? $decisions : null,
+            $followUp !== '' ? $followUp : null,
+            $revisionCount,
+            $revisionLabel,
+            $userId,
+        ];
+
+        if (surat_table_has_column($pdo, 'meeting_minutes', 'division_scope')) {
+            $assignments[] = 'division_scope = ?';
+            $params[] = $divisionScope;
+        }
+
+        $params[] = $minutesId;
+        $stmt = $pdo->prepare("
+            UPDATE meeting_minutes
+            SET " . implode(",\n                ", $assignments) . "
+            WHERE id = ?
+        ");
+        $stmt->execute($params);
+
+        $_SESSION['flash_messages'][] = 'Notulen berhasil diubah. ' . $revisionLabel . ' tersimpan.';
         surat_redirect();
     }
 

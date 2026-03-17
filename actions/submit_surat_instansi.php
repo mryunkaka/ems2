@@ -31,6 +31,22 @@ function generate_incoming_letter_code(): string
     return 'SM-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
 }
 
+function suratTableHasColumn(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+
+    $key = $table . '.' . $column;
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM {$table} LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$key] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$key];
+}
+
 function normalizeMultiUpload(array $fileBag): array
 {
     if (!isset($fileBag['name']) || !is_array($fileBag['name'])) {
@@ -134,7 +150,7 @@ try {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare("
-        SELECT id, full_name, role
+        SELECT id, full_name, role, division
         FROM user_rh
         WHERE id = ?
           AND is_active = 1
@@ -151,15 +167,21 @@ try {
 
     $letterCode = generate_incoming_letter_code();
 
-    $stmt = $pdo->prepare("
-        INSERT INTO incoming_letters
-            (letter_code, institution_name, sender_name, sender_phone, meeting_topic,
-             appointment_date, appointment_time, target_user_id, target_name_snapshot,
-             target_role_snapshot, notes, created_ip)
-        VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    $stmt->execute([
+    $insertColumns = [
+        'letter_code',
+        'institution_name',
+        'sender_name',
+        'sender_phone',
+        'meeting_topic',
+        'appointment_date',
+        'appointment_time',
+        'target_user_id',
+        'target_name_snapshot',
+        'target_role_snapshot',
+        'notes',
+        'created_ip',
+    ];
+    $insertValues = [
         $letterCode,
         $institutionName,
         $senderName,
@@ -172,7 +194,21 @@ try {
         ems_role_label($recipient['role'] ?? ''),
         $notes !== '' ? $notes : null,
         substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 64),
-    ]);
+    ];
+
+    if (suratTableHasColumn($pdo, 'incoming_letters', 'division_scope')) {
+        $insertColumns[] = 'division_scope';
+        $insertValues[] = ems_normalize_division($recipient['division'] ?? '') ?: 'All Divisi';
+    }
+
+    $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+    $stmt = $pdo->prepare("
+        INSERT INTO incoming_letters
+            (" . implode(', ', $insertColumns) . ")
+        VALUES
+            ($placeholders)
+    ");
+    $stmt->execute($insertValues);
 
     $incomingLetterId = (int)$pdo->lastInsertId();
     saveIncomingAttachments($pdo, $incomingLetterId, $attachmentFiles);
