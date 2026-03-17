@@ -1139,6 +1139,8 @@ uksort($usersByBatch, function ($a, $b) {
             return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
         }
 
+        const otherDocFilterMap = window.manageUsersOtherDocFilterMap || {};
+
         document.body.addEventListener('click', function(e) {
             const exportAllBtn = e.target.closest('#btnExportText');
             if (exportAllBtn) {
