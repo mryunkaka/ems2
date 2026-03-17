@@ -36,6 +36,13 @@ function manageUsersHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function manageUsersNormalizeDocName(?string $name): string
+{
+    $value = strtolower(trim((string)$name));
+    $value = preg_replace('/\s+/', ' ', $value) ?: '';
+    return $value;
+}
+
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
@@ -84,6 +91,42 @@ $users = $pdo->query("
         u.full_name ASC
 
 ")->fetchAll(PDO::FETCH_ASSOC);
+
+$dynamicOtherDocFilters = [];
+
+foreach ($users as &$userRow) {
+    $userOtherDocs = ensureAcademyDocIds(parseAcademyDocs($userRow['dokumen_lainnya'] ?? ''));
+    $userRow['_other_docs'] = $userOtherDocs;
+    $userRow['_other_doc_names'] = [];
+
+    foreach ($userOtherDocs as $otherDoc) {
+        $docName = trim((string)($otherDoc['name'] ?? ''));
+        $normalizedDocName = manageUsersNormalizeDocName($docName);
+        if ($normalizedDocName === '') {
+            continue;
+        }
+
+        $userRow['_other_doc_names'][] = $normalizedDocName;
+        if (!isset($dynamicOtherDocFilters[$normalizedDocName])) {
+            $dynamicOtherDocFilters[$normalizedDocName] = $docName;
+        }
+    }
+
+    $userRow['_other_doc_names'] = array_values(array_unique($userRow['_other_doc_names']));
+}
+unset($userRow);
+
+asort($dynamicOtherDocFilters, SORT_NATURAL | SORT_FLAG_CASE);
+
+$dynamicOtherDocFilterOptions = [];
+foreach ($dynamicOtherDocFilters as $normalizedDocName => $docName) {
+    $filterValue = 'missing_other_' . substr(sha1($normalizedDocName), 0, 12);
+    $dynamicOtherDocFilterOptions[] = [
+        'value' => $filterValue,
+        'label' => $docName,
+        'normalized' => $normalizedDocName,
+    ];
+}
 
 // ===============================
 // KELOMPOKKAN USER BERDASARKAN BATCH
@@ -165,7 +208,11 @@ uksort($usersByBatch, function ($a, $b) {
 	                        <option value="missing_skb">Belum Upload SKB</option>
 	                        <option value="missing_sertifikat_heli">Belum Upload Sertifikat Heli</option>
 	                        <option value="missing_sertifikat_operasi">Belum Upload Sertifikat Operasi</option>
-	                        <option value="missing_dokumen_lainnya">Belum Upload Dokumen Lainnya</option>
+	                        <?php foreach ($dynamicOtherDocFilterOptions as $docFilter): ?>
+	                            <option value="<?= htmlspecialchars($docFilter['value']) ?>">
+	                                Belum Upload <?= htmlspecialchars($docFilter['label']) ?>
+	                            </option>
+	                        <?php endforeach; ?>
 	                    </select>
 	                    <select id="searchColumn" class="toolbar-select">
 	                        <option value="all" selected>Semua Kolom</option>
@@ -239,7 +286,7 @@ uksort($usersByBatch, function ($a, $b) {
 	                                            'SERTIFIKAT OPERASI' => $u['sertifikat_operasi'] ?? null,
 	                                        ];
 
-	                                        $academyDocs = parseAcademyDocs($u['dokumen_lainnya'] ?? '');
+	                                        $academyDocs = $u['_other_docs'] ?? [];
 	                                        foreach ($academyDocs as $ad) {
 	                                            $label = trim((string)($ad['name'] ?? 'File Lainnya'));
 	                                            $docs[$label] = $ad['path'] ?? null;
@@ -280,7 +327,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                        $hasSkb = !empty($u['file_skb']);
 		                                        $hasSertifikatHeli = !empty($u['sertifikat_heli']);
 		                                        $hasSertifikatOperasi = !empty($u['sertifikat_operasi']);
-		                                        $hasDokumenLainnya = !empty($academyDocs);
+		                                        $otherDocNames = $u['_other_doc_names'] ?? [];
 		                                        $hasAnyDoc = false;
 		                                        foreach ($docs as $path) {
 		                                            if (!empty($path)) {
@@ -303,7 +350,7 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-has-skb="<?= $hasSkb ? '1' : '0' ?>"
 			                                            data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
 			                                            data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
-			                                            data-has-dokumen-lainnya="<?= $hasDokumenLainnya ? '1' : '0' ?>">
+			                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -755,6 +802,8 @@ uksort($usersByBatch, function ($a, $b) {
 </script>
 
 <script>
+    window.manageUsersOtherDocFilterMap = <?= json_encode(array_column($dynamicOtherDocFilterOptions, 'normalized', 'value'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+
     function closeModal() {
         const modal = document.getElementById('editModal');
         if (!modal) return;
@@ -771,6 +820,7 @@ uksort($usersByBatch, function ($a, $b) {
 	        const searchColumn = document.getElementById('searchColumn');
 	        const docStatusFilter = document.getElementById('docStatusFilter');
 	        const clearFilterButton = document.getElementById('btnClearUserFilters');
+	        const otherDocFilterMap = window.manageUsersOtherDocFilterMap || {};
 
 	        function updateSearchPlaceholder() {
 	            if (!searchInput) return;
@@ -831,12 +881,15 @@ uksort($usersByBatch, function ($a, $b) {
 	                        missing_kta: 'data-has-kta',
 	                        missing_skb: 'data-has-skb',
 	                        missing_sertifikat_heli: 'data-has-sertifikat-heli',
-	                        missing_sertifikat_operasi: 'data-has-sertifikat-operasi',
-	                        missing_dokumen_lainnya: 'data-has-dokumen-lainnya'
+	                        missing_sertifikat_operasi: 'data-has-sertifikat-operasi'
 	                    };
 	                    const matchesSearch = terms.length === 0 ? true : terms.every(t => haystack.includes(t));
 	                    const docAttr = docAttrMap[docFilterValue] || '';
-	                    const matchesDocFilter = docAttr ? row.getAttribute(docAttr) !== '1' : true;
+	                    const otherDocName = otherDocFilterMap[docFilterValue] || '';
+	                    const otherDocNames = (row.getAttribute('data-other-doc-names') || '').split('|').filter(Boolean);
+	                    const matchesDocFilter = docAttr
+	                        ? row.getAttribute(docAttr) !== '1'
+	                        : (otherDocName ? !otherDocNames.includes(otherDocName) : true);
 	                    const isMatch = matchesSearch && matchesDocFilter;
 
 	                    if (isMatch) {
@@ -1126,14 +1179,25 @@ uksort($usersByBatch, function ($a, $b) {
                         title: 'Daftar User Belum Upload Sertifikat Operasi',
                         empty: 'Tidak ada user yang belum upload Sertifikat Operasi untuk diexport.',
                         filename: `daftar_user_belum_upload_sertifikat_operasi_${exportTimestamp()}.txt`
-                    },
-                    missing_dokumen_lainnya: {
-                        title: 'Daftar User Belum Upload Dokumen Lainnya',
-                        empty: 'Tidak ada user yang belum upload Dokumen Lainnya untuk diexport.',
-                        filename: `daftar_user_belum_upload_dokumen_lainnya_${exportTimestamp()}.txt`
                     }
                 };
-                const exportMeta = exportMetaMap[currentDocFilter] || exportMetaMap.all;
+                const exportMeta = exportMetaMap[currentDocFilter] || (function() {
+                    const otherDocName = otherDocFilterMap[currentDocFilter] || '';
+                    if (!otherDocName) {
+                        return exportMetaMap.all;
+                    }
+
+                    const safeName = otherDocName
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, '_')
+                        .replace(/^_+|_+$/g, '') || 'dokumen_lainnya';
+
+                    return {
+                        title: `Daftar User Belum Upload ${otherDocName}`,
+                        empty: `Tidak ada user yang belum upload ${otherDocName} untuk diexport.`,
+                        filename: `daftar_user_belum_upload_${safeName}_${exportTimestamp()}.txt`
+                    };
+                })();
 
                 document.querySelectorAll('.user-batch-table').forEach(function(table) {
                     const batchCard = table.closest('.batch-card');

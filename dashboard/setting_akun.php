@@ -47,6 +47,31 @@ $userDb = $stmt->fetch(PDO::FETCH_ASSOC);
 
 $otherDocs = ensureAcademyDocIds(parseAcademyDocs($userDb['dokumen_lainnya'] ?? ''));
 
+function settingAkunNormalizeDocName(?string $name): string
+{
+    $value = trim(preg_replace('/\s+/', ' ', (string)$name));
+    return $value;
+}
+
+$otherDocSuggestions = [];
+$stmtOtherDocSuggestions = $pdo->query("SELECT dokumen_lainnya FROM user_rh WHERE dokumen_lainnya IS NOT NULL AND dokumen_lainnya <> ''");
+$allOtherDocRows = $stmtOtherDocSuggestions ? $stmtOtherDocSuggestions->fetchAll(PDO::FETCH_ASSOC) : [];
+foreach ($allOtherDocRows as $otherDocRow) {
+    $parsedDocs = ensureAcademyDocIds(parseAcademyDocs($otherDocRow['dokumen_lainnya'] ?? ''));
+    foreach ($parsedDocs as $parsedDoc) {
+        $docName = settingAkunNormalizeDocName($parsedDoc['name'] ?? '');
+        if ($docName === '') {
+            continue;
+        }
+
+        $lookupKey = strtolower($docName);
+        if (!isset($otherDocSuggestions[$lookupKey])) {
+            $otherDocSuggestions[$lookupKey] = $docName;
+        }
+    }
+}
+natcasesort($otherDocSuggestions);
+
 $citizenId    = $userDb['citizen_id'] ?? '';
 $jenisKelamin = $userDb['jenis_kelamin'] ?? '';
 $noHpIc = $userDb['no_hp_ic'] ?? '';
@@ -275,6 +300,11 @@ DOKUMEN PENDUKUNG
                     </div>
 
                     <div id="academyDocsContainer" class="academy-list">
+                        <datalist id="academyDocNameSuggestions">
+                            <?php foreach ($otherDocSuggestions as $suggestedDocName): ?>
+                                <option value="<?= htmlspecialchars($suggestedDocName) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
                         <?php if (empty($otherDocs)): ?>
                             <div class="academy-doc-row" data-row="academy">
                                 <input type="hidden" name="academy_doc_id[]" value="">
@@ -282,7 +312,11 @@ DOKUMEN PENDUKUNG
                                 <div class="row-form-2 academy-grid">
                                     <div>
                                         <label>Nama File Lainnya</label>
-                                        <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
+                                        <input type="text"
+                                            name="academy_doc_name[]"
+                                            list="academyDocNameSuggestions"
+                                            autocomplete="off"
+                                            placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
                                     </div>
                                     <div>
                                         <label>File</label>
@@ -314,6 +348,8 @@ DOKUMEN PENDUKUNG
                                             <label>Nama File Lainnya</label>
                                             <input type="text"
                                                 name="academy_doc_name[]"
+                                                list="academyDocNameSuggestions"
+                                                autocomplete="off"
                                                 value="<?= htmlspecialchars($ad['name'] ?? '') ?>"
                                                 placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
                                             <div class="academy-doc-preview">
@@ -462,7 +498,7 @@ DOKUMEN PENDUKUNG
 	                    <div class="row-form-2 academy-grid">
 	                        <div>
 	                            <label>Nama File Lainnya</label>
-	                            <input type="text" name="academy_doc_name[]" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
+	                            <input type="text" name="academy_doc_name[]" list="academyDocNameSuggestions" autocomplete="off" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
 	                        </div>
 	                        <div>
 	                            <label>File</label>
