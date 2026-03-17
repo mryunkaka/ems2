@@ -157,6 +157,16 @@ uksort($usersByBatch, function ($a, $b) {
             <div class="card-header card-toolbar">
                 <span>Daftar User</span>
 	                <div class="toolbar-group">
+	                    <select id="docStatusFilter" class="toolbar-select">
+	                        <option value="all" selected>Semua Dokumen</option>
+	                        <option value="missing_ktp">Belum Upload KTP</option>
+	                        <option value="missing_sim">Belum Upload SIM</option>
+	                        <option value="missing_kta">Belum Upload KTA</option>
+	                        <option value="missing_skb">Belum Upload SKB</option>
+	                        <option value="missing_sertifikat_heli">Belum Upload Sertifikat Heli</option>
+	                        <option value="missing_sertifikat_operasi">Belum Upload Sertifikat Operasi</option>
+	                        <option value="missing_dokumen_lainnya">Belum Upload Dokumen Lainnya</option>
+	                    </select>
 	                    <select id="searchColumn" class="toolbar-select">
 	                        <option value="all" selected>Semua Kolom</option>
 	                        <option value="name">Nama</option>
@@ -173,6 +183,10 @@ uksort($usersByBatch, function ($a, $b) {
 
                     <button id="btnExportText" class="btn-secondary" type="button">
                         <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
+                    </button>
+
+                    <button id="btnClearUserFilters" class="btn-secondary" type="button">
+                        <?= ems_icon('x-mark', 'h-4 w-4') ?> Clear
                     </button>
 
                     <button id="btnAddUser" class="btn-success">
@@ -260,6 +274,20 @@ uksort($usersByBatch, function ($a, $b) {
 		                                            $joinSearch,
 		                                            $docSearch,
 		                                        ])));
+		                                        $hasKtp = !empty($u['file_ktp']);
+		                                        $hasSim = !empty($u['file_sim']);
+		                                        $hasKta = !empty($u['file_kta']);
+		                                        $hasSkb = !empty($u['file_skb']);
+		                                        $hasSertifikatHeli = !empty($u['sertifikat_heli']);
+		                                        $hasSertifikatOperasi = !empty($u['sertifikat_operasi']);
+		                                        $hasDokumenLainnya = !empty($academyDocs);
+		                                        $hasAnyDoc = false;
+		                                        foreach ($docs as $path) {
+		                                            if (!empty($path)) {
+		                                                $hasAnyDoc = true;
+		                                                break;
+		                                            }
+		                                        }
 		                                        ?>
 			                                        <tr
 			                                            data-search-name="<?= htmlspecialchars(strtolower($u['full_name'])) ?>"
@@ -268,7 +296,14 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-search-division="<?= htmlspecialchars($divisionSearch) ?>"
 			                                            data-search-join="<?= htmlspecialchars($joinSearch) ?>"
 			                                            data-search-docs="<?= htmlspecialchars($docSearch) ?>"
-			                                            data-search-all="<?= htmlspecialchars($allSearch) ?>">
+			                                            data-search-all="<?= htmlspecialchars($allSearch) ?>"
+			                                            data-has-ktp="<?= $hasKtp ? '1' : '0' ?>"
+			                                            data-has-sim="<?= $hasSim ? '1' : '0' ?>"
+			                                            data-has-kta="<?= $hasKta ? '1' : '0' ?>"
+			                                            data-has-skb="<?= $hasSkb ? '1' : '0' ?>"
+			                                            data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
+			                                            data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
+			                                            data-has-dokumen-lainnya="<?= $hasDokumenLainnya ? '1' : '0' ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -317,6 +352,12 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <?php
                                                     endif;
                                                 endforeach;
+
+	                                                if (!$hasAnyDoc):
+	                                                ?>
+                                                        <span class="muted-placeholder">-</span>
+                                                <?php
+	                                                endif;
                                                 ?>
                                             </td>
                                             <td>
@@ -723,46 +764,13 @@ uksort($usersByBatch, function ($a, $b) {
     }
 
 	    document.addEventListener('DOMContentLoaded', function() {
-	        // Simpan referensi DataTable instances untuk kontrol pagination
-	        let dataTableInstances = [];
-
-	        function scheduleWork(fn) {
-	            if (typeof window.requestIdleCallback === 'function') {
-	                window.requestIdleCallback(fn, {timeout: 800});
-	            } else {
-	                setTimeout(fn, 0);
-	            }
-	        }
-
-	        scheduleWork(() => {
-	            if (window.jQuery && jQuery.fn.DataTable) {
-	                jQuery('.user-batch-table').each(function() {
-	                    const table = jQuery(this);
-	                    const dataTable = table.DataTable({
-	                        pageLength: 10,
-	                        searching: false,
-	                        dom: 'rtip',
-	                        order: [
-	                            [1, 'asc']
-	                        ],
-	                        language: {
-	                            url: '/assets/design/js/datatables-id.json'
-	                        }
-	                    });
-
-	                    dataTableInstances.push({
-	                        tableElement: table[0],
-	                        dataTable: dataTable
-	                    });
-	                });
-	            }
-	        });
-
-        // ===============================
+	        // ===============================
 	        // FITUR PENCARIAN USER - VANILLA JS (NO DATATABLES API)
 	        // ===============================
 	        const searchInput = document.getElementById('searchUser');
 	        const searchColumn = document.getElementById('searchColumn');
+	        const docStatusFilter = document.getElementById('docStatusFilter');
+	        const clearFilterButton = document.getElementById('btnClearUserFilters');
 
 	        function updateSearchPlaceholder() {
 	            if (!searchInput) return;
@@ -775,8 +783,77 @@ uksort($usersByBatch, function ($a, $b) {
 		                division: 'Cari division...',
 		                docs: 'Cari dokumen (KTP, SIM, KTA, SKB, Heli, Operasi, File Lainnya)...',
 		                join: 'Cari tanggal join...'
-		            };
+	            };
 	            searchInput.placeholder = map[mode] || 'Cari...';
+	        }
+
+	        function getRowSearchValue(row, mode) {
+	            const getAttr = (attr) => (row.getAttribute(attr) || '');
+
+	            switch (mode) {
+	                case 'name':
+	                    return getAttr('data-search-name');
+	                case 'position':
+	                    return getAttr('data-search-position');
+	                case 'role':
+	                    return getAttr('data-search-role');
+	                case 'division':
+	                    return getAttr('data-search-division');
+	                case 'docs':
+	                    return getAttr('data-search-docs');
+	                case 'join':
+	                    return getAttr('data-search-join');
+	                case 'all':
+	                default:
+	                    return getAttr('data-search-all');
+	            }
+	        }
+
+	        function applyUserFilters() {
+	            const keyword = (searchInput?.value || '').toLowerCase().trim();
+	            const terms = keyword.split(/\s+/).filter(Boolean);
+	            const mode = searchColumn ? searchColumn.value : 'all';
+	            const docFilterValue = docStatusFilter ? docStatusFilter.value : 'all';
+	            const batchCards = document.querySelectorAll('.table-wrapper > .card');
+
+	            batchCards.forEach(card => {
+	                const table = card.querySelector('.user-batch-table');
+	                if (!table) return;
+
+	                const rows = table.querySelectorAll('tbody tr');
+	                let visibleCount = 0;
+
+	                rows.forEach(row => {
+	                    const haystack = getRowSearchValue(row, mode);
+	                    const docAttrMap = {
+	                        missing_ktp: 'data-has-ktp',
+	                        missing_sim: 'data-has-sim',
+	                        missing_kta: 'data-has-kta',
+	                        missing_skb: 'data-has-skb',
+	                        missing_sertifikat_heli: 'data-has-sertifikat-heli',
+	                        missing_sertifikat_operasi: 'data-has-sertifikat-operasi',
+	                        missing_dokumen_lainnya: 'data-has-dokumen-lainnya'
+	                    };
+	                    const matchesSearch = terms.length === 0 ? true : terms.every(t => haystack.includes(t));
+	                    const docAttr = docAttrMap[docFilterValue] || '';
+	                    const matchesDocFilter = docAttr ? row.getAttribute(docAttr) !== '1' : true;
+	                    const isMatch = matchesSearch && matchesDocFilter;
+
+	                    if (isMatch) {
+	                        row.style.display = '';
+	                        visibleCount++;
+	                    } else {
+	                        row.style.display = 'none';
+	                    }
+	                });
+
+	                const batchCountEl = card.querySelector('.batch-count');
+	                if (batchCountEl) {
+	                    batchCountEl.textContent = `(${visibleCount} user)`;
+	                }
+
+	                card.style.display = visibleCount === 0 ? 'none' : '';
+	            });
 	        }
 
 	        if (searchInput) {
@@ -784,78 +861,31 @@ uksort($usersByBatch, function ($a, $b) {
 	            if (searchColumn) {
 	                searchColumn.addEventListener('change', function() {
 	                    updateSearchPlaceholder();
-	                    searchInput.dispatchEvent(new Event('input', {bubbles: true}));
+	                    applyUserFilters();
 	                });
 	            }
 
-		            searchInput.addEventListener('input', function() {
-		                const keyword = this.value.toLowerCase().trim();
-		                const terms = keyword.split(/\s+/).filter(Boolean);
-		                const mode = searchColumn ? searchColumn.value : 'all';
-		                const batchCards = document.querySelectorAll('.table-wrapper > .card');
-
-		                // Saat searching, tampilkan semua baris di DataTables
-		                const isSearching = terms.length > 0;
-		                dataTableInstances.forEach(({dataTable}) => {
-		                    dataTable.page.len(isSearching ? -1 : 10).draw(false);
-		                });
-
-                batchCards.forEach(card => {
-                    const table = card.querySelector('.user-batch-table');
-                    if (!table) return;
-
-                    const rows = table.querySelectorAll('tbody tr');
-                    let visibleCount = 0;
-
-		                    rows.forEach(row => {
-		                        const getAttr = (attr) => (row.getAttribute(attr) || '');
-		                        let haystack = '';
-
-		                        switch (mode) {
-		                            case 'name':
-		                                haystack = getAttr('data-search-name');
-		                                break;
-		                            case 'position':
-		                                haystack = getAttr('data-search-position');
-		                                break;
-		                            case 'role':
-		                                haystack = getAttr('data-search-role');
-		                                break;
-		                            case 'division':
-		                                haystack = getAttr('data-search-division');
-		                                break;
-		                            case 'docs':
-		                                haystack = getAttr('data-search-docs');
-		                                break;
-		                            case 'join':
-		                                haystack = getAttr('data-search-join');
-		                                break;
-		                            case 'all':
-		                            default:
-		                                haystack = getAttr('data-search-all');
-		                                break;
-		                        }
-
-		                        // Cari berdasarkan nama + dokumen (mendukung multi-kata: "yora ktp")
-		                        const isMatch = terms.length === 0 ? true : terms.every(t => haystack.includes(t));
-
-		                        if (isMatch) {
-	                            row.style.display = '';
-	                            visibleCount++;
-	                        } else {
-	                            row.style.display = 'none';
-	                        }
-	                    });
-
-                    // Sembunyikan card batch jika tidak ada user yang cocok
-                    if (visibleCount === 0) {
-                        card.style.display = 'none';
-                    } else {
-                        card.style.display = '';
-                    }
-                });
-            });
-        }
+		            searchInput.addEventListener('input', applyUserFilters);
+	            if (docStatusFilter) {
+	                docStatusFilter.addEventListener('change', applyUserFilters);
+	            }
+	            if (clearFilterButton) {
+	                clearFilterButton.addEventListener('click', function() {
+	                    if (docStatusFilter) {
+	                        docStatusFilter.value = 'all';
+	                    }
+	                    if (searchColumn) {
+	                        searchColumn.value = 'all';
+	                    }
+	                    if (searchInput) {
+	                        searchInput.value = '';
+	                    }
+	                    updateSearchPlaceholder();
+	                    applyUserFilters();
+	                });
+	            }
+	            applyUserFilters();
+	        }
 
         // auto hide notif
         setTimeout(function() {
@@ -1020,22 +1050,7 @@ uksort($usersByBatch, function ($a, $b) {
         }
 
         function getDataTableInstance(table) {
-            if (!table || !window.jQuery || !jQuery.fn || !jQuery.fn.DataTable) {
-                return null;
-            }
-
-            const checker =
-                (jQuery.fn.dataTable && typeof jQuery.fn.dataTable.isDataTable === 'function')
-                    ? jQuery.fn.dataTable.isDataTable
-                    : ((jQuery.fn.DataTable && typeof jQuery.fn.DataTable.isDataTable === 'function')
-                        ? jQuery.fn.DataTable.isDataTable
-                        : null);
-
-            if (!checker || !checker(table)) {
-                return null;
-            }
-
-            return jQuery(table).DataTable();
+            return null;
         }
 
         function collectVisibleRows(table) {
@@ -1045,21 +1060,7 @@ uksort($usersByBatch, function ($a, $b) {
         }
 
         function withExpandedTable(table, work) {
-            const dt = getDataTableInstance(table);
-            let originalLength = null;
-
-            if (dt) {
-                originalLength = dt.page.len();
-                dt.page.len(-1).draw(false);
-            }
-
-            try {
-                return work();
-            } finally {
-                if (dt && originalLength !== null) {
-                    dt.page.len(originalLength).draw(false);
-                }
-            }
+            return work();
         }
 
         function downloadText(filename, content) {
@@ -1089,6 +1090,50 @@ uksort($usersByBatch, function ($a, $b) {
             const exportAllBtn = e.target.closest('#btnExportText');
             if (exportAllBtn) {
                 const sections = [];
+                const currentDocFilter = document.getElementById('docStatusFilter')?.value || 'all';
+                const exportMetaMap = {
+                    all: {
+                        title: 'Daftar User',
+                        empty: 'Tidak ada data untuk diexport.',
+                        filename: `daftar_medis_${exportTimestamp()}.txt`
+                    },
+                    missing_ktp: {
+                        title: 'Daftar User Belum Upload KTP',
+                        empty: 'Tidak ada user yang belum upload KTP untuk diexport.',
+                        filename: `daftar_user_belum_upload_ktp_${exportTimestamp()}.txt`
+                    },
+                    missing_sim: {
+                        title: 'Daftar User Belum Upload SIM',
+                        empty: 'Tidak ada user yang belum upload SIM untuk diexport.',
+                        filename: `daftar_user_belum_upload_sim_${exportTimestamp()}.txt`
+                    },
+                    missing_kta: {
+                        title: 'Daftar User Belum Upload KTA',
+                        empty: 'Tidak ada user yang belum upload KTA untuk diexport.',
+                        filename: `daftar_user_belum_upload_kta_${exportTimestamp()}.txt`
+                    },
+                    missing_skb: {
+                        title: 'Daftar User Belum Upload SKB',
+                        empty: 'Tidak ada user yang belum upload SKB untuk diexport.',
+                        filename: `daftar_user_belum_upload_skb_${exportTimestamp()}.txt`
+                    },
+                    missing_sertifikat_heli: {
+                        title: 'Daftar User Belum Upload Sertifikat Heli',
+                        empty: 'Tidak ada user yang belum upload Sertifikat Heli untuk diexport.',
+                        filename: `daftar_user_belum_upload_sertifikat_heli_${exportTimestamp()}.txt`
+                    },
+                    missing_sertifikat_operasi: {
+                        title: 'Daftar User Belum Upload Sertifikat Operasi',
+                        empty: 'Tidak ada user yang belum upload Sertifikat Operasi untuk diexport.',
+                        filename: `daftar_user_belum_upload_sertifikat_operasi_${exportTimestamp()}.txt`
+                    },
+                    missing_dokumen_lainnya: {
+                        title: 'Daftar User Belum Upload Dokumen Lainnya',
+                        empty: 'Tidak ada user yang belum upload Dokumen Lainnya untuk diexport.',
+                        filename: `daftar_user_belum_upload_dokumen_lainnya_${exportTimestamp()}.txt`
+                    }
+                };
+                const exportMeta = exportMetaMap[currentDocFilter] || exportMetaMap.all;
 
                 document.querySelectorAll('.user-batch-table').forEach(function(table) {
                     const batchCard = table.closest('.batch-card');
@@ -1120,11 +1165,11 @@ uksort($usersByBatch, function ($a, $b) {
                 });
 
                 if (!sections.length) {
-                    alert('Tidak ada data untuk diexport.');
+                    alert(exportMeta.empty);
                     return;
                 }
 
-                downloadText(`daftar_medis_${exportTimestamp()}.txt`, sections.join('\n\n') + '\n');
+                downloadText(exportMeta.filename, exportMeta.title + '\n\n' + sections.join('\n\n') + '\n');
                 return;
             }
 
