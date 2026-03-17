@@ -4111,16 +4111,27 @@ include __DIR__ . '/../partials/sidebar.php';
                     return;
                 }
 
-                const newestKey = `${newActivities[0].id}:${newActivities[0].timestamp}`;
+                const sortedActivities = newActivities.slice().sort(function(a, b) {
+                    const left = parseInt(a.timestamp || 0, 10);
+                    const right = parseInt(b.timestamp || 0, 10);
+
+                    if (left === right) {
+                        return String(b.id || '').localeCompare(String(a.id || ''));
+                    }
+
+                    return right - left;
+                });
+
+                const newestKey = `${sortedActivities[0].id}:${sortedActivities[0].timestamp}`;
 
                 // BUNYI HANYA JIKA ADA ACTIVITY BARU
                 lastActivityKey = newestKey;
                 isFirstLoad = false;
 
                 // ===== LOGIC LAMA TETAP =====
-                const trimmedActivities = newActivities.slice(0, MAX_ITEMS);
+                const trimmedActivities = sortedActivities.slice(0, MAX_ITEMS);
                 const newHash = JSON.stringify(trimmedActivities.map(function(activity) {
-                    return activity.id;
+                    return `${activity.id}:${activity.timestamp}`;
                 }));
                 if (newHash === lastActivityHash) return;
                 lastActivityHash = newHash;

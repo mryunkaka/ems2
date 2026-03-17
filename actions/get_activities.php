@@ -464,43 +464,7 @@ try {
         return $b['timestamp'] <=> $a['timestamp'];
     });
 
-    $selectedActivities = [];
-    $overflowActivities = [];
-    $sourceCaps = [
-        'farmasi' => 10,
-        'ems_service' => 6,
-    ];
-    $sourceCounts = [];
-
-    foreach ($activities as $activity) {
-        $source = strstr((string)$activity['id'], '-', true) ?: 'activity';
-        $sourceCounts[$source] = $sourceCounts[$source] ?? 0;
-        $cap = $sourceCaps[$source] ?? 2;
-
-        if ($sourceCounts[$source] < $cap && count($selectedActivities) < $maxItems) {
-            $selectedActivities[] = $activity;
-            $sourceCounts[$source]++;
-            continue;
-        }
-
-        $overflowActivities[] = $activity;
-    }
-
-    foreach ($overflowActivities as $activity) {
-        if (count($selectedActivities) >= $maxItems) {
-            break;
-        }
-        $selectedActivities[] = $activity;
-    }
-
-    $activities = $selectedActivities;
-
-    usort($activities, static function (array $a, array $b): int {
-        if ($a['timestamp'] === $b['timestamp']) {
-            return strcmp($b['id'], $a['id']);
-        }
-        return $b['timestamp'] <=> $a['timestamp'];
-    });
+    $activities = array_slice($activities, 0, $maxItems);
 
     foreach ($activities as &$activity) {
         $activity['time_ago'] = formatActivityTimeAgo((int)$activity['timestamp']);
