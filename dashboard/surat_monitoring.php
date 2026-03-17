@@ -24,9 +24,9 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
-function surat_monitoring_excerpt(?string $text, int $limit = 110): string
+function surat_monitoring_excerpt(?string $text, int $limit = 120): string
 {
-    $text = trim((string)$text);
+    $text = trim((string) $text);
     if ($text === '') {
         return '-';
     }
@@ -41,470 +41,388 @@ function surat_monitoring_excerpt(?string $text, int $limit = 110): string
 
 function surat_monitoring_status_meta(string $status): array
 {
-    return match ($status) {
-        'unread', 'draft', 'scheduled', 'ongoing', 'logged' => ['class' => 'badge-counter', 'label' => strtoupper($status)],
-        'read', 'done', 'completed', 'distributed', 'issued' => ['class' => 'badge-success', 'label' => strtoupper($status)],
-        'sealed', 'confidential' => ['class' => 'badge-warning', 'label' => strtoupper($status)],
+    return match (strtolower(trim($status))) {
+        'unread', 'draft', 'scheduled', 'ongoing' => ['class' => 'badge-counter', 'label' => strtoupper($status)],
+        'read', 'done', 'completed', 'issued' => ['class' => 'badge-success', 'label' => strtoupper($status)],
         'cancelled', 'archived' => ['class' => 'badge-danger', 'label' => strtoupper($status)],
         default => ['class' => 'badge-muted', 'label' => strtoupper($status !== '' ? $status : 'UNKNOWN')],
     };
 }
 
-function surat_monitoring_push_timeline(array &$items, string $type, string $title, string $subtitle, string $status, string $dateTime, string $icon): void
+function surat_monitoring_table_has_column(PDO $pdo, string $table, string $column): bool
 {
-    if ($dateTime === '') {
+    static $cache = [];
+    $key = $table . '.' . $column;
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$table, $column]);
+    $cache[$key] = (bool) $stmt->fetchColumn();
+
+    return $cache[$key];
+}
+
+function surat_monitoring_scope_label(string $division): string
+{
+    return $division !== '' ? $division : 'All Divisi';
+}
+
+function surat_monitoring_when(?string $date, ?string $time = null): string
+{
+    $date = trim((string) $date);
+    $time = trim((string) $time);
+    if ($date === '' && $time === '') {
+        return '-';
+    }
+
+    $raw = trim($date . ' ' . $time);
+    $timestamp = strtotime($raw);
+    if ($timestamp === false) {
+        return trim($date . ($time !== '' ? ' ' . substr($time, 0, 5) . ' WIB' : ''));
+    }
+
+    return date('d M Y H:i', $timestamp) . ' WIB';
+}
+
+function surat_monitoring_push_timeline(array &$items, string $type, string $title, string $subtitle, string $when, string $status, string $icon): void
+{
+    if ($when === '-') {
         return;
     }
 
+    $sortKey = strtotime(str_replace(' WIB', '', $when)) ?: time();
     $items[] = [
         'type' => $type,
         'title' => $title,
         'subtitle' => $subtitle,
+        'when' => $when,
         'status' => $status,
-        'datetime' => $dateTime,
         'icon' => $icon,
+        'sort_key' => $sortKey,
     ];
 }
 
+$scopeLabel = surat_monitoring_scope_label($division);
 $summary = [
     'incoming' => 0,
     'outgoing' => 0,
     'minutes' => 0,
-    'active_flows' => 0,
+    'priority' => 0,
 ];
 $incomingRows = [];
 $outgoingRows = [];
 $minutesRows = [];
-$agendaRows = [];
 $coordinationRows = [];
-$confidentialRows = [];
 $timelineItems = [];
 
 try {
-    $summary['incoming'] = (int)$pdo->query("SELECT COUNT(*) FROM incoming_letters")->fetchColumn();
-    $summary['outgoing'] = (int)$pdo->query("SELECT COUNT(*) FROM outgoing_letters")->fetchColumn();
-    $summary['minutes'] = (int)$pdo->query("SELECT COUNT(*) FROM meeting_minutes")->fetchColumn();
+    $hasIncomingDivisionScope = surat_monitoring_table_has_column($pdo, 'incoming_letters', 'division_scope');
+    $hasOutgoingDivisionScope = surat_monitoring_table_has_column($pdo, 'outgoing_letters', 'division_scope');
+    $hasMinutesDivisionScope = surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'division_scope');
 
-    $incomingRows = $pdo->query("
+    $incomingFilter = $hasIncomingDivisionScope ? "WHERE (l.division_scope = 'All Divisi' OR l.division_scope = :scope)" : '';
+    $outgoingFilter = $hasOutgoingDivisionScope ? "WHERE (o.division_scope = 'All Divisi' OR o.division_scope = :scope)" : '';
+    $minutesFilter = $hasMinutesDivisionScope ? "WHERE (m.division_scope = 'All Divisi' OR m.division_scope = :scope)" : '';
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM incoming_letters l {$incomingFilter}");
+    $stmt->execute($hasIncomingDivisionScope ? ['scope' => $scopeLabel] : []);
+    $summary['incoming'] = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM outgoing_letters o {$outgoingFilter}");
+    $stmt->execute($hasOutgoingDivisionScope ? ['scope' => $scopeLabel] : []);
+    $summary['outgoing'] = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM meeting_minutes m {$minutesFilter}");
+    $stmt->execute($hasMinutesDivisionScope ? ['scope' => $scopeLabel] : []);
+    $summary['minutes'] = (int) $stmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
         SELECT
-            id,
-            letter_code,
-            institution_name,
-            sender_name,
-            sender_phone,
-            meeting_topic,
-            notes,
-            status,
-            appointment_date,
-            appointment_time,
-            target_name_snapshot,
-            submitted_at
-        FROM incoming_letters
-        ORDER BY submitted_at DESC
+            l.id,
+            l.letter_code,
+            l.institution_name,
+            l.sender_name,
+            l.sender_phone,
+            l.meeting_topic,
+            l.notes,
+            l.status,
+            l.appointment_date,
+            l.appointment_time,
+            l.target_name_snapshot,
+            l.submitted_at,
+            " . ($hasIncomingDivisionScope ? "l.division_scope" : "'All Divisi'") . " AS division_scope
+        FROM incoming_letters l
+        {$incomingFilter}
+        ORDER BY CASE WHEN l.status = 'unread' THEN 0 ELSE 1 END, l.submitted_at DESC
         LIMIT 8
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $stmt->execute($hasIncomingDivisionScope ? ['scope' => $scopeLabel] : []);
+    $incomingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $outgoingRows = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT
-            id,
-            outgoing_code,
-            institution_name,
-            recipient_name,
-            recipient_contact,
-            subject,
-            letter_body,
-            appointment_date,
-            appointment_time,
-            created_at
-        FROM outgoing_letters
-        ORDER BY created_at DESC
+            o.id,
+            o.outgoing_code,
+            o.institution_name,
+            o.recipient_name,
+            o.recipient_contact,
+            o.subject,
+            o.letter_body,
+            o.appointment_date,
+            o.appointment_time,
+            o.created_at,
+            " . ($hasOutgoingDivisionScope ? "o.division_scope" : "'All Divisi'") . " AS division_scope,
+            " . (surat_monitoring_table_has_column($pdo, 'outgoing_letters', 'revision_label') ? "o.revision_label" : "NULL") . " AS revision_label
+        FROM outgoing_letters o
+        {$outgoingFilter}
+        ORDER BY o.created_at DESC
         LIMIT 8
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $stmt->execute($hasOutgoingDivisionScope ? ['scope' => $scopeLabel] : []);
+    $outgoingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $minutesRows = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT
-            id,
-            meeting_title,
-            meeting_date,
-            meeting_time,
-            participants,
-            summary,
-            decisions,
-            follow_up,
-            created_at
-        FROM meeting_minutes
-        ORDER BY meeting_date DESC, meeting_time DESC, created_at DESC
+            m.id,
+            m.meeting_title,
+            m.meeting_date,
+            m.meeting_time,
+            m.participants,
+            m.summary,
+            m.decisions,
+            m.follow_up,
+            m.created_at,
+            " . ($hasMinutesDivisionScope ? "m.division_scope" : "'All Divisi'") . " AS division_scope,
+            " . (surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'revision_label') ? "m.revision_label" : "NULL") . " AS revision_label
+        FROM meeting_minutes m
+        {$minutesFilter}
+        ORDER BY m.meeting_date DESC, m.meeting_time DESC, m.created_at DESC
         LIMIT 8
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $stmt->execute($hasMinutesDivisionScope ? ['scope' => $scopeLabel] : []);
+    $minutesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, title, division_scope, coordination_date, start_time, status, summary_notes, follow_up_notes
+            FROM secretary_internal_coordinations
+            WHERE division_scope = 'All Divisi' OR division_scope = ?
+            ORDER BY coordination_date DESC, start_time DESC, id DESC
+            LIMIT 6
+        ");
+        $stmt->execute([$scopeLabel]);
+        $coordinationRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        $coordinationRows = [];
+    }
+
+    $summary['priority'] = count(array_filter($incomingRows, static fn($row) => ($row['status'] ?? '') === 'unread')) + count($minutesRows) + count($coordinationRows);
+
+    foreach ($incomingRows as $row) {
+        surat_monitoring_push_timeline($timelineItems, 'surat_masuk', (string) ($row['meeting_topic'] ?: 'Surat masuk baru'), (string) ($row['institution_name'] ?: '-'), surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), (string) ($row['status'] ?: 'unread'), 'inbox');
+    }
+
+    foreach ($outgoingRows as $row) {
+        surat_monitoring_push_timeline($timelineItems, 'surat_keluar', (string) ($row['subject'] ?: 'Surat keluar'), (string) ($row['institution_name'] ?: '-'), surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), 'issued', 'paper-airplane');
+    }
+
+    foreach ($minutesRows as $row) {
+        surat_monitoring_push_timeline($timelineItems, 'notulen', (string) ($row['meeting_title'] ?: 'Notulen'), surat_monitoring_excerpt((string) ($row['summary'] ?? ''), 70), surat_monitoring_when($row['meeting_date'] ?? '', $row['meeting_time'] ?? ''), 'done', 'clipboard-document-list');
+    }
+
+    usort($timelineItems, static fn($a, $b) => ($b['sort_key'] ?? 0) <=> ($a['sort_key'] ?? 0));
+    $timelineItems = array_slice($timelineItems, 0, 9);
 } catch (Throwable $e) {
-    $errors[] = 'Data surat utama belum siap untuk ditampilkan penuh.';
+    $errors[] = 'Data monitoring surat belum siap. Pastikan struktur tabel terbaru sudah dijalankan.';
 }
-
-try {
-    $agendaRows = $pdo->query("
-        SELECT agenda_code, visitor_name, origin_name, visit_date, visit_time, location, status
-        FROM secretary_visit_agendas
-        ORDER BY visit_date DESC, visit_time DESC, id DESC
-        LIMIT 6
-    ")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    $agendaRows = [];
-}
-
-try {
-    $coordinationRows = $pdo->query("
-        SELECT coordination_code, title, division_scope, coordination_date, start_time, status
-        FROM secretary_internal_coordinations
-        ORDER BY coordination_date DESC, start_time DESC, id DESC
-        LIMIT 6
-    ")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    $coordinationRows = [];
-}
-
-try {
-    $confidentialRows = $pdo->query("
-        SELECT confidential_code, subject, letter_direction, letter_date, confidentiality_level, status
-        FROM secretary_confidential_letters
-        ORDER BY letter_date DESC, id DESC
-        LIMIT 6
-    ")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Throwable $e) {
-    $confidentialRows = [];
-}
-
-$summary['active_flows'] =
-    count(array_filter($incomingRows, static fn($row) => ($row['status'] ?? '') === 'unread')) +
-    count($agendaRows) +
-    count($coordinationRows);
-
-foreach ($incomingRows as $row) {
-    surat_monitoring_push_timeline(
-        $timelineItems,
-        'Incoming',
-        (string)($row['letter_code'] ?? 'Incoming Letter'),
-        trim((string)($row['institution_name'] ?? '-') . ' · ' . (string)($row['meeting_topic'] ?? '-')),
-        (string)($row['status'] ?? 'unread'),
-        (string)($row['submitted_at'] ?? ''),
-        'inbox'
-    );
-}
-
-foreach ($outgoingRows as $row) {
-    surat_monitoring_push_timeline(
-        $timelineItems,
-        'Outgoing',
-        (string)($row['outgoing_code'] ?? 'Outgoing Letter'),
-        trim((string)($row['institution_name'] ?? '-') . ' · ' . (string)($row['subject'] ?? '-')),
-        'issued',
-        (string)($row['created_at'] ?? ''),
-        'arrow-right-circle'
-    );
-}
-
-foreach ($minutesRows as $row) {
-    surat_monitoring_push_timeline(
-        $timelineItems,
-        'Minutes',
-        (string)($row['meeting_title'] ?? 'Meeting Minutes'),
-        surat_monitoring_excerpt((string)($row['summary'] ?? '-'), 90),
-        'completed',
-        (string)($row['created_at'] ?? ''),
-        'clipboard-document-list'
-    );
-}
-
-usort($timelineItems, static function (array $left, array $right): int {
-    return strtotime($right['datetime']) <=> strtotime($left['datetime']);
-});
-$timelineItems = array_slice($timelineItems, 0, 12);
 
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
-<section class="content">
-    <div class="page page-shell">
-        <div class="surat-monitoring-hero card card-section mb-4">
-            <div class="surat-monitoring-hero__copy">
-                <div class="surat-monitoring-kicker">Secretary Bridge View</div>
-                <h1 class="page-title mb-2"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
-                <p class="page-subtitle mb-0">
-                    Pemantauan arus informasi antar division, internal ke executive, dan internal ke instansi eksternal dalam satu layar ringkas.
-                </p>
+<section class="content surat-monitor-page">
+    <div class="page surat-monitor-shell">
+        <div class="surat-focus-hero">
+            <div>
+                <div class="surat-focus-kicker">Monitoring Khusus Divisi</div>
+                <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
+                <p class="page-subtitle">Halaman ini hanya menampilkan surat masuk, surat keluar, notulen, dan koordinasi yang relevan untuk divisi <strong><?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
             </div>
-            <div class="surat-monitoring-legend">
-                <div class="surat-legend-item"><span class="surat-legend-item__dot surat-legend-item__dot--incoming"></span> Surat masuk</div>
-                <div class="surat-legend-item"><span class="surat-legend-item__dot surat-legend-item__dot--outgoing"></span> Surat keluar</div>
-                <div class="surat-legend-item"><span class="surat-legend-item__dot surat-legend-item__dot--minutes"></span> Notulen</div>
+            <div class="surat-scope-card">
+                <div class="surat-scope-label">Scope Aktif</div>
+                <div class="surat-scope-value"><?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></div>
+                <div class="surat-scope-note">Data `All Divisi` tetap tampil untuk semua divisi.</div>
             </div>
         </div>
 
         <?php foreach ($messages as $message): ?>
-            <div class="alert alert-info"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
+            <div class="alert alert-info"><?= htmlspecialchars((string) $message, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>
         <?php foreach ($errors as $error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars((string)$error, ENT_QUOTES, 'UTF-8') ?></div>
+            <div class="alert alert-error"><?= htmlspecialchars((string) $error, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>
 
-        <div class="stats-grid mb-4">
-            <?php
-            ems_component('ui/statistic-card', ['label' => 'Surat Masuk', 'value' => $summary['incoming'], 'icon' => 'inbox', 'tone' => 'primary']);
-            ems_component('ui/statistic-card', ['label' => 'Surat Keluar', 'value' => $summary['outgoing'], 'icon' => 'arrow-right-circle', 'tone' => 'success']);
-            ems_component('ui/statistic-card', ['label' => 'Notulen', 'value' => $summary['minutes'], 'icon' => 'clipboard-document-list', 'tone' => 'warning']);
-            ems_component('ui/statistic-card', ['label' => 'Flow Aktif', 'value' => $summary['active_flows'], 'icon' => 'clock', 'tone' => 'muted']);
-            ?>
+        <div class="surat-stat-grid">
+            <?php ems_component('ui/statistic-card', ['label' => 'Surat Masuk Relevan', 'value' => $summary['incoming'], 'icon' => 'inbox', 'tone' => 'warning']); ?>
+            <?php ems_component('ui/statistic-card', ['label' => 'Surat Keluar Relevan', 'value' => $summary['outgoing'], 'icon' => 'paper-airplane', 'tone' => 'primary']); ?>
+            <?php ems_component('ui/statistic-card', ['label' => 'Notulen Relevan', 'value' => $summary['minutes'], 'icon' => 'clipboard-document-list', 'tone' => 'success']); ?>
+            <?php ems_component('ui/statistic-card', ['label' => 'Item Prioritas', 'value' => $summary['priority'], 'icon' => 'exclamation-triangle', 'tone' => 'danger']); ?>
         </div>
 
-        <div class="card card-section surat-search-panel mb-4">
-            <div class="surat-search-panel__copy">
-                <div class="card-header">Pencarian Surat</div>
-                <p class="meta-text mt-1 mb-0">Cari surat masuk, surat keluar, dan notulen langsung dari halaman monitoring.</p>
-            </div>
-            <div class="surat-search-panel__field">
-                <input
-                    type="search"
-                    id="suratMonitoringSearch"
-                    class="form-control"
-                    placeholder="Cari kode surat, instansi, pengirim, penerima, topik, atau notulen..."
-                    autocomplete="off">
+        <div class="card surat-search-card">
+            <div class="surat-search-header">
+                <div>
+                    <div class="card-header">Pencarian Cepat</div>
+                    <p class="meta-text">Cari instansi, topik, judul notulen, atau isi ringkas tanpa harus membaca semua kartu.</p>
+                </div>
+                <label class="surat-search-input">
+                    <?= ems_icon('magnifying-glass', 'h-5 w-5') ?>
+                    <input type="search" id="suratMonitoringSearch" placeholder="Cari data monitoring divisi ini...">
+                </label>
             </div>
         </div>
 
-        <div class="surat-monitoring-layout">
-            <div class="surat-monitoring-main">
-                <div class="card card-section surat-panel mb-4">
-                    <div class="card-header-between">
+        <div class="surat-focus-layout">
+            <div class="surat-focus-grid">
+                <div class="card surat-focus-card">
+                    <div class="surat-card-head">
                         <div>
-                            <div class="card-header">Alur Informasi Terkini</div>
-                            <p class="meta-text mt-1">Urutan terbaru dari surat masuk, surat keluar, dan notulen yang menjadi jembatan antar division.</p>
+                            <div class="card-header">Prioritas Hari Ini</div>
+                            <p class="meta-text">Ringkasan cepat untuk item yang paling relevan bagi divisi ini.</p>
                         </div>
-                        <span class="badge-counter"><?= count($timelineItems) ?> item</span>
                     </div>
-
-                    <div class="surat-panel__body surat-panel__body--timeline" data-search-scope="timeline">
-                    <div class="surat-timeline">
+                    <div class="surat-spotlight-list">
                         <?php if ($timelineItems): ?>
-                            <?php foreach ($timelineItems as $item): ?>
-                                <?php $meta = surat_monitoring_status_meta((string)$item['status']); ?>
-                                <article
-                                    class="surat-timeline-item surat-search-item"
-                                    data-search="<?= htmlspecialchars(strtolower(trim((string)$item['type'] . ' ' . (string)$item['title'] . ' ' . (string)$item['subtitle'] . ' ' . (string)$item['status'])), ENT_QUOTES, 'UTF-8') ?>">
-                                    <div class="surat-timeline-item__icon">
-                                        <?= ems_icon((string)$item['icon'], 'h-4 w-4') ?>
-                                    </div>
-                                    <div class="surat-timeline-item__body">
-                                        <div class="surat-timeline-item__head">
-                                            <div>
-                                                <div class="surat-timeline-item__type"><?= htmlspecialchars((string)$item['type'], ENT_QUOTES, 'UTF-8') ?></div>
-                                                <h3 class="surat-timeline-item__title"><?= htmlspecialchars((string)$item['title'], ENT_QUOTES, 'UTF-8') ?></h3>
-                                            </div>
-                                            <span class="<?= htmlspecialchars($meta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php foreach ($timelineItems as $item): $statusMeta = surat_monitoring_status_meta($item['status']); ?>
+                                <article class="surat-spotlight-item surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower($item['title'] . ' ' . $item['subtitle'] . ' ' . $item['type']), ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="surat-spotlight-icon"><?= ems_icon($item['icon'], 'h-5 w-5') ?></div>
+                                    <div class="surat-spotlight-body">
+                                        <div class="surat-spotlight-top">
+                                            <h3><?= htmlspecialchars($item['title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                            <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
                                         </div>
-                                        <p class="surat-timeline-item__subtitle"><?= htmlspecialchars((string)$item['subtitle'], ENT_QUOTES, 'UTF-8') ?></p>
-                                        <div class="surat-timeline-item__time"><?= htmlspecialchars(date('d M Y H:i', strtotime((string)$item['datetime'])), ENT_QUOTES, 'UTF-8') ?> WIB</div>
+                                        <p><?= htmlspecialchars($item['subtitle'], ENT_QUOTES, 'UTF-8') ?></p>
+                                        <div class="surat-spotlight-meta"><?= htmlspecialchars($item['when'], ENT_QUOTES, 'UTF-8') ?></div>
                                     </div>
                                 </article>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <div class="medical-document-card__empty">Belum ada alur surat yang bisa ditampilkan.</div>
+                            <div class="empty-state">Belum ada aktivitas monitoring untuk divisi ini.</div>
                         <?php endif; ?>
-                    </div>
-                    <div class="medical-document-card__empty surat-search-empty hidden">Tidak ada hasil yang cocok pada alur informasi.</div>
                     </div>
                 </div>
 
-                <div class="surat-monitoring-split">
-                    <div class="card card-section surat-panel">
-                        <div class="card-header">Surat Masuk Terbaru</div>
-                        <div class="surat-panel__body surat-panel__body--feed" data-search-scope="incoming">
-                        <div class="surat-feed">
-                            <?php foreach ($incomingRows as $row): ?>
-                                <?php $meta = surat_monitoring_status_meta((string)($row['status'] ?? '')); ?>
-                                <button
-                                    type="button"
-                                    class="surat-feed-item surat-feed-item--button btn-open-letter-modal surat-search-item"
-                                    data-search="<?= htmlspecialchars(strtolower(trim(
-                                        (string)($row['letter_code'] ?? '') . ' ' .
-                                        (string)($row['institution_name'] ?? '') . ' ' .
-                                        (string)($row['sender_name'] ?? '') . ' ' .
-                                        (string)($row['sender_phone'] ?? '') . ' ' .
-                                        (string)($row['meeting_topic'] ?? '') . ' ' .
-                                        (string)($row['notes'] ?? '') . ' ' .
-                                        (string)($row['target_name_snapshot'] ?? '') . ' ' .
-                                        (string)($row['status'] ?? '')
-                                    )), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-letter-kind="incoming"
-                                    data-title="<?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-code="<?= htmlspecialchars((string)$row['letter_code'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-status="<?= htmlspecialchars((string)$meta['label'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-primary="<?= htmlspecialchars((string)$row['meeting_topic'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-secondary="<?= htmlspecialchars((string)($row['notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-meta-left="<?= htmlspecialchars((string)$row['sender_name'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-meta-right="<?= htmlspecialchars((string)($row['sender_phone'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-date="<?= htmlspecialchars((string)$row['appointment_date'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-time="<?= htmlspecialchars((string)(substr((string)$row['appointment_time'], 0, 5)), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-target="<?= htmlspecialchars((string)($row['target_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-created="<?= htmlspecialchars(date('d M Y H:i', strtotime((string)$row['submitted_at'])), ENT_QUOTES, 'UTF-8') ?>">
-                                    <div class="surat-feed-item__title-row">
-                                        <strong><?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                        <span class="<?= htmlspecialchars($meta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></span>
-                                    </div>
-                                    <div class="meta-text-xs"><?= htmlspecialchars((string)$row['letter_code'], ENT_QUOTES, 'UTF-8') ?> · Pengirim: <?= htmlspecialchars((string)$row['sender_name'], ENT_QUOTES, 'UTF-8') ?></div>
-                                    <p class="surat-feed-item__copy"><?= htmlspecialchars(surat_monitoring_excerpt((string)$row['meeting_topic'], 120), ENT_QUOTES, 'UTF-8') ?></p>
-                                    <div class="surat-feed-item__foot">
-                                        <span>Tujuan: <?= htmlspecialchars((string)($row['target_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></span>
-                                        <span><?= htmlspecialchars(date('d M H:i', strtotime((string)$row['submitted_at'])), ENT_QUOTES, 'UTF-8') ?></span>
-                                    </div>
-                                </button>
-                            <?php endforeach; ?>
+                <div class="surat-feed-grid">
+                    <div class="card surat-focus-card">
+                        <div class="surat-card-head">
+                            <div class="card-header">Surat Masuk Untuk Scope Ini</div>
+                            <span class="badge-muted"><?= count($incomingRows) ?> item</span>
                         </div>
-                        <div class="medical-document-card__empty surat-search-empty hidden">Tidak ada surat masuk yang cocok dengan pencarian.</div>
+                        <div class="surat-capsule-list">
+                            <?php if ($incomingRows): ?>
+                                <?php foreach ($incomingRows as $row): $statusMeta = surat_monitoring_status_meta((string) ($row['status'] ?? 'unread')); ?>
+                                    <article class="surat-capsule surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['institution_name'] ?? '') . ' ' . ($row['meeting_topic'] ?? '') . ' ' . ($row['notes'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                        <div class="surat-capsule-top">
+                                            <div>
+                                                <div class="surat-capsule-title"><?= htmlspecialchars((string) ($row['meeting_topic'] ?: 'Surat Masuk'), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="surat-capsule-subtitle"><?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                            <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        </div>
+                                        <div class="surat-capsule-text"><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['notes'] ?? ''), 120), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="surat-capsule-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Masuk" data-title="<?= htmlspecialchars((string) ($row['meeting_topic'] ?: 'Surat Masuk'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['letter_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['sender_name'] ?: '-') . ' | ' . (string) ($row['sender_phone'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
+                                    </article>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="empty-state">Tidak ada surat masuk untuk divisi ini.</div>
+                            <?php endif; ?>
                         </div>
                     </div>
 
-                    <div class="card card-section surat-panel">
-                        <div class="card-header">Surat Keluar & Follow Up</div>
-                        <div class="surat-panel__body surat-panel__body--feed" data-search-scope="outgoing">
-                        <div class="surat-feed">
-                            <?php foreach ($outgoingRows as $row): ?>
-                                <button
-                                    type="button"
-                                    class="surat-feed-item surat-feed-item--button btn-open-letter-modal surat-search-item"
-                                    data-search="<?= htmlspecialchars(strtolower(trim(
-                                        (string)($row['outgoing_code'] ?? '') . ' ' .
-                                        (string)($row['institution_name'] ?? '') . ' ' .
-                                        (string)($row['recipient_name'] ?? '') . ' ' .
-                                        (string)($row['recipient_contact'] ?? '') . ' ' .
-                                        (string)($row['subject'] ?? '') . ' ' .
-                                        (string)($row['letter_body'] ?? '')
-                                    )), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-letter-kind="outgoing"
-                                    data-title="<?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-code="<?= htmlspecialchars((string)$row['outgoing_code'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-status="ISSUED"
-                                    data-primary="<?= htmlspecialchars((string)$row['subject'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-secondary="<?= htmlspecialchars((string)($row['letter_body'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-meta-left="<?= htmlspecialchars((string)($row['recipient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-meta-right="<?= htmlspecialchars((string)($row['recipient_contact'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-date="<?= htmlspecialchars((string)($row['appointment_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-time="<?= htmlspecialchars((string)($row['appointment_time'] ? substr((string)$row['appointment_time'], 0, 5) : '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-target="<?= htmlspecialchars((string)($row['recipient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                    data-created="<?= htmlspecialchars(date('d M Y H:i', strtotime((string)$row['created_at'])), ENT_QUOTES, 'UTF-8') ?>">
-                                    <div class="surat-feed-item__title-row">
-                                        <strong><?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                        <span class="badge-success">ISSUED</span>
-                                    </div>
-                                    <div class="meta-text-xs"><?= htmlspecialchars((string)$row['outgoing_code'], ENT_QUOTES, 'UTF-8') ?> · Tujuan: <?= htmlspecialchars((string)($row['recipient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <p class="surat-feed-item__copy"><?= htmlspecialchars(surat_monitoring_excerpt((string)$row['subject'], 120), ENT_QUOTES, 'UTF-8') ?></p>
-                                    <div class="surat-feed-item__foot">
-                                        <span><?= htmlspecialchars((string)($row['appointment_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars($row['appointment_time'] ? substr((string)$row['appointment_time'], 0, 5) : '', ENT_QUOTES, 'UTF-8') ?></span>
-                                        <span><?= htmlspecialchars(date('d M H:i', strtotime((string)$row['created_at'])), ENT_QUOTES, 'UTF-8') ?></span>
-                                    </div>
-                                </button>
-                            <?php endforeach; ?>
+                    <div class="card surat-focus-card">
+                        <div class="surat-card-head">
+                            <div class="card-header">Surat Keluar Divisi</div>
+                            <span class="badge-muted"><?= count($outgoingRows) ?> item</span>
                         </div>
-                        <div class="medical-document-card__empty surat-search-empty hidden">Tidak ada surat keluar yang cocok dengan pencarian.</div>
+                        <div class="surat-capsule-list">
+                            <?php if ($outgoingRows): ?>
+                                <?php foreach ($outgoingRows as $row): ?>
+                                    <article class="surat-capsule surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['institution_name'] ?? '') . ' ' . ($row['subject'] ?? '') . ' ' . ($row['letter_body'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                        <div class="surat-capsule-top">
+                                            <div>
+                                                <div class="surat-capsule-title"><?= htmlspecialchars((string) ($row['subject'] ?: 'Surat Keluar'), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="surat-capsule-subtitle"><?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                            <span class="badge-success"><?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?></span>
+                                        </div>
+                                        <div class="surat-capsule-text"><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['letter_body'] ?? ''), 120), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="surat-capsule-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Keluar" data-title="<?= htmlspecialchars((string) ($row['subject'] ?: 'Surat Keluar'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['outgoing_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['recipient_name'] ?: '-') . ' | ' . (string) ($row['recipient_contact'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['letter_body'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
+                                    </article>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div class="empty-state">Belum ada surat keluar pada scope ini.</div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <aside class="surat-monitoring-side">
-                <div class="card card-section surat-panel mb-4">
-                    <div class="card-header">Notulen Terakhir</div>
-                    <div class="surat-panel__body surat-panel__body--feed" data-search-scope="minutes">
-                    <div class="surat-feed">
-                        <?php foreach ($minutesRows as $row): ?>
-                            <button
-                                type="button"
-                                class="surat-feed-item surat-feed-item--button btn-view-minutes surat-search-item"
-                                data-search="<?= htmlspecialchars(strtolower(trim(
-                                    (string)($row['meeting_title'] ?? '') . ' ' .
-                                    (string)($row['meeting_date'] ?? '') . ' ' .
-                                    (string)($row['participants'] ?? '') . ' ' .
-                                    (string)($row['summary'] ?? '') . ' ' .
-                                    (string)($row['decisions'] ?? '') . ' ' .
-                                    (string)($row['follow_up'] ?? '')
-                                )), ENT_QUOTES, 'UTF-8') ?>"
-                                data-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-date="<?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-time="<?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5), ENT_QUOTES, 'UTF-8') ?>"
-                                data-created-by="<?= htmlspecialchars(date('d M Y H:i', strtotime((string)$row['created_at'])), ENT_QUOTES, 'UTF-8') ?>"
-                                data-participants="<?= htmlspecialchars((string)$row['participants'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-summary="<?= htmlspecialchars((string)$row['summary'], ENT_QUOTES, 'UTF-8') ?>"
-                                data-decisions="<?= htmlspecialchars((string)($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
-                                data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>">
-                                <div class="surat-feed-item__title-row">
-                                    <strong><?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                    <span class="badge-success">MINUTES</span>
-                                </div>
-                                <div class="meta-text-xs"><?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?> <?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5), ENT_QUOTES, 'UTF-8') ?> WIB</div>
-                                <p class="surat-feed-item__copy"><?= htmlspecialchars(surat_monitoring_excerpt((string)$row['summary'], 130), ENT_QUOTES, 'UTF-8') ?></p>
-                                <div class="surat-feed-item__foot">
-                                    <span><?= htmlspecialchars(surat_monitoring_excerpt((string)$row['participants'], 50), ENT_QUOTES, 'UTF-8') ?></span>
-                                </div>
-                            </button>
-                        <?php endforeach; ?>
+            <aside class="surat-focus-side">
+                <div class="card surat-focus-card">
+                    <div class="surat-card-head">
+                        <div class="card-header">Notulen Yang Di-tag ke Divisi Ini</div>
+                        <span class="badge-muted"><?= count($minutesRows) ?> item</span>
                     </div>
-                    <div class="medical-document-card__empty surat-search-empty hidden">Tidak ada notulen yang cocok dengan pencarian.</div>
-                    </div>
-                </div>
-
-                <div class="card card-section surat-panel mb-4">
-                    <div class="card-header">Agenda Kunjungan</div>
-                    <div class="surat-panel__body surat-panel__body--compact">
-                    <div class="surat-feed surat-feed--compact">
-                        <?php if ($agendaRows): ?>
-                            <?php foreach ($agendaRows as $row): ?>
-                                <?php $meta = surat_monitoring_status_meta((string)($row['status'] ?? '')); ?>
-                                <div class="surat-mini-row">
-                                    <div>
-                                        <strong><?= htmlspecialchars((string)$row['visitor_name'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                        <div class="meta-text-xs"><?= htmlspecialchars((string)($row['origin_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars((string)$row['location'], ENT_QUOTES, 'UTF-8') ?></div>
+                    <div class="surat-mini-list">
+                        <?php if ($minutesRows): ?>
+                            <?php foreach ($minutesRows as $row): ?>
+                                <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['meeting_title'] ?? '') . ' ' . ($row['summary'] ?? '') . ' ' . ($row['participants'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="surat-mini-top">
+                                        <h3><?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?></h3>
+                                        <span class="badge-success"><?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
-                                    <div class="text-right">
-                                        <span class="<?= htmlspecialchars($meta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></span>
-                                        <div class="meta-text-xs mt-1"><?= htmlspecialchars((string)$row['visit_date'], ENT_QUOTES, 'UTF-8') ?></div>
-                                    </div>
-                                </div>
+                                    <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['summary'] ?? ''), 100), ENT_QUOTES, 'UTF-8') ?></p>
+                                    <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['meeting_date'] ?? '', $row['meeting_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <button type="button" class="btn-secondary btn-view-minutes" data-title="<?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['meeting_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['meeting_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-participants="<?= htmlspecialchars((string) ($row['participants'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-decisions="<?= htmlspecialchars((string) ($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-revision="<?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?>">Buka Notulen</button>
+                                </article>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <div class="medical-document-card__empty">Belum ada agenda kunjungan terbaru.</div>
+                            <div class="empty-state">Belum ada notulen yang ditag ke divisi ini.</div>
                         <?php endif; ?>
-                    </div>
                     </div>
                 </div>
 
-                <div class="card card-section surat-panel">
-                    <div class="card-header">Koordinasi & Surat Rahasia</div>
-                    <div class="surat-panel__body surat-panel__body--compact">
-                    <div class="surat-feed surat-feed--compact">
-                        <?php foreach ($coordinationRows as $row): ?>
-                            <?php $meta = surat_monitoring_status_meta((string)($row['status'] ?? '')); ?>
-                            <div class="surat-mini-row">
-                                <div>
-                                    <strong><?= htmlspecialchars((string)$row['title'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                    <div class="meta-text-xs"><?= htmlspecialchars((string)$row['division_scope'], ENT_QUOTES, 'UTF-8') ?></div>
-                                </div>
-                                <span class="<?= htmlspecialchars($meta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></span>
-                            </div>
-                        <?php endforeach; ?>
-
-                        <?php foreach ($confidentialRows as $row): ?>
-                            <?php $meta = surat_monitoring_status_meta((string)($row['status'] ?? '')); ?>
-                            <div class="surat-mini-row">
-                                <div>
-                                    <strong><?= htmlspecialchars((string)$row['subject'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                    <div class="meta-text-xs"><?= htmlspecialchars((string)$row['confidential_code'], ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars(strtoupper((string)$row['letter_direction']), ENT_QUOTES, 'UTF-8') ?></div>
-                                </div>
-                                <span class="<?= htmlspecialchars($meta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($meta['label'], ENT_QUOTES, 'UTF-8') ?></span>
-                            </div>
-                        <?php endforeach; ?>
-
-                        <?php if (empty($coordinationRows) && empty($confidentialRows)): ?>
-                            <div class="medical-document-card__empty">Belum ada koordinasi atau surat rahasia terbaru.</div>
-                        <?php endif; ?>
+                <div class="card surat-focus-card">
+                    <div class="surat-card-head">
+                        <div class="card-header">Koordinasi Terkait Divisi</div>
+                        <span class="badge-muted"><?= count($coordinationRows) ?> item</span>
                     </div>
+                    <div class="surat-mini-list">
+                        <?php if ($coordinationRows): ?>
+                            <?php foreach ($coordinationRows as $row): $statusMeta = surat_monitoring_status_meta((string) ($row['status'] ?? 'draft')); ?>
+                                <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['title'] ?? '') . ' ' . ($row['summary_notes'] ?? '') . ' ' . ($row['follow_up_notes'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="surat-mini-top">
+                                        <h3><?= htmlspecialchars((string) ($row['title'] ?: 'Koordinasi'), ENT_QUOTES, 'UTF-8') ?></h3>
+                                        <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                    </div>
+                                    <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['summary_notes'] ?? ''), 90), ENT_QUOTES, 'UTF-8') ?></p>
+                                    <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['coordination_date'] ?? '', $row['start_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                </article>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="empty-state">Tidak ada koordinasi internal untuk scope ini.</div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </aside>
@@ -513,534 +431,76 @@ include __DIR__ . '/../partials/sidebar.php';
 </section>
 
 <div id="letterDetailModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-lg">
+    <div class="modal-box modal-shell modal-frame-lg surat-modal-box">
         <div class="modal-head">
             <div class="modal-title inline-flex items-center gap-2">
                 <?= ems_icon('document-text', 'h-5 w-5 text-primary') ?>
-                <span id="letterDetailModalTitle">Detail Surat</span>
+                <span id="letterModalType">Detail Surat</span>
             </div>
-            <button type="button" class="modal-close-btn btn-letter-cancel" aria-label="Tutup modal">
-                <?= ems_icon('x-mark', 'h-5 w-5') ?>
-            </button>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal"><?= ems_icon('x-mark', 'h-5 w-5') ?></button>
         </div>
         <div class="modal-content">
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-4">
-                <div class="card">
-                    <div class="meta-text-xs">Kode</div>
-                    <div id="letterDetailCode" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs">Status</div>
-                    <div id="letterDetailStatus" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs">Tanggal</div>
-                    <div id="letterDetailDate" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs">Jam</div>
-                    <div id="letterDetailTime" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
+            <div class="surat-modal-grid">
+                <div class="card"><div class="meta-text-xs">Judul</div><div id="letterModalTitle" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Kode</div><div id="letterModalCode" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Scope</div><div id="letterModalScope" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Instansi</div><div id="letterModalParty" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Kontak</div><div id="letterModalContact" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Jadwal</div><div id="letterModalWhen" class="font-semibold text-slate-800">-</div></div>
             </div>
-            <div class="grid gap-3 mt-4">
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Instansi / Judul</div>
-                    <div id="letterDetailMainTitle" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Topik / Subjek</div>
-                    <div id="letterDetailPrimary" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Isi / Catatan</div>
-                    <div id="letterDetailSecondary" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div class="card">
-                        <div class="meta-text-xs mb-2">Kontak 1</div>
-                        <div id="letterDetailMetaLeft" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="meta-text-xs mb-2">Kontak 2</div>
-                        <div id="letterDetailMetaRight" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                    </div>
-                    <div class="card">
-                        <div class="meta-text-xs mb-2">Tujuan</div>
-                        <div id="letterDetailTarget" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Dicatat Pada</div>
-                    <div id="letterDetailCreated" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
+            <div class="card mt-4">
+                <div class="meta-text-xs mb-2">Isi / Keterangan</div>
+                <div id="letterModalBody" class="whitespace-pre-line text-sm text-slate-700">-</div>
             </div>
         </div>
-        <div class="modal-foot">
-            <div class="modal-actions justify-end">
-                <button type="button" class="btn-secondary btn-letter-cancel">Tutup</button>
-            </div>
-        </div>
+        <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
     </div>
 </div>
 
 <div id="minutesViewModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-lg">
+    <div class="modal-box modal-shell modal-frame-lg surat-modal-box">
         <div class="modal-head">
             <div class="modal-title inline-flex items-center gap-2">
                 <?= ems_icon('clipboard-document-list', 'h-5 w-5 text-primary') ?>
                 <span id="minutesModalTitle">Detail Notulen</span>
             </div>
-            <button type="button" class="modal-close-btn btn-minutes-cancel" aria-label="Tutup modal">
-                <?= ems_icon('x-mark', 'h-5 w-5') ?>
-            </button>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal"><?= ems_icon('x-mark', 'h-5 w-5') ?></button>
         </div>
         <div class="modal-content">
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div class="card">
-                    <div class="meta-text-xs">Tanggal</div>
-                    <div id="minutesModalDate" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs">Jam</div>
-                    <div id="minutesModalTime" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs">Dicatat Pada</div>
-                    <div id="minutesModalCreatedBy" class="text-sm font-semibold text-slate-800">-</div>
-                </div>
+            <div class="surat-modal-grid">
+                <div class="card"><div class="meta-text-xs">Tanggal</div><div id="minutesModalDate" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Jam</div><div id="minutesModalTime" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Scope</div><div id="minutesModalScope" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Revisi</div><div id="minutesModalRevision" class="font-semibold text-slate-800">-</div></div>
             </div>
-            <div class="grid gap-3 mt-4">
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Peserta</div>
-                    <div id="minutesModalParticipants" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Hasil Notulen</div>
-                    <div id="minutesModalSummary" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Keputusan</div>
-                    <div id="minutesModalDecisions" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-                <div class="card">
-                    <div class="meta-text-xs mb-2">Tindak Lanjut</div>
-                    <div id="minutesModalFollowUp" class="whitespace-pre-line text-sm text-slate-700">-</div>
-                </div>
-            </div>
+            <div class="card mt-4"><div class="meta-text-xs mb-2">Peserta</div><div id="minutesModalParticipants" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Ringkasan</div><div id="minutesModalSummary" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Keputusan</div><div id="minutesModalDecisions" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Tindak Lanjut</div><div id="minutesModalFollowUp" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
         </div>
-        <div class="modal-foot">
-            <div class="modal-actions justify-end">
-                <button type="button" class="btn-secondary btn-minutes-cancel">Tutup</button>
-            </div>
-        </div>
+        <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
     </div>
 </div>
 
 <style>
-.surat-monitoring-hero {
-    background:
-        radial-gradient(circle at right top, rgba(14, 165, 233, 0.14), transparent 26%),
-        linear-gradient(135deg, #fcfeff 0%, #f3f8ff 100%);
-    border: 1px solid rgba(148, 163, 184, 0.26);
-}
-
-.surat-monitoring-hero,
-.surat-feed-item,
-.surat-timeline-item,
-.surat-mini-row,
-.surat-legend-item {
-    border-radius: 1rem;
-}
-
-.surat-monitoring-hero {
-    display: flex;
-    justify-content: space-between;
-    gap: 1.5rem;
-    align-items: flex-start;
-}
-
-.surat-monitoring-kicker {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.4rem 0.75rem;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.08);
-    color: #334155;
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.85rem;
-}
-
-.surat-monitoring-legend {
-    display: grid;
-    gap: 0.75rem;
-    min-width: 230px;
-}
-
-.surat-search-panel {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.surat-search-panel__copy {
-    min-width: 0;
-}
-
-.surat-search-panel__field {
-    width: min(100%, 460px);
-}
-
-.surat-search-panel__field .form-control {
-    width: 100%;
-}
-
-.surat-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.85rem 1rem;
-    background: rgba(255, 255, 255, 0.84);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-}
-
-.surat-legend-item__dot {
-    width: 0.85rem;
-    height: 0.85rem;
-    border-radius: 999px;
-}
-
-.surat-legend-item__dot--incoming { background: #0ea5e9; }
-.surat-legend-item__dot--outgoing { background: #22c55e; }
-.surat-legend-item__dot--minutes { background: #f59e0b; }
-
-.surat-monitoring-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(310px, 0.95fr);
-    gap: 1.25rem;
-}
-
-.surat-monitoring-split {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.25rem;
-}
-
-.surat-panel {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.surat-panel__body {
-    min-height: 0;
-}
-
-.surat-panel__body--timeline {
-    max-height: 38rem;
-    overflow-y: auto;
-    padding-right: 0.2rem;
-}
-
-.surat-panel__body--feed {
-    max-height: 30rem;
-    overflow-y: auto;
-    padding-right: 0.2rem;
-}
-
-.surat-panel__body--compact {
-    max-height: 22rem;
-    overflow-y: auto;
-    padding-right: 0.2rem;
-}
-
-.surat-timeline {
-    display: grid;
-    gap: 1rem;
-}
-
-.surat-timeline-item {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 1rem;
-    padding: 1rem;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
-}
-
-.surat-timeline-item__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.85rem;
-    background: #e2eefc;
-    color: #1d4ed8;
-}
-
-.surat-timeline-item__head,
-.surat-feed-item__title-row,
-.surat-feed-item__foot,
-.surat-mini-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.75rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
-}
-
-.surat-timeline-item__type {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.25rem;
-}
-
-.surat-timeline-item__title {
-    margin: 0;
-    font-size: 1rem;
-    color: #0f172a;
-}
-
-.surat-timeline-item__subtitle,
-.surat-feed-item__copy {
-    margin: 0.55rem 0 0;
-    color: #475569;
-    line-height: 1.65;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-
-.surat-timeline-item__time,
-.surat-feed-item__foot,
-.surat-mini-row .meta-text-xs {
-    color: #64748b;
-    font-size: 0.8rem;
-}
-
-.surat-feed {
-    display: grid;
-    gap: 0.95rem;
-}
-
-.surat-feed-item,
-.surat-mini-row {
-    padding: 1rem;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    background: rgba(255, 255, 255, 0.88);
-    min-width: 0;
-}
-
-.surat-feed-item--button {
-    width: 100%;
-    text-align: left;
-    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-    overflow: hidden;
-}
-
-.surat-feed-item--button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 16px 30px -24px rgba(15, 23, 42, 0.28);
-    border-color: rgba(59, 130, 246, 0.24);
-}
-
-.surat-feed--compact {
-    gap: 0.8rem;
-}
-
-.surat-search-empty {
-    margin-top: 0.95rem;
-}
-
-.surat-panel__body::-webkit-scrollbar {
-    width: 0.55rem;
-}
-
-.surat-panel__body::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.55);
-    border-radius: 999px;
-}
-
-.surat-panel__body::-webkit-scrollbar-track {
-    background: rgba(226, 232, 240, 0.45);
-    border-radius: 999px;
-}
-
-.surat-timeline-item__body,
-.surat-feed-item__title-row > *,
-.surat-feed-item__foot > *,
-.surat-mini-row > *,
-.surat-mini-row strong,
-.surat-feed-item strong,
-.surat-timeline-item__title,
-.meta-text-xs,
-.text-right {
-    min-width: 0;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-
-@media (max-width: 1100px) {
-    .surat-monitoring-layout,
-    .surat-monitoring-split,
-    .surat-monitoring-hero,
-    .surat-search-panel {
-        grid-template-columns: 1fr;
-        flex-direction: column;
-    }
-
-    .surat-monitoring-legend {
-        width: 100%;
-        min-width: 0;
-    }
-
-    .surat-search-panel__field {
-        width: 100%;
-    }
-}
-
-@media (max-width: 640px) {
-    .surat-timeline-item__head,
-    .surat-feed-item__title-row,
-    .surat-feed-item__foot,
-    .surat-mini-row {
-        flex-direction: column;
-    }
-
-    .surat-timeline-item {
-        grid-template-columns: 1fr;
-    }
-
-    .surat-panel__body--timeline,
-    .surat-panel__body--feed,
-    .surat-panel__body--compact {
-        max-height: 24rem;
-    }
-}
+.surat-monitor-page{padding-bottom:2rem}.surat-monitor-shell{display:grid;gap:1.25rem}.surat-focus-hero{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.9fr);gap:1rem;padding:1.5rem;border-radius:28px;background:linear-gradient(135deg,#eff8ff 0%,#ffffff 52%,#f0fdf4 100%);border:1px solid rgba(148,163,184,.22);box-shadow:0 24px 48px rgba(15,23,42,.08)}.surat-focus-kicker{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.6rem;padding:.35rem .75rem;border-radius:999px;background:#083344;color:#ecfeff;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.surat-scope-card{padding:1.1rem 1.15rem;border-radius:24px;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0}.surat-scope-label{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}.surat-scope-value{margin-top:.35rem;font-size:1.45rem;font-weight:800;color:#fff}.surat-scope-note{margin-top:.55rem;font-size:.92rem;color:#cbd5e1}.surat-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.surat-search-card{padding:1rem 1.15rem}.surat-search-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.surat-search-input{display:flex;align-items:center;gap:.65rem;min-width:min(100%,360px);padding:.8rem 1rem;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#475569}.surat-search-input input{width:100%;border:0;outline:0;background:transparent}.surat-focus-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.95fr);gap:1rem}.surat-focus-grid,.surat-focus-side{display:grid;gap:1rem}.surat-focus-card{border-radius:26px;padding:1.15rem;box-shadow:0 20px 40px rgba(15,23,42,.06)}.surat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}.surat-spotlight-list,.surat-capsule-list,.surat-mini-list{display:grid;gap:.85rem}.surat-spotlight-item,.surat-capsule,.surat-mini-card{border:1px solid #dbeafe;background:#fff;border-radius:22px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.surat-spotlight-item:hover,.surat-capsule:hover,.surat-mini-card:hover{transform:translateY(-2px);box-shadow:0 18px 30px rgba(14,116,144,.08);border-color:#7dd3fc}.surat-spotlight-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:1rem;padding:1rem}.surat-spotlight-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff}.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}.surat-spotlight-body h3,.surat-mini-top h3,.surat-capsule-title{margin:0;font-size:1.05rem;font-weight:800;color:#1e293b}.surat-spotlight-body p,.surat-mini-card p,.surat-capsule-text{margin:.4rem 0 0;color:#64748b;line-height:1.55}.surat-spotlight-meta,.surat-mini-meta,.surat-capsule-meta{margin-top:.6rem;font-size:.82rem;font-weight:700;color:#0f766e}.surat-feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.surat-capsule{padding:1rem 1rem 1.05rem;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)}.surat-capsule-subtitle{margin-top:.25rem;font-size:.88rem;color:#64748b}.surat-capsule .btn-secondary,.surat-mini-card .btn-secondary{margin-top:.8rem}.surat-mini-card{padding:1rem;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%)}.surat-modal-box{max-width:860px}.surat-modal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem}.surat-search-item.is-hidden{display:none!important}.empty-state{padding:1rem 1.1rem;border:1px dashed #cbd5e1;border-radius:18px;background:#f8fafc;color:#64748b}.badge-muted,.badge-counter,.badge-success,.badge-danger{white-space:nowrap}
+@media (max-width:1200px){.surat-stat-grid,.surat-feed-grid,.surat-modal-grid,.surat-focus-layout,.surat-focus-hero{grid-template-columns:1fr}}
+@media (max-width:720px){.surat-search-header,.surat-card-head,.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{flex-direction:column;align-items:flex-start}.surat-focus-card{padding:1rem}.surat-search-input{min-width:100%}}
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('suratMonitoringSearch');
+    const filterItems = document.querySelectorAll('.surat-search-item');
     const letterModal = document.getElementById('letterDetailModal');
     const minutesModal = document.getElementById('minutesViewModal');
-    const searchInput = document.getElementById('suratMonitoringSearch');
-
-    function closeModal(modal) {
-        if (!modal) return;
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-        document.body.classList.remove('modal-open');
-    }
-
-    function openModal(modal) {
-        if (!modal) return;
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-        document.body.classList.add('modal-open');
-    }
-
-    function normalizeSearchText(value) {
-        return String(value || '')
-            .toLowerCase()
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    function applySearchFilter() {
-        const query = normalizeSearchText(searchInput ? searchInput.value : '');
-
-        document.querySelectorAll('[data-search-scope]').forEach(function (scope) {
-            const items = scope.querySelectorAll('.surat-search-item');
-            let visibleCount = 0;
-
-            items.forEach(function (item) {
-                const haystack = normalizeSearchText(item.dataset.search || item.textContent || '');
-                const match = query === '' || haystack.indexOf(query) !== -1;
-                item.classList.toggle('hidden', !match);
-                item.setAttribute('aria-hidden', match ? 'false' : 'true');
-                if (match) {
-                    visibleCount += 1;
-                }
-            });
-
-            const emptyState = scope.querySelector('.surat-search-empty');
-            if (emptyState) {
-                emptyState.classList.toggle('hidden', visibleCount !== 0);
-            }
-        });
-    }
-
-    document.querySelectorAll('.btn-open-letter-modal').forEach(function (button) {
-        button.addEventListener('click', function () {
-            document.getElementById('letterDetailModalTitle').textContent =
-                (button.dataset.letterKind === 'incoming' ? 'Detail Surat Masuk' : 'Detail Surat Keluar');
-            document.getElementById('letterDetailCode').textContent = button.dataset.code || '-';
-            document.getElementById('letterDetailStatus').textContent = button.dataset.status || '-';
-            document.getElementById('letterDetailDate').textContent = button.dataset.date || '-';
-            document.getElementById('letterDetailTime').textContent = (button.dataset.time || '-') + ((button.dataset.time && button.dataset.time !== '-') ? ' WIB' : '');
-            document.getElementById('letterDetailMainTitle').textContent = button.dataset.title || '-';
-            document.getElementById('letterDetailPrimary').textContent = button.dataset.primary || '-';
-            document.getElementById('letterDetailSecondary').textContent = button.dataset.secondary || '-';
-            document.getElementById('letterDetailMetaLeft').textContent = button.dataset.metaLeft || '-';
-            document.getElementById('letterDetailMetaRight').textContent = button.dataset.metaRight || '-';
-            document.getElementById('letterDetailTarget').textContent = button.dataset.target || '-';
-            document.getElementById('letterDetailCreated').textContent = button.dataset.created || '-';
-            openModal(letterModal);
-        });
-    });
-
-    document.querySelectorAll('.btn-letter-cancel').forEach(function (button) {
-        button.addEventListener('click', function () {
-            closeModal(letterModal);
-        });
-    });
-
-    document.querySelectorAll('.btn-view-minutes').forEach(function (button) {
-        button.addEventListener('click', function () {
-            document.getElementById('minutesModalTitle').textContent = button.dataset.title || 'Detail Notulen';
-            document.getElementById('minutesModalDate').textContent = button.dataset.date || '-';
-            document.getElementById('minutesModalTime').textContent = (button.dataset.time || '-') + ' WIB';
-            document.getElementById('minutesModalCreatedBy').textContent = button.dataset.createdBy || '-';
-            document.getElementById('minutesModalParticipants').textContent = button.dataset.participants || '-';
-            document.getElementById('minutesModalSummary').textContent = button.dataset.summary || '-';
-            document.getElementById('minutesModalDecisions').textContent = button.dataset.decisions || '-';
-            document.getElementById('minutesModalFollowUp').textContent = button.dataset.followUp || '-';
-            openModal(minutesModal);
-        });
-    });
-
-    document.querySelectorAll('.btn-minutes-cancel').forEach(function (button) {
-        button.addEventListener('click', function () {
-            closeModal(minutesModal);
-        });
-    });
-
-    [letterModal, minutesModal].forEach(function (modal) {
-        if (!modal) return;
-        modal.addEventListener('click', function (event) {
-            if (event.target === modal) {
-                closeModal(modal);
-            }
-        });
-    });
-
-    document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape') {
-            closeModal(letterModal);
-            closeModal(minutesModal);
-        }
-    });
-
-    if (searchInput) {
-        searchInput.addEventListener('input', applySearchFilter);
-        applySearchFilter();
-    }
+    function openModal(modal){if(!modal)return;modal.classList.remove('hidden');document.body.classList.add('overflow-hidden')}
+    function closeModal(modal){if(!modal)return;modal.classList.add('hidden');document.body.classList.remove('overflow-hidden')}
+    document.querySelectorAll('.modal-overlay').forEach(function(modal){modal.addEventListener('click',function(event){if(event.target===modal||event.target.closest('.btn-cancel')||event.target.closest('.modal-close-btn')){closeModal(modal)}})});
+    document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeModal(letterModal);closeModal(minutesModal)}});
+    if(searchInput){searchInput.addEventListener('input',function(){const keyword=searchInput.value.trim().toLowerCase();filterItems.forEach(function(item){const haystack=item.dataset.searchScope||'';item.classList.toggle('is-hidden',keyword!==''&&!haystack.includes(keyword))})})}
+    document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';openModal(letterModal)})});
+    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';openModal(minutesModal)})});
 });
 </script>
 

@@ -122,10 +122,16 @@ if ($userId) {
 	                </div>
 	
 	                <div class="inbox-wrapper">
-	                    <button id="inboxBtn" class="inbox-btn" type="button" aria-label="Buka kotak masuk"><?= ems_icon('inbox', 'h-7 w-7', '2.2') ?><span id="inboxBadge" class="inbox-badge">0</span></button>
+	                    <button id="inboxBtn" class="inbox-btn" type="button" aria-label="Buka kotak masuk"><?= ems_icon('inbox', 'h-7 w-7', '2.2') ?><span id="inboxBadge" class="inbox-badge" style="display:none">0</span></button>
 	
 	                    <div id="inboxDropdown" class="inbox-dropdown hidden">
-	                        <div class="inbox-header">Kotak Masuk</div>
+	                        <div class="inbox-header">
+                                <span>Kotak Masuk</span>
+                                <div class="inbox-header-actions">
+                                    <button id="inboxMarkAllBtn" type="button" class="inbox-header-btn">Baca Semua</button>
+                                    <button id="inboxDeleteAllBtn" type="button" class="inbox-header-btn is-danger">Hapus Semua</button>
+                                </div>
+                            </div>
 	                        <ul id="inboxList"></ul>
                     </div>
                 </div>
@@ -138,6 +144,7 @@ if ($userId) {
                 <div class="modal-head">
                     <div class="min-w-0">
                         <div id="modalTitle" class="modal-title"></div>
+                        <div id="modalMeta" class="meta-text-xs mt-1 text-slate-500"></div>
                     </div>
                     <button onclick="closeInboxModal()" type="button" class="modal-close-btn" aria-label="Tutup modal">
                         <?= ems_icon('x-mark', 'h-5 w-5') ?>
@@ -540,6 +547,8 @@ if ($userId) {
             const inboxDropdown = document.getElementById('inboxDropdown');
             const inboxList = document.getElementById('inboxList');
             const inboxBadge = document.getElementById('inboxBadge');
+            const inboxMarkAllBtn = document.getElementById('inboxMarkAllBtn');
+            const inboxDeleteAllBtn = document.getElementById('inboxDeleteAllBtn');
 
             if (inboxBtn && inboxDropdown && inboxList && inboxBadge) {
                 inboxBtn.addEventListener('click', () => {
@@ -557,40 +566,27 @@ if ($userId) {
                     return;
                 }
 
-                inboxList.innerHTML = '';
                 inboxBadge.textContent = data.unread;
-
-                if (data.items.length === 0) {
-                    inboxList.innerHTML = '<li style="padding:12px;color:#888">Tidak ada inbox</li>';
-                    return;
-                }
-
-                data.items.forEach(item => {
-                    const li = document.createElement('li');
-                    li.className = 'inbox-item ' + (item.is_read ? 'read' : 'unread');
-                    li.innerHTML = `
-            <div>${item.title}</div>
-            <small>${item.created_at_label}</small>
-
-        `;
-                    li.onclick = () => openInboxModal(item);
-                    inboxList.appendChild(li);
-                });
+                inboxBadge.style.display = data.unread > 0 ? 'inline-block' : 'none';
+                renderInboxList(data.items || []);
             }
         </script>
         <script>
             let currentInboxId = null;
+            let currentInboxType = 'user_inbox';
 
             function openInboxModal(item) {
                 const modal = document.getElementById('inboxModal');
                 const deleteButton = modal ? modal.querySelector('.btn-danger') : null;
 
-                currentInboxId = item.id;
+                currentInboxId = item.item_id || item.id;
+                currentInboxType = item.source_type || 'user_inbox';
 
                 document.getElementById('modalTitle').textContent = item.title;
+                document.getElementById('modalMeta').textContent = [item.badge || '', item.created_at_label || ''].filter(Boolean).join(' • ');
                 document.getElementById('modalMessage').innerHTML = item.message;
                 if (deleteButton) {
-                    deleteButton.textContent = 'Hapus';
+                    deleteButton.textContent = item.delete_label || 'Hapus';
                 }
                 if (modal) {
                     modal.classList.remove('hidden');
@@ -600,7 +596,8 @@ if ($userId) {
                 fetch(window.emsUrl('/actions/read_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
-                        id: item.id
+                        item_id: String(item.item_id || item.id || ''),
+                        source_type: String(item.source_type || 'user_inbox')
                     })
                 });
 
@@ -612,6 +609,8 @@ if ($userId) {
                 if (modal) {
                     modal.classList.add('hidden');
                 }
+                currentInboxId = null;
+                currentInboxType = 'user_inbox';
                 document.body.classList.remove('modal-open');
             }
 
@@ -621,13 +620,49 @@ if ($userId) {
                 fetch(window.emsUrl('/actions/delete_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
-                        id: currentInboxId
+                        item_id: String(currentInboxId),
+                        source_type: String(currentInboxType || 'user_inbox')
                     })
                 }).then(() => {
                     closeInboxModal();
                     loadInbox();
                 });
             }
+
+            function markAllInboxRead() {
+                fetch(window.emsUrl('/actions/read_inbox.php'), {
+                    method: 'POST',
+                    body: new URLSearchParams({
+                        bulk_action: 'mark_all'
+                    })
+                }).then(() => {
+                    loadInbox();
+                });
+            }
+
+            function deleteAllInbox() {
+                if (!window.confirm('Yakin ingin menyembunyikan atau menghapus semua inbox?')) {
+                    return;
+                }
+
+                fetch(window.emsUrl('/actions/delete_inbox.php'), {
+                    method: 'POST',
+                    body: new URLSearchParams({
+                        bulk_action: 'delete_all'
+                    })
+                }).then(() => {
+                    closeInboxModal();
+                    loadInbox();
+                });
+            }
+
+            inboxMarkAllBtn?.addEventListener('click', function() {
+                markAllInboxRead();
+            });
+
+            inboxDeleteAllBtn?.addEventListener('click', function() {
+                deleteAllInbox();
+            });
 
             document.getElementById('inboxModal')?.addEventListener('click', function(event) {
                 if (event.target === this) {
@@ -694,8 +729,8 @@ if ($userId) {
                     const li = document.createElement('li');
                     li.className = 'inbox-item ' + (item.is_read ? 'read' : 'unread');
                     li.innerHTML = `
-            <div>${item.title}</div>
-            <small>${item.created_at_label}</small>
+            <div style="font-weight:600">${item.title}</div>
+            <small>${item.badge ? item.badge + ' • ' : ''}${item.created_at_label}</small>
         `;
                     li.onclick = () => openInboxModal(item);
                     inboxList.appendChild(li);

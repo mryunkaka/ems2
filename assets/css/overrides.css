@@ -538,3 +538,206 @@ table.dataTable td + td {
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================================================
+   INBOX VISUAL DIFFERENCE
+   ========================================================= */
+.inbox-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 12px);
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(72vh, 640px);
+  border-radius: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.18);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.inbox-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inbox-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(186, 230, 253, 0.9);
+  background: rgba(240, 249, 255, 0.96);
+  color: #0369a1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: 0.18s ease;
+}
+
+.inbox-header-btn:hover {
+  background: rgba(224, 242, 254, 1);
+  border-color: rgba(56, 189, 248, 0.95);
+}
+
+.inbox-header-btn.is-danger {
+  border-color: rgba(253, 164, 175, 0.9);
+  background: rgba(255, 241, 242, 0.98);
+  color: #be123c;
+}
+
+.inbox-header-btn.is-danger:hover {
+  background: rgba(255, 228, 230, 1);
+  border-color: rgba(244, 63, 94, 0.9);
+}
+
+.inbox-item {
+  position: relative;
+  padding: 16px 18px 16px 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.inbox-item:hover {
+  transform: translateY(-1px);
+}
+
+.inbox-item:last-child {
+  border-bottom: 0;
+}
+
+.inbox-item > div {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.inbox-item > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.inbox-item.unread {
+  background: linear-gradient(135deg, rgba(219, 234, 254, 0.88), rgba(239, 246, 255, 0.98));
+  box-shadow: inset 4px 0 0 #0ea5e9;
+}
+
+.inbox-item.unread > div {
+  color: #1e3a5f;
+  font-weight: 800;
+}
+
+.inbox-item.unread > small {
+  color: #31506f;
+  font-weight: 700;
+}
+
+.inbox-item.read {
+  background: rgba(255, 255, 255, 0.9);
+  opacity: 1;
+}
+
+.inbox-item.read > div {
+  color: #475569;
+  font-weight: 650;
+}
+
+.inbox-item.read > small {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.inbox-item.read::after {
+  content: "Sudah dibaca";
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: rgba(248, 250, 252, 0.95);
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inbox-item.unread::after {
+  content: "Baru";
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.9);
+  background: rgba(224, 242, 254, 0.96);
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.inbox-dropdown::-webkit-scrollbar {
+  width: 10px;
+}
+
+.inbox-dropdown::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.5);
+  border-radius: 999px;
+}
+
+.inbox-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.65);
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+.inbox-dropdown::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.9);
+}
+
+@media (max-width: 767px) {
+  .inbox-dropdown {
+    position: fixed;
+    top: 88px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100vh - 108px);
+  }
+
+  .inbox-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inbox-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
