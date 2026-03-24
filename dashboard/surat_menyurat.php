@@ -100,11 +100,13 @@ $hasOutgoingDivisionScope = false;
 $hasMinutesDivisionScope = false;
 $hasOutgoingRevisionColumns = false;
 $hasMinutesRevisionColumns = false;
+$hasMinutesCodeColumn = false;
 
 try {
     $hasIncomingDivisionScope = surat_table_has_column($pdo, 'incoming_letters', 'division_scope');
     $hasOutgoingDivisionScope = surat_table_has_column($pdo, 'outgoing_letters', 'division_scope');
     $hasMinutesDivisionScope = surat_table_has_column($pdo, 'meeting_minutes', 'division_scope');
+    $hasMinutesCodeColumn = surat_table_has_column($pdo, 'meeting_minutes', 'minutes_code');
     $hasOutgoingRevisionColumns = surat_table_has_column($pdo, 'outgoing_letters', 'revision_count')
         && surat_table_has_column($pdo, 'outgoing_letters', 'revision_label')
         && surat_table_has_column($pdo, 'outgoing_letters', 'updated_at')
@@ -151,6 +153,7 @@ try {
             m.*,
             u.full_name AS created_by_name,
             " . ($hasMinutesDivisionScope ? "m.division_scope" : "'All Divisi' AS division_scope") . ",
+            " . ($hasMinutesCodeColumn ? "m.minutes_code" : "NULL AS minutes_code") . ",
             " . ($hasMinutesRevisionColumns ? "m.revision_count, m.revision_label, m.updated_at" : "0 AS revision_count, NULL AS revision_label, NULL AS updated_at") . "
         FROM meeting_minutes m
         LEFT JOIN user_rh u ON u.id = m.created_by
@@ -221,8 +224,8 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php foreach ($errors as $error): ?>
             <div class="alert alert-error"><?= htmlspecialchars((string)$error) ?></div>
         <?php endforeach; ?>
-        <?php if (!$hasOutgoingRevisionColumns || !$hasMinutesRevisionColumns || !$hasIncomingDivisionScope || !$hasOutgoingDivisionScope || !$hasMinutesDivisionScope): ?>
-            <div class="alert alert-warning">Sebagian fitur edit/revisi/divisi memerlukan SQL terbaru di folder <code>docs/sql</code>.</div>
+        <?php if (!$hasOutgoingRevisionColumns || !$hasMinutesRevisionColumns || !$hasIncomingDivisionScope || !$hasOutgoingDivisionScope || !$hasMinutesDivisionScope || !$hasMinutesCodeColumn): ?>
+            <div class="alert alert-warning">Sebagian fitur edit/revisi/divisi/kode notulen memerlukan SQL terbaru di folder <code>docs/sql</code>.</div>
         <?php endif; ?>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -377,6 +380,13 @@ include __DIR__ . '/../partials/sidebar.php';
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="add_outgoing_letter">
 
+                    <label>Nomor Surat</label>
+                    <div class="flex gap-2">
+                        <input type="text" name="outgoing_code" id="addOutgoingCode" maxlength="32" placeholder="Otomatis muncul setelah field wajib lengkap">
+                        <button type="button" class="btn-secondary whitespace-nowrap" id="addOutgoingCodeAutoBtn">Auto</button>
+                    </div>
+                    <div class="meta-text-xs mt-1">Nomor surat otomatis bisa diedit manual.</div>
+
                     <label>Relasi Surat Masuk</label>
                     <select name="incoming_letter_id">
                         <option value="">-- Opsional --</option>
@@ -390,7 +400,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="row-form-2">
                         <div class="col">
                             <label>Nama Instansi</label>
-                            <input type="text" name="institution_name" maxlength="160" required>
+                            <input type="text" name="institution_name" id="addOutgoingInstitutionName" maxlength="160" required>
                         </div>
                         <div class="col">
                             <label>Nama Tujuan / Kontak</label>
@@ -462,10 +472,17 @@ include __DIR__ . '/../partials/sidebar.php';
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="add_meeting_minutes">
 
+                    <label>Nomor Notulen</label>
+                    <div class="flex gap-2">
+                        <input type="text" name="minutes_code" id="addMinutesCode" maxlength="32" placeholder="Otomatis muncul setelah field wajib lengkap">
+                        <button type="button" class="btn-secondary whitespace-nowrap" id="addMinutesCodeAutoBtn">Auto</button>
+                    </div>
+                    <div class="meta-text-xs mt-1">Nomor notulen otomatis bisa diedit manual.</div>
+
                     <div class="row-form-2">
                         <div class="col">
                             <label>Relasi Surat Masuk</label>
-                            <select name="incoming_letter_id">
+                            <select name="incoming_letter_id" id="addMinutesIncomingLetterId">
                                 <option value="">-- Opsional --</option>
                                 <?php foreach ($linkableIncoming as $incoming): ?>
                                     <option value="<?= (int)$incoming['id'] ?>">
@@ -476,7 +493,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div class="col">
                             <label>Relasi Surat Keluar</label>
-                            <select name="outgoing_letter_id">
+                            <select name="outgoing_letter_id" id="addMinutesOutgoingLetterId">
                                 <option value="">-- Opsional --</option>
                                 <?php foreach ($linkableOutgoing as $outgoing): ?>
                                     <option value="<?= (int)$outgoing['id'] ?>">
@@ -501,7 +518,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="row-form-2">
                         <div class="col">
                             <label>Tanggal Pertemuan</label>
-                            <input type="date" name="meeting_date" required>
+                            <input type="date" name="meeting_date" id="addMinutesDate" required>
                         </div>
                         <div class="col">
                             <label>Jam Pertemuan</label>
@@ -594,6 +611,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             type="button"
                                                             class="btn-secondary btn-edit-outgoing"
                                                             data-id="<?= (int)$row['id'] ?>"
+                                                            data-outgoing-code="<?= htmlspecialchars((string)$row['outgoing_code'], ENT_QUOTES, 'UTF-8') ?>"
                                                             data-incoming-letter-id="<?= (int)($row['incoming_letter_id'] ?? 0) ?>"
                                                             data-institution-name="<?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?>"
                                                             data-recipient-name="<?= htmlspecialchars((string)($row['recipient_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
@@ -636,7 +654,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <table id="meetingMinutesTable" class="table-custom">
                         <thead>
                             <tr>
-                                <th>Pertemuan</th>
+                                <th>Kode / Pertemuan</th>
                                 <th>Tanggal</th>
                                 <th>Divisi</th>
                                 <th>Revisi</th>
@@ -650,7 +668,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php foreach ($minutesRows as $row): ?>
                                     <tr>
                                         <td>
-                                            <strong><?= htmlspecialchars((string)$row['meeting_title']) ?></strong>
+                                            <strong><?= htmlspecialchars((string)($row['minutes_code'] ?: '-')) ?></strong>
+                                            <div class="text-sm font-semibold text-slate-800 mt-1"><?= htmlspecialchars((string)$row['meeting_title']) ?></div>
                                             <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['created_by_name'] ?? '-')) ?></div>
                                         </td>
                                         <td>
@@ -676,6 +695,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     type="button"
                                                     class="btn-secondary btn-view-minutes"
                                                     data-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-date="<?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?>"
                                                     data-time="<?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-created-by="<?= htmlspecialchars((string)($row['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
@@ -693,6 +713,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             type="button"
                                                             class="btn-secondary btn-edit-minutes"
                                                             data-id="<?= (int)$row['id'] ?>"
+                                                            data-minutes-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: ''), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-incoming-letter-id="<?= (int)($row['incoming_letter_id'] ?? 0) ?>"
                                                             data-outgoing-letter-id="<?= (int)($row['outgoing_letter_id'] ?? 0) ?>"
                                                             data-meeting-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
@@ -744,6 +765,10 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
         <div class="modal-content">
             <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div class="card">
+                    <div class="meta-text-xs">Kode</div>
+                    <div id="minutesModalCode" class="text-sm font-semibold text-slate-800">-</div>
+                </div>
                 <div class="card">
                     <div class="meta-text-xs">Tanggal</div>
                     <div id="minutesModalDate" class="text-sm font-semibold text-slate-800">-</div>
@@ -814,6 +839,13 @@ include __DIR__ . '/../partials/sidebar.php';
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_outgoing_letter">
                 <input type="hidden" name="letter_id" id="editOutgoingLetterId">
+
+                <label>Nomor Surat</label>
+                <div class="flex gap-2">
+                    <input type="text" name="outgoing_code" id="editOutgoingCode" maxlength="32">
+                    <button type="button" class="btn-secondary whitespace-nowrap" id="editOutgoingCodeAutoBtn">Auto</button>
+                </div>
+                <div class="meta-text-xs mt-1">Nomor surat bisa diubah manual.</div>
 
                 <label>Relasi Surat Masuk</label>
                 <select name="incoming_letter_id" id="editOutgoingIncomingLetterId">
@@ -899,6 +931,13 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="hidden" name="action" value="edit_meeting_minutes">
                 <input type="hidden" name="minutes_id" id="editMinutesId">
 
+                <label>Nomor Notulen</label>
+                <div class="flex gap-2">
+                    <input type="text" name="minutes_code" id="editMinutesCode" maxlength="32">
+                    <button type="button" class="btn-secondary whitespace-nowrap" id="editMinutesCodeAutoBtn">Auto</button>
+                </div>
+                <div class="meta-text-xs mt-1">Nomor notulen bisa diubah manual.</div>
+
                 <div class="row-form-2">
                     <div class="col">
                         <label>Relasi Surat Masuk</label>
@@ -970,6 +1009,118 @@ include __DIR__ . '/../partials/sidebar.php';
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const datatableLanguageUrl = '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>';
+        const generateCodeUrl = '<?= htmlspecialchars(ems_url('/ajax/generate_surat_code.php'), ENT_QUOTES, 'UTF-8') ?>';
+
+        function debounce(fn, delay) {
+            let timer = null;
+            return function() {
+                const args = arguments;
+                clearTimeout(timer);
+                timer = setTimeout(function() {
+                    fn.apply(null, args);
+                }, delay);
+            };
+        }
+
+        function setupAutoCode(options) {
+            const codeInput = document.getElementById(options.codeInputId);
+            const autoButton = document.getElementById(options.autoButtonId);
+            const requiredInputs = options.requiredInputIds.map(function(id) {
+                return document.getElementById(id);
+            }).filter(Boolean);
+            const watchedInputs = options.watchedInputIds.map(function(id) {
+                return document.getElementById(id);
+            }).filter(Boolean);
+
+            if (!codeInput || !requiredInputs.length) {
+                return {
+                    refresh: function() {}
+                };
+            }
+
+            codeInput.dataset.autoMode = 'true';
+            codeInput.dataset.generatedCode = codeInput.value || '';
+
+            async function refreshCode(forceAuto) {
+                const requiredReady = requiredInputs.every(function(input) {
+                    return String(input.value || '').trim() !== '';
+                });
+
+                if (!requiredReady) {
+                    if (forceAuto) {
+                        codeInput.value = '';
+                        codeInput.dataset.generatedCode = '';
+                    }
+                    return;
+                }
+
+                const url = new URL(generateCodeUrl, window.location.origin);
+                url.searchParams.set('type', options.type);
+
+                const institutionInput = options.institutionInputId ? document.getElementById(options.institutionInputId) : null;
+                if (institutionInput) {
+                    url.searchParams.set('institution_name', (institutionInput.value || '').trim());
+                }
+
+                const dateInput = options.dateInputId ? document.getElementById(options.dateInputId) : null;
+                if (dateInput) {
+                    url.searchParams.set('date', (dateInput.value || '').trim());
+                }
+
+                const incomingInput = options.incomingInputId ? document.getElementById(options.incomingInputId) : null;
+                if (incomingInput) {
+                    url.searchParams.set('incoming_letter_id', incomingInput.value || '');
+                }
+
+                const outgoingInput = options.outgoingInputId ? document.getElementById(options.outgoingInputId) : null;
+                if (outgoingInput) {
+                    url.searchParams.set('outgoing_letter_id', outgoingInput.value || '');
+                }
+
+                const response = await fetch(url.toString(), { credentials: 'same-origin' });
+                const payload = await response.json();
+                if (!payload.success) {
+                    return;
+                }
+
+                const currentValue = codeInput.value.trim();
+                const previousGenerated = codeInput.dataset.generatedCode || '';
+                const shouldApply = forceAuto || codeInput.dataset.autoMode === 'true' || currentValue === '' || currentValue === previousGenerated;
+
+                codeInput.dataset.generatedCode = payload.code || '';
+                if (shouldApply) {
+                    codeInput.value = payload.code || '';
+                    codeInput.dataset.autoMode = 'true';
+                }
+            }
+
+            const debouncedRefresh = debounce(function() {
+                refreshCode(false).catch(function() {});
+            }, 250);
+
+            watchedInputs.forEach(function(input) {
+                input.addEventListener('input', debouncedRefresh);
+                input.addEventListener('change', debouncedRefresh);
+            });
+
+            codeInput.addEventListener('input', function() {
+                const currentValue = codeInput.value.trim();
+                codeInput.dataset.autoMode = (currentValue === '' || currentValue === (codeInput.dataset.generatedCode || '')) ? 'true' : 'false';
+            });
+
+            if (autoButton) {
+                autoButton.addEventListener('click', function() {
+                    codeInput.dataset.autoMode = 'true';
+                    refreshCode(true).catch(function() {});
+                });
+            }
+
+            return {
+                refresh: function(forceAuto) {
+                    refreshCode(Boolean(forceAuto)).catch(function() {});
+                }
+            };
+        }
 
         if (window.jQuery && jQuery.fn.DataTable) {
             jQuery('#incomingLettersTable').DataTable({
@@ -1069,6 +1220,24 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         setupMultiImagePreview('outgoingAttachments', 'outgoingAttachmentsPreview');
+        setupAutoCode({
+            type: 'outgoing',
+            codeInputId: 'addOutgoingCode',
+            autoButtonId: 'addOutgoingCodeAutoBtn',
+            institutionInputId: 'addOutgoingInstitutionName',
+            requiredInputIds: ['addOutgoingInstitutionName'],
+            watchedInputIds: ['addOutgoingInstitutionName']
+        });
+        setupAutoCode({
+            type: 'minutes',
+            codeInputId: 'addMinutesCode',
+            autoButtonId: 'addMinutesCodeAutoBtn',
+            dateInputId: 'addMinutesDate',
+            incomingInputId: 'addMinutesIncomingLetterId',
+            outgoingInputId: 'addMinutesOutgoingLetterId',
+            requiredInputIds: ['addMinutesDate'],
+            watchedInputIds: ['addMinutesDate', 'addMinutesIncomingLetterId', 'addMinutesOutgoingLetterId']
+        });
 
         function openModal(modal) {
             if (!modal) {
@@ -1111,6 +1280,24 @@ include __DIR__ . '/../partials/sidebar.php';
         const minutesViewModal = document.getElementById('minutesViewModal');
         const outgoingEditModal = document.getElementById('outgoingEditModal');
         const minutesEditModal = document.getElementById('minutesEditModal');
+        const editOutgoingCodeControl = setupAutoCode({
+            type: 'outgoing',
+            codeInputId: 'editOutgoingCode',
+            autoButtonId: 'editOutgoingCodeAutoBtn',
+            institutionInputId: 'editOutgoingInstitutionName',
+            requiredInputIds: ['editOutgoingInstitutionName'],
+            watchedInputIds: ['editOutgoingInstitutionName']
+        });
+        const editMinutesCodeControl = setupAutoCode({
+            type: 'minutes',
+            codeInputId: 'editMinutesCode',
+            autoButtonId: 'editMinutesCodeAutoBtn',
+            dateInputId: 'editMinutesDate',
+            incomingInputId: 'editMinutesIncomingLetterId',
+            outgoingInputId: 'editMinutesOutgoingLetterId',
+            requiredInputIds: ['editMinutesDate'],
+            watchedInputIds: ['editMinutesDate', 'editMinutesIncomingLetterId', 'editMinutesOutgoingLetterId']
+        });
 
         attachModalClose(minutesViewModal);
         attachModalClose(outgoingEditModal);
@@ -1118,6 +1305,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         if (minutesViewModal) {
             const modalTitle = document.getElementById('minutesModalTitle');
+            const modalCode = document.getElementById('minutesModalCode');
             const modalDate = document.getElementById('minutesModalDate');
             const modalTime = document.getElementById('minutesModalTime');
             const modalCreatedBy = document.getElementById('minutesModalCreatedBy');
@@ -1130,6 +1318,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             function openMinutesModal(button) {
                 modalTitle.textContent = button.dataset.title || 'Detail Notulen';
+                modalCode.textContent = button.dataset.code || '-';
                 modalDate.textContent = button.dataset.date || '-';
                 modalTime.textContent = (button.dataset.time || '-') + ' WIB';
                 modalCreatedBy.textContent = button.dataset.createdBy || '-';
@@ -1154,6 +1343,9 @@ include __DIR__ . '/../partials/sidebar.php';
             document.querySelectorAll('.btn-edit-outgoing').forEach(function(button) {
                 button.addEventListener('click', function() {
                     document.getElementById('editOutgoingLetterId').value = button.dataset.id || '';
+                    document.getElementById('editOutgoingCode').value = button.dataset.outgoingCode || '';
+                    document.getElementById('editOutgoingCode').dataset.generatedCode = button.dataset.outgoingCode || '';
+                    document.getElementById('editOutgoingCode').dataset.autoMode = 'false';
                     document.getElementById('editOutgoingIncomingLetterId').value = button.dataset.incomingLetterId || '';
                     document.getElementById('editOutgoingInstitutionName').value = button.dataset.institutionName || '';
                     document.getElementById('editOutgoingRecipientName').value = button.dataset.recipientName || '';
@@ -1166,6 +1358,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     document.getElementById('outgoingEditRevisionLabel').textContent = button.dataset.revisionLabel || 'draft-awal';
 
                     openModal(outgoingEditModal);
+                    editOutgoingCodeControl.refresh(false);
                 });
             });
         }
@@ -1174,6 +1367,9 @@ include __DIR__ . '/../partials/sidebar.php';
             document.querySelectorAll('.btn-edit-minutes').forEach(function(button) {
                 button.addEventListener('click', function() {
                     document.getElementById('editMinutesId').value = button.dataset.id || '';
+                    document.getElementById('editMinutesCode').value = button.dataset.minutesCode || '';
+                    document.getElementById('editMinutesCode').dataset.generatedCode = button.dataset.minutesCode || '';
+                    document.getElementById('editMinutesCode').dataset.autoMode = 'false';
                     document.getElementById('editMinutesIncomingLetterId').value = button.dataset.incomingLetterId || '';
                     document.getElementById('editMinutesOutgoingLetterId').value = button.dataset.outgoingLetterId || '';
                     document.getElementById('editMinutesTitle').value = button.dataset.meetingTitle || '';
@@ -1187,6 +1383,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     document.getElementById('minutesEditRevisionLabel').textContent = button.dataset.revisionLabel || 'draft-awal';
 
                     openModal(minutesEditModal);
+                    editMinutesCodeControl.refresh(false);
                 });
             });
         }

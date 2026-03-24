@@ -81,19 +81,30 @@ try {
                         <div class="row-form-2">
                             <div class="col">
                                 <label>Nama Instansi</label>
-                                <input type="text" name="institution_name" maxlength="160" required>
+                                <input type="text" name="institution_name" id="incomingInstitutionName" maxlength="160" required>
                             </div>
                             <div class="col">
-                                <label>Nama</label>
-                                <input type="text" name="sender_name" maxlength="160" required>
+                                <label>Nomor Surat</label>
+                                <div class="flex gap-2">
+                                    <input type="text" name="letter_code" id="incomingLetterCode" maxlength="32" placeholder="Otomatis muncul setelah field wajib lengkap">
+                                    <button type="button" class="btn-secondary whitespace-nowrap" id="incomingAutoCodeBtn">Auto</button>
+                                </div>
+                                <div class="meta-text-xs mt-1">Nomor surat otomatis bisa diedit manual.</div>
                             </div>
                         </div>
 
                         <div class="row-form-2">
                             <div class="col">
+                                <label>Nama</label>
+                                <input type="text" name="sender_name" maxlength="160" required>
+                            </div>
+                            <div class="col">
                                 <label>Nomor HP IC</label>
                                 <input type="text" name="sender_phone" maxlength="64" required>
                             </div>
+                        </div>
+
+                        <div class="row-form-2">
                             <div class="col">
                                 <label>Ingin Menemui</label>
                                 <select name="target_user_id" required>
@@ -105,21 +116,17 @@ try {
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            <div class="col">
+                                <label>Tanggal Temu</label>
+                                <input type="date" name="appointment_date" required>
+                            </div>
                         </div>
 
                         <label>Perihal / Agenda Pertemuan</label>
                         <textarea name="meeting_topic" rows="3" maxlength="255" required></textarea>
 
-                        <div class="row-form-2">
-                            <div class="col">
-                                <label>Tanggal Temu</label>
-                                <input type="date" name="appointment_date" required>
-                            </div>
-                            <div class="col">
-                                <label>Jam Temu</label>
-                                <input type="time" name="appointment_time" required>
-                            </div>
-                        </div>
+                        <label>Jam Temu</label>
+                        <input type="time" name="appointment_time" required>
 
                         <label>Catatan Tambahan</label>
                         <textarea name="notes" rows="4" placeholder="Contoh: membawa proposal kerja sama / konfirmasi ulang via telepon"></textarea>
@@ -153,6 +160,89 @@ try {
     </main>
     <script>
         (function() {
+            const generateCodeUrl = <?= json_encode(ems_url('/ajax/generate_surat_code.php')) ?>;
+
+            function debounce(fn, delay) {
+                let timer = null;
+                return function() {
+                    const args = arguments;
+                    clearTimeout(timer);
+                    timer = setTimeout(function() {
+                        fn.apply(null, args);
+                    }, delay);
+                };
+            }
+
+            function setupAutoCode(options) {
+                const codeInput = document.getElementById(options.codeInputId);
+                const autoButton = document.getElementById(options.autoButtonId);
+                const requiredInputs = options.requiredInputIds.map(function(id) {
+                    return document.getElementById(id);
+                }).filter(Boolean);
+                const watchedInputs = options.watchedInputIds.map(function(id) {
+                    return document.getElementById(id);
+                }).filter(Boolean);
+
+                if (!codeInput || !requiredInputs.length) return;
+
+                codeInput.dataset.autoMode = 'true';
+                codeInput.dataset.generatedCode = codeInput.value || '';
+
+                async function refreshCode(forceAuto) {
+                    const requiredReady = requiredInputs.every(function(input) {
+                        return String(input.value || '').trim() !== '';
+                    });
+
+                    if (!requiredReady) {
+                        if (forceAuto) {
+                            codeInput.value = '';
+                            codeInput.dataset.generatedCode = '';
+                        }
+                        return;
+                    }
+
+                    const url = new URL(generateCodeUrl, window.location.origin);
+                    url.searchParams.set('type', options.type);
+                    const institutionInput = document.getElementById(options.institutionInputId);
+                    url.searchParams.set('institution_name', (institutionInput ? institutionInput.value : '').trim());
+
+                    const response = await fetch(url.toString(), { credentials: 'same-origin' });
+                    const payload = await response.json();
+                    if (!payload.success) return;
+
+                    const currentValue = codeInput.value.trim();
+                    const previousGenerated = codeInput.dataset.generatedCode || '';
+                    const shouldApply = forceAuto || codeInput.dataset.autoMode === 'true' || currentValue === '' || currentValue === previousGenerated;
+
+                    codeInput.dataset.generatedCode = payload.code || '';
+                    if (shouldApply) {
+                        codeInput.value = payload.code || '';
+                        codeInput.dataset.autoMode = 'true';
+                    }
+                }
+
+                const debouncedRefresh = debounce(function() {
+                    refreshCode(false).catch(function() {});
+                }, 250);
+
+                watchedInputs.forEach(function(input) {
+                    input.addEventListener('input', debouncedRefresh);
+                    input.addEventListener('change', debouncedRefresh);
+                });
+
+                codeInput.addEventListener('input', function() {
+                    const currentValue = codeInput.value.trim();
+                    codeInput.dataset.autoMode = (currentValue === '' || currentValue === (codeInput.dataset.generatedCode || '')) ? 'true' : 'false';
+                });
+
+                if (autoButton) {
+                    autoButton.addEventListener('click', function() {
+                        codeInput.dataset.autoMode = 'true';
+                        refreshCode(true).catch(function() {});
+                    });
+                }
+            }
+
             function setupMultiImagePreview(inputId, previewId) {
                 const input = document.getElementById(inputId);
                 const preview = document.getElementById(previewId);
@@ -204,6 +294,14 @@ try {
             }
 
             setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview');
+            setupAutoCode({
+                type: 'incoming',
+                codeInputId: 'incomingLetterCode',
+                autoButtonId: 'incomingAutoCodeBtn',
+                institutionInputId: 'incomingInstitutionName',
+                requiredInputIds: ['incomingInstitutionName'],
+                watchedInputIds: ['incomingInstitutionName']
+            });
         })();
     </script>
 

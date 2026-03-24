@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/surat_code_helper.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -28,7 +29,18 @@ function redirect_public_form(array $params = []): void
 
 function generate_incoming_letter_code(): string
 {
-    return 'SM-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
+    $submittedAt = new DateTimeImmutable('now');
+
+    return surat_generate_formatted_code(
+        $GLOBALS['pdo'],
+        'incoming_letters',
+        'letter_code',
+        'submitted_at',
+        'SM',
+        $submittedAt->format('Y-m-d H:i:s'),
+        $_POST['institution_name'] ?? '',
+        'SR'
+    );
 }
 
 function suratTableHasColumn(PDO $pdo, string $table, string $column): bool
@@ -117,6 +129,7 @@ function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files):
 $institutionName = trim((string)($_POST['institution_name'] ?? ''));
 $senderName = trim((string)($_POST['sender_name'] ?? ''));
 $senderPhone = trim((string)($_POST['sender_phone'] ?? ''));
+$requestedLetterCode = trim((string)($_POST['letter_code'] ?? ''));
 $meetingTopic = trim((string)($_POST['meeting_topic'] ?? ''));
 $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
 $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
@@ -165,7 +178,13 @@ try {
         ]);
     }
 
-    $letterCode = generate_incoming_letter_code();
+    $letterCode = surat_resolve_requested_code(
+        $pdo,
+        'incoming_letters',
+        'letter_code',
+        $requestedLetterCode,
+        static fn(): string => generate_incoming_letter_code()
+    );
 
     $insertColumns = [
         'letter_code',
@@ -224,6 +243,6 @@ try {
         $pdo->rollBack();
     }
     redirect_public_form([
-        'error' => 'Gagal menyimpan surat. Silakan coba lagi.',
+        'error' => $e->getMessage() !== '' ? $e->getMessage() : 'Gagal menyimpan surat. Silakan coba lagi.',
     ]);
 }

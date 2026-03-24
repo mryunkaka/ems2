@@ -124,11 +124,13 @@ $outgoingRows = [];
 $minutesRows = [];
 $coordinationRows = [];
 $timelineItems = [];
+$hasMinutesCodeColumn = false;
 
 try {
     $hasIncomingDivisionScope = surat_monitoring_table_has_column($pdo, 'incoming_letters', 'division_scope');
     $hasOutgoingDivisionScope = surat_monitoring_table_has_column($pdo, 'outgoing_letters', 'division_scope');
     $hasMinutesDivisionScope = surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'division_scope');
+    $hasMinutesCodeColumn = surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'minutes_code');
 
     $incomingFilter = $hasIncomingDivisionScope ? "WHERE (l.division_scope = 'All Divisi' OR l.division_scope = :scope)" : '';
     $outgoingFilter = $hasOutgoingDivisionScope ? "WHERE (o.division_scope = 'All Divisi' OR o.division_scope = :scope)" : '';
@@ -194,6 +196,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT
             m.id,
+            " . ($hasMinutesCodeColumn ? "m.minutes_code" : "NULL") . " AS minutes_code,
             m.meeting_title,
             m.meeting_date,
             m.meeting_time,
@@ -389,12 +392,15 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php foreach ($minutesRows as $row): ?>
                                 <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['meeting_title'] ?? '') . ' ' . ($row['summary'] ?? '') . ' ' . ($row['participants'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="surat-mini-top">
-                                        <h3><?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?></h3>
+                                        <div>
+                                            <h3><?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?></h3>
+                                            <div class="surat-capsule-subtitle"><?= htmlspecialchars((string) ($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        </div>
                                         <span class="badge-success"><?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
                                     <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['summary'] ?? ''), 100), ENT_QUOTES, 'UTF-8') ?></p>
                                     <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['meeting_date'] ?? '', $row['meeting_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <button type="button" class="btn-secondary btn-view-minutes" data-title="<?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['meeting_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['meeting_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-participants="<?= htmlspecialchars((string) ($row['participants'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-decisions="<?= htmlspecialchars((string) ($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-revision="<?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?>">Buka Notulen</button>
+                                    <button type="button" class="btn-secondary btn-view-minutes" data-title="<?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['meeting_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['meeting_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-participants="<?= htmlspecialchars((string) ($row['participants'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-decisions="<?= htmlspecialchars((string) ($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-revision="<?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?>">Buka Notulen</button>
                                 </article>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -468,6 +474,7 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
         <div class="modal-content">
             <div class="surat-modal-grid">
+                <div class="card"><div class="meta-text-xs">Kode</div><div id="minutesModalCode" class="font-semibold text-slate-800">-</div></div>
                 <div class="card"><div class="meta-text-xs">Tanggal</div><div id="minutesModalDate" class="font-semibold text-slate-800">-</div></div>
                 <div class="card"><div class="meta-text-xs">Jam</div><div id="minutesModalTime" class="font-semibold text-slate-800">-</div></div>
                 <div class="card"><div class="meta-text-xs">Scope</div><div id="minutesModalScope" class="font-semibold text-slate-800">-</div></div>
@@ -500,7 +507,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeModal(letterModal);closeModal(minutesModal)}});
     if(searchInput){searchInput.addEventListener('input',function(){const keyword=searchInput.value.trim().toLowerCase();filterItems.forEach(function(item){const haystack=item.dataset.searchScope||'';item.classList.toggle('is-hidden',keyword!==''&&!haystack.includes(keyword))})})}
     document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';openModal(letterModal)})});
-    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';openModal(minutesModal)})});
+    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';openModal(minutesModal)})});
 });
 </script>
 

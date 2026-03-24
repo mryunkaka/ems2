@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/surat_code_helper.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -29,7 +30,32 @@ function surat_redirect(string $fallback = 'surat_menyurat.php'): void
 
 function generate_outgoing_letter_code(): string
 {
-    return 'SK-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
+    $createdAt = new DateTimeImmutable('now');
+
+    return surat_generate_formatted_code(
+        $GLOBALS['pdo'],
+        'outgoing_letters',
+        'outgoing_code',
+        'created_at',
+        'SK',
+        $createdAt->format('Y-m-d H:i:s'),
+        $_POST['institution_name'] ?? '',
+        'SR'
+    );
+}
+
+function generate_meeting_minutes_code(PDO $pdo, int $incomingLetterId, int $outgoingLetterId, string $meetingDate): string
+{
+    return surat_generate_formatted_code(
+        $pdo,
+        'meeting_minutes',
+        'minutes_code',
+        'meeting_date',
+        'NOT',
+        $meetingDate,
+        surat_resolve_minutes_institution($pdo, $incomingLetterId, $outgoingLetterId),
+        'SR'
+    );
 }
 
 function surat_table_has_column(PDO $pdo, string $table, string $column): bool
@@ -224,6 +250,7 @@ try {
 
     if ($action === 'add_outgoing_letter') {
         $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
+        $requestedOutgoingCode = trim((string)($_POST['outgoing_code'] ?? ''));
         $institutionName = trim((string)($_POST['institution_name'] ?? ''));
         $recipientName = trim((string)($_POST['recipient_name'] ?? ''));
         $recipientContact = trim((string)($_POST['recipient_contact'] ?? ''));
@@ -262,7 +289,13 @@ try {
             'created_by',
         ];
         $insertValues = [
-            generate_outgoing_letter_code(),
+            surat_resolve_requested_code(
+                $pdo,
+                'outgoing_letters',
+                'outgoing_code',
+                $requestedOutgoingCode,
+                static fn(): string => generate_outgoing_letter_code()
+            ),
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $institutionName,
             $recipientName !== '' ? $recipientName : null,
@@ -301,6 +334,7 @@ try {
         surat_require_revision_columns($pdo, 'outgoing_letters');
 
         $letterId = (int)($_POST['letter_id'] ?? 0);
+        $requestedOutgoingCode = trim((string)($_POST['outgoing_code'] ?? ''));
         $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
         $institutionName = trim((string)($_POST['institution_name'] ?? ''));
         $recipientName = trim((string)($_POST['recipient_name'] ?? ''));
@@ -341,6 +375,7 @@ try {
         $revisionLabel = surat_revision_label($revisionCount);
 
         $assignments = [
+            'outgoing_code = ?',
             'incoming_letter_id = ?',
             'institution_name = ?',
             'recipient_name = ?',
@@ -355,6 +390,14 @@ try {
             'updated_by = ?',
         ];
         $params = [
+            surat_resolve_requested_code(
+                $pdo,
+                'outgoing_letters',
+                'outgoing_code',
+                $requestedOutgoingCode,
+                static fn(): string => generate_outgoing_letter_code(),
+                $letterId
+            ),
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $institutionName,
             $recipientName !== '' ? $recipientName : null,
@@ -386,8 +429,13 @@ try {
     }
 
     if ($action === 'add_meeting_minutes') {
+        if (!surat_table_has_column($pdo, 'meeting_minutes', 'minutes_code')) {
+            throw new Exception('Kolom kode notulen belum tersedia. Jalankan SQL terbaru di docs/sql terlebih dahulu.');
+        }
+
         $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
         $outgoingLetterId = (int)($_POST['outgoing_letter_id'] ?? 0);
+        $requestedMinutesCode = trim((string)($_POST['minutes_code'] ?? ''));
         $meetingTitle = trim((string)($_POST['meeting_title'] ?? ''));
         $meetingDate = trim((string)($_POST['meeting_date'] ?? ''));
         $meetingTime = trim((string)($_POST['meeting_time'] ?? ''));
@@ -413,6 +461,7 @@ try {
         }
 
         $insertColumns = [
+            'minutes_code',
             'incoming_letter_id',
             'outgoing_letter_id',
             'meeting_title',
@@ -425,6 +474,13 @@ try {
             'created_by',
         ];
         $insertValues = [
+            surat_resolve_requested_code(
+                $pdo,
+                'meeting_minutes',
+                'minutes_code',
+                $requestedMinutesCode,
+                static fn(): string => generate_meeting_minutes_code($pdo, $incomingLetterId, $outgoingLetterId, $meetingDate)
+            ),
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $outgoingLetterId > 0 ? $outgoingLetterId : null,
             $meetingTitle,
@@ -461,6 +517,7 @@ try {
         $minutesId = (int)($_POST['minutes_id'] ?? 0);
         $incomingLetterId = (int)($_POST['incoming_letter_id'] ?? 0);
         $outgoingLetterId = (int)($_POST['outgoing_letter_id'] ?? 0);
+        $requestedMinutesCode = trim((string)($_POST['minutes_code'] ?? ''));
         $meetingTitle = trim((string)($_POST['meeting_title'] ?? ''));
         $meetingDate = trim((string)($_POST['meeting_date'] ?? ''));
         $meetingTime = trim((string)($_POST['meeting_time'] ?? ''));
@@ -503,6 +560,7 @@ try {
         $revisionLabel = surat_revision_label($revisionCount);
 
         $assignments = [
+            'minutes_code = ?',
             'incoming_letter_id = ?',
             'outgoing_letter_id = ?',
             'meeting_title = ?',
@@ -518,6 +576,14 @@ try {
             'updated_by = ?',
         ];
         $params = [
+            surat_resolve_requested_code(
+                $pdo,
+                'meeting_minutes',
+                'minutes_code',
+                $requestedMinutesCode,
+                static fn(): string => generate_meeting_minutes_code($pdo, $incomingLetterId, $outgoingLetterId, $meetingDate),
+                $minutesId
+            ),
             $incomingLetterId > 0 ? $incomingLetterId : null,
             $outgoingLetterId > 0 ? $outgoingLetterId : null,
             $meetingTitle,
