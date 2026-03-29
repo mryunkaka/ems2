@@ -10,6 +10,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
+$effectiveUnit = ems_effective_unit($pdo, $user);
 
 // HARD GUARD: staff dilarang
 if (ems_is_staff_role($role)) {
@@ -20,6 +21,7 @@ if (ems_is_staff_role($role)) {
 $pageTitle = 'Manajemen User';
 $roleOptions = ems_role_options();
 $divisionOptions = ems_division_options();
+$unitOptions = ems_unit_options();
 
 function manageUsersHasColumn(PDO $pdo, string $column): bool
 {
@@ -50,16 +52,23 @@ $errors   = $_SESSION['flash_errors']   ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
 
 $hasDivisionColumn = manageUsersHasColumn($pdo, 'division');
+$hasUnitCodeColumn = manageUsersHasColumn($pdo, 'unit_code');
+$hasCanViewAllUnitsColumn = manageUsersHasColumn($pdo, 'can_view_all_units');
 $divisionSelect = $hasDivisionColumn ? "u.division," : "NULL AS division,";
+$unitSelect = $hasUnitCodeColumn ? "u.unit_code," : "'roxwood' AS unit_code,";
+$allUnitsSelect = $hasCanViewAllUnitsColumn ? "u.can_view_all_units," : "NULL AS can_view_all_units,";
+$unitWhere = $hasUnitCodeColumn ? "WHERE COALESCE(u.unit_code, 'roxwood') = :unit_code" : "";
 
 // AMBIL SEMUA USER (SESUAI DATABASE)
-$users = $pdo->query("
+$stmtUsers = $pdo->prepare("
         SELECT 
         u.id,
         u.full_name,
         u.position,
         u.role,
         {$divisionSelect}
+        {$unitSelect}
+        {$allUnitsSelect}
         u.is_active,
         u.tanggal_masuk,
 
@@ -85,12 +94,15 @@ $users = $pdo->query("
     FROM user_rh u
     LEFT JOIN user_rh r  ON r.id  = u.resigned_by
     LEFT JOIN user_rh ra ON ra.id = u.reactivated_by
+    {$unitWhere}
 
     ORDER BY 
         u.is_active DESC,
         u.full_name ASC
 
-")->fetchAll(PDO::FETCH_ASSOC);
+");
+$stmtUsers->execute($hasUnitCodeColumn ? [':unit_code' => $effectiveUnit] : []);
+$users = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
 
 $dynamicOtherDocFilters = [];
 
@@ -269,6 +281,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Jabatan</th>
                                         <th>Role</th>
                                         <th>Division</th>
+                                        <th>Unit</th>
                                         <th>Tanggal Join</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
@@ -303,6 +316,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                        $posSearch = strtolower(trim((string)($u['position'] ?? '')));
 		                                        $roleSearch = strtolower(trim((string)($u['role'] ?? '')));
 		                                        $divisionSearch = strtolower(trim((string)ems_normalize_division($u['division'] ?? '')));
+		                                        $unitSearch = strtolower(trim((string)ems_normalize_unit_code($u['unit_code'] ?? 'roxwood')));
 		                                        $joinSearch = '';
 		                                        if (!empty($u['tanggal_masuk'])) {
 		                                            try {
@@ -318,6 +332,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                            $posSearch,
 		                                            $roleSearch,
 		                                            $divisionSearch,
+		                                            $unitSearch,
 		                                            $joinSearch,
 		                                            $docSearch,
 		                                        ])));
@@ -341,6 +356,7 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-search-position="<?= htmlspecialchars($posSearch) ?>"
 			                                            data-search-role="<?= htmlspecialchars($roleSearch) ?>"
 			                                            data-search-division="<?= htmlspecialchars($divisionSearch) ?>"
+			                                            data-search-unit="<?= htmlspecialchars($unitSearch) ?>"
 			                                            data-search-join="<?= htmlspecialchars($joinSearch) ?>"
 			                                            data-search-docs="<?= htmlspecialchars($docSearch) ?>"
 			                                            data-search-all="<?= htmlspecialchars($allSearch) ?>"
@@ -372,6 +388,7 @@ uksort($usersByBatch, function ($a, $b) {
                                             <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
                                             <td><?= htmlspecialchars(ems_role_label($u['role'])) ?></td>
                                             <td><?= htmlspecialchars(ems_normalize_division($u['division'] ?? '') ?: '-') ?></td>
+                                            <td><?= htmlspecialchars(ems_unit_label($u['unit_code'] ?? 'roxwood')) ?></td>
                                             <td>
                                                 <?php if (!empty($u['tanggal_masuk'])): ?>
                                                     <div>
@@ -416,6 +433,8 @@ uksort($usersByBatch, function ($a, $b) {
                                                         data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
                                                         data-role="<?= strtolower(trim($u['role'])) ?>"
                                                         data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
+                                                        data-unit="<?= htmlspecialchars(ems_normalize_unit_code($u['unit_code'] ?? 'roxwood'), ENT_QUOTES) ?>"
+                                                        data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
                                                         data-batch="<?= (int)($u['batch'] ?? 0) ?>"
                                                         data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
                                                         Edit
@@ -595,6 +614,24 @@ uksort($usersByBatch, function ($a, $b) {
                     <?php endforeach; ?>
                 </select>
 
+                <?php if ($hasUnitCodeColumn): ?>
+                    <label for="editUnitCode">Unit</label>
+                    <select name="unit_code" id="editUnitCode" autocomplete="organization" required>
+                        <?php foreach ($unitOptions as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                <?= htmlspecialchars($opt['label']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+
+                <?php if ($hasCanViewAllUnitsColumn && ems_is_director_role($role)): ?>
+                    <label class="inline-flex items-center gap-2 mt-2">
+                        <input type="checkbox" name="can_view_all_units" id="editCanViewAllUnits" value="1">
+                        <span>Akses semua unit (khusus owner)</span>
+                    </label>
+                <?php endif; ?>
+
 		            <label for="editNewPin">PIN Baru <small>(4 digit, kosongkan jika tidak ganti)</small></label>
 		            <input type="password"
 		                id="editNewPin"
@@ -689,6 +726,24 @@ uksort($usersByBatch, function ($a, $b) {
                     <?php endforeach; ?>
                 </select>
 
+                <?php if ($hasUnitCodeColumn): ?>
+                    <label for="addUnitCode">Unit</label>
+                    <select id="addUnitCode" name="unit_code" autocomplete="organization" required>
+                        <?php foreach ($unitOptions as $opt): ?>
+                            <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                <?= htmlspecialchars($opt['label']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php endif; ?>
+
+                <?php if ($hasCanViewAllUnitsColumn && ems_is_director_role($role)): ?>
+                    <label class="inline-flex items-center gap-2 mt-2">
+                        <input type="checkbox" name="can_view_all_units" id="addCanViewAllUnits" value="1">
+                        <span>Akses semua unit (khusus owner)</span>
+                    </label>
+                <?php endif; ?>
+
 	            <label for="addBatch">Batch <small>(opsional)</small></label>
 	            <input type="number" id="addBatch" name="batch" autocomplete="off" min="1" max="26" placeholder="Contoh: 3">
 
@@ -772,8 +827,16 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('editUserId').value = btn.dataset.id;
             document.getElementById('editName').value = btn.dataset.name;
             document.getElementById('editPosition').value = btn.dataset.position;
-            document.getElementById('editRole').value = roleMap[btn.dataset.role] || 'Staff';
-            document.getElementById('editDivision').value = btn.dataset.division || 'Executive';
+		            document.getElementById('editRole').value = roleMap[btn.dataset.role] || 'Staff';
+		            document.getElementById('editDivision').value = btn.dataset.division || 'Executive';
+                    const editUnitEl = document.getElementById('editUnitCode');
+                    if (editUnitEl) {
+                        editUnitEl.value = btn.dataset.unit || 'roxwood';
+                    }
+                    const editCanViewAllUnitsEl = document.getElementById('editCanViewAllUnits');
+                    if (editCanViewAllUnitsEl) {
+                        editCanViewAllUnitsEl.checked = btn.dataset.canViewAllUnits === '1';
+                    }
 
             document.getElementById('editBatch').value = btn.dataset.batch || '';
             document.getElementById('editKodeMedis').value = btn.dataset.kode || '';

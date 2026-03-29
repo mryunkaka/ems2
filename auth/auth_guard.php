@@ -26,9 +26,13 @@ if (isset($_SESSION['user_rh'])) {
     if ($uid > 0) {
         try {
             $hasDivisionColumn = authGuardUserRhHasColumn($pdo, 'division');
+            $hasUnitCodeColumn = authGuardUserRhHasColumn($pdo, 'unit_code');
+            $hasCanViewAllUnitsColumn = authGuardUserRhHasColumn($pdo, 'can_view_all_units');
             $divisionSelect = $hasDivisionColumn ? ', division' : '';
+            $unitSelect = $hasUnitCodeColumn ? ', unit_code' : '';
+            $canViewAllUnitsSelect = $hasCanViewAllUnitsColumn ? ', can_view_all_units' : '';
             $stmt = $pdo->prepare("
-                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}
+                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}
                 FROM user_rh 
                 WHERE id = ? 
                 LIMIT 1
@@ -42,6 +46,10 @@ if (isset($_SESSION['user_rh'])) {
                 $_SESSION['user_rh']['cuti_start_date'] = $row['cuti_start_date'] ?? null;
                 $_SESSION['user_rh']['cuti_end_date'] = $row['cuti_end_date'] ?? null;
                 $_SESSION['user_rh']['division'] = ems_normalize_division($row['division'] ?? ($_SESSION['user_rh']['division'] ?? ''));
+                $_SESSION['user_rh']['unit_code'] = ems_normalize_unit_code($row['unit_code'] ?? ($_SESSION['user_rh']['unit_code'] ?? 'roxwood'));
+                $_SESSION['user_rh']['can_view_all_units'] = isset($row['can_view_all_units'])
+                    ? ((int)$row['can_view_all_units'] === 1 ? 1 : 0)
+                    : ($_SESSION['user_rh']['can_view_all_units'] ?? 0);
                 // Keep backward-compatible name keys in sync
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
@@ -92,12 +100,14 @@ if (!empty($_COOKIE['remember_login'])) {
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($user) {
-                $_SESSION['user_rh'] = [
+        $_SESSION['user_rh'] = [
             'id'       => $user['id'],
             'name'     => $user['full_name'],
             'role'     => $user['role'],
             'position' => ems_normalize_position($user['position'] ?? ''),
             'division' => ems_normalize_division($user['division'] ?? ''),
+            'unit_code' => ems_normalize_unit_code($user['unit_code'] ?? 'roxwood'),
+            'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
             'cuti_status' => $user['cuti_status'] ?? null,
             'cuti_start_date' => $user['cuti_start_date'] ?? null,
             'cuti_end_date' => $user['cuti_end_date'] ?? null

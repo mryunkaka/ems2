@@ -53,6 +53,8 @@ if ($rangeType === 'last_week') {
 
 $rangeStartLabel = ranking_format_indo_short_date($rangeStart);
 $rangeEndLabel = ranking_format_indo_short_date($rangeEnd);
+$sessionUser = $_SESSION['user_rh'] ?? [];
+$effectiveUnit = ems_effective_unit($pdo, $sessionUser);
 
 $pageTitle = 'Ranking Medis';
 
@@ -75,12 +77,14 @@ $stmtRank = $pdo->prepare("
         SUM(price) AS total_rupiah
     FROM sales
     WHERE created_at BETWEEN :start AND :end
+      AND unit_code = :unit_code
     GROUP BY medic_user_id
     ORDER BY total_rupiah DESC
 ");
 $stmtRank->execute([
     ':start' => $rangeStart,
     ':end'   => $rangeEnd,
+    ':unit_code' => $effectiveUnit,
 ]);
 $medicRanking = $stmtRank->fetchAll(PDO::FETCH_ASSOC);
 
@@ -91,10 +95,12 @@ $stmtSummary = $pdo->prepare("
         COALESCE(SUM(qty_painkiller), 0) AS total_painkiller
     FROM sales
     WHERE created_at BETWEEN :start AND :end
+      AND unit_code = :unit_code
 ");
 $stmtSummary->execute([
     ':start' => $rangeStart,
     ':end'   => $rangeEnd,
+    ':unit_code' => $effectiveUnit,
 ]);
 $summary = $stmtSummary->fetch(PDO::FETCH_ASSOC) ?: [
     'total_bandage' => 0,
@@ -108,7 +114,7 @@ $summary = $stmtSummary->fetch(PDO::FETCH_ASSOC) ?: [
         <h1 class="page-title">Ranking Medis</h1>
 
         <p class="page-subtitle">
-            <?= htmlspecialchars($rangeTitle) ?> &bull; <?= htmlspecialchars($rangeStartLabel) ?> &ndash; <?= htmlspecialchars($rangeEndLabel) ?>
+            <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?> &bull; <?= htmlspecialchars($rangeTitle) ?> &bull; <?= htmlspecialchars($rangeStartLabel) ?> &ndash; <?= htmlspecialchars($rangeEndLabel) ?>
         </p>
 
         <div class="card card-section">

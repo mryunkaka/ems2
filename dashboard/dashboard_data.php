@@ -17,6 +17,9 @@ require_once __DIR__ . '/../config/date_range.php';
 // menghasilkan: $rangeStart, $rangeEnd, $weeks
 
 require_once __DIR__ . '/../config/helpers.php';
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
+$emsSalesHasUnitCode = ems_table_exists($pdo, 'ems_sales') && ems_column_exists($pdo, 'ems_sales', 'unit_code');
 
 // =====================================================
 // NORMALIZE DateTime → STRING (PDO SAFE)
@@ -42,10 +45,14 @@ function fetchOne(PDO $pdo, string $sql, array $params = [])
 // =====================================================
 // GLOBAL RANGE (ACTIVE)
 // =====================================================
-$paramsRange = [
+$paramsDateRange = [
     ':start' => dt($rangeStart),
     ':end'   => dt($rangeEnd)
 ];
+$paramsSalesRange = $paramsDateRange;
+if ($salesHasUnitCode) {
+    $paramsSalesRange[':unit_code'] = $effectiveUnit;
+}
 
 // =====================================================
 // STATISTIC CARDS (FARMASI + ITEM + PAKET)
@@ -74,7 +81,8 @@ $statFarmasi = fetchOne($pdo, "
         SUM(price * 0.6) AS company_profit
     FROM sales
     WHERE created_at BETWEEN :start AND :end
-", $paramsRange);
+    " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
+", $paramsSalesRange);
 
 // =====================================================
 // REKAP MEDIS
@@ -92,7 +100,8 @@ $rekapMedis = fetchOne($pdo, "
         SUM(operasi_tingkat = 'berat')   AS operasi_berat
     FROM ems_sales
     WHERE created_at BETWEEN :start AND :end
-", $paramsRange);
+    " . ($emsSalesHasUnitCode ? " AND unit_code = :unit_code_ems" : "") . "
+", array_merge($paramsDateRange, $emsSalesHasUnitCode ? [':unit_code_ems' => $effectiveUnit] : []));
 
 // =====================================================
 // WEEKLY WINNER (WEEK 1 - 4)
@@ -111,9 +120,11 @@ foreach ($weeks as $key => $w) {
         SELECT SUM(price) AS total
         FROM sales
         WHERE created_at BETWEEN :ws AND :we
+        " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     ", [
         ':ws' => dt($w['start']),
-        ':we' => dt($w['end'])
+        ':we' => dt($w['end']),
+        ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
     ]);
 
     $totalIncomeWeek = (float)($weeklyIncome['total'] ?? 0);
@@ -122,12 +133,14 @@ foreach ($weeks as $key => $w) {
         SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
         FROM sales
         WHERE created_at BETWEEN :ws AND :we
+        " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
         GROUP BY medic_user_id
         ORDER BY SUM(price) DESC
         LIMIT 1
     ", [
         ':ws' => dt($w['start']),
-        ':we' => dt($w['end'])
+        ':we' => dt($w['end']),
+        ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
     ]);
 
     $totalSales = (float)($winner['total'] ?? 0);
@@ -155,24 +168,28 @@ $monthlyCurrent = fetchOne($pdo, "
     SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
     FROM sales
     WHERE created_at BETWEEN :s AND :e
+    " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     GROUP BY medic_user_id
     ORDER BY total DESC
     LIMIT 1
 ", [
     ':s' => $currentMonthStart,
-    ':e' => $currentMonthEnd
+    ':e' => $currentMonthEnd,
+    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
 ]);
 
 $monthlyLast = fetchOne($pdo, "
     SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price) AS total
     FROM sales
     WHERE created_at BETWEEN :s AND :e
+    " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     GROUP BY medic_user_id
     ORDER BY total DESC
     LIMIT 1
 ", [
     ':s' => $lastMonthStart,
-    ':e' => $lastMonthEnd
+    ':e' => $lastMonthEnd,
+    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
 ]);
 
 // =====================================================
@@ -182,10 +199,11 @@ $topEarning = fetchOne($pdo, "
     SELECT medic_user_id, MAX(medic_name) AS medic_name, SUM(price * 0.4) AS bonus
     FROM sales
     WHERE created_at BETWEEN :start AND :end
+    " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     GROUP BY medic_user_id
     ORDER BY bonus DESC
     LIMIT 1
-", $paramsRange);
+", $paramsSalesRange);
 
 // =====================================================
 // FINAL DASHBOARD ARRAY (VIEW ONLY)

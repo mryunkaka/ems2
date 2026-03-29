@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/helpers.php';
 
 $sessionUser = $_SESSION['user_rh'] ?? [];
 $sessionRole = $sessionUser['role'] ?? '';
+$effectiveUnit = ems_effective_unit($pdo, $sessionUser);
 
 if (ems_is_staff_role($sessionRole)) {
     $_SESSION['flash_errors'][] = 'Akses ditolak.';
@@ -33,6 +34,28 @@ function manageUsersActionHasColumn(PDO $pdo, string $column): bool
 }
 
 $hasDivisionColumn = manageUsersActionHasColumn($pdo, 'division');
+$hasUnitCodeColumn = manageUsersActionHasColumn($pdo, 'unit_code');
+$hasCanViewAllUnitsColumn = manageUsersActionHasColumn($pdo, 'can_view_all_units');
+
+function manageUsersActionTargetExists(PDO $pdo, int $userId, bool $hasUnitCodeColumn, string $effectiveUnit): bool
+{
+    if ($userId <= 0) {
+        return false;
+    }
+
+    $sql = "SELECT COUNT(*) FROM user_rh WHERE id = ?";
+    $params = [$userId];
+
+    if ($hasUnitCodeColumn) {
+        $sql .= " AND COALESCE(unit_code, 'roxwood') = ?";
+        $params[] = $effectiveUnit;
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return (int)$stmt->fetchColumn() > 0;
+}
 
 /* =========================================================
    TAMBAH USER BARU
@@ -46,6 +69,8 @@ if ($action === 'add_user') {
     $position = ems_normalize_position($_POST['position'] ?? '');
     $role     = ems_role_label($_POST['role'] ?? '');
     $division = ems_normalize_division($_POST['division'] ?? '');
+    $unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
+    $canViewAllUnits = !empty($_POST['can_view_all_units']) && ems_is_director_role($sessionRole) ? 1 : null;
     $batch    = (int)($_POST['batch'] ?? 0);
 
     if ($name === '' || $position === '' || $role === '' || $division === '') {
@@ -89,6 +114,18 @@ if ($action === 'add_user') {
         $columns[] = 'division';
         $placeholders[] = '?';
         $params[] = $division;
+    }
+
+    if ($hasUnitCodeColumn) {
+        $columns[] = 'unit_code';
+        $placeholders[] = '?';
+        $params[] = $unitCode;
+    }
+
+    if ($hasCanViewAllUnitsColumn) {
+        $columns[] = 'can_view_all_units';
+        $placeholders[] = '?';
+        $params[] = $canViewAllUnits;
     }
 
     $columns = array_merge($columns, ['pin', 'batch', 'is_active', 'is_verified']);
@@ -204,12 +241,22 @@ if ($action === 'delete_kode_medis') {
         exit;
     }
 
+    if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+        echo json_encode(['success' => false, 'message' => 'User di luar unit aktif tidak dapat diakses']);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE user_rh
         SET kode_nomor_induk_rs = NULL
         WHERE id = ?
+        " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
     ");
-    $stmt->execute([$userId]);
+    $params = [$userId];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
 
     echo json_encode(['success' => true]);
     exit;
@@ -229,6 +276,12 @@ if ($action === 'resign') {
         exit;
     }
 
+    if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+        $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE user_rh
         SET 
@@ -237,12 +290,17 @@ if ($action === 'resign') {
             resigned_by = ?,
             resigned_at = NOW()
         WHERE id = ?
+        " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
     ");
-    $stmt->execute([
+    $params = [
         $reason,
         $sessionUser['id'],
         $userId
-    ]);
+    ];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
 
     $_SESSION['flash_messages'][] = 'User berhasil dinonaktifkan.';
     header('Location: manage_users.php');
@@ -263,6 +321,12 @@ if ($action === 'reactivate') {
         exit;
     }
 
+    if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+        $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE user_rh  
         SET
@@ -271,12 +335,17 @@ if ($action === 'reactivate') {
             reactivated_by = ?,
             reactivated_note = ?
         WHERE id = ?
+        " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
     ");
-    $stmt->execute([
+    $params = [
         $sessionUser['id'],
         $note,
         $userId
-    ]);
+    ];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
 
     $_SESSION['flash_messages'][] = 'User berhasil diaktifkan kembali.';
     header('Location: manage_users.php');
@@ -310,8 +379,18 @@ if ($action === 'delete') {
         exit;
     }
 
-    $stmt = $pdo->prepare("DELETE FROM user_rh WHERE id = ?");
-    $stmt->execute([$userId]);
+    if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+        $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $stmt = $pdo->prepare("DELETE FROM user_rh WHERE id = ?" . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
+    $params = [$userId];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
 
     $_SESSION['flash_messages'][] = 'User berhasil dihapus permanen.';
     header('Location: manage_users.php');
@@ -326,6 +405,8 @@ $name     = trim($_POST['full_name'] ?? '');
 $position = ems_normalize_position($_POST['position'] ?? '');
 $newRole  = ems_role_label($_POST['role'] ?? '');
 $division = ems_normalize_division($_POST['division'] ?? '');
+$unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
+$canViewAllUnits = !empty($_POST['can_view_all_units']) && ems_is_director_role($sessionRole) ? 1 : null;
 $newPin   = $_POST['new_pin'] ?? '';
 $batch    = (int)($_POST['batch'] ?? 0);
 
@@ -337,6 +418,12 @@ if (!ems_is_valid_role($newRole)) {
 
 if ($userId <= 0 || $name === '' || $position === '' || $newRole === '' || $division === '') {
     $_SESSION['flash_errors'][] = 'Data tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+    $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
     header('Location: manage_users.php');
     exit;
 }
@@ -356,8 +443,12 @@ if (!ems_is_valid_division($division)) {
 /* ===============================
    Ambil kode medis lama
    =============================== */
-$stmt = $pdo->prepare("SELECT kode_nomor_induk_rs FROM user_rh WHERE id = ?");
-$stmt->execute([$userId]);
+$stmt = $pdo->prepare("SELECT kode_nomor_induk_rs FROM user_rh WHERE id = ?" . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
+$selectParams = [$userId];
+if ($hasUnitCodeColumn) {
+    $selectParams[] = $effectiveUnit;
+}
+$stmt->execute($selectParams);
 $currentKode = $stmt->fetchColumn();
 
 /* ===============================
@@ -369,6 +460,16 @@ $params = [$name, $position, $newRole];
 if ($hasDivisionColumn) {
     $sql .= ", division = ?";
     $params[] = $division;
+}
+
+if ($hasUnitCodeColumn) {
+    $sql .= ", unit_code = ?";
+    $params[] = $unitCode;
+}
+
+if ($hasCanViewAllUnitsColumn) {
+    $sql .= ", can_view_all_units = ?";
+    $params[] = $canViewAllUnits;
 }
 
 /* ===============================
@@ -411,6 +512,10 @@ if ($newPin !== '') {
    =============================== */
 $sql .= " WHERE id = ?";
 $params[] = $userId;
+if ($hasUnitCodeColumn) {
+    $sql .= " AND COALESCE(unit_code, 'roxwood') = ?";
+    $params[] = $effectiveUnit;
+}
 
 $pdo->prepare($sql)->execute($params);
 

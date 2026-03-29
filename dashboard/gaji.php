@@ -16,6 +16,17 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 ems_require_not_trainee_html('Gaji');
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$salaryHasUnitCode = ems_column_exists($pdo, 'salary', 'unit_code');
+$userHasAllUnits = ems_user_can_view_all_units($pdo, $_SESSION['user_rh'] ?? []);
+$isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ?? '');
+
+if (!$userHasAllUnits && $effectiveUnit === 'alta' && $isMedicalPosition) {
+    $_SESSION['flash_errors'][] = 'Akses halaman ditolak untuk unit Anda.';
+    header('Location: index.php');
+    exit;
+}
+
 $isStaff = ($userRole === 'staff');
 $userName = $_SESSION['user_rh']['name'] ?? '';
 
@@ -33,12 +44,17 @@ $stmtRekap = $pdo->prepare("
         SUM(bonus_40) AS total_bonus
     FROM salary
     WHERE period_end BETWEEN :start AND :end
+    " . ($salaryHasUnitCode ? " AND unit_code = :unit_code" : "") . "
 ");
 
-$stmtRekap->execute([
+$rekapParams = [
     ':start' => $rangeStart,
     ':end'   => $rangeEnd
-]);
+];
+if ($salaryHasUnitCode) {
+    $rekapParams[':unit_code'] = $effectiveUnit;
+}
+$stmtRekap->execute($rekapParams);
 
 $rekap = $stmtRekap->fetch(PDO::FETCH_ASSOC);
 
@@ -59,12 +75,17 @@ $stmtPaid = $pdo->prepare("
     FROM salary
     WHERE period_end BETWEEN :start AND :end
     AND status = 'paid'
+    " . ($salaryHasUnitCode ? " AND unit_code = :unit_code" : "") . "
 ");
 
-$stmtPaid->execute([
+$paidParams = [
     ':start' => $rangeStart,
     ':end'   => $rangeEnd
-]);
+];
+if ($salaryHasUnitCode) {
+    $paidParams[':unit_code'] = $effectiveUnit;
+}
+$stmtPaid->execute($paidParams);
 
 $paidData = $stmtPaid->fetch(PDO::FETCH_ASSOC);
 $totalPaidBonus = (int)($paidData['total_paid_bonus'] ?? 0);
@@ -86,10 +107,15 @@ if ($userRole === 'staff') {
         SELECT *
         FROM salary
         WHERE medic_user_id = ?
+        " . ($salaryHasUnitCode ? " AND unit_code = ?" : "") . "
         ORDER BY period_end DESC
     ");
 
-    $stmt->execute([$_SESSION['user_rh']['id']]);
+    $staffParams = [$_SESSION['user_rh']['id']];
+    if ($salaryHasUnitCode) {
+        $staffParams[] = $effectiveUnit;
+    }
+    $stmt->execute($staffParams);
 } else {
 
     // NON-STAFF: tabel HARUS ikut filter tanggal
@@ -97,13 +123,18 @@ if ($userRole === 'staff') {
         SELECT *
         FROM salary
         WHERE period_end BETWEEN :start AND :end
+        " . ($salaryHasUnitCode ? " AND unit_code = :unit_code" : "") . "
         ORDER BY period_end DESC
     ");
 
-    $stmt->execute([
+    $salaryParams = [
         ':start' => $rangeStart,
         ':end'   => $rangeEnd
-    ]);
+    ];
+    if ($salaryHasUnitCode) {
+        $salaryParams[':unit_code'] = $effectiveUnit;
+    }
+    $stmt->execute($salaryParams);
 }
 
 $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -113,7 +144,7 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="page page-shell-md">
         <h1 class="page-title">Rekap Gaji Mingguan</h1>
 
-        <p class="page-subtitle"><?= htmlspecialchars($rangeLabel ?? '-') ?>
+        <p class="page-subtitle"><?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?> &bull; <?= htmlspecialchars($rangeLabel ?? '-') ?>
         </p>
         <?php if (!$isStaff && ($_GET['range'] ?? '') !== 'all'): ?>
 

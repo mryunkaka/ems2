@@ -14,6 +14,8 @@ if ($userRole === 'staff') {
     http_response_code(403);
     exit('Akses ditolak');
 }
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$hasUnitCodeColumn = ems_column_exists($pdo, 'user_rh', 'unit_code');
 
 $pageTitle = 'Validasi User';
 
@@ -24,13 +26,16 @@ include __DIR__ . '/../partials/sidebar.php';
 // user yang sudah terverifikasi tetapi belum aktif akan diaktifkan,
 // kecuali yang memang sudah resign/nonaktif permanen.
 try {
-    $pdo->exec("
+    $sqlSync = "
         UPDATE user_rh
         SET is_active = 1
         WHERE is_verified = 1
           AND is_active = 0
           AND (resigned_at IS NULL OR resigned_at = '0000-00-00 00:00:00')
-    ");
+          " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
+    ";
+    $stmtSync = $pdo->prepare($sqlSync);
+    $stmtSync->execute($hasUnitCodeColumn ? [':unit_code' => $effectiveUnit] : []);
 } catch (Throwable $e) {
     // Abaikan agar halaman tetap bisa dibuka.
 }
@@ -38,7 +43,7 @@ try {
 // =======================
 // QUERY SEMUA USER
 // =======================
-$stmt = $pdo->query("
+$stmt = $pdo->prepare("
     SELECT 
         id,
         full_name,
@@ -48,10 +53,13 @@ $stmt = $pdo->query("
         is_active,
         created_at
     FROM user_rh
+    WHERE 1=1
+      " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
     ORDER BY 
         is_verified ASC,       -- 0 (belum valid) di atas
         created_at DESC        -- yang terbaru lebih dulu
 ");
+$stmt->execute($hasUnitCodeColumn ? [':unit_code' => $effectiveUnit] : []);
 $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 

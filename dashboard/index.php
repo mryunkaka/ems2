@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/date_range.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $isTrainee = (strtolower(trim($_SESSION['user_rh']['position'] ?? '')) === 'trainee');
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
 
 $pageTitle = 'Dashboard | Farmasi EMS';
 
@@ -27,7 +28,7 @@ require_once __DIR__ . ($isTrainee ? '/dashboard_data_medis.php' : '/dashboard_d
 
 <h1 class="page-title">Dashboard</h1>
 <p class="page-subtitle">
-    <?= htmlspecialchars($rangeLabel) ?>
+    <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?> &bull; <?= htmlspecialchars($rangeLabel) ?>
 </p>
 
 <?php if (!$isTrainee): ?>

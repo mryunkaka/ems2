@@ -3,6 +3,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -10,6 +11,8 @@ ems_require_not_trainee_json('Pembayaran Gaji');
 
 // Cek apakah user memiliki akses
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$salaryHasUnitCode = ems_column_exists($pdo, 'salary', 'unit_code');
 if ($userRole === 'staff') {
     echo json_encode(['success' => false, 'message' => 'Akses ditolak']);
     exit;
@@ -32,8 +35,12 @@ try {
     $pdo->beginTransaction();
 
     // Ambil data salary untuk mendapatkan medic_name
-    $stmt = $pdo->prepare("SELECT medic_name, bonus_40 FROM salary WHERE id = ?");
-    $stmt->execute([$salaryId]);
+    $stmt = $pdo->prepare("SELECT medic_name, bonus_40 FROM salary WHERE id = ?" . ($salaryHasUnitCode ? " AND unit_code = ?" : ""));
+    $salaryParams = [$salaryId];
+    if ($salaryHasUnitCode) {
+        $salaryParams[] = $effectiveUnit;
+    }
+    $stmt->execute($salaryParams);
     $salaryData = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$salaryData) {
@@ -48,8 +55,13 @@ try {
             UPDATE salary
             SET status='paid', paid_at=NOW(), paid_by=?
             WHERE id=?
+            " . ($salaryHasUnitCode ? " AND unit_code = ?" : "") . "
         ");
-        $stmt->execute([$paidBy, $salaryId]);
+        $updateParams = [$paidBy, $salaryId];
+        if ($salaryHasUnitCode) {
+            $updateParams[] = $effectiveUnit;
+        }
+        $stmt->execute($updateParams);
 
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'Gaji berhasil dibayarkan langsung ke ' . $salaryData['medic_name']]);
@@ -70,8 +82,13 @@ try {
             UPDATE salary
             SET status='paid', paid_at=NOW(), paid_by=?
             WHERE id=?
+            " . ($salaryHasUnitCode ? " AND unit_code = ?" : "") . "
         ");
-        $stmt->execute([$paidByText, $salaryId]);
+        $updateParams = [$paidByText, $salaryId];
+        if ($salaryHasUnitCode) {
+            $updateParams[] = $effectiveUnit;
+        }
+        $stmt->execute($updateParams);
 
         $pdo->commit();
         echo json_encode(['success' => true, 'message' => 'Gaji berhasil dititipkan ke ' . $titipUser['full_name']]);

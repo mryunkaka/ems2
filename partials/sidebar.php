@@ -4,6 +4,12 @@ $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $position = strtolower(trim($_SESSION['user_rh']['position'] ?? ''));
 $division = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 $isTrainee = ($position === 'trainee');
+$currentUnit = isset($pdo) ? ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []) : ems_normalize_unit_code($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
+$userUnit = isset($pdo) ? ems_current_user_unit($pdo, $_SESSION['user_rh'] ?? []) : ems_normalize_unit_code($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
+$canViewAllUnits = isset($pdo) ? ems_user_can_view_all_units($pdo, $_SESSION['user_rh'] ?? []) : !empty($_SESSION['user_rh']['can_view_all_units']);
+$isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ?? '');
+$isMedicalDivision = $division === 'Medis';
+$isAltaUnit = $userUnit === 'alta';
 
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -92,6 +98,10 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
         sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
         sidebarItem('/dashboard/general_affair_visits.php', 'general_affair_visits.php', 'General Affair Visits', 'ticket'),
     ];
+
+    if (!ems_is_staff_role($userRole)) {
+        $groupedNav['General Affair'][] = sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group');
+    }
 }
 
 if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
@@ -125,6 +135,54 @@ if (ems_can_access_division_menu($division, 'Secretary')) {
 if ($isTrainee) {
     $groupedNav['Pengaturan'][] = sidebarItem('#', '', 'Info Trainee', 'information-circle');
 }
+
+if ($isAltaUnit && !$canViewAllUnits) {
+    if (ems_is_staff_role($userRole) && $isMedicalDivision) {
+        $groupedNav = [
+            'Utama' => [
+                sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+            ],
+            'Farmasi' => [
+                sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
+                sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
+                sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
+            ],
+        ];
+    } else {
+        $groupedNav = [
+            'Utama' => [
+                sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+            ],
+            'Farmasi' => [
+                sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
+                sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
+                sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
+            ],
+            'General Affair' => [
+                sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
+                sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Update Regulasi', 'pencil-square'),
+                sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'check-circle'),
+                sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
+            ],
+        ];
+    }
+}
+
+function sidebarBuildUnitSwitchUrl(string $targetUnit): string
+{
+    $requestUri = (string)($_SERVER['REQUEST_URI'] ?? '/dashboard/index.php');
+    $parts = parse_url($requestUri);
+    $path = $parts['path'] ?? '/dashboard/index.php';
+    $query = [];
+
+    if (!empty($parts['query'])) {
+        parse_str($parts['query'], $query);
+    }
+
+    $query['unit'] = $targetUnit;
+
+    return $path . '?' . http_build_query($query);
+}
 ?>
 
 <aside id="sidebar" class="sidebar">
@@ -135,9 +193,19 @@ if ($isTrainee) {
             </div>
             <div class="brand-text">
                 <strong><?= htmlspecialchars($medicName) ?></strong>
-                <span><?= htmlspecialchars($medicJabatan) ?></span>
+                <span><?= htmlspecialchars($medicJabatan) ?> • <?= htmlspecialchars(ems_unit_label($currentUnit)) ?></span>
             </div>
         </div>
+        <?php if ($canViewAllUnits): ?>
+            <div class="mt-3 flex gap-2">
+                <a href="<?= htmlspecialchars(sidebarBuildUnitSwitchUrl('roxwood')) ?>" class="btn-secondary button-compact<?= $currentUnit === 'roxwood' ? ' active' : '' ?>">
+                    Roxwood
+                </a>
+                <a href="<?= htmlspecialchars(sidebarBuildUnitSwitchUrl('alta')) ?>" class="btn-secondary button-compact<?= $currentUnit === 'alta' ? ' active' : '' ?>">
+                    Alta
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 
     <nav class="sidebar-menu">

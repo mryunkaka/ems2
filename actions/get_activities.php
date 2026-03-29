@@ -85,20 +85,28 @@ function formatActivityTimeAgo(int $timestamp): string
 try {
     $maxItems = 30;
     $activities = [];
+    $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+    $userHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
+    $emsSalesHasUnitCode = ems_table_exists($pdo, 'ems_sales') && ems_column_exists($pdo, 'ems_sales', 'unit_code');
+    $isAltaUnit = $effectiveUnit === 'alta';
 
     if (activityTableExists($pdo, 'farmasi_activities')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
-                id AS raw_id,
+                fa.id AS raw_id,
                 'farmasi' AS source,
-                activity_type AS type,
-                medic_name,
-                description,
-                created_at
-            FROM farmasi_activities
-            ORDER BY created_at DESC
+                fa.activity_type AS type,
+                fa.medic_name,
+                fa.description,
+                fa.created_at
+            FROM farmasi_activities fa
+            LEFT JOIN user_rh ur ON ur.id = fa.medic_user_id
+            WHERE 1=1
+              " . ($userHasUnitCode ? " AND COALESCE(ur.unit_code, 'roxwood') = :unit_code" : "") . "
+            ORDER BY fa.created_at DESC
             LIMIT 30
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
@@ -106,7 +114,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'cuti_requests')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 cr.id AS raw_id,
                 'cuti_request' AS source,
@@ -125,15 +133,17 @@ try {
             FROM cuti_requests cr
             INNER JOIN user_rh u ON u.id = cr.user_id
             WHERE cr.status = 'pending'
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY cr.created_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
         }
 
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 cr.id AS raw_id,
                 'cuti_review' AS source,
@@ -150,9 +160,11 @@ try {
             FROM cuti_requests cr
             INNER JOIN user_rh u ON u.id = cr.user_id
             WHERE cr.status IN ('approved', 'rejected')
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY COALESCE(cr.approved_at, cr.updated_at, cr.created_at) DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $row['description'] = 'Pengajuan cuti ' .
@@ -172,7 +184,7 @@ try {
         activityColumnExists($pdo, 'user_rh', 'cuti_status') &&
         activityColumnExists($pdo, 'user_rh', 'cuti_approved_at')
     ) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 id AS raw_id,
                 'user_on_leave' AS source,
@@ -195,9 +207,11 @@ try {
             FROM user_rh
             WHERE cuti_status = 'active'
               AND cuti_approved_at IS NOT NULL
+              " . ($userHasUnitCode ? " AND COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY cuti_approved_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
@@ -205,7 +219,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'resign_requests')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 rr.id AS raw_id,
                 'resign_request' AS source,
@@ -219,15 +233,17 @@ try {
             FROM resign_requests rr
             INNER JOIN user_rh u ON u.id = rr.user_id
             WHERE rr.status = 'pending'
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY rr.created_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
         }
 
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 rr.id AS raw_id,
                 'resign_approved' AS source,
@@ -242,9 +258,11 @@ try {
             INNER JOIN user_rh u ON u.id = rr.user_id
             WHERE rr.status = 'approved'
               AND rr.approved_at IS NOT NULL
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY rr.approved_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
@@ -252,7 +270,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'position_promotion_requests')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 r.id AS raw_id,
                 'promotion_request' AS source,
@@ -264,9 +282,11 @@ try {
             FROM position_promotion_requests r
             INNER JOIN user_rh u ON u.id = r.user_id
             WHERE r.status = 'pending'
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY r.submitted_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $row['description'] = 'Mengajukan kenaikan jabatan ' .
@@ -276,7 +296,7 @@ try {
             addActivityRow($activities, $row);
         }
 
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 r.id AS raw_id,
                 'promotion_review' AS source,
@@ -293,9 +313,11 @@ try {
             INNER JOIN user_rh u ON u.id = r.user_id
             WHERE r.status IN ('approved', 'rejected')
               AND r.reviewed_at IS NOT NULL
+              " . ($userHasUnitCode ? " AND COALESCE(u.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY r.reviewed_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $row['description'] = 'Pengajuan jabatan ' .
@@ -308,7 +330,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'medical_records')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 mr.id AS raw_id,
                 'medical_record' AS source,
@@ -326,9 +348,12 @@ try {
             FROM medical_records mr
             LEFT JOIN user_rh cb ON cb.id = mr.created_by
             LEFT JOIN user_rh dpjp ON dpjp.id = mr.doctor_id
+            WHERE 1=1
+              " . ($userHasUnitCode ? " AND COALESCE(cb.unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY mr.created_at DESC
             LIMIT 15
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
@@ -336,7 +361,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'ems_sales')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 id AS raw_id,
                 'ems_service' AS source,
@@ -356,9 +381,12 @@ try {
                 ) AS description,
                 created_at
             FROM ems_sales
+            WHERE 1=1
+              " . ($emsSalesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
             ORDER BY created_at DESC
             LIMIT 20
         ");
+        $stmt->execute($emsSalesHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             addActivityRow($activities, $row);
@@ -366,7 +394,7 @@ try {
     }
 
     if (activityTableExists($pdo, 'user_rh')) {
-        $stmt = $pdo->query("
+        $stmt = $pdo->prepare("
             SELECT
                 id AS raw_id,
                 'account_created' AS source,
@@ -378,9 +406,11 @@ try {
                 created_at
             FROM user_rh
             WHERE created_at IS NOT NULL
+              " . ($userHasUnitCode ? " AND COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
             ORDER BY created_at DESC
             LIMIT 20
         ");
+        $stmt->execute($userHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $parts = ['Akun baru dibuat'];
@@ -405,7 +435,7 @@ try {
         }
     }
 
-    if (activityTableExists($pdo, 'medical_applicants')) {
+    if (!$isAltaUnit && activityTableExists($pdo, 'medical_applicants')) {
         $stmt = $pdo->query("
             SELECT
                 id AS raw_id,
@@ -425,6 +455,7 @@ try {
     }
 
     if (
+        !$isAltaUnit &&
         activityTableExists($pdo, 'applicant_final_decisions') &&
         activityTableExists($pdo, 'medical_applicants')
     ) {

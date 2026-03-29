@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 ems_require_not_trainee_html('Generate Gaji');
 
@@ -13,6 +14,9 @@ ems_require_not_trainee_html('Generate Gaji');
 // ==================
 $allowedRoles = ['vice director', 'director'];
 $userRole = strtolower($_SESSION['user_rh']['role'] ?? '');
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
+$salaryHasUnitCode = ems_column_exists($pdo, 'salary', 'unit_code');
 
 if (!in_array($userRole, $allowedRoles, true)) {
     http_response_code(403);
@@ -56,9 +60,15 @@ function getWeekPeriod(DateTime $date): array
 // ==================
 // LOGIC GENERATE
 // ==================
-$firstSale = $pdo->query("
-    SELECT MIN(DATE(created_at)) FROM sales
-")->fetchColumn();
+$firstSaleSql = "SELECT MIN(DATE(created_at)) FROM sales";
+$firstSaleParams = [];
+if ($salesHasUnitCode) {
+    $firstSaleSql .= " WHERE unit_code = ?";
+    $firstSaleParams[] = $effectiveUnit;
+}
+$stmtFirstSale = $pdo->prepare($firstSaleSql);
+$stmtFirstSale->execute($firstSaleParams);
+$firstSale = $stmtFirstSale->fetchColumn();
 
 if (!$firstSale) {
     header('Location: gaji.php?msg=nosales');
@@ -92,8 +102,13 @@ while ($startDate <= $today) {
     $check = $pdo->prepare("
         SELECT COUNT(*) FROM salary
         WHERE period_start = ? AND period_end = ?
+        " . ($salaryHasUnitCode ? " AND unit_code = ?" : "") . "
     ");
-    $check->execute([$periodStart, $periodEnd]);
+    $checkParams = [$periodStart, $periodEnd];
+    if ($salaryHasUnitCode) {
+        $checkParams[] = $effectiveUnit;
+    }
+    $check->execute($checkParams);
 
     if ($check->fetchColumn() > 0) {
         $startDate->modify('+7 days');
@@ -111,12 +126,17 @@ while ($startDate <= $today) {
             SUM(price) AS total_rupiah
         FROM sales
         WHERE DATE(created_at) BETWEEN :start AND :end
+        " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
         GROUP BY medic_user_id
     ");
-    $stmt->execute([
+    $salesParams = [
         ':start' => $periodStart,
         ':end'   => $periodEnd
-    ]);
+    ];
+    if ($salesHasUnitCode) {
+        $salesParams[':unit_code'] = $effectiveUnit;
+    }
+    $stmt->execute($salesParams);
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     if (!$rows) {
@@ -124,15 +144,20 @@ while ($startDate <= $today) {
         continue;
     }
 
+    $salaryColumns = 'medic_user_id, medic_name, medic_jabatan, period_start, period_end, total_transaksi, total_item, total_rupiah, bonus_40';
+    $salaryPlaceholders = '?, ?, ?, ?, ?, ?, ?, ?, ?';
+    if ($salaryHasUnitCode) {
+        $salaryColumns .= ', unit_code';
+        $salaryPlaceholders .= ', ?';
+    }
     $insert = $pdo->prepare("
         INSERT INTO salary
-        (medic_user_id, medic_name, medic_jabatan, period_start, period_end,
-         total_transaksi, total_item, total_rupiah, bonus_40)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ({$salaryColumns})
+        VALUES ({$salaryPlaceholders})
     ");
 
     foreach ($rows as $r) {
-        $insert->execute([
+        $insertParams = [
             $r['medic_user_id'],
             $r['medic_name'],
             $r['medic_jabatan'],
@@ -142,7 +167,11 @@ while ($startDate <= $today) {
             $r['total_item'],
             $r['total_rupiah'],
             floor($r['total_rupiah'] * 0.4)
-        ]);
+        ];
+        if ($salaryHasUnitCode) {
+            $insertParams[] = $effectiveUnit;
+        }
+        $insert->execute($insertParams);
     }
 
     $generated++;

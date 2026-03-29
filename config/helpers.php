@@ -378,6 +378,165 @@ function ems_is_director_role(?string $role): bool
     return in_array(ems_normalize_role($role), ['vice director', 'director'], true);
 }
 
+function ems_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    static $cache = [];
+    $key = strtolower(trim($table)) . '.' . strtolower(trim($column));
+
+    if ($key === '.') {
+        return false;
+    }
+
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$table, $column]);
+
+    $cache[$key] = (bool)$stmt->fetchColumn();
+    return $cache[$key];
+}
+
+function ems_normalize_unit_code(?string $unitCode): string
+{
+    $raw = strtolower(trim((string)$unitCode));
+    $raw = preg_replace('/\s+/', '_', $raw) ?: '';
+
+    return match ($raw) {
+        'alta', 'rs_alta', 'rumah_sakit_alta', 'hospital_alta' => 'alta',
+        'roxwood', 'rs_roxwood', 'rumah_sakit_roxwood', 'roxwood_hospital', '' => $raw === '' ? 'roxwood' : 'roxwood',
+        default => in_array($raw, ['alta', 'roxwood'], true) ? $raw : 'roxwood',
+    };
+}
+
+function ems_unit_label(?string $unitCode): string
+{
+    return match (ems_normalize_unit_code($unitCode)) {
+        'alta' => 'Alta',
+        default => 'Roxwood',
+    };
+}
+
+function ems_unit_options(): array
+{
+    return [
+        ['value' => 'roxwood', 'label' => 'Roxwood'],
+        ['value' => 'alta', 'label' => 'Alta'],
+    ];
+}
+
+function ems_is_medical_position(?string $position): bool
+{
+    return in_array(
+        ems_normalize_position($position),
+        ['trainee', 'paramedic', 'co_asst', 'general_practitioner', 'specialist'],
+        true
+    );
+}
+
+function ems_get_user_unit_scope(PDO $pdo, array $sessionUser): array
+{
+    static $cache = [];
+
+    $userId = (int)($sessionUser['id'] ?? 0);
+    if ($userId <= 0) {
+        return [
+            'unit_code' => 'roxwood',
+            'can_view_all_units' => false,
+        ];
+    }
+
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
+
+    $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
+    $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
+
+    if (ems_column_exists($pdo, 'user_rh', 'unit_code')) {
+        $selects = ['unit_code'];
+        if (ems_column_exists($pdo, 'user_rh', 'can_view_all_units')) {
+            $selects[] = 'can_view_all_units';
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT " . implode(', ', $selects) . "
+            FROM user_rh
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        if ($row) {
+            $unitCode = ems_normalize_unit_code($row['unit_code'] ?? $unitCode);
+            $canViewAllUnits = isset($row['can_view_all_units'])
+                ? (int)$row['can_view_all_units'] === 1
+                : $canViewAllUnits;
+
+            $_SESSION['user_rh']['unit_code'] = $unitCode;
+            if (array_key_exists('can_view_all_units', $row)) {
+                $_SESSION['user_rh']['can_view_all_units'] = $canViewAllUnits ? 1 : 0;
+            }
+        }
+    }
+
+    $cache[$userId] = [
+        'unit_code' => $unitCode,
+        'can_view_all_units' => $canViewAllUnits,
+    ];
+
+    return $cache[$userId];
+}
+
+function ems_current_user_unit(PDO $pdo, array $sessionUser): string
+{
+    $scope = ems_get_user_unit_scope($pdo, $sessionUser);
+    return $scope['unit_code'] ?? 'roxwood';
+}
+
+function ems_user_can_view_all_units(PDO $pdo, array $sessionUser): bool
+{
+    $scope = ems_get_user_unit_scope($pdo, $sessionUser);
+    return !empty($scope['can_view_all_units']);
+}
+
+function ems_effective_unit(PDO $pdo, array $sessionUser): string
+{
+    $userUnit = ems_current_user_unit($pdo, $sessionUser);
+    $canViewAllUnits = ems_user_can_view_all_units($pdo, $sessionUser);
+
+    if (!$canViewAllUnits) {
+        $_SESSION['ems_active_unit'] = $userUnit;
+        return $userUnit;
+    }
+
+    $requestedUnit = $_GET['unit'] ?? '';
+    if ($requestedUnit !== '') {
+        $normalizedRequested = ems_normalize_unit_code($requestedUnit);
+        if (in_array($normalizedRequested, ['roxwood', 'alta'], true)) {
+            $_SESSION['ems_active_unit'] = $normalizedRequested;
+        }
+    }
+
+    $sessionUnit = ems_normalize_unit_code($_SESSION['ems_active_unit'] ?? $userUnit);
+    if (!in_array($sessionUnit, ['roxwood', 'alta'], true)) {
+        $sessionUnit = $userUnit;
+    }
+
+    $_SESSION['ems_active_unit'] = $sessionUnit;
+
+    return $sessionUnit;
+}
+
 function ems_division_options(): array
 {
     return [
@@ -467,6 +626,21 @@ function ems_require_division_access(array $targetDivisions, string $redirectTo 
 function ems_division_allowed_dashboard_pages(?string $division): ?array
 {
     $division = ems_normalize_division($division);
+    $sessionUser = $_SESSION['user_rh'] ?? [];
+    $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
+    $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
+    $position = ems_normalize_position($sessionUser['position'] ?? '');
+
+    if (!$canViewAllUnits && $unitCode === 'alta' && $division === 'Medis' && ems_is_medical_position($position)) {
+        return [
+            'index.php',
+            'rekap_farmasi.php',
+            'konsumen.php',
+            'ranking.php',
+            'setting_akun.php',
+            'setting_akun_action.php',
+        ];
+    }
 
     if ($division !== 'Medis') {
         return null;
@@ -509,6 +683,29 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
+    $sessionUser = $_SESSION['user_rh'] ?? [];
+    $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
+    $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
+
+    if (!$canViewAllUnits && $unitCode === 'alta') {
+        $altaBlockedPages = [
+            'sertifikat_heli.php',
+            'event_manage.php',
+            'restaurant_settings.php',
+            'general_affair_visits.php',
+            'reimbursement.php',
+            'restaurant_consumption.php',
+            'restaurant_consumption_action.php',
+            'general_affair_visits_action.php',
+        ];
+
+        if (in_array($scriptName, $altaBlockedPages, true)) {
+            $_SESSION['flash_errors'][] = 'Akses halaman ditolak untuk unit Anda.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+    }
+
     $allowedPages = ems_division_allowed_dashboard_pages($division);
     if ($allowedPages === null) {
         return;

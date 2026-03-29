@@ -18,6 +18,8 @@ if ($userRole === 'staff') {
 $user = $_SESSION['user_rh'] ?? [];
 $medicName    = $user['name'] ?? '';
 $medicJabatan = $user['position'] ?? '';
+$effectiveUnit = ems_effective_unit($pdo, $user);
+$packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
 
 /* ===============================
    HANDLE UPDATE (AJAX)
@@ -39,16 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     painkiller_qty = ?,
                     price = ?
                 WHERE id = ?
+                " . ($packagesHasUnitCode ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
             ");
 
-            $stmt->execute([
+            $params = [
                 trim($_POST['name']),
                 (int)$_POST['bandage_qty'],
                 (int)$_POST['ifaks_qty'],
                 (int)$_POST['painkiller_qty'],
                 (int)$_POST['price'],
                 (int)$_POST['id']
-            ]);
+            ];
+            if ($packagesHasUnitCode) {
+                $params[] = $effectiveUnit;
+            }
+            $stmt->execute($params);
 
             echo json_encode(['success' => true]);
             exit;
@@ -104,11 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 /* ===============================
    LOAD DATA
    =============================== */
-$packages = $pdo->query("
+$stmtPackages = $pdo->prepare("
     SELECT id, name, bandage_qty, ifaks_qty, painkiller_qty, price
     FROM packages
+    " . ($packagesHasUnitCode ? "WHERE COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
     ORDER BY name
-")->fetchAll(PDO::FETCH_ASSOC);
+");
+$stmtPackages->execute($packagesHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
+$packages = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
 
 $regs = $pdo->query("
     SELECT

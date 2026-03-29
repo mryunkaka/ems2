@@ -23,6 +23,7 @@ include __DIR__ . '/../partials/sidebar.php';
 // ROLE USER
 // ===============================
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
 
 // ===============================
 // FILTER INPUT
@@ -54,9 +55,12 @@ if ($q !== '' || ($startDate && $endDate)) {
         FROM sales s
         LEFT JOIN identity_master im ON im.id = s.identity_id
         WHERE 1=1
+          AND s.unit_code = :unit_code
     ";
 
-    $params = [];
+    $params = [
+        ':unit_code' => $effectiveUnit,
+    ];
 
     // FILTER KEYWORD
     if ($q !== '') {
@@ -91,7 +95,7 @@ if ($q !== '' || ($startDate && $endDate)) {
 
 	        <h1 class="page-title">Data Konsumen</h1>
 
-	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen</p>
+	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?></p>
 
         <div class="card">
             <div class="card-header-actions card-section">

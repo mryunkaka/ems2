@@ -249,15 +249,27 @@ function farmasiFindEquivalentConsumerNames(string $canonicalName, array $existi
     return array_values(array_unique($matches));
 }
 
-function fetchDistinctConsumerNames(PDO $pdo): array
+function fetchDistinctConsumerNames(PDO $pdo, string $effectiveUnit, bool $hasUnitCode): array
 {
-    return $pdo->query("
+    $sql = "
         SELECT DISTINCT consumer_name
         FROM sales
         WHERE consumer_name IS NOT NULL
           AND consumer_name <> ''
-        ORDER BY consumer_name ASC
-    ")->fetchAll(PDO::FETCH_COLUMN);
+    ";
+
+    $params = [];
+    if ($hasUnitCode) {
+        $sql .= " AND unit_code = :unit_code";
+        $params[':unit_code'] = $effectiveUnit;
+    }
+
+    $sql .= " ORDER BY consumer_name ASC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
 function ensureFarmasiOnline(PDO $pdo, int $userId, string $medicName, string $medicJabatan, bool $confirmActivity = false): void
@@ -341,6 +353,9 @@ $medicName    = $user['name'] ?? '';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
 $userId       = (int)($user['id'] ?? 0);
+$effectiveUnit = ems_effective_unit($pdo, $user);
+$salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
+$packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
 
 $stmtCurrentUser = $pdo->prepare("
     SELECT tanggal_masuk, citizen_id, batch
@@ -408,11 +423,11 @@ $clearFormNextLoad = false;
 
 // Tanggal lokal hari ini (WITA)
 $todayDate = date('Y-m-d');
-$consumerNames = fetchDistinctConsumerNames($pdo);
+$consumerNames = fetchDistinctConsumerNames($pdo, $effectiveUnit, $salesHasUnitCode);
 $allConsumerSummaryJS = [];
 
 try {
-    $consumerSummaryRows = $pdo->query("
+    $consumerSummarySql = "
         SELECT
             consumer_name,
             COUNT(*) AS total_transactions,
@@ -420,8 +435,17 @@ try {
         FROM sales
         WHERE consumer_name IS NOT NULL
           AND consumer_name <> ''
-        GROUP BY consumer_name
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ";
+    $consumerSummaryParams = [];
+    if ($salesHasUnitCode) {
+        $consumerSummarySql .= " AND unit_code = :unit_code";
+        $consumerSummaryParams[':unit_code'] = $effectiveUnit;
+    }
+    $consumerSummarySql .= " GROUP BY consumer_name";
+
+    $stmtConsumerSummary = $pdo->prepare($consumerSummarySql);
+    $stmtConsumerSummary->execute($consumerSummaryParams);
+    $consumerSummaryRows = $stmtConsumerSummary->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($consumerSummaryRows as $summaryRow) {
         $displayName = farmasiConsumerNameDisplay((string) ($summaryRow['consumer_name'] ?? ''));
@@ -462,12 +486,17 @@ if (!empty($_SESSION['user_rh']['id'])) {
         FROM sales
         WHERE medic_user_id = :uid
           AND created_at BETWEEN :start AND :end
+          " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     ");
-    $stmtWeekly->execute([
+    $weeklyParams = [
         ':uid'   => $_SESSION['user_rh']['id'],
         ':start' => $weekStart,
         ':end'   => $weekEnd,
-    ]);
+    ];
+    if ($salesHasUnitCode) {
+        $weeklyParams[':unit_code'] = $effectiveUnit;
+    }
+    $stmtWeekly->execute($weeklyParams);
 
     $weeklyTxCount = (int)$stmtWeekly->fetchColumn();
 }
@@ -523,6 +552,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 UPDATE sales
                 SET consumer_name = :new
                 WHERE consumer_name = :old
+                " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
             ");
 
             $merged = 0;
@@ -530,6 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmtMerge->execute([
                     ':new' => $canonicalName,
                     ':old' => $oldName,
+                    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
                 ]);
                 $merged += $stmtMerge->rowCount();
             }
@@ -614,11 +645,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $placeholders = implode(',', array_fill(0, count($cleanIds), '?'));
                     $params       = $cleanIds;
                     $params[]     = $medicName;
+                    if ($salesHasUnitCode) {
+                        $params[] = $effectiveUnit;
+                    }
 
                     $stmtDel = $pdo->prepare("
                         DELETE FROM sales
                         WHERE id IN ($placeholders)
                           AND medic_name = ?
+                          " . ($salesHasUnitCode ? " AND unit_code = ?" : "") . "
                     ");
                     $stmtDel->execute($params);
                     $deleted = $stmtDel->rowCount();
@@ -763,8 +798,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ===============================
                 if (empty($errors)) {
                     $placeholders = implode(',', array_fill(0, count($selectedIds), '?'));
-                    $stmtPkg = $pdo->prepare("SELECT * FROM packages WHERE id IN ($placeholders)");
-                    $stmtPkg->execute($selectedIds);
+                    $stmtPkg = $pdo->prepare("SELECT * FROM packages WHERE id IN ($placeholders)" . ($packagesHasUnitCode ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
+                    $pkgParams = $selectedIds;
+                    if ($packagesHasUnitCode) {
+                        $pkgParams[] = $effectiveUnit;
+                    }
+                    $stmtPkg->execute($pkgParams);
                     $rows = $stmtPkg->fetchAll(PDO::FETCH_ASSOC);
 
                     $packagesSelected = [];
@@ -794,6 +833,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             UPDATE sales
                             SET consumer_name = :new
                             WHERE consumer_name = :old
+                            " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
                         ");
 
                         $merged = 0;
@@ -805,7 +845,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             $stmtMerge->execute([
                                 ':new' => $consumerName,
-                                ':old' => $old
+                                ':old' => $old,
+                                ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
                             ]);
                             $merged += $stmtMerge->rowCount();
                         }
@@ -836,15 +877,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             COALESCE(SUM(qty_painkiller),0) AS total_painkiller
                         FROM sales
                         WHERE DATE(created_at) = :today
+                          " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
                           AND (
                               LOWER(consumer_name) = LOWER(:name)
                               OR LOWER(REPLACE(TRIM(consumer_name), '  ', ' ')) = LOWER(:name)
                           )
                     ");
-                    $stmt->execute([
+                    $totalsParams = [
                         ':name'  => $consumerName,
                         ':today' => $todayDate,
-                    ]);
+                    ];
+                    if ($salesHasUnitCode) {
+                        $totalsParams[':unit_code'] = $effectiveUnit;
+                    }
+                    $stmt->execute($totalsParams);
                     $totals = $stmt->fetch(PDO::FETCH_ASSOC) ?: [
                         'total_bandage' => 0,
                         'total_ifaks' => 0,
@@ -899,7 +945,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ===============================
                 if (empty($errors)) {
 
-                    $stmtFair = $pdo->query("
+                    $stmtFair = $pdo->prepare("
                         SELECT
                             ufs.user_id AS user_id,
                             COALESCE(COUNT(s.id), 0) AS total
@@ -907,11 +953,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         LEFT JOIN sales s
                             ON s.medic_user_id = ufs.user_id
                         AND DATE(s.created_at) = CURDATE()
+                        " . ($salesHasUnitCode ? " AND s.unit_code = :unit_code" : "") . "
                         WHERE ufs.status = 'online'
                         GROUP BY ufs.user_id
                         ORDER BY total ASC
                     ");
-
+                    $stmtFair->execute($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
                     $rows = $stmtFair->fetchAll(PDO::FETCH_ASSOC);
                     $lowest = $rows[0] ?? null;
 
@@ -947,6 +994,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             medic_name,
                             medic_user_id,
                             medic_jabatan,
+                            " . ($salesHasUnitCode ? "unit_code," : "") . "
                             package_id,
                             package_name,
                             price,
@@ -962,6 +1010,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             :mname,
                             :muid,
                             :mjab,
+                            " . ($salesHasUnitCode ? ":unit_code," : "") . "
                             :pid,
                             :pname,
                             :price,
@@ -1001,6 +1050,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ':mname'   => $medicName,
                                 ':muid'    => $userId,
                                 ':mjab'    => $medicJabatan,
+                                ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
                                 ':pid'     => $customPackageId,
                                 ':pname'   => 'Paket Custom',
                                 ':price'   => $customPrice,
@@ -1021,6 +1071,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     ':mname'   => $medicName,
                                     ':muid'    => $userId,
                                     ':mjab'    => $medicJabatan,
+                                    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
                                     ':pid'     => (int)$p['id'],
                                     ':pname'   => $p['name'],
                                     ':price'   => (int)$p['price'],
@@ -1167,7 +1218,9 @@ if ($redirectAfterPost) {
 // -------------------------------------------
 
 // Ambil semua paket
-$packages = $pdo->query("SELECT * FROM packages ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
+$stmtPackages = $pdo->prepare("SELECT * FROM packages" . ($packagesHasUnitCode ? " WHERE COALESCE(unit_code, 'roxwood') = :unit_code" : "") . " ORDER BY name ASC");
+$stmtPackages->execute($packagesHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
+$packages = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
 
 // Kelompokkan paket menjadi 4 kategori
 $paketAB            = []; // Paket A / B (combo)
@@ -1221,7 +1274,7 @@ foreach ($packages as $p) {
     }
 }
 
-$stmtOnlineMedics = $pdo->query("
+$stmtOnlineMedics = $pdo->prepare("
     SELECT
         ufs.user_id,
         ur.full_name AS medic_name,
@@ -1233,12 +1286,13 @@ $stmtOnlineMedics = $pdo->query("
         COUNT(s.id)  AS total_transaksi,
         COALESCE(SUM(s.price),0) AS total_pendapatan,
         FLOOR(COALESCE(SUM(s.price),0) * 0.4) AS bonus_40,
-        (SELECT COUNT(*) FROM sales WHERE medic_user_id = ufs.user_id) AS total_transaksi_semua,
+        (SELECT COUNT(*) FROM sales WHERE medic_user_id = ufs.user_id" . ($salesHasUnitCode ? " AND unit_code = :unit_code_sub_all" : "") . ") AS total_transaksi_semua,
         
         -- TAMBAHAN: HITUNG TRANSAKSI MINGGU INI
         (SELECT COUNT(*)
          FROM sales
          WHERE medic_user_id = ufs.user_id
+           " . ($salesHasUnitCode ? " AND unit_code = :unit_code_sub_week" : "") . "
            AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-%d 00:00:00') - INTERVAL (WEEKDAY(NOW())) DAY
            AND created_at <  DATE_FORMAT(NOW(), '%Y-%m-%d 23:59:59') + INTERVAL (6 - WEEKDAY(NOW())) DAY
         ) AS weekly_transaksi,
@@ -1257,11 +1311,24 @@ $stmtOnlineMedics = $pdo->query("
     LEFT JOIN sales s
         ON s.medic_user_id = ufs.user_id
        AND DATE(s.created_at) = CURDATE()
+       " . ($salesHasUnitCode ? " AND s.unit_code = :unit_code_join" : "") . "
     WHERE ufs.status = 'online'
+      " . (ems_column_exists($pdo, 'user_rh', 'unit_code') ? " AND COALESCE(ur.unit_code, 'roxwood') = :user_unit_code" : "") . "
     GROUP BY ufs.user_id, ur.full_name, ur.position, ur.role, ur.division, ur.batch, ur.tanggal_masuk
     ORDER BY total_transaksi ASC, total_pendapatan ASC
 ");
-
+$onlineMedicsParams = [];
+if ($salesHasUnitCode) {
+    $onlineMedicsParams = [
+        ':unit_code_sub_all' => $effectiveUnit,
+        ':unit_code_sub_week' => $effectiveUnit,
+        ':unit_code_join' => $effectiveUnit,
+    ];
+}
+if (ems_column_exists($pdo, 'user_rh', 'unit_code')) {
+    $onlineMedicsParams[':user_unit_code'] = $effectiveUnit;
+}
+$stmtOnlineMedics->execute($onlineMedicsParams);
 $onlineMedics = $stmtOnlineMedics->fetchAll(PDO::FETCH_ASSOC);
 
 // FORMAT DURASI UNTUK TAMPILAN
@@ -1325,9 +1392,14 @@ $stmtDailyTotals = $pdo->prepare("
            COALESCE(SUM(qty_painkiller),0) AS total_painkiller
     FROM sales
     WHERE DATE(created_at) = :today
+      " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     GROUP BY consumer_name
 ");
-$stmtDailyTotals->execute([':today' => $todayDate]);
+$dailyTotalsParams = [':today' => $todayDate];
+if ($salesHasUnitCode) {
+    $dailyTotalsParams[':unit_code'] = $effectiveUnit;
+}
+$stmtDailyTotals->execute($dailyTotalsParams);
 $dailyTotalsRows = $stmtDailyTotals->fetchAll(PDO::FETCH_ASSOC);
 
 $dailyTotalsJS = [];
@@ -1354,9 +1426,14 @@ $stmtDailyDetail = $pdo->prepare("
            qty_bandage, qty_ifaks, qty_painkiller
     FROM sales
     WHERE DATE(created_at) = :today
+      " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     ORDER BY created_at ASC
 ");
-$stmtDailyDetail->execute([':today' => $todayDate]);
+$dailyDetailParams = [':today' => $todayDate];
+if ($salesHasUnitCode) {
+    $dailyDetailParams[':unit_code'] = $effectiveUnit;
+}
+$stmtDailyDetail->execute($dailyDetailParams);
 $detailRows = $stmtDailyDetail->fetchAll(PDO::FETCH_ASSOC);
 
 $dailyDetailJS = [];
@@ -1405,12 +1482,16 @@ $sqlSales = "
     SELECT * FROM sales
     WHERE created_at >= :start
       AND created_at <  DATE_ADD(:end, INTERVAL 1 SECOND)
+      " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
 ";
 
 $paramsSales = [
     ':start' => $rangeStart,
     ':end'   => $rangeEnd,
 ];
+if ($salesHasUnitCode) {
+    $paramsSales[':unit_code'] = $effectiveUnit;
+}
 
 $showAll = isset($_GET['show_all']) && $_GET['show_all'] === '1';
 
@@ -1455,15 +1536,20 @@ if ($medicName !== '') {
             FLOOR(SUM(price) * 0.4) AS bonus_40
         FROM sales
         WHERE created_at BETWEEN :start AND :end
+        " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
         AND medic_user_id = :uid
         GROUP BY medic_user_id
         LIMIT 1
     ");
-    $stmtSingle->execute([
+    $singleParams = [
         ':start' => $rangeStart,
         ':end'   => $rangeEnd,
         ':uid'   => $_SESSION['user_rh']['id'],
-    ]);
+    ];
+    if ($salesHasUnitCode) {
+        $singleParams[':unit_code'] = $effectiveUnit;
+    }
+    $stmtSingle->execute($singleParams);
     $singleMedicStats = $stmtSingle->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
@@ -1482,10 +1568,13 @@ if (!empty($_SESSION['user_rh']['id'])) {
         FROM sales
         WHERE DATE(created_at) = CURDATE()
           AND medic_user_id = :uid
+          " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
     ");
-    $stmtToday->execute([
-        ':uid' => $_SESSION['user_rh']['id'],
-    ]);
+    $todayParams = [':uid' => $_SESSION['user_rh']['id']];
+    if ($salesHasUnitCode) {
+        $todayParams[':unit_code'] = $effectiveUnit;
+    }
+    $stmtToday->execute($todayParams);
 
     $todayStats = $stmtToday->fetch(PDO::FETCH_ASSOC) ?: null;
 }

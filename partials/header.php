@@ -10,6 +10,8 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 $pushConfig = require __DIR__ . '/../config/push.php';
 
 $user = $_SESSION['user_rh'] ?? [];
+$currentUnit = ems_effective_unit($pdo, $user);
+$hideAltaTopbarUtilities = $currentUnit === 'alta';
 
 $medicName    = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '-');
@@ -24,7 +26,7 @@ $avatarColor    = avatarColorFromName($medicName);
 $userId = $user['id'] ?? 0;
 $notif  = null;
 
-if ($userId) {
+if ($userId && !$hideAltaTopbarUtilities) {
     try {
         $stmt = $pdo->prepare("
             SELECT id, message
@@ -67,9 +69,11 @@ if ($userId) {
 </head>
 
 <body x-data>
-    <audio id="inboxSound" preload="auto">
-        <source src="<?= htmlspecialchars(ems_asset('/assets/sound/notification.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
-    </audio>
+    <?php if (!$hideAltaTopbarUtilities): ?>
+        <audio id="inboxSound" preload="auto">
+            <source src="<?= htmlspecialchars(ems_asset('/assets/sound/notification.mp3'), ENT_QUOTES, 'UTF-8') ?>" type="audio/mpeg">
+        </audio>
+    <?php endif; ?>
     <script>
         window.EMS_BASE_URL = <?= json_encode(ems_base_path(), JSON_UNESCAPED_SLASHES) ?>;
         window.emsUrl = window.emsUrl || function(path) {
@@ -117,52 +121,56 @@ if ($userId) {
                         <div class="topbar-clock-date" data-clock-date></div>
                         <div class="topbar-clock-time" data-clock-time></div>
                     </div>
-	                <div class="notif-wrapper">
-	                    <button id="enableNotif" class="notif-btn" title="Aktifkan Notifikasi" type="button"><?= ems_icon('bell', 'h-7 w-7', '2.2') ?><span class="notif-indicator hidden"></span></button>
-	                </div>
+                    <?php if (!$hideAltaTopbarUtilities): ?>
+	                    <div class="notif-wrapper">
+	                        <button id="enableNotif" class="notif-btn" title="Aktifkan Notifikasi" type="button"><?= ems_icon('bell', 'h-7 w-7', '2.2') ?><span class="notif-indicator hidden"></span></button>
+	                    </div>
 	
-	                <div class="inbox-wrapper">
-	                    <button id="inboxBtn" class="inbox-btn" type="button" aria-label="Buka kotak masuk"><?= ems_icon('inbox', 'h-7 w-7', '2.2') ?><span id="inboxBadge" class="inbox-badge" style="display:none">0</span></button>
+	                    <div class="inbox-wrapper">
+	                        <button id="inboxBtn" class="inbox-btn" type="button" aria-label="Buka kotak masuk"><?= ems_icon('inbox', 'h-7 w-7', '2.2') ?><span id="inboxBadge" class="inbox-badge" style="display:none">0</span></button>
 	
-	                    <div id="inboxDropdown" class="inbox-dropdown hidden">
-	                        <div class="inbox-header">
-                                <span>Kotak Masuk</span>
-                                <div class="inbox-header-actions">
-                                    <button id="inboxMarkAllBtn" type="button" class="inbox-header-btn">Baca Semua</button>
-                                    <button id="inboxDeleteAllBtn" type="button" class="inbox-header-btn is-danger">Hapus Semua</button>
+	                        <div id="inboxDropdown" class="inbox-dropdown hidden">
+	                            <div class="inbox-header">
+                                    <span>Kotak Masuk</span>
+                                    <div class="inbox-header-actions">
+                                        <button id="inboxMarkAllBtn" type="button" class="inbox-header-btn">Baca Semua</button>
+                                        <button id="inboxDeleteAllBtn" type="button" class="inbox-header-btn is-danger">Hapus Semua</button>
+                                    </div>
                                 </div>
+	                            <ul id="inboxList"></ul>
                             </div>
-	                        <ul id="inboxList"></ul>
-                    </div>
-                </div>
+                        </div>
+                    <?php endif; ?>
             </div>
 
         </header>
 
-        <div id="inboxModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-            <div class="inbox-modal-box modal-shell modal-frame-md">
-                <div class="modal-head">
-                    <div class="min-w-0">
-                        <div id="modalTitle" class="modal-title"></div>
-                        <div id="modalMeta" class="meta-text-xs mt-1 text-slate-500"></div>
+        <?php if (!$hideAltaTopbarUtilities): ?>
+            <div id="inboxModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+                <div class="inbox-modal-box modal-shell modal-frame-md">
+                    <div class="modal-head">
+                        <div class="min-w-0">
+                            <div id="modalTitle" class="modal-title"></div>
+                            <div id="modalMeta" class="meta-text-xs mt-1 text-slate-500"></div>
+                        </div>
+                        <button onclick="closeInboxModal()" type="button" class="modal-close-btn" aria-label="Tutup modal">
+                            <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                        </button>
                     </div>
-                    <button onclick="closeInboxModal()" type="button" class="modal-close-btn" aria-label="Tutup modal">
-                        <?= ems_icon('x-mark', 'h-5 w-5') ?>
-                    </button>
-                </div>
 
-                <div class="modal-content">
-                    <div id="modalMessage" class="inbox-modal-message"></div>
-                </div>
+                    <div class="modal-content">
+                        <div id="modalMessage" class="inbox-modal-message"></div>
+                    </div>
 
-                <div class="modal-foot">
-                    <div class="inbox-modal-actions">
-                        <button onclick="closeInboxModal()" type="button" class="btn-secondary">Tutup</button>
-                        <button onclick="deleteInbox()" type="button" class="btn-danger">Hapus</button>
+                    <div class="modal-foot">
+                        <div class="inbox-modal-actions">
+                            <button onclick="closeInboxModal()" type="button" class="btn-secondary">Tutup</button>
+                            <button onclick="deleteInbox()" type="button" class="btn-danger">Hapus</button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        <?php endif; ?>
 
         <script>
             let notifTimer = null;

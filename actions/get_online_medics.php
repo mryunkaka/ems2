@@ -37,7 +37,11 @@ function onlineMedicsJoinDurationText(?string $tanggalMasuk): string
 }
 
 try {
-    $stmt = $pdo->query("
+    $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+    $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
+    $userHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
+
+    $sql = "
         SELECT
             ufs.user_id,
             ur.full_name AS medic_name,
@@ -53,11 +57,13 @@ try {
                 SELECT COUNT(*)
                 FROM sales
                 WHERE medic_user_id = ufs.user_id
+                " . ($salesHasUnitCode ? " AND unit_code = :unit_code_sub_all" : "") . "
             ) AS total_transaksi_semua,
             (
                 SELECT COUNT(*)
                 FROM sales
                 WHERE medic_user_id = ufs.user_id
+                  " . ($salesHasUnitCode ? " AND unit_code = :unit_code_sub_week" : "") . "
                   AND created_at >= DATE_FORMAT(NOW(), '%Y-%m-%d 00:00:00') - INTERVAL (WEEKDAY(NOW())) DAY
                   AND created_at < DATE_FORMAT(NOW(), '%Y-%m-%d 23:59:59') + INTERVAL (6 - WEEKDAY(NOW())) DAY
             ) AS weekly_transaksi,
@@ -82,10 +88,24 @@ try {
         LEFT JOIN sales s
             ON s.medic_user_id = ufs.user_id
            AND DATE(s.created_at) = CURDATE()
+           " . ($salesHasUnitCode ? " AND s.unit_code = :unit_code_join" : "") . "
         WHERE ufs.status = 'online'
+          " . ($userHasUnitCode ? " AND COALESCE(ur.unit_code, 'roxwood') = :user_unit_code" : "") . "
         GROUP BY ufs.user_id, ur.full_name, ur.position, ur.role, ur.division, ur.batch, ur.tanggal_masuk
         ORDER BY total_transaksi ASC, total_pendapatan ASC
-    ");
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $params = [];
+    if ($salesHasUnitCode) {
+        $params[':unit_code_sub_all'] = $effectiveUnit;
+        $params[':unit_code_sub_week'] = $effectiveUnit;
+        $params[':unit_code_join'] = $effectiveUnit;
+    }
+    if ($userHasUnitCode) {
+        $params[':user_unit_code'] = $effectiveUnit;
+    }
+    $stmt->execute($params);
 
     $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
