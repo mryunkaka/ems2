@@ -16,6 +16,12 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.stats-grid-3 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 table.table-custom {
   width: 100%;
   border-collapse: separate;
@@ -93,6 +99,12 @@ table.dataTable td + td {
   }
   .dt-container .dt-search input {
     width: 100%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .stats-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

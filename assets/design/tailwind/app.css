@@ -1543,6 +1543,10 @@
     @apply mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4;
   }
 
+  .stats-grid-3 {
+    @apply mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3;
+  }
+
   .stats-card {
     @apply m-0;
   }
