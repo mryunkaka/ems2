@@ -1,6 +1,34 @@
 <?php
 session_start();
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+
+function authRenderRegisterDocField(string $label, string $inputId, string $fieldName, bool $optional = true): void
+{
+?>
+    <div class="doc-upload-wrapper m-0">
+        <div class="doc-upload-header">
+            <label class="text-sm font-semibold text-slate-900"><?= htmlspecialchars($label) ?></label>
+            <span class="badge-muted-mini"><?= $optional ? 'Opsional' : 'Wajib' ?></span>
+        </div>
+        <div class="doc-upload-input">
+            <label for="<?= htmlspecialchars($inputId) ?>" class="file-upload-label">
+                <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                <span class="file-text">
+                    <strong>Pilih file</strong>
+                    <small>PNG atau JPG</small>
+                </span>
+            </label>
+            <input type="file"
+                id="<?= htmlspecialchars($inputId) ?>"
+                name="<?= htmlspecialchars($fieldName) ?>"
+                accept="image/png,image/jpeg"
+                class="sr-only">
+            <div class="file-selected-name" data-for="<?= htmlspecialchars($inputId) ?>"></div>
+        </div>
+    </div>
+<?php
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -186,6 +214,18 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                                     </div>
 
                                     <div class="form-group">
+                                        <label class="text-sm font-semibold text-slate-900">Unit</label>
+                                        <select name="unit_code" required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            <?php foreach (ems_unit_options() as $unitOption): ?>
+                                                <option value="<?= htmlspecialchars($unitOption['value']) ?>">
+                                                    <?= htmlspecialchars($unitOption['label']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+
+                                    <div class="form-group">
                                         <label class="text-sm font-semibold text-slate-900">Role</label>
                                         <input type="text" value="Staff" disabled class="bg-slate-50 text-slate-700">
                                         <input type="hidden" name="role" value="Staff">
@@ -224,97 +264,60 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                                 </div>
                             </div>
 
-                            <div class="section-form-title">Lampiran Sertifikat (Opsional)</div>
+                            <div class="section-form-title">Dokumen Pendukung</div>
 
                             <div class="grid gap-4 md:grid-cols-3">
-                                <div class="doc-upload-wrapper m-0">
-                                    <div class="doc-upload-header">
-                                        <label class="text-sm font-semibold text-slate-900">Sertifikat Heli</label>
-                                        <span class="badge-muted-mini">Opsional</span>
-                                    </div>
-                                    <div class="doc-upload-input">
-	                                <label for="sertifikatHeli" class="file-upload-label">
-                                            <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                            <span class="file-text">
-                                                <strong>Pilih file</strong>
-                                                <small>PNG atau JPG</small>
-                                            </span>
-	                                </label>
-	                                <input type="file"
-	                                    id="sertifikatHeli"
-	                                    name="sertifikat_heli"
-	                                    accept="image/png,image/jpeg"
-	                                    class="sr-only">
-	                                <div class="file-selected-name" data-for="sertifikatHeli"></div>
+                                <?php authRenderRegisterDocField('Upload KTP', 'registerFileKtp', 'file_ktp'); ?>
+                                <?php authRenderRegisterDocField('Upload SKB', 'registerFileSkb', 'file_skb'); ?>
+                                <?php authRenderRegisterDocField('Upload SIM', 'registerFileSim', 'file_sim'); ?>
+                                <?php authRenderRegisterDocField('Upload KTA', 'registerFileKta', 'file_kta'); ?>
+                                <?php authRenderRegisterDocField('Sertifikat Heli', 'registerSertifikatHeli', 'sertifikat_heli'); ?>
+                                <?php authRenderRegisterDocField('Sertifikat Operasi', 'registerSertifikatOperasi', 'sertifikat_operasi'); ?>
+                            </div>
 
-                                        <div class="mt-3 flex items-start gap-3">
-                                            <img id="thumbHeli" class="hidden h-16 w-16 rounded-xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau Sertifikat Heli">
-                                            <div class="min-w-0">
-                                                <div id="nameHeli" class="hidden truncate text-xs font-semibold text-slate-700"></div>
-                                                <div id="hintHeli" class="hidden mt-0.5 text-xs text-slate-500">Klik gambar untuk perbesar.</div>
+                            <div class="doc-upload-wrapper doc-upload-dashed m-0">
+                                <div class="doc-upload-header doc-upload-header-stack">
+                                    <label class="text-sm font-semibold text-slate-900">File Lainnya</label>
+                                    <small class="text-slate-500">Nama dokumen diisi sendiri. Bisa tambah beberapa file seperti di Setting Akun.</small>
+                                </div>
+
+                                <div id="registerOtherDocsContainer" class="space-y-4">
+                                    <div class="academy-doc-row" data-row="register-other-doc">
+                                        <input type="hidden" name="academy_doc_id[]" value="">
+
+                                        <div class="grid gap-4 md:grid-cols-2">
+                                            <div class="form-group">
+                                                <label class="text-sm font-semibold text-slate-900">Nama File Lainnya</label>
+                                                <input type="text"
+                                                    name="academy_doc_name[]"
+                                                    placeholder="Contoh: Surat Kontrak Kerja atau Dokumen Pendukung">
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="text-sm font-semibold text-slate-900">File</label>
+                                                <div class="doc-upload-input doc-upload-input-reset">
+                                                    <label for="registerOtherDoc0" class="file-upload-label">
+                                                        <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                                        <span class="file-text">
+                                                            <strong>Pilih file</strong>
+                                                            <small>PNG atau JPG</small>
+                                                        </span>
+                                                    </label>
+                                                    <input type="file"
+                                                        id="registerOtherDoc0"
+                                                        name="academy_doc_file[]"
+                                                        accept="image/png,image/jpeg"
+                                                        class="sr-only">
+                                                    <div class="file-selected-name" data-for="registerOtherDoc0"></div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="doc-upload-wrapper m-0">
-                                    <div class="doc-upload-header">
-                                        <label class="text-sm font-semibold text-slate-900">Sertifikat Operasi</label>
-                                        <span class="badge-muted-mini">Opsional</span>
-                                    </div>
-                                    <div class="doc-upload-input">
-	                                <label for="sertifikatOperasi" class="file-upload-label">
-                                            <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                            <span class="file-text">
-                                                <strong>Pilih file</strong>
-                                                <small>PNG atau JPG</small>
-                                            </span>
-	                                </label>
-	                                <input type="file"
-	                                    id="sertifikatOperasi"
-	                                    name="sertifikat_operasi"
-	                                    accept="image/png,image/jpeg"
-	                                    class="sr-only">
-	                                <div class="file-selected-name" data-for="sertifikatOperasi"></div>
-
-                                        <div class="mt-3 flex items-start gap-3">
-                                            <img id="thumbOperasi" class="hidden h-16 w-16 rounded-xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau Sertifikat Operasi">
-                                            <div class="min-w-0">
-                                                <div id="nameOperasi" class="hidden truncate text-xs font-semibold text-slate-700"></div>
-                                                <div id="hintOperasi" class="hidden mt-0.5 text-xs text-slate-500">Klik gambar untuk perbesar.</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="doc-upload-wrapper m-0">
-                                    <div class="doc-upload-header">
-                                        <label class="text-sm font-semibold text-slate-900">Sertifikat Academy</label>
-                                        <span class="badge-muted-mini">Opsional</span>
-                                    </div>
-                                    <div class="doc-upload-input">
-	                                <label for="sertifikatAcademy" class="file-upload-label">
-                                            <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                            <span class="file-text">
-                                                <strong>Pilih file</strong>
-                                                <small>PNG atau JPG</small>
-                                            </span>
-	                                </label>
-	                                <input type="file"
-	                                    id="sertifikatAcademy"
-	                                    name="academy_doc_file"
-	                                    accept="image/png,image/jpeg"
-	                                    class="sr-only">
-	                                <div class="file-selected-name" data-for="sertifikatAcademy"></div>
-
-                                        <div class="mt-3 flex items-start gap-3">
-                                            <img id="thumbAcademy" class="hidden h-16 w-16 rounded-xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau Sertifikat Academy">
-                                            <div class="min-w-0">
-                                                <div id="nameAcademy" class="hidden truncate text-xs font-semibold text-slate-700"></div>
-                                                <div id="hintAcademy" class="hidden mt-0.5 text-xs text-slate-500">Klik gambar untuk perbesar.</div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div class="action-row-end">
+                                    <button type="button" id="btnAddRegisterOtherDoc" class="btn-secondary button-compact">
+                                        <?= ems_icon('plus', 'h-4 w-4') ?> Tambah File Lainnya
+                                    </button>
                                 </div>
                             </div>
 
@@ -443,60 +446,62 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                 });
             }
 
-            function setupThumb(inputId, thumbId, nameId, hintId) {
-                const input = document.getElementById(inputId);
-                const thumb = document.getElementById(thumbId);
-                const nameEl = document.getElementById(nameId);
-                const hintEl = document.getElementById(hintId);
-                if (!input || !thumb || !nameEl || !hintEl) return;
+            function addRegisterOtherDocRow() {
+                const container = document.getElementById('registerOtherDocsContainer');
+                if (!container) return;
 
-                let lastUrl = '';
-
-                input.addEventListener('change', function() {
-                    const file = this.files && this.files[0] ? this.files[0] : null;
-                    if (lastUrl) {
-                        try {
-                            URL.revokeObjectURL(lastUrl);
-                        } catch (_) {}
-                        lastUrl = '';
-                    }
-
-                    if (!file) {
-                        thumb.classList.add('hidden');
-                        nameEl.classList.add('hidden');
-                        hintEl.classList.add('hidden');
-                        thumb.removeAttribute('src');
-                        nameEl.textContent = '';
-                        return;
-                    }
-
-                    nameEl.textContent = file.name || 'Lampiran';
-                    nameEl.classList.remove('hidden');
-
-	                    const mime = (file && file.type ? String(file.type) : '').toLowerCase();
-	                    if (!mime.startsWith('image/')) {
-	                        hintEl.textContent = 'File dipilih (bukan gambar).';
-	                        hintEl.classList.remove('hidden');
-	                        thumb.classList.add('hidden');
-	                        thumb.removeAttribute('src');
-	                        return;
-	                    }
-
-                    lastUrl = URL.createObjectURL(file);
-                    thumb.src = lastUrl;
-                    thumb.classList.remove('hidden');
-                    hintEl.textContent = 'Klik gambar untuk perbesar.';
-                    hintEl.classList.remove('hidden');
-                });
+                const index = container.querySelectorAll('[data-row="register-other-doc"]').length;
+                const inputId = 'registerOtherDoc' + index;
+                const row = document.createElement('div');
+                row.className = 'academy-doc-row';
+                row.setAttribute('data-row', 'register-other-doc');
+                row.innerHTML = `
+                    <input type="hidden" name="academy_doc_id[]" value="">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div class="form-group">
+                            <label class="text-sm font-semibold text-slate-900">Nama File Lainnya</label>
+                            <input type="text"
+                                name="academy_doc_name[]"
+                                placeholder="Contoh: Surat Kontrak Kerja atau Dokumen Pendukung">
+                        </div>
+                        <div class="form-group">
+                            <label class="text-sm font-semibold text-slate-900">File</label>
+                            <div class="doc-upload-input doc-upload-input-reset">
+                                <label for="${inputId}" class="file-upload-label">
+                                    <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                    <span class="file-text">
+                                        <strong>Pilih file</strong>
+                                        <small>PNG atau JPG</small>
+                                    </span>
+                                </label>
+                                <input type="file"
+                                    id="${inputId}"
+                                    name="academy_doc_file[]"
+                                    accept="image/png,image/jpeg"
+                                    class="sr-only">
+                                <div class="file-selected-name" data-for="${inputId}"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(row);
+                setSelectedName(inputId);
             }
 
-            setSelectedName('sertifikatHeli');
-            setSelectedName('sertifikatOperasi');
-            setSelectedName('sertifikatAcademy');
+            [
+                'registerFileKtp',
+                'registerFileSkb',
+                'registerFileSim',
+                'registerFileKta',
+                'registerSertifikatHeli',
+                'registerSertifikatOperasi',
+                'registerOtherDoc0'
+            ].forEach(setSelectedName);
 
-            setupThumb('sertifikatHeli', 'thumbHeli', 'nameHeli', 'hintHeli');
-            setupThumb('sertifikatOperasi', 'thumbOperasi', 'nameOperasi', 'hintOperasi');
-            setupThumb('sertifikatAcademy', 'thumbAcademy', 'nameAcademy', 'hintAcademy');
+            const btnAddRegisterOtherDoc = document.getElementById('btnAddRegisterOtherDoc');
+            if (btnAddRegisterOtherDoc) {
+                btnAddRegisterOtherDoc.addEventListener('click', addRegisterOtherDocRow);
+            }
         })();
 
         // Prevent form resubmission

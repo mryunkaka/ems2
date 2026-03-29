@@ -2,6 +2,7 @@
 session_start();
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../helpers/user_docs_helper.php';
 
 function alphaPos($char)
 {
@@ -22,6 +23,7 @@ $noHpIc       = trim($_POST['no_hp_ic'] ?? '');
 $jenisKelamin = $_POST['jenis_kelamin'] ?? '';
 $batch  = intval($_POST['batch'] ?? 0);
 $role   = $_POST['role'] ?? 'Staff';
+$unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
 
 // DEFAULT
 $position = 'trainee';
@@ -39,6 +41,12 @@ if ($batch < 1 || $batch > 26) {
 
 if ($citizenId === '' || $noHpIc === '' || $jenisKelamin === '') {
     $_SESSION['error'] = 'Data pribadi wajib diisi';
+    header("Location: login.php");
+    exit;
+}
+
+if (!in_array($unitCode, ['roxwood', 'alta'], true)) {
+    $_SESSION['error'] = 'Unit tidak valid';
     header("Location: login.php");
     exit;
 }
@@ -70,22 +78,19 @@ if ($check->fetch()) {
 $is_verified = ($role === 'Staff') ? 1 : 0;
 $is_active = 0;
 
-$stmt = $pdo->prepare("
-    INSERT INTO user_rh (
-        full_name,
-        pin,
-        position,
-        role,
-        batch,
-        citizen_id,
-        no_hp_ic,
-        jenis_kelamin,
-        is_verified,
-        is_active
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-");
-
-$stmt->execute([
+$insertColumns = [
+    'full_name',
+    'pin',
+    'position',
+    'role',
+    'batch',
+    'citizen_id',
+    'no_hp_ic',
+    'jenis_kelamin',
+    'is_verified',
+    'is_active',
+];
+$insertValues = [
     $name,
     password_hash($pin, PASSWORD_DEFAULT),
     $position,
@@ -95,8 +100,21 @@ $stmt->execute([
     $noHpIc,
     $jenisKelamin,
     $is_verified,
-    $is_active
-]);
+    $is_active,
+];
+
+if (ems_column_exists($pdo, 'user_rh', 'unit_code')) {
+    $insertColumns[] = 'unit_code';
+    $insertValues[] = $unitCode;
+}
+
+$placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+$stmt = $pdo->prepare("
+    INSERT INTO user_rh (" . implode(', ', $insertColumns) . ")
+    VALUES ({$placeholders})
+");
+
+$stmt->execute($insertValues);
 
 $userId = $pdo->lastInsertId();
 
@@ -133,7 +151,14 @@ if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
     exit;
 }
 
-$docFields = ['sertifikat_heli', 'sertifikat_operasi'];
+$docFields = [
+    'file_ktp',
+    'file_skb',
+    'file_sim',
+    'file_kta',
+    'sertifikat_heli',
+    'sertifikat_operasi',
+];
 $uploadedPaths = [];
 
 foreach ($docFields as $field) {
@@ -167,16 +192,29 @@ foreach ($docFields as $field) {
         'storage/user_docs/' . $folderName . '/' . $field . '.' . $ext;
 }
 
-$academyJson = null;
-if (
-    !empty($_FILES['academy_doc_file']['tmp_name']) &&
-    ($_FILES['academy_doc_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK
-) {
-    $tmp = $_FILES['academy_doc_file']['tmp_name'];
-    $info = getimagesize($tmp);
+$academyFinal = [];
+$postedIds = $_POST['academy_doc_id'] ?? [];
+$postedNames = $_POST['academy_doc_name'] ?? [];
+$fileBag = $_FILES['academy_doc_file'] ?? null;
+$fileCount = is_array($fileBag) && isset($fileBag['name']) && is_array($fileBag['name']) ? count($fileBag['name']) : 0;
+$max = max(
+    is_array($postedIds) ? count($postedIds) : 0,
+    is_array($postedNames) ? count($postedNames) : 0,
+    $fileCount
+);
 
+for ($i = 0; $i < $max; $i++) {
+    $nameDoc = is_array($postedNames) ? sanitizeAcademyDocName((string)($postedNames[$i] ?? '')) : '';
+    $fileErr = $fileBag['error'][$i] ?? UPLOAD_ERR_NO_FILE;
+    $fileTmp = $fileBag['tmp_name'][$i] ?? '';
+
+    if ($fileErr !== UPLOAD_ERR_OK || $fileTmp === '') {
+        continue;
+    }
+
+    $info = getimagesize($fileTmp);
     if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
-        $_SESSION['error'] = 'Sertifikat Academy harus JPG atau PNG';
+        $_SESSION['error'] = 'File lainnya harus JPG atau PNG';
         header('Location: login.php');
         exit;
     }
@@ -185,19 +223,23 @@ if (
     $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
     $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
 
-    if (!compressImageSmart($tmp, $finalPath)) {
-        $_SESSION['error'] = 'Gagal memproses Sertifikat Academy';
+    if (!compressImageSmart($fileTmp, $finalPath)) {
+        $_SESSION['error'] = 'Gagal memproses file lainnya';
         header('Location: login.php');
         exit;
     }
 
-    $path = 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext;
-    $academyJson = json_encode([[
+    $academyFinal[] = [
         'id' => $id,
-        'name' => 'Sertifikat Academy',
-        'path' => $path,
-    ]], JSON_UNESCAPED_SLASHES);
+        'name' => $nameDoc !== '' ? $nameDoc : 'File Lainnya',
+        'path' => 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext,
+    ];
 }
+
+ensureUserDokumenLainnyaColumnSupportsJson($pdo);
+$academyJson = !empty($academyFinal)
+    ? json_encode($academyFinal, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+    : null;
 
 $sql = "UPDATE user_rh SET kode_nomor_induk_rs = ?";
 $params = [$kodeNomorInduk];
