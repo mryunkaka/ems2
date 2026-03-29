@@ -696,6 +696,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
              * Polling inbox (ambil data terbaru)
              */
             async function pollInbox() {
+                if (!inboxBadge || !inboxDropdown || !inboxList) {
+                    return;
+                }
+
                 try {
                     const data = await safeFetchJSON(window.emsUrl('/actions/get_inbox.php'));
                     if (!data) return;
@@ -725,6 +729,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
              * Render inbox list (dipakai polling & click)
              */
             function renderInboxList(items) {
+                if (!inboxList) {
+                    return;
+                }
+
                 inboxList.innerHTML = '';
 
                 if (!items || items.length === 0) {
@@ -749,6 +757,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
              * Event jika inbox baru masuk
              */
             function onNewInbox(count) {
+                if (!inboxBadge) {
+                    return;
+                }
+
                 // Badge pulse
                 inboxBadge.classList.add('pulse');
                 setTimeout(() => inboxBadge.classList.remove('pulse'), 800);
@@ -773,6 +785,7 @@ if ($userId && !$hideAltaTopbarUtilities) {
              */
             function startInboxPolling() {
                 if (inboxPollingTimer) return;
+                if (!inboxBadge || !inboxDropdown || !inboxList) return;
 
                 let inboxFailCount = 0;
                 let inboxInFlight = false;

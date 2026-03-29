@@ -425,6 +425,8 @@ $clearFormNextLoad = false;
 $todayDate = date('Y-m-d');
 $consumerNames = fetchDistinctConsumerNames($pdo, $effectiveUnit, $salesHasUnitCode);
 $allConsumerSummaryJS = [];
+$consumerBlacklistTableReady = ems_table_exists($pdo, 'consumer_blacklist');
+$consumerBlacklistMap = [];
 
 try {
     $consumerSummarySql = "
@@ -470,6 +472,42 @@ try {
     }
 } catch (Throwable $e) {
     $allConsumerSummaryJS = [];
+}
+
+if ($consumerBlacklistTableReady) {
+    try {
+        $stmtBlacklist = $pdo->prepare("
+            SELECT consumer_name, consumer_name_key, note, unit_code
+            FROM consumer_blacklist
+            WHERE is_active = 1
+            ORDER BY updated_at DESC, id DESC
+        ");
+        $stmtBlacklist->execute();
+        foreach ($stmtBlacklist->fetchAll(PDO::FETCH_ASSOC) as $blacklistRow) {
+            $blacklistName = (string)($blacklistRow['consumer_name'] ?? '');
+            $blacklistKey = trim((string)($blacklistRow['consumer_name_key'] ?? ''));
+            $derivedBlacklistKey = farmasiConsumerNameKey($blacklistName);
+            $targetKeys = array_values(array_unique(array_filter([$blacklistKey, $derivedBlacklistKey])));
+
+            if (empty($targetKeys)) {
+                continue;
+            }
+
+            foreach ($targetKeys as $targetKey) {
+                if (isset($consumerBlacklistMap[$targetKey])) {
+                    continue;
+                }
+
+                $consumerBlacklistMap[$targetKey] = [
+                    'name' => $blacklistName,
+                    'note' => trim((string)($blacklistRow['note'] ?? '')),
+                    'unit_code' => (string)($blacklistRow['unit_code'] ?? 'roxwood'),
+                ];
+            }
+        }
+    } catch (Throwable $e) {
+        app_log('[FARMASI BLACKLIST LOAD ERROR] ' . $e->getMessage());
+    }
 }
 
 // ===============================
@@ -762,6 +800,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     if (preg_match('/\d/u', $rawConsumerName)) {
                         $warnings[] = "Angka pada nama konsumen dihapus otomatis. Nama disimpan sebagai {$consumerName}.";
+                    }
+
+                    $consumerBlacklistKey = farmasiConsumerNameKey($consumerName);
+                    $blacklistInfo = null;
+                    if ($consumerBlacklistKey !== '' && isset($consumerBlacklistMap[$consumerBlacklistKey])) {
+                        $blacklistInfo = $consumerBlacklistMap[$consumerBlacklistKey];
+                    } elseif ($consumerBlacklistTableReady && $consumerBlacklistKey !== '') {
+                        $stmtBlacklistCheck = $pdo->prepare("
+                            SELECT consumer_name, note, unit_code
+                            FROM consumer_blacklist
+                            WHERE consumer_name_key = ?
+                              AND is_active = 1
+                            LIMIT 1
+                        ");
+                        $stmtBlacklistCheck->execute([$consumerBlacklistKey]);
+                        $blacklistInfo = $stmtBlacklistCheck->fetch(PDO::FETCH_ASSOC) ?: null;
+                    }
+
+                    if ($blacklistInfo) {
+                        $blacklistNote = trim((string)($blacklistInfo['note'] ?? ''));
+                        $errors[] = $blacklistNote !== ''
+                            ? "Nama {$consumerName} telah di-blacklist. Lihat note blacklist: {$blacklistNote}."
+                            : "Nama {$consumerName} telah di-blacklist dan transaksi tidak dapat disimpan.";
                     }
 
                     $autoMerge = (
@@ -1794,6 +1855,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     'variant' => 'danger',
                 ]);
                 ?>
+                <div id="blacklistNotice" class="notice-box notice-danger" style="display:none;"></div>
 
                 <?php
                 // ===============================
@@ -2524,12 +2586,14 @@ include __DIR__ . '/../partials/sidebar.php';
         const DAILY_DETAIL = <?= json_encode($dailyDetailJS, JSON_UNESCAPED_UNICODE); ?>;
         const DAILY_DETAIL_BY_NAME = <?= json_encode($dailyDetailByNameJS, JSON_UNESCAPED_UNICODE); ?>;
         const CONSUMER_HISTORY_SUMMARY = <?= json_encode($allConsumerSummaryJS, JSON_UNESCAPED_UNICODE); ?>;
+        const CONSUMER_BLACKLIST = <?= json_encode($consumerBlacklistMap, JSON_UNESCAPED_UNICODE); ?>;
         const TODAY_CONSUMER_NAMES = <?= json_encode(array_values($todayConsumerNamesJS), JSON_UNESCAPED_UNICODE); ?>;
         // Flag global: apakah pilihan saat ini menyebabkan melewati batas harian
         let IS_OVER_LIMIT = false;
         let PRIORITY_LOCK = false;
         let LAST_CONSUMER_NAME = '';
         let CONSUMER_LOCK = false;
+        let BLACKLIST_LOCK = false;
         let NOTICE_STATE = 'NONE';
         let ACTIVE_MERGE_CANDIDATES = [];
         let ACTIVE_MERGE_SOURCE_NAME = '';
@@ -2773,6 +2837,38 @@ include __DIR__ . '/../partials/sidebar.php';
             if (footEl) footEl.innerHTML = '';
         }
 
+        function getBlacklistInfo(name) {
+            const key = getConsumerIdentityKey(name);
+            if (!key) return null;
+            return CONSUMER_BLACKLIST[key] || null;
+        }
+
+        function showBlacklistNotice(name, info) {
+            const box = document.getElementById('blacklistNotice');
+            if (!box) return;
+
+            const note = info && info.note ? String(info.note) : '';
+            const displayName = info && info.name ? info.name : name;
+            const sourceUnit = info && info.unit_code ? String(info.unit_code) : '';
+            const sourceUnitLabel = sourceUnit === 'alta' ? 'Alta' : (sourceUnit === 'roxwood' ? 'Roxwood' : sourceUnit);
+
+            box.innerHTML =
+                '<strong>Nama telah di-blacklist.</strong><br>' +
+                'Konsumen <strong>' + escapeHtml(displayName) + '</strong> tidak dapat disimpan pada rekap farmasi mana pun.' +
+                (sourceUnitLabel ? '<br><strong>Sumber blacklist:</strong> ' + escapeHtml(sourceUnitLabel) : '') +
+                (note ? '<br><br><strong>Note blacklist:</strong> ' + escapeHtml(note) : '');
+            box.style.display = 'block';
+            BLACKLIST_LOCK = true;
+        }
+
+        function clearBlacklistNotice() {
+            const box = document.getElementById('blacklistNotice');
+            BLACKLIST_LOCK = false;
+            if (!box) return;
+            box.innerHTML = '';
+            box.style.display = 'none';
+        }
+
         function renderConsumerSummaryCards(names) {
             if (!Array.isArray(names) || names.length === 0) {
                 return '';
@@ -2980,8 +3076,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     applyProfileRequirementLock();
                 } else {
                     btnSubmit.disabled = false;
+                    btnSubmit.classList.remove('btn-disabled');
                 }
             }
+
+            clearBlacklistNotice();
 
             let detail = [];
             let exactBoughtToday = false;
@@ -2992,6 +3091,19 @@ include __DIR__ . '/../partials/sidebar.php';
                 IS_OVER_LIMIT = false;
                 return;
             } else {
+                const blacklistInfo = getBlacklistInfo(cname);
+                if (blacklistInfo) {
+                    clearConsumerNotice();
+                    showBlacklistNotice(cname, blacklistInfo);
+                    if (btnSubmit) {
+                        btnSubmit.disabled = true;
+                        btnSubmit.classList.add('btn-disabled');
+                    }
+                    IS_OVER_LIMIT = false;
+                    CONSUMER_LOCK = false;
+                    return;
+                }
+
                 const key = getConsumerIdentityKey(cname);
                 detail = DAILY_DETAIL[key] || [];
                 exactBoughtToday = TODAY_CONSUMER_NAMES.some(function(name) {
@@ -3174,6 +3286,7 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             IS_OVER_LIMIT = false;
+            clearBlacklistNotice();
             const forceOver = document.getElementById('force_overlimit');
             if (forceOver) forceOver.value = '0';
 
@@ -3223,6 +3336,13 @@ include __DIR__ . '/../partials/sidebar.php';
 
             if (CONSUMER_LOCK) {
                 alert('Konsumen ini sudah melakukan transaksi hari ini.');
+                return;
+            }
+
+            if (BLACKLIST_LOCK) {
+                const blacklistInfo = getBlacklistInfo(cname);
+                const blacklistNote = blacklistInfo && blacklistInfo.note ? '\n\nNote blacklist: ' + blacklistInfo.note : '';
+                alert('Nama ini telah di-blacklist dan transaksi tidak dapat disimpan.' + blacklistNote);
                 return;
             }
 

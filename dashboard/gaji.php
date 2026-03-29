@@ -23,7 +23,6 @@ $isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ??
 $isMedicalDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '') === 'Medis';
 
 if (!$userHasAllUnits && $effectiveUnit === 'alta' && $isMedicalDivision && $isMedicalPosition) {
-    $_SESSION['flash_errors'][] = 'Akses halaman ditolak untuk unit Anda.';
     header('Location: index.php');
     exit;
 }

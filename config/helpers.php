@@ -700,7 +700,6 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         ];
 
         if (in_array($scriptName, $altaBlockedPages, true)) {
-            $_SESSION['flash_errors'][] = 'Akses halaman ditolak untuk unit Anda.';
             header('Location: ' . $redirectTo);
             exit;
         }
