@@ -368,7 +368,7 @@ $currentUserProfile = $stmtCurrentUser->fetch(PDO::FETCH_ASSOC) ?: [];
 
 $missingProfileFields = [];
 if (empty($currentUserProfile['tanggal_masuk'])) {
-    $missingProfileFields[] = 'Tanggal join ke Roxwood Hospital';
+    $missingProfileFields[] = 'Tanggal join ke ' . ems_unit_label($effectiveUnit);
 }
 if (empty($currentUserProfile['citizen_id'])) {
     $missingProfileFields[] = 'Citizen ID';

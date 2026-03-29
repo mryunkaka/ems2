@@ -148,6 +148,9 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
                 sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
             ],
+            'Pengaturan' => [
+                sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
+            ],
         ];
     } else {
         $groupedNav = [
@@ -166,8 +169,29 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/blacklist_names.php', 'blacklist_names.php', 'Blacklist Nama', 'no-symbol'),
                 sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
             ],
+            'Pengaturan' => [
+                sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
+            ],
         ];
     }
+}
+
+$hasSettingAkunMenu = false;
+foreach ($groupedNav as $items) {
+    foreach ($items as $item) {
+        if (($item['page'] ?? '') === 'setting_akun.php') {
+            $hasSettingAkunMenu = true;
+            break 2;
+        }
+    }
+}
+
+if (!$hasSettingAkunMenu) {
+    if (!isset($groupedNav['Pengaturan']) || !is_array($groupedNav['Pengaturan'])) {
+        $groupedNav['Pengaturan'] = [];
+    }
+
+    $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth');
 }
 
 function sidebarBuildUnitSwitchUrl(string $targetUnit): string
