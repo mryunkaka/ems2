@@ -82,6 +82,14 @@ function orgDivisionRank(string $division): int
     return $order[$division] ?? 99;
 }
 
+function orgIsExcludedUser(?string $name): bool
+{
+    $normalized = strtolower(trim((string) $name));
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?: '';
+
+    return in_array($normalized, ['programmer alta', 'programmer roxwood'], true);
+}
+
 $errors = [];
 $directors = [];
 $viceDirectors = [];
@@ -118,6 +126,10 @@ try {
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($rows as $row) {
+        if (orgIsExcludedUser($row['full_name'] ?? '')) {
+            continue;
+        }
+
         $role = ems_normalize_role($row['role'] ?? '');
         $division = ems_normalize_division($row['division'] ?? '');
 
