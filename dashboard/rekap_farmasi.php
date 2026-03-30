@@ -1709,7 +1709,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endforeach; ?>
                             </datalist>
                             <small>
-                                Input wajib memakai Citizen ID Konsumen dalam format game/alfanumerik, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
+                                Input wajib memakai Citizen ID Konsumen, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
                             </small>
                         </div>
                         <div class="col">
