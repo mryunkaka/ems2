@@ -10,6 +10,9 @@ if (session_status() === PHP_SESSION_NONE) {
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+$requestedLoginUnit = ems_normalize_unit_code($_POST['login_unit'] ?? $_GET['unit'] ?? 'roxwood');
+$requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
+
 // =====================================================
 // AMBIL INPUT (NORMAL / FORCE LOGIN)
 // =====================================================
@@ -19,6 +22,8 @@ $force = isset($_POST['force_login']);
 if ($force && isset($_SESSION['pending_login'])) {
     $full_name = $_SESSION['pending_login']['full_name'];
     $pin       = $_SESSION['pending_login']['pin'];
+    $requestedLoginUnit = ems_normalize_unit_code($_SESSION['pending_login']['login_unit'] ?? $requestedLoginUnit);
+    $requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
 
     // Bersihkan data sementara
     unset($_SESSION['pending_login']);
@@ -30,7 +35,7 @@ if ($force && isset($_SESSION['pending_login'])) {
 // Validasi awal
 if ($full_name === '' || $pin === '') {
     $_SESSION['error'] = 'Form login tidak valid';
-    header("Location: login.php");
+    header('Location: ' . $requestedLoginUrl);
     exit;
 }
 
@@ -43,16 +48,19 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$user || !password_verify($pin, $user['pin'])) {
     $_SESSION['error'] = 'Nama atau PIN salah';
-    header("Location: login.php");
+    header('Location: ' . $requestedLoginUrl);
     exit;
 }
+
+$userLoginUnit = ems_normalize_unit_code($user['unit_code'] ?? $requestedLoginUnit);
+$userLoginUrl = 'login.php?unit=' . urlencode($userLoginUnit);
 
 // =====================================================
 // CEK VERIFIKASI AKUN
 // =====================================================
 if ((int)$user['is_verified'] === 0) {
     $_SESSION['error'] = 'Akun belum diverifikasi';
-    header("Location: login.php");
+    header('Location: ' . $userLoginUrl);
     exit;
 }
 
@@ -64,7 +72,7 @@ if ((int)$user['is_active'] === 0) {
     $_SESSION['error'] = $hasResigned
         ? 'Akun Anda sudah dinonaktifkan. Hubungi administrator.'
         : 'Akun Anda belum aktif. Silakan tunggu aktivasi manager.';
-    header("Location: login.php");
+    header('Location: ' . $userLoginUrl);
     exit;
 }
 
@@ -97,10 +105,11 @@ if ($activeToken > 0 && !$force) {
     // Simpan data login sementara (AMAN, TIDAK DI HTML)
     $_SESSION['pending_login'] = [
         'full_name' => $full_name,
-        'pin'       => $pin
+        'pin'       => $pin,
+        'login_unit' => $userLoginUnit,
     ];
 
-    header("Location: login.php?confirm=1");
+    header('Location: login.php?confirm=1&unit=' . urlencode($userLoginUnit));
     exit;
 }
 
@@ -118,8 +127,11 @@ $_SESSION['user_rh'] = [
     'name'     => $user['full_name'],
     'role'     => $user['role'],
     'position' => ems_normalize_position($user['position'] ?? ''),
-    'division' => ems_normalize_division($user['division'] ?? '')
+    'division' => ems_normalize_division($user['division'] ?? ''),
+    'unit_code' => $userLoginUnit,
+    'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
 ];
+$_SESSION['ems_active_unit'] = $userLoginUnit;
 
 // =====================================================
 // SIMPAN REMEMBER TOKEN BARU (1 TAHUN)

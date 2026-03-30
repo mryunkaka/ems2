@@ -235,7 +235,7 @@ function formatTanggalHari(string $tanggal): string
                 return;
             }
 
-            if (e.target.closest('.btn-cancel') || e.target === modal) {
+            if (e.target.closest('.btn-cancel')) {
                 modal.classList.add('hidden');
                 modal.style.display = 'none';
                 document.body.classList.remove('modal-open');

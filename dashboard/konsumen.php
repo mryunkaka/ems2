@@ -93,9 +93,9 @@ if ($q !== '' || ($startDate && $endDate)) {
 <section class="content">
     <div class="page page-shell">
 
-	        <h1 class="page-title">Data Konsumen</h1>
+        <h1 class="page-title">Data Konsumen</h1>
 
-	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?></p>
+	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?>. Data lama yang masih tersimpan sebagai nama tetap ditampilkan apa adanya.</p>
 
         <div class="card">
             <div class="card-header-actions card-section">
@@ -142,7 +142,7 @@ if ($q !== '' || ($startDate && $endDate)) {
                     <div class="search-field search-field-keyword">
                         <input type="text"
                             name="q"
-                            placeholder="Cari Nama Konsumen / Citizen ID / Nama Medis"
+                            placeholder="Cari Citizen ID Konsumen / Nama Medis / Data Nama Lama"
                             value="<?= htmlspecialchars($_GET['q'] ?? '') ?>"
                             autocomplete="off">
                     </div>
@@ -169,8 +169,8 @@ if ($q !== '' || ($startDate && $endDate)) {
                         <tr>
                             <th>#</th>
                             <th>Tanggal</th>
-                            <th>Citizen ID</th>
-                            <th>Nama Konsumen</th>
+                            <th><?= htmlspecialchars(ems_consumer_identifier_label()) ?></th>
+                            <th>Data Nama Lama</th>
                             <th>Nama Medis</th>
                             <th>Jabatan</th>
                             <th>Bandage</th>
@@ -184,21 +184,29 @@ if ($q !== '' || ($startDate && $endDate)) {
                     <tbody>
                         <?php if (!empty($sales)): ?>
                             <?php foreach ($sales as $i => $row): ?>
+                                <?php
+                                $consumerIdentifier = ems_consumer_identifier_value($row['consumer_name'] ?? '', $row['citizen_id'] ?? '');
+                                $legacyConsumerName = ems_consumer_legacy_name_value($row['consumer_name'] ?? '', $row['citizen_id'] ?? '');
+                                ?>
                                 <tr>
                                     <td><?= $i + 1 ?></td>
                                     <td><?= date('d M Y H:i', strtotime($row['created_at'])) ?></td>
                                     <td>
-                                        <?php if (!empty($row['citizen_id'])): ?>
-                                            <a href="#"
-                                                class="identity-link"
-                                                data-identity-id="<?= (int)$row['identity_id'] ?>">
-                                                <?= htmlspecialchars($row['citizen_id']) ?>
-                                            </a>
+                                        <?php if ($consumerIdentifier !== ''): ?>
+                                            <?php if ((int)$row['identity_id'] > 0): ?>
+                                                <a href="#"
+                                                    class="identity-link"
+                                                    data-identity-id="<?= (int)$row['identity_id'] ?>">
+                                                    <?= htmlspecialchars($consumerIdentifier) ?>
+                                                </a>
+                                            <?php else: ?>
+                                                <?= htmlspecialchars($consumerIdentifier) ?>
+                                            <?php endif; ?>
                                         <?php else: ?>
                                             <span class="muted-placeholder">-</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?= htmlspecialchars($row['consumer_name']) ?></td>
+                                    <td><?= htmlspecialchars($legacyConsumerName) ?></td>
                                     <td><?= htmlspecialchars($row['medic_name']) ?></td>
                                     <td><?= htmlspecialchars($row['medic_jabatan']) ?></td>
                                     <td><?= (int)$row['qty_bandage'] ?></td>
@@ -604,11 +612,6 @@ MODAL IMPORT KONSUMEN (EMS)
     }
 
     document.addEventListener('click', function(e) {
-        const modal = document.getElementById('identityModal');
-        if (e.target === modal) closeIdentityModal();
-
-        const importModal = document.getElementById('importModal');
-        if (e.target === importModal) closeImportModal();
     });
 
     document.addEventListener('keydown', function(e) {

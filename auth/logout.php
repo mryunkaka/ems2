@@ -9,6 +9,8 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config/database.php';
 
+$logoutUnit = $_SESSION['ems_active_unit'] ?? ($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
+
 // -----------------------------------------------------
 // Hapus token dari database
 // -----------------------------------------------------
@@ -35,5 +37,5 @@ session_destroy();
 // -----------------------------------------------------
 session_start();
 $_SESSION['success'] = 'Anda berhasil logout';
-header("Location: login.php");
+header('Location: login.php?unit=' . urlencode((string)$logoutUnit));
 exit;

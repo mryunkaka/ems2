@@ -425,12 +425,100 @@ function ems_unit_label(?string $unitCode): string
     };
 }
 
+function ems_unit_hospital_name(?string $unitCode): string
+{
+    return match (ems_normalize_unit_code($unitCode)) {
+        'alta' => 'Alta Hospital',
+        default => 'Roxwood Hospital',
+    };
+}
+
+function ems_unit_logo_path(?string $unitCode): string
+{
+    return match (ems_normalize_unit_code($unitCode)) {
+        'alta' => '/assets/motionlife-logo.png',
+        default => '/assets/logo.png',
+    };
+}
+
+function ems_unit_system_name(?string $unitCode = null): string
+{
+    return 'Emergency Medical System';
+}
+
 function ems_unit_options(): array
 {
     return [
         ['value' => 'roxwood', 'label' => 'Roxwood'],
         ['value' => 'alta', 'label' => 'Alta'],
     ];
+}
+
+function ems_normalize_citizen_id(?string $value): string
+{
+    $value = strtoupper(trim((string)$value));
+    $value = preg_replace('/[^A-Z0-9]+/', '', $value) ?: '';
+
+    return $value;
+}
+
+function ems_looks_like_citizen_id(?string $value): bool
+{
+    $raw = trim((string)$value);
+    if ($raw === '') {
+        return false;
+    }
+
+    $normalized = ems_normalize_citizen_id($raw);
+    if ($normalized === '') {
+        return false;
+    }
+
+    if (preg_match('/^\d{6,}$/', $normalized)) {
+        return true;
+    }
+
+    return preg_match('/^(?=.*\d)[A-Z0-9]{6,20}$/', $normalized) === 1;
+}
+
+function ems_consumer_identifier_label(): string
+{
+    return 'Citizen ID Konsumen';
+}
+
+function ems_consumer_identifier_value(?string $storedValue, ?string $citizenId = null): string
+{
+    $normalizedCitizenId = ems_normalize_citizen_id($citizenId);
+    if ($normalizedCitizenId !== '') {
+        return $normalizedCitizenId;
+    }
+
+    if (ems_looks_like_citizen_id($storedValue)) {
+        return ems_normalize_citizen_id($storedValue);
+    }
+
+    return '';
+}
+
+function ems_consumer_legacy_name_value(?string $storedValue, ?string $citizenId = null): string
+{
+    $storedValue = preg_replace('/\s+/u', ' ', trim((string)$storedValue)) ?: '';
+    if ($storedValue === '') {
+        return '-';
+    }
+
+    $normalizedStored = ems_normalize_citizen_id($storedValue);
+    $normalizedCitizenId = ems_normalize_citizen_id($citizenId);
+
+    if ($normalizedCitizenId !== '' && $normalizedStored === $normalizedCitizenId) {
+        return '-';
+    }
+
+    if (ems_looks_like_citizen_id($storedValue)) {
+        return '-';
+    }
+
+    return $storedValue;
 }
 
 function ems_is_medical_position(?string $position): bool

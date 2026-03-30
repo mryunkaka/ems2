@@ -1984,14 +1984,6 @@ include __DIR__ . '/../partials/sidebar.php';
         document.body.classList.remove('modal-open');
     }
 
-    /* klik di luar modal */
-    document.addEventListener('click', function(e) {
-        const modal = document.getElementById('identityViewModal');
-        if (e.target === modal) {
-            closeIdentityViewModal();
-        }
-    });
-
     /* ESC */
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {

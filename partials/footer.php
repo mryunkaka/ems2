@@ -1,4 +1,12 @@
-<?php require_once __DIR__ . '/../config/helpers.php'; ?>
+<?php
+require_once __DIR__ . '/../config/helpers.php';
+
+$footerLoginUrl = ems_url('/auth/login.php');
+if (isset($pdo) && function_exists('ems_effective_unit')) {
+    $footerUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+    $footerLoginUrl = ems_url('/auth/login.php?unit=' . urlencode($footerUnit));
+}
+?>
 </main>
 
 </div>
@@ -130,7 +138,7 @@ window.addEventListener('resize', function() {
 	                            </div>
 	                        </div>`;
 		                    setTimeout(() => {
-		                        window.location.href = window.emsUrl('/auth/login.php');
+		                        window.location.href = <?= json_encode($footerLoginUrl, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 		                    }, 1500);
 	                }
 	            } finally {

@@ -18,26 +18,18 @@ if ($role === 'staff') {
 
 ems_require_division_access(['General Affair'], '/dashboard/index.php');
 
-$pageTitle = 'Blacklist Nama';
+$pageTitle = 'Blacklist Citizen ID';
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $tableReady = ems_table_exists($pdo, 'consumer_blacklist');
 
 function blacklistNameDisplay(?string $name): string
 {
-    $value = trim((string)$name);
-    $value = preg_replace('/\s+/u', ' ', $value) ?: '';
-    return $value;
+    return ems_normalize_citizen_id($name);
 }
 
 function blacklistNameKey(?string $name): string
 {
-    $value = mb_strtolower(blacklistNameDisplay($name), 'UTF-8');
-    $tokens = preg_split('/\s+/u', $value) ?: [];
-    $tokens = array_values(array_filter($tokens, static function ($token) {
-        return trim((string)$token) !== '';
-    }));
-    sort($tokens, SORT_STRING);
-    return implode(' ', $tokens);
+    return blacklistNameDisplay($name);
 }
 
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -54,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tableReady) {
             $consumerKey = blacklistNameKey($consumerName);
             $note = trim((string)($_POST['note'] ?? ''));
 
-            if ($consumerName === '') {
-                throw new RuntimeException('Nama wajib diisi.');
+            if ($consumerName === '' || !ems_looks_like_citizen_id($consumerName)) {
+                throw new RuntimeException('Citizen ID wajib diisi dengan format yang valid.');
             }
 
             $stmtExisting = $pdo->prepare("
@@ -106,14 +98,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $tableReady) {
                 ]);
             }
 
-            $_SESSION['flash_messages'][] = 'Nama berhasil dimasukkan ke blacklist global.';
+            $_SESSION['flash_messages'][] = 'Citizen ID berhasil dimasukkan ke blacklist global.';
         } elseif ($action === 'update') {
             $id = (int)($_POST['id'] ?? 0);
             $consumerName = blacklistNameDisplay($_POST['consumer_name'] ?? '');
             $consumerKey = blacklistNameKey($consumerName);
             $note = trim((string)($_POST['note'] ?? ''));
 
-            if ($id <= 0 || $consumerName === '') {
+            if ($id <= 0 || $consumerName === '' || !ems_looks_like_citizen_id($consumerName)) {
                 throw new RuntimeException('Data blacklist tidak valid.');
             }
 
@@ -185,8 +177,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <section class="content">
     <div class="page page-shell">
-        <h1 class="page-title">Blacklist Nama</h1>
-        <p class="page-subtitle">Global &bull; Pemblokiran nama konsumen farmasi lintas unit</p>
+        <h1 class="page-title">Blacklist Citizen ID</h1>
+        <p class="page-subtitle">Global &bull; Pemblokiran Citizen ID Konsumen farmasi lintas unit</p>
 
         <?php foreach ($messages as $message): ?>
             <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
@@ -204,12 +196,12 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
         <?php else: ?>
             <div class="alert alert-warning">
-                Blacklist ini berlaku global untuk semua unit. Jika nama diblacklist dari Alta, nama yang sama juga otomatis diblokir di Roxwood, dan sebaliknya.
+                Blacklist ini berlaku global untuk semua unit. Jika Citizen ID diblacklist dari Alta, Citizen ID yang sama juga otomatis diblokir di Roxwood, dan sebaliknya.
             </div>
             <div class="card">
                 <div class="card-header card-header-actions card-header-flex">
                     <div class="card-header-actions-title">
-                        <?= ems_icon('no-symbol', 'h-5 w-5') ?> Daftar Nama Blacklist
+                        <?= ems_icon('no-symbol', 'h-5 w-5') ?> Daftar Citizen ID Blacklist
                     </div>
                     <button type="button" id="openAddBlacklistModal" class="btn-danger">
                         <?= ems_icon('plus', 'h-4 w-4') ?> <span>Tambah Blacklist</span>
@@ -220,7 +212,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <table id="blacklistTable" class="table-custom">
                         <thead>
                             <tr>
-                                <th>Nama</th>
+                                <th>Citizen ID</th>
                                 <th>Unit Input</th>
                                 <th>Note</th>
                                 <th>Status</th>
@@ -269,9 +261,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <?php if ($tableReady): ?>
     <div id="addBlacklistModal" class="modal-overlay hidden">
-        <div class="modal-box modal-shell modal-frame-md">
-            <div class="modal-head">
-                <div class="modal-title">Tambah Blacklist Nama</div>
+            <div class="modal-box modal-shell modal-frame-md">
+                <div class="modal-head">
+                <div class="modal-title">Tambah Blacklist Citizen ID</div>
                 <button type="button" class="modal-close-btn btn-add-cancel" aria-label="Tutup modal">
                     <?= ems_icon('x-mark', 'h-5 w-5') ?>
                 </button>
@@ -281,8 +273,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="modal-content">
                     <input type="hidden" name="action" value="create">
 
-                    <label>Nama Konsumen</label>
-                    <input type="text" name="consumer_name" id="addBlacklistName" required>
+                    <label><?= htmlspecialchars(ems_consumer_identifier_label()) ?></label>
+                    <input type="text" name="consumer_name" id="addBlacklistName" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
 
                     <label>Note Blacklist</label>
                     <textarea name="note" id="addBlacklistNote" rows="4" placeholder="Contoh: indikasi penyalahgunaan / wajib konfirmasi ke GA"></textarea>
@@ -299,9 +291,9 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 
     <div id="editBlacklistModal" class="modal-overlay hidden">
-        <div class="modal-box modal-shell modal-frame-md">
-            <div class="modal-head">
-                <div class="modal-title">Ubah Blacklist Nama</div>
+            <div class="modal-box modal-shell modal-frame-md">
+                <div class="modal-head">
+                <div class="modal-title">Ubah Blacklist Citizen ID</div>
                 <button type="button" class="modal-close-btn btn-edit-cancel" aria-label="Tutup modal">
                     <?= ems_icon('x-mark', 'h-5 w-5') ?>
                 </button>
@@ -312,8 +304,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="id" id="editBlacklistId">
 
-                    <label>Nama Konsumen</label>
-                    <input type="text" name="consumer_name" id="editBlacklistName" required>
+                    <label><?= htmlspecialchars(ems_consumer_identifier_label()) ?></label>
+                    <input type="text" name="consumer_name" id="editBlacklistName" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
 
                     <label>Note Blacklist</label>
                     <textarea name="note" id="editBlacklistNote" rows="4"></textarea>
@@ -365,13 +357,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 const form = document.getElementById('addBlacklistForm');
                 if (form) form.reset();
                 openModal(addModal);
-            });
-
-            addModal?.addEventListener('click', function(event) {
-                if (event.target === addModal) closeModal(addModal);
-            });
-            editModal?.addEventListener('click', function(event) {
-                if (event.target === editModal) closeModal(editModal);
             });
 
             document.querySelectorAll('.btn-add-cancel').forEach(function(btn) {

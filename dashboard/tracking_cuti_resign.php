@@ -620,15 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Close modal when clicking outside
     var modal = document.getElementById('kembaliKerjaModal');
-    if (modal) {
-        modal.addEventListener('click', function(event) {
-            if (event.target === modal) {
-                closeKembaliKerjaModal();
-            }
-        });
-    }
 });
 </script>
 

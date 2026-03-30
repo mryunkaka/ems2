@@ -17,6 +17,8 @@ unset($_SESSION['clear_form']);
 $user = $_SESSION['user_rh'] ?? [];
 $medicName    = $user['name'] ?? '';
 $medicJabatan = ems_position_label($user['position'] ?? '');
+$currentUnit = ems_effective_unit($pdo, $user);
+$currentHospitalName = ems_unit_hospital_name($currentUnit);
 
 if (empty($medicName)) {
     $_SESSION['flash_errors'][] = 'Session login tidak valid. Silakan login ulang.';
@@ -576,7 +578,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <div class="page page-shell">
 
         <h1 class="page-title">Input Layanan Medis EMS</h1>
-        <p class="page-subtitle">Sesuai Regulasi Roxwood Hospital</p>
+        <p class="page-subtitle">Sesuai Regulasi <?= htmlspecialchars($currentHospitalName) ?></p>
 
         <?php foreach ($messages as $m): ?>
             <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>

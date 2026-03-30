@@ -3,6 +3,7 @@ session_start();
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../vendor/autoload.php'; // PhpSpreadsheet
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -58,9 +59,9 @@ try {
     $rows = $worksheet->toArray();
 
     // Expected columns from uploaded Excel:
-    // A: Consumer Name (Nama Konsumen)
+    // A: Consumer identifier / legacy consumer name
     // B: Package Name (Nama Paket - akan lookup ke tabel packages)
-    // C: Citizen ID (optional)
+    // C: Citizen ID (optional, will be prioritized for new data)
 
     $imported = 0;
     $pdo->beginTransaction();
@@ -70,13 +71,18 @@ try {
         $row = $rows[$i];
 
         // Skip empty rows
-        if (empty(trim($row[0] ?? '')) || empty(trim($row[1] ?? ''))) {
+        if ((empty(trim($row[0] ?? '')) && empty(trim($row[2] ?? ''))) || empty(trim($row[1] ?? ''))) {
             continue;
         }
 
-        $consumerName = trim($row[0] ?? '');
+        $consumerInput = trim($row[0] ?? '');
         $packageName = trim($row[1] ?? '');
         $citizenId = trim($row[2] ?? '');
+
+        $consumerName = ems_normalize_citizen_id($citizenId !== '' ? $citizenId : $consumerInput);
+        if ($consumerName === '') {
+            $consumerName = trim($consumerInput);
+        }
 
         // Lookup package dari tabel packages
         $stmt = $pdo->prepare("
@@ -112,9 +118,10 @@ try {
         // Find or create identity_id if citizen_id provided
         $identityId = null;
 
-        if (!empty($citizenId)) {
+        $lookupCitizenId = ems_normalize_citizen_id($citizenId !== '' ? $citizenId : $consumerName);
+        if ($lookupCitizenId !== '') {
             $stmt = $pdo->prepare("SELECT id FROM identity_master WHERE citizen_id = ?");
-            $stmt->execute([$citizenId]);
+            $stmt->execute([$lookupCitizenId]);
             $identity = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($identity) {

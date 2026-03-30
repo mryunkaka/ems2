@@ -403,11 +403,6 @@ document.addEventListener('DOMContentLoaded', function() {
             button.addEventListener('click', closeModal);
         });
 
-        modal.addEventListener('click', function(event) {
-            if (event.target === modal) {
-                closeModal();
-            }
-        });
     }
 
     document.addEventListener('keydown', function(event) {

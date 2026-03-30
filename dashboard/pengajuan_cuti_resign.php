@@ -977,24 +977,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Close modal when clicking outside
     var approvalModal = document.getElementById('approvalModal');
-    if (approvalModal) {
-        approvalModal.addEventListener('click', function(event) {
-            if (event.target === approvalModal) {
-                closeModal();
-            }
-        });
-    }
 
     var detailModal = document.getElementById('detailModal');
-    if (detailModal) {
-        detailModal.addEventListener('click', function(event) {
-            if (event.target === detailModal) {
-                closeDetailModal();
-            }
-        });
-    }
 
     console.log('Cuti/Resign system initialized');
 });

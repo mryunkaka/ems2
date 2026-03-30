@@ -205,10 +205,6 @@ include __DIR__ . '/../partials/sidebar.php';
             document.body.classList.remove('modal-open');
         }
 
-        editRegModal.addEventListener('click', (e) => {
-            if (e.target === editRegModal) closeModal();
-        });
-
         editRegModal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(btn => {
             btn.addEventListener('click', closeModal);
         });
@@ -299,4 +295,3 @@ include __DIR__ . '/../partials/sidebar.php';
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
-

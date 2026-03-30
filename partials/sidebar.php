@@ -10,6 +10,7 @@ $canViewAllUnits = isset($pdo) ? ems_user_can_view_all_units($pdo, $_SESSION['us
 $isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ?? '');
 $isMedicalDivision = $division === 'Medis';
 $isAltaUnit = $userUnit === 'alta';
+$currentHospitalName = ems_unit_hospital_name($currentUnit);
 
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -219,7 +220,7 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
             </div>
             <div class="brand-text">
                 <strong><?= htmlspecialchars($medicName) ?></strong>
-                <span><?= htmlspecialchars($medicJabatan) ?> • <?= htmlspecialchars(ems_unit_label($currentUnit)) ?></span>
+                <span><?= htmlspecialchars($medicJabatan) ?> • <?= htmlspecialchars($currentHospitalName) ?></span>
             </div>
         </div>
         <?php if ($canViewAllUnits): ?>

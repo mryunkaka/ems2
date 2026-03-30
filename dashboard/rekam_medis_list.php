@@ -442,7 +442,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (event.target === modal || event.target.closest('.btn-medical-record-close')) {
+        if (event.target.closest('.btn-medical-record-close')) {
             closeModal();
         }
     });

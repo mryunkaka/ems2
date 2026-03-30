@@ -3,6 +3,12 @@ session_start();
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+$loginUnit = ems_normalize_unit_code($_GET['unit'] ?? 'roxwood');
+$loginHospitalName = ems_unit_hospital_name($loginUnit);
+$loginLogoPath = ems_unit_logo_path($loginUnit);
+$loginSystemName = ems_unit_system_name($loginUnit);
+$loginPageUrl = 'login.php?unit=' . urlencode($loginUnit);
+
 function authRenderRegisterDocField(string $label, string $inputId, string $fieldName, bool $optional = true): void
 {
 ?>
@@ -38,7 +44,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Masuk - EMS</title>
+    <title>Masuk - <?= htmlspecialchars($loginHospitalName) ?></title>
 
     <!-- Local assets only (no old CSS, no CDN) -->
     <link rel="stylesheet" href="/assets/vendor/photoswipe/photoswipe.css">
@@ -54,10 +60,10 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
 
                     <!-- BRAND / LOGO -->
                     <div class="mb-6 flex flex-col items-center gap-3 text-center">
-                        <img src="/assets/logo.png" alt="Logo EMS" class="h-14 w-14 rounded-2xl bg-white object-contain p-2.5 shadow-soft">
+                        <img src="<?= htmlspecialchars(ems_asset($loginLogoPath), ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($loginHospitalName) ?>" class="h-14 w-14 rounded-2xl bg-white object-contain p-2.5 shadow-soft">
                         <div class="min-w-0">
-                            <div class="text-sm font-extrabold tracking-wide text-slate-900">Roxwood Hospital</div>
-                            <div class="text-xs font-semibold text-slate-600">Emergency Medical System</div>
+                            <div class="text-sm font-extrabold tracking-wide text-slate-900"><?= htmlspecialchars($loginHospitalName) ?></div>
+                            <div class="text-xs font-semibold text-slate-600"><?= htmlspecialchars($loginSystemName) ?></div>
                         </div>
                     </div>
 
@@ -81,6 +87,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                  LOGIN FORM
                  ============================================ -->
                     <form id="loginForm" method="POST" action="/auth/login_process.php" class="space-y-4">
+                        <input type="hidden" name="login_unit" value="<?= htmlspecialchars($loginUnit) ?>">
                         <?php if (isset($_GET['confirm'])): ?>
                             <div class="modal-overlay" id="confirmModal">
                                 <div class="modal-box modal-shell modal-frame-md">
@@ -89,7 +96,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                                             <?= ems_icon('exclamation-triangle', 'h-5 w-5 text-amber-600') ?>
                                             <span>Perangkat Lain Terdeteksi</span>
                                         </div>
-                                        <a href="login.php" class="modal-close-btn" aria-label="Tutup">
+                                        <a href="<?= htmlspecialchars($loginPageUrl) ?>" class="modal-close-btn" aria-label="Tutup">
                                             <?= ems_icon('x-mark', 'h-5 w-5') ?>
                                         </a>
                                     </div>
@@ -103,7 +110,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
 
                                     <div class="modal-foot">
                                         <div class="modal-actions justify-end">
-                                            <a href="login.php" class="btn-secondary">Batal</a>
+                                            <a href="<?= htmlspecialchars($loginPageUrl) ?>" class="btn-secondary">Batal</a>
                                             <button
                                                 type="submit"
                                                 name="force_login"

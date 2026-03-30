@@ -63,56 +63,27 @@ function app_log($message)
 
 function farmasiConsumerNameComparable(string $name): string
 {
-    $name = preg_replace('/\d+/u', ' ', $name);
-    $name = preg_replace("/[^\p{L}\s'\-]/u", ' ', $name);
-    $name = preg_replace('/\s+/u', ' ', (string)$name);
-
-    return trim(mb_strtolower($name, 'UTF-8'));
+    return ems_normalize_citizen_id($name);
 }
 
 function farmasiConsumerNameDisplay(string $name): string
 {
-    $normalized = farmasiConsumerNameComparable($name);
-    if ($normalized === '') {
-        return '';
-    }
-
-    return mb_convert_case($normalized, MB_CASE_TITLE, 'UTF-8');
+    return farmasiConsumerNameComparable($name);
 }
 
 function farmasiConsumerNameKey(string $name): string
 {
-    $normalized = farmasiConsumerNameComparable($name);
-    if ($normalized === '') {
-        return '';
-    }
-
-    $tokens = preg_split('/\s+/u', $normalized) ?: [];
-    $tokens = array_values(array_filter($tokens, static function ($token) {
-        return $token !== '';
-    }));
-    sort($tokens, SORT_STRING);
-
-    return implode(' ', $tokens);
+    return farmasiConsumerNameComparable($name);
 }
 
 function farmasiAsciiLower(string $value): string
 {
-    $ascii = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
-    if ($ascii === false) {
-        $ascii = $value;
-    }
-
-    return strtolower($ascii);
+    return strtolower(farmasiConsumerNameComparable($value));
 }
 
 function farmasiNormalizeLooseAscii(string $value): string
 {
-    $value = farmasiAsciiLower($value);
-    $value = preg_replace('/([a-z])\1+/i', '$1', $value);
-    $value = preg_replace('/\s+/u', ' ', $value);
-
-    return trim((string)$value);
+    return farmasiConsumerNameComparable($value);
 }
 
 function farmasiTokenDistance(string $left, string $right): int
@@ -136,117 +107,17 @@ function farmasiTokenEquivalent(string $left, string $right): bool
         return false;
     }
 
-    if ($left === $right) {
-        return true;
-    }
-
-    if (str_contains($left, $right) || str_contains($right, $left)) {
-        return true;
-    }
-
-    $distance = levenshtein($left, $right);
-    $maxLen = max(strlen($left), strlen($right));
-
-    if ($maxLen <= 5) {
-        return $distance <= 1;
-    }
-
-    if ($maxLen <= 8) {
-        return $distance <= 2;
-    }
-
-    return $distance <= 3;
+    return $left === $right;
 }
 
 function farmasiConsumerNamesEquivalent(string $inputName, string $existingName): bool
 {
-    $inputComparable = farmasiConsumerNameComparable($inputName);
-    $existingComparable = farmasiConsumerNameComparable($existingName);
-
-    if ($inputComparable === '' || $existingComparable === '') {
-        return false;
-    }
-
-    if ($inputComparable === $existingComparable) {
-        return true;
-    }
-
-    $inputKey = farmasiConsumerNameKey($inputComparable);
-    $existingKey = farmasiConsumerNameKey($existingComparable);
-    if ($inputKey !== '' && $inputKey === $existingKey) {
-        return true;
-    }
-
-    $inputAscii = farmasiNormalizeLooseAscii($inputComparable);
-    $existingAscii = farmasiNormalizeLooseAscii($existingComparable);
-    $distance = levenshtein($inputAscii, $existingAscii);
-    $maxLen = max(strlen($inputAscii), strlen($existingAscii));
-
-    if ($maxLen <= 8) {
-        if ($distance <= 1) {
-            return true;
-        }
-    } elseif ($maxLen <= 14) {
-        if ($distance <= 2) {
-            return true;
-        }
-    } elseif ($distance <= 3) {
-        return true;
-    }
-
-    $inputTokens = preg_split('/\s+/u', $inputComparable) ?: [];
-    $existingTokens = preg_split('/\s+/u', $existingComparable) ?: [];
-
-    if (count($inputTokens) !== count($existingTokens) || empty($inputTokens)) {
-        return false;
-    }
-
-    sort($inputTokens, SORT_STRING);
-    sort($existingTokens, SORT_STRING);
-
-    $matched = 0;
-    $totalDistance = 0;
-
-    foreach ($inputTokens as $index => $token) {
-        $other = $existingTokens[$index] ?? '';
-        if (!farmasiTokenEquivalent($token, $other)) {
-            return false;
-        }
-        $matched++;
-        $totalDistance += farmasiTokenDistance($token, $other);
-    }
-
-    if ($matched === 0) {
-        return false;
-    }
-
-    return $totalDistance <= max(2, $matched * 2);
+    return farmasiTokenEquivalent($inputName, $existingName);
 }
 
 function farmasiFindEquivalentConsumerNames(string $canonicalName, array $existingNames): array
 {
-    $matches = [];
-
-    foreach ($existingNames as $existingName) {
-        if (!is_string($existingName)) {
-            continue;
-        }
-
-        $existingName = trim($existingName);
-        if ($existingName === '') {
-            continue;
-        }
-
-        if (strcasecmp($existingName, $canonicalName) === 0) {
-            continue;
-        }
-
-        if (farmasiConsumerNamesEquivalent($canonicalName, $existingName)) {
-            $matches[] = $existingName;
-        }
-    }
-
-    return array_values(array_unique($matches));
+    return [];
 }
 
 function fetchDistinctConsumerNames(PDO $pdo, string $effectiveUnit, bool $hasUnitCode): array
@@ -269,7 +140,47 @@ function fetchDistinctConsumerNames(PDO $pdo, string $effectiveUnit, bool $hasUn
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
 
-    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $consumerNames = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $rawConsumerName) {
+        if (!ems_looks_like_citizen_id((string)$rawConsumerName)) {
+            continue;
+        }
+
+        $displayName = farmasiConsumerNameDisplay((string)$rawConsumerName);
+        if ($displayName === '') {
+            continue;
+        }
+
+        $consumerNames[$displayName] = $displayName;
+    }
+
+    return array_values($consumerNames);
+}
+
+function farmasiComboPackageModeLabel(array $packages): string
+{
+    $names = array_values(array_unique(array_filter(array_map(static function ($package) {
+        return trim((string)($package['name'] ?? ''));
+    }, $packages))));
+
+    if ($names === []) {
+        return 'Paket Combo';
+    }
+
+    if (count($names) === 1) {
+        return $names[0];
+    }
+
+    $suffixes = [];
+    foreach ($names as $name) {
+        if (!preg_match('/^paket\s+(.+)$/iu', $name, $matches)) {
+            return implode(' / ', $names);
+        }
+
+        $suffixes[] = trim((string)($matches[1] ?? ''));
+    }
+
+    return 'Paket ' . implode(' / ', $suffixes);
 }
 
 function ensureFarmasiOnline(PDO $pdo, int $userId, string $medicName, string $medicJabatan, bool $confirmActivity = false): void
@@ -423,6 +334,7 @@ $clearFormNextLoad = false;
 
 // Tanggal lokal hari ini (WITA)
 $todayDate = date('Y-m-d');
+$consumerIdentifierLabel = ems_consumer_identifier_label();
 $consumerNames = fetchDistinctConsumerNames($pdo, $effectiveUnit, $salesHasUnitCode);
 $allConsumerSummaryJS = [];
 $consumerBlacklistTableReady = ems_table_exists($pdo, 'consumer_blacklist');
@@ -450,7 +362,12 @@ try {
     $consumerSummaryRows = $stmtConsumerSummary->fetchAll(PDO::FETCH_ASSOC);
 
     foreach ($consumerSummaryRows as $summaryRow) {
-        $displayName = farmasiConsumerNameDisplay((string) ($summaryRow['consumer_name'] ?? ''));
+        $rawConsumerName = (string) ($summaryRow['consumer_name'] ?? '');
+        if (!ems_looks_like_citizen_id($rawConsumerName)) {
+            continue;
+        }
+
+        $displayName = farmasiConsumerNameDisplay($rawConsumerName);
         if ($displayName === '') {
             continue;
         }
@@ -550,100 +467,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'merge_consumer_names') {
         header('Content-Type: application/json; charset=UTF-8');
-
-        try {
-            if (!validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
-                throw new RuntimeException('Token CSRF tidak valid.');
-            }
-
-            $rawCanonicalName = trim((string) ($_POST['consumer_name'] ?? ''));
-            $canonicalName = farmasiConsumerNameDisplay($rawCanonicalName);
-            if ($canonicalName === '') {
-                throw new RuntimeException('Nama tujuan merge wajib diisi.');
-            }
-
-            $decodedTargets = json_decode((string) ($_POST['merge_targets'] ?? '[]'), true);
-            if (!is_array($decodedTargets)) {
-                throw new RuntimeException('Target merge tidak valid.');
-            }
-
-            $mergeTargets = array_values(array_unique(array_filter(array_map(static function ($item) use ($canonicalName) {
-                if (!is_string($item)) {
-                    return '';
-                }
-
-                $name = farmasiConsumerNameDisplay(trim($item));
-                if ($name === '' || strcasecmp($name, $canonicalName) === 0) {
-                    return '';
-                }
-
-                return $name;
-            }, $decodedTargets))));
-
-            if ($mergeTargets === []) {
-                throw new RuntimeException('Tidak ada nama yang bisa digabung.');
-            }
-
-            $pdo->beginTransaction();
-
-            $stmtMerge = $pdo->prepare("
-                UPDATE sales
-                SET consumer_name = :new
-                WHERE consumer_name = :old
-                " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
-            ");
-
-            $merged = 0;
-            foreach ($mergeTargets as $oldName) {
-                $stmtMerge->execute([
-                    ':new' => $canonicalName,
-                    ':old' => $oldName,
-                    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
-                ]);
-                $merged += $stmtMerge->rowCount();
-            }
-
-            $pdo->commit();
-
-            try {
-                $description = "Merge nama konsumen ke {$canonicalName}: " . implode(', ', $mergeTargets);
-                $logActivity = $pdo->prepare("
-                    INSERT INTO farmasi_activities
-                        (activity_type, medic_user_id, medic_name, description)
-                    VALUES (?, ?, ?, ?)
-                ");
-                $logActivity->execute([
-                    'update',
-                    $_SESSION['user_rh']['id'] ?? 0,
-                    $medicName,
-                    $description,
-                ]);
-            } catch (Throwable $e) {
-                error_log('[ACTIVITY LOG ERROR] ' . $e->getMessage());
-            }
-
-            $_SESSION['flash_messages'][] = $merged > 0
-                ? "{$merged} transaksi berhasil digabung ke {$canonicalName}."
-                : "Tidak ada transaksi yang berubah, tetapi nama sudah dicek.";
-
-            echo json_encode([
-                'success' => true,
-                'merged_count' => $merged,
-                'canonical_name' => $canonicalName,
-                'merged_names' => $mergeTargets,
-            ], JSON_UNESCAPED_UNICODE);
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-
-            http_response_code(422);
-            echo json_encode([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], JSON_UNESCAPED_UNICODE);
-        }
-
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Fitur merge nama dinonaktifkan karena farmasi sekarang memakai Citizen ID Konsumen.',
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -779,7 +607,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 // ===============================
-                // AMBIL INPUT + NORMALISASI NAMA
+                // AMBIL INPUT + NORMALISASI CITIZEN ID
                 // ===============================
                 $rawConsumerName = trim((string)($_POST['consumer_name'] ?? ''));
                 $consumerName = farmasiConsumerNameDisplay($rawConsumerName);
@@ -796,10 +624,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $forceOverLimit = isset($_POST['force_overlimit']) && $_POST['force_overlimit'] === '1';
 
                 if ($consumerName === '') {
-                    $errors[] = "Nama konsumen wajib diisi.";
+                    $errors[] = "{$consumerIdentifierLabel} wajib diisi.";
+                } elseif (!ems_looks_like_citizen_id($rawConsumerName)) {
+                    $errors[] = "{$consumerIdentifierLabel} tidak valid. Gunakan format Citizen ID game/alfanumerik, bukan nama konsumen.";
                 } else {
-                    if (preg_match('/\d/u', $rawConsumerName)) {
-                        $warnings[] = "Angka pada nama konsumen dihapus otomatis. Nama disimpan sebagai {$consumerName}.";
+                    if ($consumerName !== strtoupper(trim($rawConsumerName))) {
+                        $warnings[] = "{$consumerIdentifierLabel} dinormalisasi menjadi {$consumerName}.";
                     }
 
                     $consumerBlacklistKey = farmasiConsumerNameKey($consumerName);
@@ -821,8 +651,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($blacklistInfo) {
                         $blacklistNote = trim((string)($blacklistInfo['note'] ?? ''));
                         $errors[] = $blacklistNote !== ''
-                            ? "Nama {$consumerName} telah di-blacklist. Lihat note blacklist: {$blacklistNote}."
-                            : "Nama {$consumerName} telah di-blacklist dan transaksi tidak dapat disimpan.";
+                            ? "{$consumerIdentifierLabel} {$consumerName} telah di-blacklist. Lihat note blacklist: {$blacklistNote}."
+                            : "{$consumerIdentifierLabel} {$consumerName} telah di-blacklist dan transaksi tidak dapat disimpan.";
                     }
 
                     $autoMerge = (
@@ -889,34 +719,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->beginTransaction();
                     $transactionStarted = true;
 
-                    if (!empty($mergeTargets)) {
-                        $stmtMerge = $pdo->prepare("
-                            UPDATE sales
-                            SET consumer_name = :new
-                            WHERE consumer_name = :old
-                            " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
-                        ");
-
-                        $merged = 0;
-                        foreach ($mergeTargets as $old) {
-                            $old = trim((string)$old);
-                            if ($old === '' || strcasecmp($old, $consumerName) === 0) {
-                                continue;
-                            }
-
-                            $stmtMerge->execute([
-                                ':new' => $consumerName,
-                                ':old' => $old,
-                                ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : [])
-                            ]);
-                            $merged += $stmtMerge->rowCount();
-                        }
-
-                        if ($merged > 0) {
-                            $warnings[] = "{$merged} transaksi lama digabung ke {$consumerName}.";
-                        }
-                    }
-
                     $addBandage = 0;
                     $addIfaks   = 0;
                     $addPain    = 0;
@@ -939,10 +741,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         FROM sales
                         WHERE DATE(created_at) = :today
                           " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
-                          AND (
-                              LOWER(consumer_name) = LOWER(:name)
-                              OR LOWER(REPLACE(TRIM(consumer_name), '  ', ' ')) = LOWER(:name)
-                          )
+                          AND UPPER(
+                              REPLACE(
+                                  REPLACE(
+                                      REPLACE(
+                                          REPLACE(TRIM(consumer_name), ' ', ''),
+                                          '-', ''
+                                      ),
+                                      '.',
+                                      ''
+                                  ),
+                                  '/',
+                                  ''
+                              )
+                          ) = :name
                     ");
                     $totalsParams = [
                         ':name'  => $consumerName,
@@ -959,7 +771,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ];
 
                     // ===============================
-                    // VALIDASI 1 KONSUMEN = 1 TRANSAKSI / HARI (SERVER)
+                    // VALIDASI 1 CITIZEN ID = 1 TRANSAKSI / HARI (SERVER)
                     // ===============================
                     $totalToday =
                         (int)$totals['total_bandage'] +
@@ -967,7 +779,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         (int)$totals['total_painkiller'];
 
                     if ($totalToday > 0) {
-                        $errors[] = "Konsumen ini sudah melakukan transaksi hari ini.";
+                        $errors[] = "{$consumerIdentifierLabel} {$consumerName} sudah punya transaksi hari ini. 1 Citizen ID hanya boleh 1 transaksi per hari.";
                     }
 
                     $newBandage = $totals['total_bandage'] + $addBandage;
@@ -984,15 +796,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $overLimit = false;
 
                     if ($newBandage > $maxBandage) {
-                        $warnings[] = "{$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
+                        $warnings[] = "{$consumerIdentifierLabel} {$consumerName} melebihi batas BANDAGE ({$newBandage}/{$maxBandage}).";
                         $overLimit = true;
                     }
                     if ($newIfaks > $maxIfaks) {
-                        $warnings[] = "{$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
+                        $warnings[] = "{$consumerIdentifierLabel} {$consumerName} melebihi batas IFAKS ({$newIfaks}/{$maxIfaks}).";
                         $overLimit = true;
                     }
                     if ($newPain > $maxPain) {
-                        $warnings[] = "{$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
+                        $warnings[] = "{$consumerIdentifierLabel} {$consumerName} melebihi batas PAINKILLER ({$newPain}/{$maxPain}).";
                         $overLimit = true;
                     }
 
@@ -1313,6 +1125,8 @@ foreach ($packages as $p) {
         $painkillerPackages[] = $p;
     }
 }
+
+$comboPackageModeLabel = farmasiComboPackageModeLabel($paketAB);
 
 // ===============================
 // HITUNG HARGA REAL PER PCS DARI DB
@@ -1848,7 +1662,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div id="fairnessNotice" class="notice-box notice-warning">
                 </div>
 
-                <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT NAMA) -->
+                <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT CITIZEN ID) -->
                 <?php
                 ems_component('ui/consumer-merge-notice', [
                     'id' => 'consumerNotice',
@@ -1875,9 +1689,18 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" name="force_overlimit" id="force_overlimit" value="0">
                     <div class="row-form-2">
                         <div class="col">
-                            <label>Nama Konsumen</label>
-                            <!-- <input type="text" name="consumer_name" list="consumer-list" required> -->
-                            <input type="text" name="consumer_name" id="consumerNameInput" list="consumer-list" required>
+                            <label><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
+                            <input
+                                type="text"
+                                name="consumer_name"
+                                id="consumerNameInput"
+                                list="consumer-list"
+                                placeholder="RH39IQLC"
+                                autocomplete="off"
+                                autocapitalize="characters"
+                                spellcheck="false"
+                                style="text-transform: uppercase;"
+                                required>
                             <div id="similarConsumerBox" class="consumer-similar-box">
                             </div>
                             <datalist id="consumer-list">
@@ -1886,7 +1709,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endforeach; ?>
                             </datalist>
                             <small>
-                                Ketik nama, kalau sudah pernah beli akan muncul dan bisa diklik, mohon ketik nama sesuai KTP
+                                Input wajib memakai Citizen ID Konsumen dalam format game/alfanumerik, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
                             </small>
                         </div>
                         <div class="col">
@@ -1900,7 +1723,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php endforeach; ?>
                                 <option value="custom">Paket Custom</option>
                             </select>
-                            <small>Pilih paket combo atau gunakan Paket Custom untuk memilih item satu per satu.</small>
+                            <small>Pilih paket combo <?= htmlspecialchars($comboPackageModeLabel) ?> atau gunakan Paket Custom untuk memilih item satu per satu.</small>
                         </div>
                     </div>
 
@@ -1908,7 +1731,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="modal-box modal-shell max-w-2xl">
                             <div class="modal-head px-5 py-4">
                                 <div class="modal-title inline-flex items-center gap-2">
-                                    <?= ems_icon('users', 'h-5 w-5') ?> <span>Konfirmasi Merge Nama</span>
+                                    <?= ems_icon('users', 'h-5 w-5') ?> <span>Informasi Citizen ID</span>
                                 </div>
                                 <button type="button" id="closeConsumerMergeModal" class="btn-danger btn-compact">
                                     <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
@@ -1916,10 +1739,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="modal-content p-5">
                                 <p class="meta-text mb-3">
-                                    Sistem menemukan nama mirip yang bisa digabung ke nama terbaru. Hapus kandidat yang tidak boleh ikut berubah.
+                                    Fitur merge nama sudah dimatikan karena transaksi farmasi sekarang memakai Citizen ID Konsumen.
                                 </p>
                                 <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 mb-4">
-                                    <div class="meta-text-xs">Nama terbaru yang akan dipakai</div>
+                                    <div class="meta-text-xs"><?= htmlspecialchars($consumerIdentifierLabel) ?> yang akan dipakai</div>
                                     <div id="mergeConsumerTargetName" class="text-base font-semibold text-slate-800">-</div>
                                 </div>
                                 <div id="mergeConsumerCandidateList" class="flex flex-wrap gap-2"></div>
@@ -1993,7 +1816,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
                                 <div class="meta-text-xs text-emerald-700">Mode Paket Aktif</div>
-                                <div class="font-semibold text-emerald-700" id="activePackageLabel">Paket A / B</div>
+                                <div class="font-semibold text-emerald-700" id="activePackageLabel"><?= htmlspecialchars($comboPackageModeLabel) ?></div>
                                 <div class="meta-text-xs text-emerald-700">Pilih mode custom jika ingin atur item manual.</div>
                             </div>
                         </div>
@@ -2320,7 +2143,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="checkbox" id="selectAll">
                                         </th>
                                         <th>Waktu</th>
-                                        <th>Nama Konsumen</th>
+                                        <th><?= htmlspecialchars($consumerIdentifierLabel) ?></th>
                                         <th>Nama Medis</th>
                                         <th>Jabatan</th>
                                         <th>Paket</th>
@@ -2358,7 +2181,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <td data-order="<?= strtotime($s['created_at']) ?>">
                                                 <?= formatTanggalID($s['created_at']) ?>
                                             </td>
-                                            <td><?= htmlspecialchars($s['consumer_name']) ?></td>
+                                            <td><?= htmlspecialchars(ems_looks_like_citizen_id($s['consumer_name']) ? ems_normalize_citizen_id($s['consumer_name']) : trim((string)$s['consumer_name'])) ?></td>
                                             <td><?= htmlspecialchars($s['medic_name']) ?></td>
                                             <td><?= htmlspecialchars($s['medic_jabatan']) ?></td>
                                             <td><?= htmlspecialchars($s['package_name']) ?></td>
@@ -2438,28 +2261,26 @@ include __DIR__ . '/../partials/sidebar.php';
         //Global
         function normalizeName(str) {
             return (str || '')
-                .toLowerCase()
-                .replace(/\d+/g, ' ')
-                .replace(/[^a-z\s]/g, '') // hapus simbol
-                .replace(/\s+/g, ' ') // rapikan spasi
+                .toUpperCase()
+                .replace(/[^A-Z0-9]/g, '')
                 .trim();
         }
 
         function normalizeLooseName(str) {
-            return normalizeName(str)
-                .replace(/([a-z])\1+/g, '$1')
-                .replace(/\s+/g, ' ')
-                .trim();
+            return normalizeName(str);
         }
 
         function getConsumerIdentityKey(str) {
             const normalized = normalizeLooseName(str);
             if (!normalized) return '';
-            return normalized
-                .split(' ')
-                .filter(Boolean)
-                .sort()
-                .join(' ');
+            return normalized;
+        }
+
+        function looksLikeCitizenId(str) {
+            const normalized = normalizeName(str);
+            if (!normalized) return false;
+            if (/^\d{6,}$/.test(normalized)) return true;
+            return /^(?=.*\d)[A-Z0-9]{6,20}$/.test(normalized);
         }
 
         function levenshteinDistance(a, b) {
@@ -2495,71 +2316,15 @@ include __DIR__ . '/../partials/sidebar.php';
             const a = normalizeLooseName(left);
             const b = normalizeLooseName(right);
             if (!a || !b) return false;
-            if (a === b) return true;
-            if (a.includes(b) || b.includes(a)) return true;
-
-            const distance = levenshteinDistance(a, b);
-            const maxLen = Math.max(a.length, b.length);
-            if (maxLen <= 5) return distance <= 1;
-            if (maxLen <= 8) return distance <= 2;
-            return distance <= 3;
+            return a === b;
         }
 
         function namesEquivalent(left, right) {
-            const a = normalizeLooseName(left);
-            const b = normalizeLooseName(right);
-            if (!a || !b) return false;
-            if (a === b) return true;
-
-            const keyA = getConsumerIdentityKey(a);
-            const keyB = getConsumerIdentityKey(b);
-            if (keyA && keyA === keyB) return true;
-
-            const directDistance = levenshteinDistance(a, b);
-            const maxLen = Math.max(a.length, b.length);
-            if ((maxLen <= 8 && directDistance <= 1) ||
-                (maxLen <= 14 && directDistance <= 2) ||
-                directDistance <= 3) {
-                return true;
-            }
-
-            const tokensA = a.split(' ').filter(Boolean).sort();
-            const tokensB = b.split(' ').filter(Boolean).sort();
-            if (tokensA.length !== tokensB.length || tokensA.length === 0) {
-                return false;
-            }
-
-            let totalDistance = 0;
-            for (let i = 0; i < tokensA.length; i++) {
-                if (!tokenEquivalent(tokensA[i], tokensB[i])) {
-                    return false;
-                }
-                totalDistance += levenshteinDistance(tokensA[i], tokensB[i]);
-            }
-
-            return totalDistance <= Math.max(2, tokensA.length * 2);
+            return tokenEquivalent(left, right);
         }
 
         function findSimilarConsumers(input, consumers) {
-            const keyword = normalizeName(input);
-            if (!keyword || keyword.length < 3) return [];
-
-            const tokens = keyword.split(' ');
-            const keywordKey = getConsumerIdentityKey(input);
-
-            return consumers.filter(name => {
-                const normalized = normalizeName(name);
-                const currentKey = getConsumerIdentityKey(name);
-
-                // aturan DataTables-like:
-                // 1. keyword ada di nama
-                if (normalized.includes(keyword)) return true;
-                if (keywordKey && currentKey === keywordKey) return true;
-                if (namesEquivalent(input, name)) return true;
-
-                // 2. semua token ada di nama
-                return tokens.every(t => normalized.includes(t));
-            });
+            return [];
         }
 
         let EXISTING_CONSUMERS = <?= json_encode($consumerNames, JSON_UNESCAPED_UNICODE); ?>;
@@ -2601,6 +2366,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const STORAGE_KEY = 'farmasi_ems_form';
         const DEFAULT_PACKAGE_MODE = 'combo';
+        const DEFAULT_PACKAGE_LABEL = <?= json_encode($comboPackageModeLabel, JSON_UNESCAPED_UNICODE); ?>;
 
         const FAIRNESS_STATE = {
             locked: false,
@@ -2687,7 +2453,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 const data = JSON.parse(raw);
                 const consumerInput = document.querySelector('input[name="consumer_name"]');
                 if (consumerInput && data.consumer_name) {
-                    consumerInput.value = data.consumer_name;
+                    consumerInput.value = formatConsumerName(data.consumer_name);
                 }
                 ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(function(id) {
                     const el = document.getElementById(id);
@@ -2704,6 +2470,21 @@ include __DIR__ . '/../partials/sidebar.php';
         function getSelectedPackageMode() {
             const mainEl = document.getElementById('pkg_main');
             return mainEl && mainEl.value === 'custom' ? 'custom' : DEFAULT_PACKAGE_MODE;
+        }
+
+        function getSelectedComboPackageLabel() {
+            const mainEl = document.getElementById('pkg_main');
+            if (!mainEl || !mainEl.value || mainEl.value === 'custom') {
+                return DEFAULT_PACKAGE_LABEL;
+            }
+
+            const selectedOption = mainEl.options[mainEl.selectedIndex];
+            const selectedText = selectedOption ? String(selectedOption.textContent || '').trim() : '';
+            if (!selectedText || selectedText.startsWith('--')) {
+                return DEFAULT_PACKAGE_LABEL;
+            }
+
+            return selectedText.replace(/\s*\(\d+\)\s*$/, '').trim() || DEFAULT_PACKAGE_LABEL;
         }
 
         function inferPackageMode() {
@@ -2739,7 +2520,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 customRow.classList.toggle('hidden', normalizedMode !== 'custom');
             }
             if (activeLabel) {
-                activeLabel.textContent = normalizedMode === 'custom' ? 'Custom' : 'Paket A / B';
+                activeLabel.textContent = normalizedMode === 'custom' ? 'Custom' : getSelectedComboPackageLabel();
             }
 
             if (!preserveSelections) {
@@ -2760,17 +2541,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function formatConsumerName(name) {
-            if (!name) return '';
-
-            return name
-                .toLowerCase()
-                .replace(/\d+/g, ' ')
-                .replace(/[^a-z\s]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .split(' ')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(' ');
+            return normalizeName(name);
         }
 
         function showFairnessNotice(html) {
@@ -2853,8 +2624,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const sourceUnitLabel = sourceUnit === 'alta' ? 'Alta' : (sourceUnit === 'roxwood' ? 'Roxwood' : sourceUnit);
 
             box.innerHTML =
-                '<strong>Nama telah di-blacklist.</strong><br>' +
-                'Konsumen <strong>' + escapeHtml(displayName) + '</strong> tidak dapat disimpan pada rekap farmasi mana pun.' +
+                '<strong>Citizen ID telah di-blacklist.</strong><br>' +
+                'Citizen ID <strong>' + escapeHtml(displayName) + '</strong> tidak dapat disimpan pada rekap farmasi mana pun.' +
                 (sourceUnitLabel ? '<br><strong>Sumber blacklist:</strong> ' + escapeHtml(sourceUnitLabel) : '') +
                 (note ? '<br><br><strong>Note blacklist:</strong> ' + escapeHtml(note) : '');
             box.style.display = 'block';
@@ -2890,57 +2661,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         async function executeImmediateNameMerge() {
-            const consumerInput = document.getElementById('consumerNameInput');
-            const canonicalName = formatConsumerName(consumerInput ? consumerInput.value : '');
-
-            if (!canonicalName) {
-                alert('Nama tujuan merge tidak valid.');
-                return;
-            }
-
-            if (!Array.isArray(ACTIVE_MERGE_CANDIDATES) || ACTIVE_MERGE_CANDIDATES.length === 0) {
-                alert('Tidak ada kandidat nama yang dipilih untuk digabung.');
-                return;
-            }
-
-            const payload = new URLSearchParams();
-            payload.set('action', 'merge_consumer_names');
-            payload.set('csrf_token', CSRF_TOKEN);
-            payload.set('consumer_name', canonicalName);
-            payload.set('merge_targets', JSON.stringify(ACTIVE_MERGE_CANDIDATES));
-
-            try {
-                const response = await fetch(window.location.href, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: payload.toString(),
-                });
-
-                const result = await response.json();
-                if (!response.ok || !result.success) {
-                    throw new Error(result && result.message ? result.message : 'Gagal merge nama.');
-                }
-
-                try {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-                        consumer_name: canonicalName,
-                        pkg_main: document.getElementById('pkg_main') ? document.getElementById('pkg_main').value || '' : '',
-                        pkg_bandage: document.getElementById('pkg_bandage') ? document.getElementById('pkg_bandage').value || '' : '',
-                        pkg_ifaks: document.getElementById('pkg_ifaks') ? document.getElementById('pkg_ifaks').value || '' : '',
-                        pkg_painkiller: document.getElementById('pkg_painkiller') ? document.getElementById('pkg_painkiller').value || '' : '',
-                    }));
-                } catch (e) {
-                    // abaikan localStorage error
-                }
-
-                alert((result.merged_count || 0) + ' transaksi berhasil digabung ke ' + result.canonical_name + '.');
-                window.location.reload();
-            } catch (error) {
-                alert(error && error.message ? error.message : 'Gagal merge nama.');
-            }
+            alert('Fitur merge nama dinonaktifkan karena transaksi farmasi sekarang memakai Citizen ID Konsumen.');
         }
 
         function updateSimilarConsumerBox() {
@@ -2952,42 +2673,11 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             const currentName = formatConsumerName(input.value || '');
-            const similar = findSimilarConsumers(currentName, EXISTING_CONSUMERS)
-                .filter(name => formatConsumerName(name) !== currentName)
-                .slice(0, 6);
-
-            if (!currentName || currentName.length < 3 || similar.length === 0) {
-                box.innerHTML = '';
-                ACTIVE_MERGE_CANDIDATES = [];
-                ACTIVE_MERGE_SOURCE_NAME = currentName;
-                ACTIVE_MERGE_ENABLED = false;
-                syncMergeHiddenFields();
-                return;
-            }
-
-            if (ACTIVE_MERGE_SOURCE_NAME !== currentName) {
-                ACTIVE_MERGE_SOURCE_NAME = currentName;
-                ACTIVE_MERGE_CANDIDATES = similar.slice();
-                ACTIVE_MERGE_ENABLED = false;
-            } else {
-                const currentSet = new Set(ACTIVE_MERGE_CANDIDATES);
-                ACTIVE_MERGE_CANDIDATES = similar.filter(function(name) {
-                    return currentSet.has(name);
-                });
-            }
-
+            ACTIVE_MERGE_SOURCE_NAME = currentName;
+            ACTIVE_MERGE_CANDIDATES = [];
+            ACTIVE_MERGE_ENABLED = false;
             syncMergeHiddenFields();
-
-            const chips = ACTIVE_MERGE_CANDIDATES.map(function(name) {
-                return `<span class="consumer-similar-chip inline-flex items-center gap-2" data-merge-candidate="${escapeHtml(name)}">
-                    <button type="button" class="btn-secondary btn-sm" data-consumer-name="${escapeHtml(name)}">${escapeHtml(name)}</button>
-                    <button type="button" class="btn-error btn-sm" data-remove-merge="${escapeHtml(name)}">x</button>
-                </span>`;
-            }).join('');
-
-            box.innerHTML =
-                `<div class="meta-text-xs mb-2">Nama mirip terdeteksi. Pilih yang ingin digabung ke nama terbaru ini. Klik <strong>x</strong> untuk mengecualikan nama yang terasa berbeda.</div>` +
-                `<div class="flex flex-wrap gap-2">${chips}</div>`;
+            box.innerHTML = '';
         }
 
         function syncMergeHiddenFields() {
@@ -3061,7 +2751,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 bonusEl.textContent = formatDollar(bonus);
             }
 
-            // ===== Cek limit harian berdasarkan nama konsumen =====
+            // ===== Cek limit harian berdasarkan citizen ID =====
             const consumerInput = document.querySelector('input[name="consumer_name"]');
             const cname = consumerInput ? consumerInput.value.trim() : '';
             const btnSubmit = document.getElementById('btnSubmit');
@@ -3086,7 +2776,7 @@ include __DIR__ . '/../partials/sidebar.php';
             let exactBoughtToday = false;
             let similarHistoricalNames = [];
 
-            if (!cname || cname.length < 3) {
+            if (!cname || cname.length < 6 || !looksLikeCitizenId(cname)) {
                 clearConsumerNotice(); // HANYA consumer
                 IS_OVER_LIMIT = false;
                 return;
@@ -3165,8 +2855,22 @@ include __DIR__ . '/../partials/sidebar.php';
                     nextDay.getFullYear() +
                     ' 00:00';
 
+                const remainingMinutes = Math.max(1, Math.ceil((nextDay.getTime() - now.getTime()) / 60000));
+                const remainingHours = Math.floor(remainingMinutes / 60);
+                const remainingOnlyMinutes = remainingMinutes % 60;
+                let remainingLabel = '';
+
+                if (remainingHours > 0 && remainingOnlyMinutes > 0) {
+                    remainingLabel = remainingHours + ' jam ' + remainingOnlyMinutes + ' menit lagi';
+                } else if (remainingHours > 0) {
+                    remainingLabel = remainingHours + ' jam lagi';
+                } else {
+                    remainingLabel = remainingOnlyMinutes + ' menit lagi';
+                }
+
                 footHtml += 'Transaksi baru dapat dilakukan kembali pada ';
-                footHtml += '<strong>' + nextDateStr + '</strong>.<br><br>';
+                footHtml += '<strong>' + nextDateStr + '</strong>';
+                footHtml += ' atau sekitar <strong>' + remainingLabel + '</strong>.<br><br>';
 
                 footHtml += '<strong>Ketentuan Sistem:</strong><br>';
                 footHtml += 'Perhitungan batas transaksi didasarkan pada ';
@@ -3180,7 +2884,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 // ===============================
                 showConsumerNotice({
                     title: '<strong>' + escapeHtml(cname) + '</strong> sudah melakukan <strong>1 transaksi hari ini</strong>.',
-                    text: 'Transaksi tambahan tidak diperbolehkan sampai pergantian hari.',
+                    text: '1 Citizen ID hanya boleh 1 transaksi per hari. Transaksi tambahan tidak diperbolehkan sampai pergantian hari.',
                     body: bodyHtml,
                     actions: '',
                     foot: footHtml,
@@ -3308,6 +3012,11 @@ include __DIR__ . '/../partials/sidebar.php';
             consumerInput.value = cname;
             updateSimilarConsumerBox();
 
+            if (!looksLikeCitizenId(cname)) {
+                alert('Citizen ID Konsumen tidak valid. Gunakan format Citizen ID game/alfanumerik, contoh RH39IQLC.');
+                return;
+            }
+
             const baseTotals = getBaseTotalsForConsumer(cname);
             const hasPrevious = (baseTotals.bandage + baseTotals.ifaks + baseTotals.painkiller) > 0;
 
@@ -3335,14 +3044,14 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             if (CONSUMER_LOCK) {
-                alert('Konsumen ini sudah melakukan transaksi hari ini.');
+                alert('Citizen ID ini sudah punya transaksi hari ini. 1 Citizen ID hanya boleh 1 transaksi per hari.');
                 return;
             }
 
             if (BLACKLIST_LOCK) {
                 const blacklistInfo = getBlacklistInfo(cname);
                 const blacklistNote = blacklistInfo && blacklistInfo.note ? '\n\nNote blacklist: ' + blacklistInfo.note : '';
-                alert('Nama ini telah di-blacklist dan transaksi tidak dapat disimpan.' + blacklistNote);
+                alert('Citizen ID ini telah di-blacklist dan transaksi tidak dapat disimpan.' + blacklistNote);
                 return;
             }
 
@@ -3358,7 +3067,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 msg += "Orang ini telah mencapai atau akan melewati batas maksimal pembelian harian.\n\n";
 
                 if (cname) {
-                    msg += "Nama konsumen: " + cname + "\n\n" +
+                    msg += "Citizen ID Konsumen: " + cname + "\n\n" +
                         "Total SEBELUM transaksi ini (data di database):\n" +
                         "- Bandage   : " + baseTotals.bandage + "/" + MAX_BANDAGE + "\n" +
                         "- IFAKS     : " + baseTotals.ifaks + "/" + MAX_IFAKS + "\n" +
@@ -3385,7 +3094,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 msg += "Yakin ingin menyimpan transaksi ke database?\n\n";
 
                 if (cname) {
-                    msg += "Nama konsumen: " + cname + "\n\n";
+                    msg += "Citizen ID Konsumen: " + cname + "\n\n";
 
                     if (ACTIVE_MERGE_ENABLED && ACTIVE_MERGE_CANDIDATES.length > 0) {
                         msg +=
@@ -3586,6 +3295,10 @@ include __DIR__ . '/../partials/sidebar.php';
             if (consumerInput) {
                 ['input', 'change', 'blur'].forEach(function(evt) {
                     consumerInput.addEventListener(evt, function() {
+                        const formattedValue = formatConsumerName(consumerInput.value);
+                        if (consumerInput.value !== formattedValue) {
+                            consumerInput.value = formattedValue;
+                        }
                         saveFormState();
                         updateSimilarConsumerBox();
                         recalcTotals();
@@ -4820,11 +4533,6 @@ include __DIR__ . '/../partials/sidebar.php';
         // Batal
         closeButtons.forEach(function(button) {
             button.addEventListener('click', closeModal);
-        });
-
-        // Klik overlay untuk tutup
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) closeModal();
         });
 
         // Konfirmasi Force Offline

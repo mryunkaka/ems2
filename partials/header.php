@@ -12,6 +12,9 @@ $pushConfig = require __DIR__ . '/../config/push.php';
 $user = $_SESSION['user_rh'] ?? [];
 $currentUnit = ems_effective_unit($pdo, $user);
 $hideAltaTopbarUtilities = $currentUnit === 'alta';
+$currentHospitalName = ems_unit_hospital_name($currentUnit);
+$currentLogoPath = ems_unit_logo_path($currentUnit);
+$currentSystemName = ems_unit_system_name($currentUnit);
 
 $medicName    = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '-');
@@ -56,8 +59,8 @@ if ($userId && !$hideAltaTopbarUtilities) {
     <title><?= htmlspecialchars($pageTitle ?? 'Farmasi EMS') ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link rel="icon" type="image/png" href="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>">
-    <link rel="apple-touch-icon" href="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="icon" type="image/png" href="<?= htmlspecialchars(ems_asset($currentLogoPath), ENT_QUOTES, 'UTF-8') ?>">
+    <link rel="apple-touch-icon" href="<?= htmlspecialchars(ems_asset($currentLogoPath), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.dataTables.min.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.css'), ENT_QUOTES, 'UTF-8') ?>">
@@ -108,10 +111,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
 	                <button id="menuToggle" class="menu-btn" type="button" aria-label="Buka navigasi" onclick="document.body.classList.toggle('sidebar-open'); return false;"><?= ems_icon('bars-3', 'h-7 w-7', '2.2') ?></button>
 
 	                <div class="topbar-brand">
-	                    <img src="<?= htmlspecialchars(ems_asset('/assets/logo.png'), ENT_QUOTES, 'UTF-8') ?>" alt="EMS Logo" class="topbar-logo">
+	                    <img src="<?= htmlspecialchars(ems_asset($currentLogoPath), ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($currentHospitalName, ENT_QUOTES, 'UTF-8') ?>" class="topbar-logo">
 	                    <div class="topbar-text">
-	                        <div class="topbar-title">Roxwood Hospital</div>
-	                        <div class="topbar-subtitle">Emergency Medical System</div>
+	                        <div class="topbar-title"><?= htmlspecialchars($currentHospitalName) ?></div>
+	                        <div class="topbar-subtitle"><?= htmlspecialchars($currentSystemName) ?></div>
 	                    </div>
 	                </div>
 	            </div>

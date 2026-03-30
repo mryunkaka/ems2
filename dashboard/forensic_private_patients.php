@@ -429,7 +429,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (event.target === modal || event.target.closest('.btn-cancel')) {
+        if (event.target.closest('.btn-cancel')) {
             closeModal();
         }
     });

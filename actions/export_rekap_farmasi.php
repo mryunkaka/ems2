@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/date_range.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 
@@ -57,7 +58,7 @@ header('Expires: 0');
 echo "<table border='1'>";
 echo "<tr>
         <th>Waktu</th>
-        <th>Nama Konsumen</th>
+        <th>Citizen ID Konsumen / Data Lama</th>
         <th>Nama Medis</th>
         <th>Jabatan</th>
         <th>Paket</th>
@@ -65,9 +66,14 @@ echo "<tr>
       </tr>";
 
 foreach ($rows as $r) {
+    $storedConsumer = trim((string)($r['consumer_name'] ?? ''));
+    $consumerDisplay = ems_looks_like_citizen_id($storedConsumer)
+        ? ems_normalize_citizen_id($storedConsumer)
+        : $storedConsumer;
+
     echo "<tr>";
     echo "<td>" . date('d-m-Y H:i', strtotime($r['created_at'])) . "</td>";
-    echo "<td>" . htmlspecialchars($r['consumer_name']) . "</td>";
+    echo "<td>" . htmlspecialchars($consumerDisplay) . "</td>";
     echo "<td>" . htmlspecialchars($r['medic_name']) . "</td>";
     echo "<td>" . htmlspecialchars($r['medic_jabatan']) . "</td>";
     echo "<td>" . htmlspecialchars($r['package_name']) . "</td>";

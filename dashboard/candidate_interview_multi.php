@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../actions/interview_finalize.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/status_validator.php';
@@ -11,6 +12,8 @@ require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $user = $_SESSION['user_rh'] ?? [];
+$currentUnit = ems_effective_unit($pdo, $user);
+$currentHospitalName = ems_unit_hospital_name($currentUnit);
 $hrId = (int)($user['id'] ?? 0);
 
 if ($hrId <= 0) {
@@ -266,7 +269,7 @@ $interviewScriptSections = [
     [
         'title' => '1. Pembukaan',
         'type' => 'copy',
-        'content' => "“Selamat (pagi/siang/malam). Perkenalkan, nama saya (Nama Anda) sebagai (Jabatan Anda) di Roxwood Hospital.\nPada kesempatan ini saya akan melakukan sesi interview kepada (Nama Calon Anggota) terkait pendaftaran sebagai petugas EMS di rumah sakit ini.”\n\n“Baik, sebelum kita mulai, saya persilahkan Anda untuk memperkenalkan diri serta menceritakan sedikit tentang karakter IC Anda.”",
+        'content' => "“Selamat (pagi/siang/malam). Perkenalkan, nama saya (Nama Anda) sebagai (Jabatan Anda) di {$currentHospitalName}.\nPada kesempatan ini saya akan melakukan sesi interview kepada (Nama Calon Anggota) terkait pendaftaran sebagai petugas EMS di rumah sakit ini.”\n\n“Baik, sebelum kita mulai, saya persilahkan Anda untuk memperkenalkan diri serta menceritakan sedikit tentang karakter IC Anda.”",
     ],
     [
         'title' => '2. Informasi OOC',
@@ -307,11 +310,11 @@ $interviewScriptSections = [
         'title' => '6. Motivasi Bergabung',
         'type' => 'list',
         'items' => [
-            'Apa yang membuat Anda tertarik untuk bergabung sebagai petugas medis di Roxwood Hospital?',
+            'Apa yang membuat Anda tertarik untuk bergabung sebagai petugas medis di ' . $currentHospitalName . '?',
             'Menurut Anda, nilai atau kualitas apa yang membuat Anda layak menjadi bagian dari tim medis di rumah sakit ini?',
             'Apa kelebihan yang Anda miliki yang dapat membantu pekerjaan Anda sebagai EMS?',
             'Apa hal yang masih menjadi kekurangan Anda dan ingin Anda perbaiki?',
-            'Jika Anda diterima, apa tujuan atau rencana Anda dalam mengembangkan karir di Roxwood Hospital?',
+            'Jika Anda diterima, apa tujuan atau rencana Anda dalam mengembangkan karir di ' . $currentHospitalName . '?',
             'Pada bagian ini interviewer juga bisa menjelaskan mengenai jenjang karir EMS di rumah sakit.',
         ],
     ],
@@ -340,12 +343,12 @@ $interviewScriptSections = [
     [
         'title' => '9. Kesiapan Menjalankan Tugas',
         'type' => 'copy',
-        'content' => "“Menjadi petugas EMS berarti harus siap menghadapi situasi darurat, bekerja di bawah tekanan, serta berinteraksi dengan berbagai macam karakter masyarakat. Apakah Anda siap menjalankan tanggung jawab tersebut sebagai bagian dari Roxwood Hospital?”",
+        'content' => "“Menjadi petugas EMS berarti harus siap menghadapi situasi darurat, bekerja di bawah tekanan, serta berinteraksi dengan berbagai macam karakter masyarakat. Apakah Anda siap menjalankan tanggung jawab tersebut sebagai bagian dari {$currentHospitalName}?”",
     ],
     [
         'title' => '10. Penutup',
         'type' => 'copy',
-        'content' => "“Baik, terima kasih atas jawaban yang telah Anda berikan. Tim kami akan melakukan evaluasi terlebih dahulu terhadap hasil interview ini.”\n\n“Silakan menunggu informasi selanjutnya mengenai hasil interview Anda di Roxwood Hospital. Anda dapat melanjutkan aktivitas kembali dan terima kasih atas waktunya.”",
+        'content' => "“Baik, terima kasih atas jawaban yang telah Anda berikan. Tim kami akan melakukan evaluasi terlebih dahulu terhadap hasil interview ini.”\n\n“Silakan menunggu informasi selanjutnya mengenai hasil interview Anda di {$currentHospitalName}. Anda dapat melanjutkan aktivitas kembali dan terima kasih atas waktunya.”",
     ],
 ];
 

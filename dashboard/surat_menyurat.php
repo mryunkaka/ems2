@@ -1270,11 +1270,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
             });
 
-            modal.addEventListener('click', function(event) {
-                if (event.target === modal) {
-                    closeModal(modal);
-                }
-            });
         }
 
         const minutesViewModal = document.getElementById('minutesViewModal');

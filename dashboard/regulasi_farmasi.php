@@ -313,13 +313,6 @@ include __DIR__ . '/../partials/sidebar.php';
             document.body.classList.remove('modal-open');
         }
 
-        editPackageModal.addEventListener('click', (e) => {
-            if (e.target === editPackageModal) closeModal(editPackageModal);
-        });
-        addPackageModal.addEventListener('click', (e) => {
-            if (e.target === addPackageModal) closeModal(addPackageModal);
-        });
-
         editPackageModal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 closeModal(editPackageModal);
