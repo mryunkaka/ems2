@@ -57,6 +57,45 @@ function manageUsersActionTargetExists(PDO $pdo, int $userId, bool $hasUnitCodeC
     return (int)$stmt->fetchColumn() > 0;
 }
 
+function manageUsersActionNormalizeProtectedName(?string $name): string
+{
+    $value = strtolower(trim((string)$name));
+    $value = preg_replace('/\s+/', ' ', $value) ?: '';
+    return $value;
+}
+
+function manageUsersActionIsProtectedName(?string $name): bool
+{
+    return in_array(
+        manageUsersActionNormalizeProtectedName($name),
+        ['programmer alta', 'programmer roxwood'],
+        true
+    );
+}
+
+function manageUsersActionGetTargetUser(PDO $pdo, int $userId, bool $hasUnitCodeColumn, string $effectiveUnit): ?array
+{
+    if ($userId <= 0) {
+        return null;
+    }
+
+    $sql = "SELECT id, full_name FROM user_rh WHERE id = ?";
+    $params = [$userId];
+
+    if ($hasUnitCodeColumn) {
+        $sql .= " AND COALESCE(unit_code, 'roxwood') = ?";
+        $params[] = $effectiveUnit;
+    }
+
+    $sql .= " LIMIT 1";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
 /* =========================================================
    TAMBAH USER BARU
    ========================================================= */
@@ -385,6 +424,13 @@ if ($action === 'delete') {
         exit;
     }
 
+    $targetUser = manageUsersActionGetTargetUser($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit);
+    if ($targetUser && manageUsersActionIsProtectedName($targetUser['full_name'] ?? '')) {
+        $_SESSION['flash_errors'][] = 'User Programmer Alta dan Programmer Roxwood dilindungi dan tidak bisa dihapus.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
     $stmt = $pdo->prepare("DELETE FROM user_rh WHERE id = ?" . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
     $params = [$userId];
     if ($hasUnitCodeColumn) {
@@ -424,6 +470,20 @@ if ($userId <= 0 || $name === '' || $position === '' || $newRole === '' || $divi
 
 if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
     $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+$targetUser = manageUsersActionGetTargetUser($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit);
+if (!$targetUser) {
+    $_SESSION['flash_errors'][] = 'User tidak ditemukan.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+$isProtectedUser = manageUsersActionIsProtectedName($targetUser['full_name'] ?? '');
+if ($isProtectedUser && manageUsersActionNormalizeProtectedName($name) !== manageUsersActionNormalizeProtectedName($targetUser['full_name'] ?? '')) {
+    $_SESSION['flash_errors'][] = 'Nama user Programmer Alta dan Programmer Roxwood dilindungi dan tidak dapat diubah.';
     header('Location: manage_users.php');
     exit;
 }

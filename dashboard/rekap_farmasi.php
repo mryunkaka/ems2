@@ -1115,7 +1115,7 @@ foreach ($packages as $p) {
         'painkiller' => (int)$p['painkiller_qty'],
     ];
 
-    if (strpos($name, 'PAKET A') === 0 || strpos($name, 'PAKET B') === 0) {
+    if (preg_match('/^PAKET\s+[A-Z]+(?:\s|$)/', $name)) {
         $paketAB[] = $p;
     } elseif ($p['bandage_qty'] > 0 && $p['ifaks_qty'] == 0 && $p['painkiller_qty'] == 0) {
         $bandagePackages[] = $p;
@@ -1817,7 +1817,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
                                 <div class="meta-text-xs text-emerald-700">Mode Paket Aktif</div>
                                 <div class="font-semibold text-emerald-700" id="activePackageLabel"><?= htmlspecialchars($comboPackageModeLabel) ?></div>
-                                <div class="meta-text-xs text-emerald-700">Pilih mode custom jika ingin atur item manual.</div>
+                                <div class="meta-text-xs text-emerald-700">Gunakan Paket Custom untuk memilih item satu per satu.</div>
                             </div>
                         </div>
                     </div>

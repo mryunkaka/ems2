@@ -45,6 +45,14 @@ function manageUsersNormalizeDocName(?string $name): string
     return $value;
 }
 
+function manageUsersIsProtectedUser(?string $name): bool
+{
+    $normalized = strtolower(trim((string)$name));
+    $normalized = preg_replace('/\s+/', ' ', $normalized) ?: '';
+
+    return in_array($normalized, ['programmer alta', 'programmer roxwood'], true);
+}
+
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
@@ -350,6 +358,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                                break;
 		                                            }
 		                                        }
+		                                        $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
 		                                        ?>
 			                                        <tr
 			                                            data-search-name="<?= htmlspecialchars(strtolower($u['full_name'])) ?>"
@@ -370,6 +379,12 @@ uksort($usersByBatch, function ($a, $b) {
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
+
+                                                <?php if ($isProtectedUser): ?>
+                                                    <div class="status-note-muted">
+                                                        Akun dilindungi: tidak bisa dihapus.
+                                                    </div>
+                                                <?php endif; ?>
 
                                                 <?php if (!empty($u['reactivated_at'])): ?>
                                                     <div class="status-note-success">
@@ -453,12 +468,17 @@ uksort($usersByBatch, function ($a, $b) {
                                                             Kembali
                                                         </button>
                                                     <?php endif; ?>
-
-                                                    <button class="btn-danger btn-sm candidate-action-btn btn-delete-user"
-                                                        data-id="<?= (int)$u['id'] ?>"
-                                                        data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                        Hapus
-                                                    </button>
+                                                    <?php if (!$isProtectedUser): ?>
+                                                        <button class="btn-danger btn-sm candidate-action-btn btn-delete-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
+                                                            Hapus
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Akun ini dilindungi dan tidak bisa dihapus">
+                                                            Dilindungi
+                                                        </button>
+                                                    <?php endif; ?>
                                                 </div>
                                             </td>
                                         </tr>
