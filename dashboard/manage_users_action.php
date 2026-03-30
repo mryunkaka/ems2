@@ -96,6 +96,16 @@ function manageUsersActionGetTargetUser(PDO $pdo, int $userId, bool $hasUnitCode
     return $row ?: null;
 }
 
+function manageUsersActionCanSelfManageProtectedUser(array $sessionUser, array $targetUser): bool
+{
+    if (!manageUsersActionIsProtectedName($targetUser['full_name'] ?? '')) {
+        return true;
+    }
+
+    return (int)($sessionUser['id'] ?? 0) > 0
+        && (int)($sessionUser['id'] ?? 0) === (int)($targetUser['id'] ?? 0);
+}
+
 /* =========================================================
    TAMBAH USER BARU
    ========================================================= */
@@ -285,6 +295,17 @@ if ($action === 'delete_kode_medis') {
         exit;
     }
 
+    $targetUser = manageUsersActionGetTargetUser($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit);
+    if (!$targetUser) {
+        echo json_encode(['success' => false, 'message' => 'User tidak ditemukan']);
+        exit;
+    }
+
+    if (!manageUsersActionCanSelfManageProtectedUser($sessionUser, $targetUser)) {
+        echo json_encode(['success' => false, 'message' => 'Akun ini hanya bisa diubah oleh pemilik akun itu sendiri']);
+        exit;
+    }
+
     $stmt = $pdo->prepare("
         UPDATE user_rh
         SET kode_nomor_induk_rs = NULL
@@ -317,6 +338,19 @@ if ($action === 'resign') {
 
     if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
         $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $targetUser = manageUsersActionGetTargetUser($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit);
+    if (!$targetUser) {
+        $_SESSION['flash_errors'][] = 'User tidak ditemukan.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!manageUsersActionCanSelfManageProtectedUser($sessionUser, $targetUser)) {
+        $_SESSION['flash_errors'][] = 'User Programmer Alta dan Programmer Roxwood hanya bisa di-resign oleh pemilik akun itu sendiri.';
         header('Location: manage_users.php');
         exit;
     }
@@ -395,25 +429,10 @@ if ($action === 'reactivate') {
    DELETE USER (PERMANEN)
    ========================================================= */
 if ($action === 'delete') {
-
-    // Hanya Director & Vice Director
-    if (!ems_is_director_role($sessionRole)) {
-        $_SESSION['flash_errors'][] = 'Hanya Director dan Vice Director yang dapat menghapus user.';
-        header('Location: manage_users.php');
-        exit;
-    }
-
     $userId = (int)($_POST['user_id'] ?? 0);
 
     if ($userId <= 0) {
         $_SESSION['flash_errors'][] = 'User tidak valid.';
-        header('Location: manage_users.php');
-        exit;
-    }
-
-    // Proteksi: tidak boleh hapus diri sendiri
-    if ($userId === (int)$sessionUser['id']) {
-        $_SESSION['flash_errors'][] = 'Anda tidak dapat menghapus akun sendiri.';
         header('Location: manage_users.php');
         exit;
     }
@@ -425,8 +444,29 @@ if ($action === 'delete') {
     }
 
     $targetUser = manageUsersActionGetTargetUser($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit);
-    if ($targetUser && manageUsersActionIsProtectedName($targetUser['full_name'] ?? '')) {
-        $_SESSION['flash_errors'][] = 'User Programmer Alta dan Programmer Roxwood dilindungi dan tidak bisa dihapus.';
+    if (!$targetUser) {
+        $_SESSION['flash_errors'][] = 'User tidak ditemukan.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $isProtectedUser = manageUsersActionIsProtectedName($targetUser['full_name'] ?? '');
+    $isSelfDelete = $userId === (int)($sessionUser['id'] ?? 0);
+
+    if ($isProtectedUser && !manageUsersActionCanSelfManageProtectedUser($sessionUser, $targetUser)) {
+        $_SESSION['flash_errors'][] = 'User Programmer Alta dan Programmer Roxwood hanya bisa dihapus oleh pemilik akun itu sendiri.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!$isProtectedUser && !ems_is_director_role($sessionRole)) {
+        $_SESSION['flash_errors'][] = 'Hanya Director dan Vice Director yang dapat menghapus user.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!$isProtectedUser && $isSelfDelete) {
+        $_SESSION['flash_errors'][] = 'Anda tidak dapat menghapus akun sendiri.';
         header('Location: manage_users.php');
         exit;
     }
@@ -482,6 +522,12 @@ if (!$targetUser) {
 }
 
 $isProtectedUser = manageUsersActionIsProtectedName($targetUser['full_name'] ?? '');
+if ($isProtectedUser && !manageUsersActionCanSelfManageProtectedUser($sessionUser, $targetUser)) {
+    $_SESSION['flash_errors'][] = 'User Programmer Alta dan Programmer Roxwood hanya bisa di-edit oleh pemilik akun itu sendiri.';
+    header('Location: manage_users.php');
+    exit;
+}
+
 if ($isProtectedUser && manageUsersActionNormalizeProtectedName($name) !== manageUsersActionNormalizeProtectedName($targetUser['full_name'] ?? '')) {
     $_SESSION['flash_errors'][] = 'Nama user Programmer Alta dan Programmer Roxwood dilindungi dan tidak dapat diubah.';
     header('Location: manage_users.php');

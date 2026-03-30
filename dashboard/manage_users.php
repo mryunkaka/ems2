@@ -53,6 +53,16 @@ function manageUsersIsProtectedUser(?string $name): bool
     return in_array($normalized, ['programmer alta', 'programmer roxwood'], true);
 }
 
+function manageUsersCanManageProtectedUser(array $sessionUser, array $targetUser): bool
+{
+    if (!manageUsersIsProtectedUser($targetUser['full_name'] ?? '')) {
+        return true;
+    }
+
+    return (int)($sessionUser['id'] ?? 0) > 0
+        && (int)($sessionUser['id'] ?? 0) === (int)($targetUser['id'] ?? 0);
+}
+
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
@@ -359,6 +369,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                            }
 		                                        }
 		                                        $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
+                                                $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
 		                                        ?>
 			                                        <tr
 			                                            data-search-name="<?= htmlspecialchars(strtolower($u['full_name'])) ?>"
@@ -380,9 +391,9 @@ uksort($usersByBatch, function ($a, $b) {
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
 
-                                                <?php if ($isProtectedUser): ?>
+                                                <?php if ($isProtectedUser && !$canManageProtectedUser): ?>
                                                     <div class="status-note-muted">
-                                                        Akun dilindungi: tidak bisa dihapus.
+                                                        Akun dilindungi: hanya pemilik akun yang bisa edit, resign, atau hapus.
                                                     </div>
                                                 <?php endif; ?>
 
@@ -441,26 +452,38 @@ uksort($usersByBatch, function ($a, $b) {
                                             </td>
                                             <td>
                                                 <div class="manage-user-action-stack">
-                                                    <button
-                                                        class="btn-secondary btn-sm candidate-action-btn btn-edit-user"
-                                                        data-id="<?= (int)$u['id'] ?>"
-                                                        data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
-                                                        data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
-                                                        data-role="<?= strtolower(trim($u['role'])) ?>"
-                                                        data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
-                                                        data-unit="<?= htmlspecialchars(ems_normalize_unit_code($u['unit_code'] ?? 'roxwood'), ENT_QUOTES) ?>"
-                                                        data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
-                                                        data-batch="<?= (int)($u['batch'] ?? 0) ?>"
-                                                        data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
-                                                        Edit
-                                                    </button>
+                                                    <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
+                                                        <button
+                                                            class="btn-secondary btn-sm candidate-action-btn btn-edit-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
+                                                            data-role="<?= strtolower(trim($u['role'])) ?>"
+                                                            data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-unit="<?= htmlspecialchars(ems_normalize_unit_code($u['unit_code'] ?? 'roxwood'), ENT_QUOTES) ?>"
+                                                            data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
+                                                            data-batch="<?= (int)($u['batch'] ?? 0) ?>"
+                                                            data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
+                                                            Edit
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini">
+                                                            Dilindungi
+                                                        </button>
+                                                    <?php endif; ?>
 
                                                     <?php if ($u['is_active']): ?>
-                                                        <button class="btn-resign btn-sm candidate-action-btn btn-resign-user"
-                                                            data-id="<?= (int)$u['id'] ?>"
-                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                            Resign
-                                                        </button>
+                                                        <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
+                                                            <button class="btn-resign btn-sm candidate-action-btn btn-resign-user"
+                                                                data-id="<?= (int)$u['id'] ?>"
+                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
+                                                                Resign
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Hanya pemilik akun yang bisa resign akun ini">
+                                                                Dilindungi
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <button class="btn-success btn-sm candidate-action-btn btn-reactivate-user"
                                                             data-id="<?= (int)$u['id'] ?>"
@@ -468,7 +491,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                             Kembali
                                                         </button>
                                                     <?php endif; ?>
-                                                    <?php if (!$isProtectedUser): ?>
+                                                    <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
                                                         <button class="btn-danger btn-sm candidate-action-btn btn-delete-user"
                                                             data-id="<?= (int)$u['id'] ?>"
                                                             data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
