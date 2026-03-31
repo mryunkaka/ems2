@@ -9,9 +9,11 @@ header('Content-Type: application/json; charset=utf-8');
 try {
     $type = strtolower(trim((string)($_GET['type'] ?? $_POST['type'] ?? '')));
     $institutionName = trim((string)($_GET['institution_name'] ?? $_POST['institution_name'] ?? ''));
+    $counterpartyName = trim((string)($_GET['counterparty_name'] ?? $_POST['counterparty_name'] ?? ''));
     $dateValue = trim((string)($_GET['date'] ?? $_POST['date'] ?? ''));
     $incomingLetterId = (int)($_GET['incoming_letter_id'] ?? $_POST['incoming_letter_id'] ?? 0);
     $outgoingLetterId = (int)($_GET['outgoing_letter_id'] ?? $_POST['outgoing_letter_id'] ?? 0);
+    $letterDirection = strtolower(trim((string)($_GET['letter_direction'] ?? $_POST['letter_direction'] ?? 'incoming')));
 
     if ($type === '') {
         throw new Exception('Tipe surat wajib diisi.');
@@ -62,6 +64,59 @@ try {
             'NOT',
             $dateValue,
             surat_resolve_minutes_institution($pdo, $incomingLetterId, $outgoingLetterId),
+            'SR'
+        );
+    } elseif ($type === 'visit_agenda') {
+        if ($dateValue === '') {
+            throw new Exception('Tanggal agenda wajib diisi.');
+        }
+
+        $code = surat_generate_formatted_code(
+            $pdo,
+            'secretary_visit_agendas',
+            'agenda_code',
+            'visit_date',
+            'AGD',
+            $dateValue,
+            $institutionName,
+            'SR'
+        );
+    } elseif ($type === 'internal_coordination') {
+        if ($dateValue === '') {
+            throw new Exception('Tanggal koordinasi wajib diisi.');
+        }
+
+        $code = surat_generate_formatted_code(
+            $pdo,
+            'secretary_internal_coordinations',
+            'coordination_code',
+            'coordination_date',
+            'KOR',
+            $dateValue,
+            $institutionName,
+            'SR'
+        );
+    } elseif ($type === 'confidential') {
+        if ($dateValue === '') {
+            throw new Exception('Tanggal surat wajib diisi.');
+        }
+
+        if ($counterpartyName === '') {
+            throw new Exception('Pengirim / penerima utama wajib diisi.');
+        }
+
+        if (!in_array($letterDirection, ['incoming', 'outgoing'], true)) {
+            throw new Exception('Arah surat tidak valid.');
+        }
+
+        $code = surat_generate_formatted_code(
+            $pdo,
+            'secretary_confidential_letters',
+            'register_code',
+            'letter_date',
+            $letterDirection === 'outgoing' ? 'SKR' : 'SMR',
+            $dateValue,
+            $counterpartyName,
             'SR'
         );
     } else {

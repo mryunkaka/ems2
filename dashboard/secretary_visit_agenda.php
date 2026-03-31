@@ -26,10 +26,43 @@ function secretaryAgendaStatusMeta(string $status): array
     };
 }
 
+function secretaryAgendaTableExists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$table]);
+    $cache[$table] = (bool) $stmt->fetchColumn();
+
+    return $cache[$table];
+}
+
+function secretaryAgendaGroupAttachments(array $rows, string $foreignKey): array
+{
+    $grouped = [];
+    foreach ($rows as $row) {
+        $key = (int) ($row[$foreignKey] ?? 0);
+        if ($key <= 0) {
+            continue;
+        }
+
+        $grouped[$key][] = $row;
+    }
+
+    return $grouped;
+}
+
 $summary = ['total' => 0, 'scheduled' => 0, 'today' => 0, 'completed' => 0];
 $agendas = [];
+$attachmentsMap = [];
+$hasAttachmentTable = false;
 
 try {
+    $hasAttachmentTable = secretaryAgendaTableExists($pdo, 'secretary_visit_agenda_attachments');
     $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas")->fetchColumn();
     $summary['scheduled'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas WHERE status IN ('scheduled', 'ongoing')")->fetchColumn();
     $summary['today'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas WHERE visit_date = CURDATE()")->fetchColumn();
@@ -43,6 +76,21 @@ try {
         INNER JOIN user_rh pic ON pic.id = sva.pic_user_id
         ORDER BY sva.visit_date DESC, sva.visit_time DESC, sva.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($hasAttachmentTable && !empty($agendas)) {
+        $agendaIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $agendas)));
+        if (!empty($agendaIds)) {
+            $placeholders = implode(',', array_fill(0, count($agendaIds), '?'));
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM secretary_visit_agenda_attachments
+                WHERE agenda_id IN ($placeholders)
+                ORDER BY agenda_id ASC, sort_order ASC, id ASC
+            ");
+            $stmt->execute($agendaIds);
+            $attachmentsMap = secretaryAgendaGroupAttachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'agenda_id');
+        }
+    }
 } catch (Throwable $e) {
     $errors[] = 'Tabel Secretary belum siap. Jalankan SQL `docs/sql/07_2026-03-11_secretary_module.sql` terlebih dahulu.';
 }
@@ -61,6 +109,9 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php foreach ($errors as $error): ?>
             <div class="alert alert-error"><?= htmlspecialchars((string) $error, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>
+        <?php if (!$hasAttachmentTable): ?>
+            <div class="alert alert-warning">Fitur lampiran agenda kunjungan memerlukan SQL <code>docs/sql/15_2026-03-31_secretary_attachments.sql</code>.</div>
+        <?php endif; ?>
 
         <div class="stats-grid mb-4">
             <?php
@@ -76,16 +127,23 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-header">Input Agenda Kunjungan</div>
                 <p class="meta-text mb-4">Simpan jadwal kunjungan divisi dan PIC internal yang bertanggung jawab.</p>
 
-                <form method="POST" action="secretary_action.php" class="form">
+                <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="save_visit_agenda">
                     <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
+
+                    <label>Nomor Surat</label>
+                    <div class="flex gap-2">
+                        <input type="text" name="agenda_code" id="addVisitAgendaCode" maxlength="100" placeholder="Otomatis muncul setelah field wajib lengkap">
+                        <button type="button" class="btn-secondary whitespace-nowrap" id="addVisitAgendaCodeAutoBtn">Auto</button>
+                    </div>
+                    <div class="meta-text-xs mt-1">Nomor surat otomatis bisa diedit manual.</div>
 
                     <label>Nama Tamu / Pengunjung</label>
                     <input type="text" name="visitor_name" required>
 
                     <label>Instansi / Asal</label>
-                    <input type="text" name="origin_name">
+                    <input type="text" name="origin_name" id="addVisitAgendaOriginName">
 
                     <label>Tujuan Kunjungan</label>
                     <textarea name="visit_purpose" rows="3" required></textarea>
@@ -93,7 +151,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="row-form-2">
                         <div>
                             <label>Tanggal Kunjungan</label>
-                            <input type="date" name="visit_date" value="<?= date('Y-m-d') ?>" required>
+                            <input type="date" name="visit_date" id="addVisitAgendaDate" value="<?= date('Y-m-d') ?>" required>
                         </div>
                         <div>
                             <label>Jam Kunjungan</label>
@@ -122,6 +180,25 @@ include __DIR__ . '/../partials/sidebar.php';
                     <label>Catatan</label>
                     <textarea name="notes" rows="3"></textarea>
 
+                    <div class="doc-upload-wrapper m-0">
+                        <div class="doc-upload-header">
+                            <label class="text-sm font-semibold text-slate-900">Lampiran Agenda</label>
+                            <span class="badge-muted-mini">Opsional, bisa beberapa file</span>
+                        </div>
+                        <div class="doc-upload-input">
+                            <label for="visitAgendaAttachments" class="file-upload-label">
+                                <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                                <span class="file-text">
+                                    <strong>Pilih lampiran</strong>
+                                    <small>JPG / PNG, multi file</small>
+                                </span>
+                            </label>
+                            <input type="file" id="visitAgendaAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                            <div class="file-selected-name" data-for="visitAgendaAttachments"></div>
+                            <div id="visitAgendaAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                        </div>
+                    </div>
+
                     <div class="modal-actions mt-4">
                         <button type="submit" class="btn-primary">
                             <?= ems_icon('plus', 'h-4 w-4') ?>
@@ -139,11 +216,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     <table id="secretaryAgendaTable" class="table-custom">
                         <thead>
                             <tr>
-                                <th>Kode</th>
+                                <th>Nomor Surat</th>
                                 <th>Tamu</th>
                                 <th>Jadwal</th>
                                 <th>PIC</th>
                                 <th>Status</th>
+                                <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
@@ -162,6 +240,24 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><?= htmlspecialchars((string) $agenda['pic_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <?php $attachments = $attachmentsMap[(int) $agenda['id']] ?? []; ?>
+                                        <?php if (!empty($attachments)): ?>
+                                            <div class="flex flex-wrap gap-2">
+                                                <?php foreach ($attachments as $attachment): ?>
+                                                    <a href="#"
+                                                        class="doc-badge btn-preview-doc"
+                                                        data-src="/<?= htmlspecialchars(ltrim((string) $attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-title="<?= htmlspecialchars((string) ($attachment['file_name'] ?: ('Lampiran ' . $agenda['agenda_code'])), ENT_QUOTES, 'UTF-8') ?>">
+                                                        <?= ems_icon('paper-clip', 'h-4 w-4') ?>
+                                                        <span><?= htmlspecialchars((string) ($attachment['file_name'] ?: 'Lampiran'), ENT_QUOTES, 'UTF-8') ?></span>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <span class="meta-text-xs">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
@@ -188,6 +284,153 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const generateCodeUrl = '<?= htmlspecialchars(ems_url('/ajax/generate_surat_code.php'), ENT_QUOTES, 'UTF-8') ?>';
+
+    function debounce(fn, delay) {
+        let timer = null;
+        return function () {
+            const args = arguments;
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                fn.apply(null, args);
+            }, delay);
+        };
+    }
+
+    function setupAutoCode(options) {
+        const codeInput = document.getElementById(options.codeInputId);
+        const autoButton = document.getElementById(options.autoButtonId);
+        const requiredInputs = options.requiredInputIds.map(function (id) {
+            return document.getElementById(id);
+        }).filter(Boolean);
+        const watchedInputs = options.watchedInputIds.map(function (id) {
+            return document.getElementById(id);
+        }).filter(Boolean);
+
+        if (!codeInput || !requiredInputs.length) {
+            return;
+        }
+
+        codeInput.dataset.autoMode = 'true';
+        codeInput.dataset.generatedCode = codeInput.value || '';
+
+        async function refreshCode(forceAuto) {
+            const requiredReady = requiredInputs.every(function (input) {
+                return String(input.value || '').trim() !== '';
+            });
+
+            if (!requiredReady) {
+                if (forceAuto) {
+                    codeInput.value = '';
+                    codeInput.dataset.generatedCode = '';
+                }
+                return;
+            }
+
+            const url = new URL(generateCodeUrl, window.location.origin);
+            url.searchParams.set('type', options.type);
+
+            const dateInput = document.getElementById(options.dateInputId);
+            if (dateInput) {
+                url.searchParams.set('date', (dateInput.value || '').trim());
+            }
+
+            const institutionInput = document.getElementById(options.institutionInputId);
+            if (institutionInput) {
+                url.searchParams.set('institution_name', (institutionInput.value || '').trim());
+            }
+
+            const response = await fetch(url.toString(), { credentials: 'same-origin' });
+            const payload = await response.json();
+            if (!payload.success) {
+                return;
+            }
+
+            const currentValue = codeInput.value.trim();
+            const previousGenerated = codeInput.dataset.generatedCode || '';
+            const shouldApply = forceAuto || codeInput.dataset.autoMode === 'true' || currentValue === '' || currentValue === previousGenerated;
+
+            codeInput.dataset.generatedCode = payload.code || '';
+            if (shouldApply) {
+                codeInput.value = payload.code || '';
+                codeInput.dataset.autoMode = 'true';
+            }
+        }
+
+        const debouncedRefresh = debounce(function () {
+            refreshCode(false).catch(function () {});
+        }, 250);
+
+        watchedInputs.forEach(function (input) {
+            input.addEventListener('input', debouncedRefresh);
+            input.addEventListener('change', debouncedRefresh);
+        });
+
+        codeInput.addEventListener('input', function () {
+            const currentValue = codeInput.value.trim();
+            codeInput.dataset.autoMode = (currentValue === '' || currentValue === (codeInput.dataset.generatedCode || '')) ? 'true' : 'false';
+        });
+
+        if (autoButton) {
+            autoButton.addEventListener('click', function () {
+                codeInput.dataset.autoMode = 'true';
+                refreshCode(true).catch(function () {});
+            });
+        }
+
+        refreshCode(false).catch(function () {});
+    }
+
+    function setupMultiImagePreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+        const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        if (!input || !preview || !nameBox) {
+            return;
+        }
+
+        let objectUrls = [];
+
+        function clearPreview() {
+            objectUrls.forEach(function (url) {
+                try { URL.revokeObjectURL(url); } catch (_) {}
+            });
+            objectUrls = [];
+            preview.innerHTML = '';
+            nameBox.textContent = '';
+            nameBox.classList.add('hidden');
+        }
+
+        input.addEventListener('change', function () {
+            clearPreview();
+
+            const files = Array.from(this.files || []);
+            if (!files.length) {
+                return;
+            }
+
+            nameBox.textContent = files.length + ' file dipilih';
+            nameBox.classList.remove('hidden');
+
+            files.forEach(function (file) {
+                if (!String(file.type || '').startsWith('image/')) {
+                    return;
+                }
+
+                const url = URL.createObjectURL(file);
+                objectUrls.push(url);
+
+                const item = document.createElement('div');
+                item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
+                item.innerHTML = `
+                    <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
+                    <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                `;
+                preview.appendChild(item);
+            });
+        });
+    }
+
     if (window.jQuery && $.fn.DataTable) {
         $('#secretaryAgendaTable').DataTable({
             language: {
@@ -197,6 +440,18 @@ document.addEventListener('DOMContentLoaded', function () {
             order: [[0, 'desc']]
         });
     }
+
+    setupAutoCode({
+        type: 'visit_agenda',
+        codeInputId: 'addVisitAgendaCode',
+        autoButtonId: 'addVisitAgendaCodeAutoBtn',
+        dateInputId: 'addVisitAgendaDate',
+        institutionInputId: 'addVisitAgendaOriginName',
+        requiredInputIds: ['addVisitAgendaDate'],
+        watchedInputIds: ['addVisitAgendaDate', 'addVisitAgendaOriginName']
+    });
+
+    setupMultiImagePreview('visitAgendaAttachments', 'visitAgendaAttachmentsPreview');
 });
 </script>
 
