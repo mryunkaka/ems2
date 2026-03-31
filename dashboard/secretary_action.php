@@ -330,6 +330,102 @@ try {
         secretaryRedirect('secretary_visit_agenda.php');
     }
 
+    if ($action === 'edit_visit_agenda') {
+        $agendaId = (int) ($_POST['agenda_id'] ?? 0);
+        $requestedAgendaCode = trim((string) ($_POST['agenda_code'] ?? ''));
+        $visitorName = trim((string) ($_POST['visitor_name'] ?? ''));
+        $originName = trim((string) ($_POST['origin_name'] ?? ''));
+        $visitPurpose = trim((string) ($_POST['visit_purpose'] ?? ''));
+        $visitDate = secretaryDate(trim((string) ($_POST['visit_date'] ?? '')), 'Tanggal kunjungan tidak valid.');
+        $visitTime = secretaryTime(trim((string) ($_POST['visit_time'] ?? '')), 'Jam kunjungan tidak valid.');
+        $location = trim((string) ($_POST['location'] ?? ''));
+        $picUserId = (int) ($_POST['pic_user_id'] ?? 0);
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'scheduled')), ['scheduled', 'ongoing', 'completed', 'cancelled'], 'Status agenda tidak valid.');
+        $notes = trim((string) ($_POST['notes'] ?? ''));
+        $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+
+        if ($agendaId <= 0 || $visitorName === '' || $visitPurpose === '' || $location === '' || $picUserId <= 0) {
+            throw new Exception('Data edit agenda kunjungan wajib lengkap.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_visit_agendas WHERE id = ? LIMIT 1");
+        $stmt->execute([$agendaId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Agenda kunjungan tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE secretary_visit_agendas
+            SET agenda_code = ?,
+                visitor_name = ?,
+                origin_name = ?,
+                visit_purpose = ?,
+                visit_date = ?,
+                visit_time = ?,
+                location = ?,
+                pic_user_id = ?,
+                status = ?,
+                notes = ?,
+                updated_by = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            surat_resolve_requested_code(
+                $pdo,
+                'secretary_visit_agendas',
+                'agenda_code',
+                $requestedAgendaCode,
+                static fn(): string => secretaryGenerateVisitAgendaCode($pdo, $visitDate, $originName),
+                $agendaId
+            ),
+            $visitorName,
+            $originName !== '' ? $originName : null,
+            $visitPurpose,
+            $visitDate,
+            $visitTime,
+            $location,
+            $picUserId,
+            $status,
+            $notes !== '' ? $notes : null,
+            $userId,
+            $agendaId,
+        ]);
+
+        secretarySaveAttachments($pdo, 'visit_agenda', $agendaId, $attachmentFiles);
+        $pdo->commit();
+
+        $_SESSION['flash_messages'][] = 'Agenda kunjungan berhasil diperbarui.';
+        secretaryRedirect('secretary_visit_agenda.php');
+    }
+
+    if ($action === 'delete_visit_agenda') {
+        $agendaId = (int) ($_POST['agenda_id'] ?? 0);
+        if ($agendaId <= 0) {
+            throw new Exception('Agenda kunjungan tidak valid.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_visit_agendas WHERE id = ? LIMIT 1");
+        $stmt->execute([$agendaId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Agenda kunjungan tidak ditemukan.');
+        }
+
+        $paths = secretaryFetchAttachmentPaths($pdo, 'visit_agenda', $agendaId);
+
+        $stmt = $pdo->prepare("DELETE FROM secretary_visit_agendas WHERE id = ?");
+        $stmt->execute([$agendaId]);
+
+        $pdo->commit();
+        secretaryDeleteStoredFiles($paths);
+
+        $_SESSION['flash_messages'][] = 'Agenda kunjungan berhasil dihapus permanen.';
+        secretaryRedirect('secretary_visit_agenda.php');
+    }
+
     if ($action === 'save_internal_coordination') {
         $requestedCoordinationCode = trim((string) ($_POST['coordination_code'] ?? ''));
         $title = trim((string) ($_POST['title'] ?? ''));
@@ -395,6 +491,99 @@ try {
         secretaryRedirect('secretary_internal_coordination.php');
     }
 
+    if ($action === 'edit_internal_coordination') {
+        $coordinationId = (int) ($_POST['coordination_id'] ?? 0);
+        $requestedCoordinationCode = trim((string) ($_POST['coordination_code'] ?? ''));
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $divisionScope = trim((string) ($_POST['division_scope'] ?? ''));
+        $hostUserId = (int) ($_POST['host_user_id'] ?? 0);
+        $coordinationDate = secretaryDate(trim((string) ($_POST['coordination_date'] ?? '')), 'Tanggal koordinasi tidak valid.');
+        $startTime = secretaryTime(trim((string) ($_POST['start_time'] ?? '')), 'Jam koordinasi tidak valid.');
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'draft')), ['draft', 'scheduled', 'done', 'cancelled'], 'Status koordinasi tidak valid.');
+        $summaryNotes = trim((string) ($_POST['summary_notes'] ?? ''));
+        $followUpNotes = trim((string) ($_POST['follow_up_notes'] ?? ''));
+        $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+
+        if ($coordinationId <= 0 || $title === '' || $divisionScope === '' || $hostUserId <= 0) {
+            throw new Exception('Data edit koordinasi internal wajib lengkap.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_internal_coordinations WHERE id = ? LIMIT 1");
+        $stmt->execute([$coordinationId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Koordinasi internal tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE secretary_internal_coordinations
+            SET coordination_code = ?,
+                title = ?,
+                division_scope = ?,
+                host_user_id = ?,
+                coordination_date = ?,
+                start_time = ?,
+                status = ?,
+                summary_notes = ?,
+                follow_up_notes = ?,
+                updated_by = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            surat_resolve_requested_code(
+                $pdo,
+                'secretary_internal_coordinations',
+                'coordination_code',
+                $requestedCoordinationCode,
+                static fn(): string => secretaryGenerateInternalCoordinationCode($pdo, $coordinationDate, $divisionScope),
+                $coordinationId
+            ),
+            $title,
+            $divisionScope,
+            $hostUserId,
+            $coordinationDate,
+            $startTime,
+            $status,
+            $summaryNotes !== '' ? $summaryNotes : null,
+            $followUpNotes !== '' ? $followUpNotes : null,
+            $userId,
+            $coordinationId,
+        ]);
+
+        secretarySaveAttachments($pdo, 'internal_coordination', $coordinationId, $attachmentFiles);
+        $pdo->commit();
+
+        $_SESSION['flash_messages'][] = 'Koordinasi internal berhasil diperbarui.';
+        secretaryRedirect('secretary_internal_coordination.php');
+    }
+
+    if ($action === 'delete_internal_coordination') {
+        $coordinationId = (int) ($_POST['coordination_id'] ?? 0);
+        if ($coordinationId <= 0) {
+            throw new Exception('Koordinasi internal tidak valid.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_internal_coordinations WHERE id = ? LIMIT 1");
+        $stmt->execute([$coordinationId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Koordinasi internal tidak ditemukan.');
+        }
+
+        $paths = secretaryFetchAttachmentPaths($pdo, 'internal_coordination', $coordinationId);
+
+        $stmt = $pdo->prepare("DELETE FROM secretary_internal_coordinations WHERE id = ?");
+        $stmt->execute([$coordinationId]);
+
+        $pdo->commit();
+        secretaryDeleteStoredFiles($paths);
+
+        $_SESSION['flash_messages'][] = 'Koordinasi internal berhasil dihapus permanen.';
+        secretaryRedirect('secretary_internal_coordination.php');
+    }
+
     if ($action === 'save_confidential_letter') {
         $requestedRegisterCode = trim((string) ($_POST['register_code'] ?? ''));
         $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
@@ -457,6 +646,73 @@ try {
         $stmt->execute([$status, $userId, $letterId]);
 
         $_SESSION['flash_messages'][] = 'Status surat rahasia diperbarui.';
+        secretaryRedirect('secretary_confidential_letters.php');
+    }
+
+    if ($action === 'edit_confidential_letter') {
+        $letterId = (int) ($_POST['letter_id'] ?? 0);
+        $requestedRegisterCode = trim((string) ($_POST['register_code'] ?? ''));
+        $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
+        $letterDirection = secretaryAssertAllowed(trim((string) ($_POST['letter_direction'] ?? 'incoming')), ['incoming', 'outgoing'], 'Arah surat tidak valid.');
+        $subject = trim((string) ($_POST['subject'] ?? ''));
+        $counterpartyName = trim((string) ($_POST['counterparty_name'] ?? ''));
+        $confidentialityLevel = secretaryAssertAllowed(trim((string) ($_POST['confidentiality_level'] ?? 'confidential')), ['confidential', 'secret', 'top_secret'], 'Level kerahasiaan tidak valid.');
+        $letterDate = secretaryDate(trim((string) ($_POST['letter_date'] ?? '')), 'Tanggal surat tidak valid.');
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'logged')), ['logged', 'sealed', 'distributed', 'archived'], 'Status surat rahasia tidak valid.');
+        $notes = trim((string) ($_POST['notes'] ?? ''));
+        $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+
+        if ($letterId <= 0 || $referenceNumber === '' || $subject === '' || $counterpartyName === '') {
+            throw new Exception('Data edit surat rahasia wajib lengkap.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_confidential_letters WHERE id = ? LIMIT 1");
+        $stmt->execute([$letterId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Register surat rahasia tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE secretary_confidential_letters
+            SET register_code = ?,
+                reference_number = ?,
+                letter_direction = ?,
+                subject = ?,
+                counterparty_name = ?,
+                confidentiality_level = ?,
+                letter_date = ?,
+                status = ?,
+                notes = ?,
+                updated_by = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            surat_resolve_requested_code(
+                $pdo,
+                'secretary_confidential_letters',
+                'register_code',
+                $requestedRegisterCode,
+                static fn(): string => secretaryGenerateConfidentialLetterCode($pdo, $letterDirection, $letterDate, $counterpartyName),
+                $letterId
+            ),
+            $referenceNumber,
+            $letterDirection,
+            $subject,
+            $counterpartyName,
+            $confidentialityLevel,
+            $letterDate,
+            $status,
+            $notes !== '' ? $notes : null,
+            $userId,
+            $letterId,
+        ]);
+
+        secretarySaveAttachments($pdo, 'confidential_letter', $letterId, $attachmentFiles);
+        $pdo->commit();
+
+        $_SESSION['flash_messages'][] = 'Register surat rahasia berhasil diperbarui.';
         secretaryRedirect('secretary_confidential_letters.php');
     }
 

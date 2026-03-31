@@ -55,6 +55,21 @@ function secretaryCoordinationGroupAttachments(array $rows, string $foreignKey):
     return $grouped;
 }
 
+function secretaryCoordinationAttachmentPayload(array $attachments): array
+{
+    return array_map(static function (array $attachment): array {
+        return [
+            'src' => '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/'),
+            'name' => (string) (($attachment['file_name'] ?? '') ?: 'Lampiran'),
+        ];
+    }, $attachments);
+}
+
+function secretaryCoordinationJsonAttr(array $payload): string
+{
+    return htmlspecialchars((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+}
+
 $rows = [];
 $attachmentsMap = [];
 $hasAttachmentTable = false;
@@ -91,6 +106,27 @@ try {
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
+<style>
+    .secretary-action-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .secretary-action-row form,
+    .secretary-action-row button,
+    .secretary-action-row select {
+        flex: 0 0 auto;
+    }
+
+    .secretary-action-row .btn-sm,
+    .secretary-action-row select {
+        white-space: nowrap;
+    }
+</style>
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -209,6 +245,23 @@ include __DIR__ . '/../partials/sidebar.php';
                         <tbody>
                             <?php foreach ($rows as $row): ?>
                                 <?php $statusMeta = secretaryCoordinationStatusMeta((string) $row['status']); ?>
+                                <?php $attachments = $attachmentsMap[(int) $row['id']] ?? []; ?>
+                                <?php
+                                $recordPayload = secretaryCoordinationJsonAttr([
+                                    'id' => (int) $row['id'],
+                                    'coordination_code' => (string) $row['coordination_code'],
+                                    'title' => (string) $row['title'],
+                                    'division_scope' => (string) $row['division_scope'],
+                                    'host_user_id' => (int) $row['host_user_id'],
+                                    'host_name' => (string) $row['host_name'],
+                                    'coordination_date' => (string) $row['coordination_date'],
+                                    'start_time' => substr((string) $row['start_time'], 0, 5),
+                                    'status' => (string) $row['status'],
+                                    'summary_notes' => (string) ($row['summary_notes'] ?? ''),
+                                    'follow_up_notes' => (string) ($row['follow_up_notes'] ?? ''),
+                                    'attachments' => secretaryCoordinationAttachmentPayload($attachments),
+                                ]);
+                                ?>
                                 <tr>
                                     <td><?= htmlspecialchars((string) $row['coordination_code'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td>
@@ -222,7 +275,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><?= htmlspecialchars((string) $row['host_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
-                                        <?php $attachments = $attachmentsMap[(int) $row['id']] ?? []; ?>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">
                                                 <?php foreach ($attachments as $attachment): ?>
@@ -240,18 +292,38 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
-                                            <?= csrfField(); ?>
-                                            <input type="hidden" name="action" value="update_coordination_status">
-                                            <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
-                                            <input type="hidden" name="coordination_id" value="<?= (int) $row['id'] ?>">
-                                            <select name="status">
-                                                <?php foreach (['draft', 'scheduled', 'done', 'cancelled'] as $status): ?>
-                                                    <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $row['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <button type="submit" class="btn-secondary btn-sm">Status</button>
-                                        </form>
+                                        <div class="secretary-action-row">
+                                            <button type="button" class="btn-secondary btn-sm btn-view-coordination" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                <span>View</span>
+                                            </button>
+                                            <button type="button" class="btn-primary btn-sm btn-edit-coordination" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                                <span>Edit</span>
+                                            </button>
+                                            <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="update_coordination_status">
+                                                <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
+                                                <input type="hidden" name="coordination_id" value="<?= (int) $row['id'] ?>">
+                                                <select name="status">
+                                                    <?php foreach (['draft', 'scheduled', 'done', 'cancelled'] as $status): ?>
+                                                        <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $row['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
+                                            </form>
+                                            <form method="POST" action="secretary_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus permanen koordinasi internal ini?">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="delete_internal_coordination">
+                                                <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
+                                                <input type="hidden" name="coordination_id" value="<?= (int) $row['id'] ?>">
+                                                <button type="submit" class="btn-danger btn-sm">
+                                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                    <span>Hapus Permanen</span>
+                                                </button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -262,6 +334,146 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<div id="coordinationViewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('eye', 'h-5 w-5 text-primary') ?>
+                <span>Detail Koordinasi Internal</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <div class="grid gap-3 md:grid-cols-2">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Surat</div><div id="coordinationViewCode" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Status</div><div id="coordinationViewStatus" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Judul</div><div id="coordinationViewTitle" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Divisi Terkait</div><div id="coordinationViewDivision" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Tanggal</div><div id="coordinationViewDate" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Jam</div><div id="coordinationViewTime" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 md:col-span-2"><div class="meta-text-xs">Host</div><div id="coordinationViewHost" class="mt-1 font-semibold text-slate-900">-</div></div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div class="meta-text-xs">Ringkasan Pembahasan</div>
+                <div id="coordinationViewSummary" class="mt-1 whitespace-pre-line text-sm text-slate-900">-</div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div class="meta-text-xs">Tindak Lanjut</div>
+                <div id="coordinationViewFollowUp" class="mt-1 whitespace-pre-line text-sm text-slate-900">-</div>
+            </div>
+
+            <div class="mt-4">
+                <div class="meta-text-xs">Lampiran</div>
+                <div id="coordinationViewAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="modal-actions mt-4">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="coordinationEditModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('pencil-square', 'h-5 w-5 text-primary') ?>
+                <span>Edit Koordinasi Internal</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+                <?= csrfField(); ?>
+                <input type="hidden" name="action" value="edit_internal_coordination">
+                <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
+                <input type="hidden" name="coordination_id" id="editCoordinationId">
+
+                <label>Nomor Surat</label>
+                <div class="flex gap-2">
+                    <input type="text" name="coordination_code" id="editCoordinationCode" maxlength="100">
+                    <button type="button" class="btn-secondary whitespace-nowrap" id="editCoordinationCodeAutoBtn">Auto</button>
+                </div>
+                <div class="meta-text-xs mt-1">Nomor surat bisa diubah manual.</div>
+
+                <label>Judul Koordinasi</label>
+                <input type="text" name="title" id="editCoordinationTitle" required>
+
+                <label>Divisi Terkait</label>
+                <input type="text" name="division_scope" id="editCoordinationDivisionScope" required>
+
+                <label>Host / Penanggung Jawab</label>
+                <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
+                    <input type="text" data-user-autocomplete-input id="editCoordinationHostName" placeholder="Ketik nama host..." required>
+                    <input type="hidden" name="host_user_id" id="editCoordinationHostUserId" data-user-autocomplete-hidden>
+                    <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                </div>
+
+                <div class="row-form-2">
+                    <div>
+                        <label>Tanggal Koordinasi</label>
+                        <input type="date" name="coordination_date" id="editCoordinationDate" required>
+                    </div>
+                    <div>
+                        <label>Jam Mulai</label>
+                        <input type="time" name="start_time" id="editCoordinationTime" required>
+                    </div>
+                </div>
+
+                <label>Status</label>
+                <select name="status" id="editCoordinationStatus">
+                    <option value="draft">Draft</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="done">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+
+                <label>Ringkasan Pembahasan</label>
+                <textarea name="summary_notes" id="editCoordinationSummary" rows="3"></textarea>
+
+                <label>Tindak Lanjut</label>
+                <textarea name="follow_up_notes" id="editCoordinationFollowUp" rows="3"></textarea>
+
+                <div class="mt-4">
+                    <div class="meta-text-xs">Lampiran Saat Ini</div>
+                    <div id="editCoordinationCurrentAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+                </div>
+
+                <div class="doc-upload-wrapper m-0">
+                    <div class="doc-upload-header">
+                        <label class="text-sm font-semibold text-slate-900">Tambah Lampiran</label>
+                        <span class="badge-muted-mini">Opsional, menambah lampiran baru</span>
+                    </div>
+                    <div class="doc-upload-input">
+                        <label for="editCoordinationAttachments" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih lampiran</strong>
+                                <small>JPG / PNG, multi file</small>
+                            </span>
+                        </label>
+                        <input type="file" id="editCoordinationAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                        <div class="file-selected-name" data-for="editCoordinationAttachments"></div>
+                        <div id="editCoordinationAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions mt-4">
+                    <button type="submit" class="btn-success"><?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Simpan Perubahan</span></button>
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -289,7 +501,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }).filter(Boolean);
 
         if (!codeInput || !requiredInputs.length) {
-            return;
+            return {
+                refresh: function () {}
+            };
         }
 
         codeInput.dataset.autoMode = 'true';
@@ -360,6 +574,50 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         refreshCode(false).catch(function () {});
+
+        return {
+            refresh: function (forceAuto) {
+                refreshCode(Boolean(forceAuto)).catch(function () {});
+            }
+        };
+    }
+
+    function openModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+
+    function attachModalClose(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(function (button) {
+            button.addEventListener('click', function () {
+                closeModal(modal);
+            });
+        });
+
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) {
+                closeModal(modal);
+            }
+        });
     }
 
     function setupMultiImagePreview(inputId, previewId) {
@@ -412,6 +670,53 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function resetMultiImagePreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+        const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        if (input) {
+            input.value = '';
+        }
+        if (preview) {
+            preview.innerHTML = '';
+        }
+        if (nameBox) {
+            nameBox.textContent = '';
+            nameBox.classList.add('hidden');
+        }
+    }
+
+    function parseRecord(button) {
+        try {
+            return JSON.parse(button.dataset.record || '{}');
+        } catch (_) {
+            return {};
+        }
+    }
+
+    function renderAttachmentBadges(container, attachments, emptyText) {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = '';
+        if (!Array.isArray(attachments) || !attachments.length) {
+            container.innerHTML = '<span class="meta-text-xs">' + (emptyText || '-') + '</span>';
+            return;
+        }
+
+        attachments.forEach(function (attachment) {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.className = 'doc-badge btn-preview-doc';
+            link.dataset.src = attachment.src || '';
+            link.dataset.title = attachment.name || 'Lampiran';
+            link.innerHTML = `<?= ems_icon('paper-clip', 'h-4 w-4') ?><span></span>`;
+            link.querySelector('span').textContent = attachment.name || 'Lampiran';
+            container.appendChild(link);
+        });
+    }
+
     if (window.jQuery && $.fn.DataTable) {
         $('#secretaryCoordinationTable').DataTable({
             language: {
@@ -421,6 +726,21 @@ document.addEventListener('DOMContentLoaded', function () {
             order: [[0, 'desc']]
         });
     }
+
+    const coordinationViewModal = document.getElementById('coordinationViewModal');
+    const coordinationEditModal = document.getElementById('coordinationEditModal');
+    const editCoordinationCodeControl = setupAutoCode({
+        type: 'internal_coordination',
+        codeInputId: 'editCoordinationCode',
+        autoButtonId: 'editCoordinationCodeAutoBtn',
+        dateInputId: 'editCoordinationDate',
+        institutionInputId: 'editCoordinationDivisionScope',
+        requiredInputIds: ['editCoordinationDate', 'editCoordinationDivisionScope'],
+        watchedInputIds: ['editCoordinationDate', 'editCoordinationDivisionScope']
+    });
+
+    attachModalClose(coordinationViewModal);
+    attachModalClose(coordinationEditModal);
 
     setupAutoCode({
         type: 'internal_coordination',
@@ -433,6 +753,65 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     setupMultiImagePreview('coordinationAttachments', 'coordinationAttachmentsPreview');
+    setupMultiImagePreview('editCoordinationAttachments', 'editCoordinationAttachmentsPreview');
+
+    document.addEventListener('click', function (event) {
+        const viewButton = event.target.closest('.btn-view-coordination');
+        if (viewButton) {
+            const record = parseRecord(viewButton);
+            document.getElementById('coordinationViewCode').textContent = record.coordination_code || '-';
+            document.getElementById('coordinationViewStatus').textContent = record.status || '-';
+            document.getElementById('coordinationViewTitle').textContent = record.title || '-';
+            document.getElementById('coordinationViewDivision').textContent = record.division_scope || '-';
+            document.getElementById('coordinationViewDate').textContent = record.coordination_date || '-';
+            document.getElementById('coordinationViewTime').textContent = record.start_time ? record.start_time + ' WIB' : '-';
+            document.getElementById('coordinationViewHost').textContent = record.host_name || '-';
+            document.getElementById('coordinationViewSummary').textContent = record.summary_notes || '-';
+            document.getElementById('coordinationViewFollowUp').textContent = record.follow_up_notes || '-';
+            renderAttachmentBadges(document.getElementById('coordinationViewAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            openModal(coordinationViewModal);
+            return;
+        }
+
+        const editButton = event.target.closest('.btn-edit-coordination');
+        if (editButton) {
+            const record = parseRecord(editButton);
+            document.getElementById('editCoordinationId').value = record.id || '';
+            document.getElementById('editCoordinationCode').value = record.coordination_code || '';
+            document.getElementById('editCoordinationCode').dataset.generatedCode = '';
+            document.getElementById('editCoordinationCode').dataset.autoMode = 'false';
+            document.getElementById('editCoordinationTitle').value = record.title || '';
+            document.getElementById('editCoordinationDivisionScope').value = record.division_scope || '';
+            document.getElementById('editCoordinationHostName').value = record.host_name || '';
+            document.getElementById('editCoordinationHostUserId').value = record.host_user_id || '';
+            document.getElementById('editCoordinationDate').value = record.coordination_date || '';
+            document.getElementById('editCoordinationTime').value = record.start_time || '';
+            document.getElementById('editCoordinationStatus').value = record.status || 'draft';
+            document.getElementById('editCoordinationSummary').value = record.summary_notes || '';
+            document.getElementById('editCoordinationFollowUp').value = record.follow_up_notes || '';
+            renderAttachmentBadges(document.getElementById('editCoordinationCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            resetMultiImagePreview('editCoordinationAttachments', 'editCoordinationAttachmentsPreview');
+            editCoordinationCodeControl.refresh(false);
+            openModal(coordinationEditModal);
+        }
+    });
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target;
+        if (form && form.matches('.js-delete-form')) {
+            const message = form.dataset.confirm || 'Yakin ingin menghapus data ini?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeModal(coordinationViewModal);
+            closeModal(coordinationEditModal);
+        }
+    });
 });
 </script>
 

@@ -56,6 +56,21 @@ function secretaryAgendaGroupAttachments(array $rows, string $foreignKey): array
     return $grouped;
 }
 
+function secretaryAgendaAttachmentPayload(array $attachments): array
+{
+    return array_map(static function (array $attachment): array {
+        return [
+            'src' => '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/'),
+            'name' => (string) (($attachment['file_name'] ?? '') ?: 'Lampiran'),
+        ];
+    }, $attachments);
+}
+
+function secretaryAgendaJsonAttr(array $payload): string
+{
+    return htmlspecialchars((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+}
+
 $summary = ['total' => 0, 'scheduled' => 0, 'today' => 0, 'completed' => 0];
 $agendas = [];
 $attachmentsMap = [];
@@ -98,6 +113,27 @@ try {
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
+<style>
+    .secretary-action-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .secretary-action-row form,
+    .secretary-action-row button,
+    .secretary-action-row select {
+        flex: 0 0 auto;
+    }
+
+    .secretary-action-row .btn-sm,
+    .secretary-action-row select {
+        white-space: nowrap;
+    }
+</style>
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -228,6 +264,24 @@ include __DIR__ . '/../partials/sidebar.php';
                         <tbody>
                             <?php foreach ($agendas as $agenda): ?>
                                 <?php $statusMeta = secretaryAgendaStatusMeta((string) $agenda['status']); ?>
+                                <?php $attachments = $attachmentsMap[(int) $agenda['id']] ?? []; ?>
+                                <?php
+                                $recordPayload = secretaryAgendaJsonAttr([
+                                    'id' => (int) $agenda['id'],
+                                    'agenda_code' => (string) $agenda['agenda_code'],
+                                    'visitor_name' => (string) $agenda['visitor_name'],
+                                    'origin_name' => (string) ($agenda['origin_name'] ?? ''),
+                                    'visit_purpose' => (string) $agenda['visit_purpose'],
+                                    'visit_date' => (string) $agenda['visit_date'],
+                                    'visit_time' => substr((string) $agenda['visit_time'], 0, 5),
+                                    'location' => (string) $agenda['location'],
+                                    'pic_user_id' => (int) $agenda['pic_user_id'],
+                                    'pic_name' => (string) $agenda['pic_name'],
+                                    'status' => (string) $agenda['status'],
+                                    'notes' => (string) ($agenda['notes'] ?? ''),
+                                    'attachments' => secretaryAgendaAttachmentPayload($attachments),
+                                ]);
+                                ?>
                                 <tr>
                                     <td><?= htmlspecialchars((string) $agenda['agenda_code'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td>
@@ -241,7 +295,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><?= htmlspecialchars((string) $agenda['pic_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
-                                        <?php $attachments = $attachmentsMap[(int) $agenda['id']] ?? []; ?>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">
                                                 <?php foreach ($attachments as $attachment): ?>
@@ -259,18 +312,38 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
-                                            <?= csrfField(); ?>
-                                            <input type="hidden" name="action" value="update_visit_status">
-                                            <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
-                                            <input type="hidden" name="agenda_id" value="<?= (int) $agenda['id'] ?>">
-                                            <select name="status">
-                                                <?php foreach (['scheduled', 'ongoing', 'completed', 'cancelled'] as $status): ?>
-                                                    <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $agenda['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                            <button type="submit" class="btn-secondary btn-sm">Status</button>
-                                        </form>
+                                        <div class="secretary-action-row">
+                                            <button type="button" class="btn-secondary btn-sm btn-view-agenda" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                <span>View</span>
+                                            </button>
+                                            <button type="button" class="btn-primary btn-sm btn-edit-agenda" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                                <span>Edit</span>
+                                            </button>
+                                            <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="update_visit_status">
+                                                <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
+                                                <input type="hidden" name="agenda_id" value="<?= (int) $agenda['id'] ?>">
+                                                <select name="status">
+                                                    <?php foreach (['scheduled', 'ongoing', 'completed', 'cancelled'] as $status): ?>
+                                                        <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $agenda['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
+                                            </form>
+                                            <form method="POST" action="secretary_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus permanen agenda kunjungan ini?">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="delete_visit_agenda">
+                                                <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
+                                                <input type="hidden" name="agenda_id" value="<?= (int) $agenda['id'] ?>">
+                                                <button type="submit" class="btn-danger btn-sm">
+                                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                    <span>Hapus Permanen</span>
+                                                </button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -281,6 +354,150 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<div id="visitAgendaViewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('eye', 'h-5 w-5 text-primary') ?>
+                <span>Detail Agenda Kunjungan</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <div class="grid gap-3 md:grid-cols-2">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Surat</div><div id="visitViewCode" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Status</div><div id="visitViewStatus" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nama Tamu</div><div id="visitViewVisitor" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Instansi / Asal</div><div id="visitViewOrigin" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Tanggal</div><div id="visitViewDate" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Jam</div><div id="visitViewTime" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Lokasi</div><div id="visitViewLocation" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">PIC Internal</div><div id="visitViewPic" class="mt-1 font-semibold text-slate-900">-</div></div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div class="meta-text-xs">Tujuan Kunjungan</div>
+                <div id="visitViewPurpose" class="mt-1 whitespace-pre-line text-sm text-slate-900">-</div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div class="meta-text-xs">Catatan</div>
+                <div id="visitViewNotes" class="mt-1 whitespace-pre-line text-sm text-slate-900">-</div>
+            </div>
+
+            <div class="mt-4">
+                <div class="meta-text-xs">Lampiran</div>
+                <div id="visitViewAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="modal-actions mt-4">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="visitAgendaEditModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('pencil-square', 'h-5 w-5 text-primary') ?>
+                <span>Edit Agenda Kunjungan</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+                <?= csrfField(); ?>
+                <input type="hidden" name="action" value="edit_visit_agenda">
+                <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
+                <input type="hidden" name="agenda_id" id="editVisitAgendaId">
+
+                <label>Nomor Surat</label>
+                <div class="flex gap-2">
+                    <input type="text" name="agenda_code" id="editVisitAgendaCode" maxlength="100">
+                    <button type="button" class="btn-secondary whitespace-nowrap" id="editVisitAgendaCodeAutoBtn">Auto</button>
+                </div>
+                <div class="meta-text-xs mt-1">Nomor surat bisa diubah manual.</div>
+
+                <label>Nama Tamu / Pengunjung</label>
+                <input type="text" name="visitor_name" id="editVisitAgendaVisitorName" required>
+
+                <label>Instansi / Asal</label>
+                <input type="text" name="origin_name" id="editVisitAgendaOriginName">
+
+                <label>Tujuan Kunjungan</label>
+                <textarea name="visit_purpose" id="editVisitAgendaPurpose" rows="3" required></textarea>
+
+                <div class="row-form-2">
+                    <div>
+                        <label>Tanggal Kunjungan</label>
+                        <input type="date" name="visit_date" id="editVisitAgendaDate" required>
+                    </div>
+                    <div>
+                        <label>Jam Kunjungan</label>
+                        <input type="time" name="visit_time" id="editVisitAgendaTime" required>
+                    </div>
+                </div>
+
+                <label>Lokasi</label>
+                <input type="text" name="location" id="editVisitAgendaLocation" required>
+
+                <label>PIC Internal</label>
+                <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
+                    <input type="text" data-user-autocomplete-input id="editVisitAgendaPicName" placeholder="Ketik nama PIC..." required>
+                    <input type="hidden" name="pic_user_id" id="editVisitAgendaPicUserId" data-user-autocomplete-hidden>
+                    <div class="ems-suggestion-box" data-user-autocomplete-list></div>
+                </div>
+
+                <label>Status</label>
+                <select name="status" id="editVisitAgendaStatus">
+                    <option value="scheduled">Scheduled</option>
+                    <option value="ongoing">Ongoing</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+
+                <label>Catatan</label>
+                <textarea name="notes" id="editVisitAgendaNotes" rows="3"></textarea>
+
+                <div class="mt-4">
+                    <div class="meta-text-xs">Lampiran Saat Ini</div>
+                    <div id="editVisitCurrentAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+                </div>
+
+                <div class="doc-upload-wrapper m-0">
+                    <div class="doc-upload-header">
+                        <label class="text-sm font-semibold text-slate-900">Tambah Lampiran</label>
+                        <span class="badge-muted-mini">Opsional, menambah lampiran baru</span>
+                    </div>
+                    <div class="doc-upload-input">
+                        <label for="editVisitAgendaAttachments" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih lampiran</strong>
+                                <small>JPG / PNG, multi file</small>
+                            </span>
+                        </label>
+                        <input type="file" id="editVisitAgendaAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                        <div class="file-selected-name" data-for="editVisitAgendaAttachments"></div>
+                        <div id="editVisitAgendaAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions mt-4">
+                    <button type="submit" class="btn-success"><?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Simpan Perubahan</span></button>
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -308,7 +525,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }).filter(Boolean);
 
         if (!codeInput || !requiredInputs.length) {
-            return;
+            return {
+                refresh: function () {}
+            };
         }
 
         codeInput.dataset.autoMode = 'true';
@@ -379,6 +598,50 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         refreshCode(false).catch(function () {});
+
+        return {
+            refresh: function (forceAuto) {
+                refreshCode(Boolean(forceAuto)).catch(function () {});
+            }
+        };
+    }
+
+    function openModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+
+    function attachModalClose(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(function (button) {
+            button.addEventListener('click', function () {
+                closeModal(modal);
+            });
+        });
+
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) {
+                closeModal(modal);
+            }
+        });
     }
 
     function setupMultiImagePreview(inputId, previewId) {
@@ -431,6 +694,53 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function resetMultiImagePreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+        const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        if (input) {
+            input.value = '';
+        }
+        if (preview) {
+            preview.innerHTML = '';
+        }
+        if (nameBox) {
+            nameBox.textContent = '';
+            nameBox.classList.add('hidden');
+        }
+    }
+
+    function parseRecord(button) {
+        try {
+            return JSON.parse(button.dataset.record || '{}');
+        } catch (_) {
+            return {};
+        }
+    }
+
+    function renderAttachmentBadges(container, attachments, emptyText) {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = '';
+        if (!Array.isArray(attachments) || !attachments.length) {
+            container.innerHTML = '<span class="meta-text-xs">' + (emptyText || '-') + '</span>';
+            return;
+        }
+
+        attachments.forEach(function (attachment) {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.className = 'doc-badge btn-preview-doc';
+            link.dataset.src = attachment.src || '';
+            link.dataset.title = attachment.name || 'Lampiran';
+            link.innerHTML = `<?= ems_icon('paper-clip', 'h-4 w-4') ?><span></span>`;
+            link.querySelector('span').textContent = attachment.name || 'Lampiran';
+            container.appendChild(link);
+        });
+    }
+
     if (window.jQuery && $.fn.DataTable) {
         $('#secretaryAgendaTable').DataTable({
             language: {
@@ -440,6 +750,21 @@ document.addEventListener('DOMContentLoaded', function () {
             order: [[0, 'desc']]
         });
     }
+
+    const visitAgendaViewModal = document.getElementById('visitAgendaViewModal');
+    const visitAgendaEditModal = document.getElementById('visitAgendaEditModal');
+    const editVisitCodeControl = setupAutoCode({
+        type: 'visit_agenda',
+        codeInputId: 'editVisitAgendaCode',
+        autoButtonId: 'editVisitAgendaCodeAutoBtn',
+        dateInputId: 'editVisitAgendaDate',
+        institutionInputId: 'editVisitAgendaOriginName',
+        requiredInputIds: ['editVisitAgendaDate'],
+        watchedInputIds: ['editVisitAgendaDate', 'editVisitAgendaOriginName']
+    });
+
+    attachModalClose(visitAgendaViewModal);
+    attachModalClose(visitAgendaEditModal);
 
     setupAutoCode({
         type: 'visit_agenda',
@@ -452,6 +777,67 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     setupMultiImagePreview('visitAgendaAttachments', 'visitAgendaAttachmentsPreview');
+    setupMultiImagePreview('editVisitAgendaAttachments', 'editVisitAgendaAttachmentsPreview');
+
+    document.addEventListener('click', function (event) {
+        const viewButton = event.target.closest('.btn-view-agenda');
+        if (viewButton) {
+            const record = parseRecord(viewButton);
+            document.getElementById('visitViewCode').textContent = record.agenda_code || '-';
+            document.getElementById('visitViewStatus').textContent = record.status || '-';
+            document.getElementById('visitViewVisitor').textContent = record.visitor_name || '-';
+            document.getElementById('visitViewOrigin').textContent = record.origin_name || '-';
+            document.getElementById('visitViewDate').textContent = record.visit_date || '-';
+            document.getElementById('visitViewTime').textContent = record.visit_time ? record.visit_time + ' WIB' : '-';
+            document.getElementById('visitViewLocation').textContent = record.location || '-';
+            document.getElementById('visitViewPic').textContent = record.pic_name || '-';
+            document.getElementById('visitViewPurpose').textContent = record.visit_purpose || '-';
+            document.getElementById('visitViewNotes').textContent = record.notes || '-';
+            renderAttachmentBadges(document.getElementById('visitViewAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            openModal(visitAgendaViewModal);
+            return;
+        }
+
+        const editButton = event.target.closest('.btn-edit-agenda');
+        if (editButton) {
+            const record = parseRecord(editButton);
+            document.getElementById('editVisitAgendaId').value = record.id || '';
+            document.getElementById('editVisitAgendaCode').value = record.agenda_code || '';
+            document.getElementById('editVisitAgendaCode').dataset.generatedCode = '';
+            document.getElementById('editVisitAgendaCode').dataset.autoMode = 'false';
+            document.getElementById('editVisitAgendaVisitorName').value = record.visitor_name || '';
+            document.getElementById('editVisitAgendaOriginName').value = record.origin_name || '';
+            document.getElementById('editVisitAgendaPurpose').value = record.visit_purpose || '';
+            document.getElementById('editVisitAgendaDate').value = record.visit_date || '';
+            document.getElementById('editVisitAgendaTime').value = record.visit_time || '';
+            document.getElementById('editVisitAgendaLocation').value = record.location || '';
+            document.getElementById('editVisitAgendaPicName').value = record.pic_name || '';
+            document.getElementById('editVisitAgendaPicUserId').value = record.pic_user_id || '';
+            document.getElementById('editVisitAgendaStatus').value = record.status || 'scheduled';
+            document.getElementById('editVisitAgendaNotes').value = record.notes || '';
+            renderAttachmentBadges(document.getElementById('editVisitCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            resetMultiImagePreview('editVisitAgendaAttachments', 'editVisitAgendaAttachmentsPreview');
+            editVisitCodeControl.refresh(false);
+            openModal(visitAgendaEditModal);
+        }
+    });
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target;
+        if (form && form.matches('.js-delete-form')) {
+            const message = form.dataset.confirm || 'Yakin ingin menghapus data ini?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeModal(visitAgendaViewModal);
+            closeModal(visitAgendaEditModal);
+        }
+    });
 });
 </script>
 

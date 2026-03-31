@@ -65,6 +65,21 @@ function secretaryConfidentialGroupAttachments(array $rows, string $foreignKey):
     return $grouped;
 }
 
+function secretaryConfidentialAttachmentPayload(array $attachments): array
+{
+    return array_map(static function (array $attachment): array {
+        return [
+            'src' => '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/'),
+            'name' => (string) (($attachment['file_name'] ?? '') ?: 'Lampiran'),
+        ];
+    }, $attachments);
+}
+
+function secretaryConfidentialJsonAttr(array $payload): string
+{
+    return htmlspecialchars((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+}
+
 $summary = ['logged' => 0, 'sealed' => 0, 'distributed' => 0, 'archived' => 0];
 $rows = [];
 $attachmentsMap = [];
@@ -104,6 +119,27 @@ try {
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
+<style>
+    .secretary-action-row {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+    }
+
+    .secretary-action-row form,
+    .secretary-action-row button,
+    .secretary-action-row select {
+        flex: 0 0 auto;
+    }
+
+    .secretary-action-row .btn-sm,
+    .secretary-action-row select {
+        white-space: nowrap;
+    }
+</style>
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
@@ -240,6 +276,22 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php foreach ($rows as $row): ?>
                                 <?php $statusMeta = secretaryConfidentialStatusMeta((string) $row['status']); ?>
                                 <?php $levelMeta = secretaryConfidentialLevelMeta((string) $row['confidentiality_level']); ?>
+                                <?php $attachments = $attachmentsMap[(int) $row['id']] ?? []; ?>
+                                <?php
+                                $recordPayload = secretaryConfidentialJsonAttr([
+                                    'id' => (int) $row['id'],
+                                    'register_code' => (string) $row['register_code'],
+                                    'reference_number' => (string) $row['reference_number'],
+                                    'letter_direction' => (string) $row['letter_direction'],
+                                    'subject' => (string) $row['subject'],
+                                    'counterparty_name' => (string) $row['counterparty_name'],
+                                    'confidentiality_level' => (string) $row['confidentiality_level'],
+                                    'letter_date' => (string) $row['letter_date'],
+                                    'status' => (string) $row['status'],
+                                    'notes' => (string) ($row['notes'] ?? ''),
+                                    'attachments' => secretaryConfidentialAttachmentPayload($attachments),
+                                ]);
+                                ?>
                                 <tr>
                                     <td><?= htmlspecialchars((string) $row['register_code'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td>
@@ -253,7 +305,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><span class="<?= htmlspecialchars($levelMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($levelMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
-                                        <?php $attachments = $attachmentsMap[(int) $row['id']] ?? []; ?>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">
                                                 <?php foreach ($attachments as $attachment): ?>
@@ -271,7 +322,15 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <div class="flex flex-wrap gap-2 items-center">
+                                        <div class="secretary-action-row">
+                                            <button type="button" class="btn-secondary btn-sm btn-view-confidential" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                <span>View</span>
+                                            </button>
+                                            <button type="button" class="btn-primary btn-sm btn-edit-confidential" data-record="<?= $recordPayload ?>">
+                                                <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                                <span>Edit</span>
+                                            </button>
                                             <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="update_confidential_status">
@@ -307,6 +366,150 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<div id="confidentialViewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('eye', 'h-5 w-5 text-primary') ?>
+                <span>Detail Surat Rahasia</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <div class="grid gap-3 md:grid-cols-2">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Surat</div><div id="confidentialViewCode" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Status</div><div id="confidentialViewStatus" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Referensi</div><div id="confidentialViewReference" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Arah Surat</div><div id="confidentialViewDirection" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Subjek</div><div id="confidentialViewSubject" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Pengirim / Penerima</div><div id="confidentialViewCounterparty" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Level Kerahasiaan</div><div id="confidentialViewLevel" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Tanggal Surat</div><div id="confidentialViewDate" class="mt-1 font-semibold text-slate-900">-</div></div>
+            </div>
+
+            <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div class="meta-text-xs">Catatan</div>
+                <div id="confidentialViewNotes" class="mt-1 whitespace-pre-line text-sm text-slate-900">-</div>
+            </div>
+
+            <div class="mt-4">
+                <div class="meta-text-xs">Lampiran</div>
+                <div id="confidentialViewAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="modal-actions mt-4">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="confidentialEditModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('pencil-square', 'h-5 w-5 text-primary') ?>
+                <span>Edit Surat Rahasia</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+                <?= csrfField(); ?>
+                <input type="hidden" name="action" value="edit_confidential_letter">
+                <input type="hidden" name="redirect_to" value="secretary_confidential_letters.php">
+                <input type="hidden" name="letter_id" id="editConfidentialId">
+
+                <label>Nomor Surat</label>
+                <div class="flex gap-2">
+                    <input type="text" name="register_code" id="editConfidentialCode" maxlength="100">
+                    <button type="button" class="btn-secondary whitespace-nowrap" id="editConfidentialCodeAutoBtn">Auto</button>
+                </div>
+                <div class="meta-text-xs mt-1">Nomor surat bisa diubah manual.</div>
+
+                <div class="row-form-2">
+                    <div>
+                        <label>Nomor Referensi</label>
+                        <input type="text" name="reference_number" id="editConfidentialReference" required>
+                    </div>
+                    <div>
+                        <label>Arah Surat</label>
+                        <select name="letter_direction" id="editConfidentialDirection">
+                            <option value="incoming">Incoming</option>
+                            <option value="outgoing">Outgoing</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label>Subjek Surat</label>
+                <input type="text" name="subject" id="editConfidentialSubject" required>
+
+                <label>Pengirim / Penerima Utama</label>
+                <input type="text" name="counterparty_name" id="editConfidentialCounterpartyName" required>
+
+                <div class="row-form-2">
+                    <div>
+                        <label>Level Kerahasiaan</label>
+                        <select name="confidentiality_level" id="editConfidentialLevel">
+                            <option value="confidential">Confidential</option>
+                            <option value="secret">Secret</option>
+                            <option value="top_secret">Top Secret</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Tanggal Surat</label>
+                        <input type="date" name="letter_date" id="editConfidentialDate" required>
+                    </div>
+                </div>
+
+                <label>Status</label>
+                <select name="status" id="editConfidentialStatus">
+                    <option value="logged">Logged</option>
+                    <option value="sealed">Sealed</option>
+                    <option value="distributed">Distributed</option>
+                    <option value="archived">Archived</option>
+                </select>
+
+                <label>Catatan</label>
+                <textarea name="notes" id="editConfidentialNotes" rows="3"></textarea>
+
+                <div class="mt-4">
+                    <div class="meta-text-xs">Lampiran Saat Ini</div>
+                    <div id="editConfidentialCurrentAttachments" class="mt-2 flex flex-wrap gap-2"></div>
+                </div>
+
+                <div class="doc-upload-wrapper m-0">
+                    <div class="doc-upload-header">
+                        <label class="text-sm font-semibold text-slate-900">Tambah Lampiran</label>
+                        <span class="badge-muted-mini">Opsional, menambah lampiran baru</span>
+                    </div>
+                    <div class="doc-upload-input">
+                        <label for="editConfidentialAttachments" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih lampiran</strong>
+                                <small>JPG / PNG, multi file</small>
+                            </span>
+                        </label>
+                        <input type="file" id="editConfidentialAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                        <div class="file-selected-name" data-for="editConfidentialAttachments"></div>
+                        <div id="editConfidentialAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                    </div>
+                </div>
+
+                <div class="modal-actions mt-4">
+                    <button type="submit" class="btn-success"><?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Simpan Perubahan</span></button>
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const generateCodeUrl = '<?= htmlspecialchars(ems_url('/ajax/generate_surat_code.php'), ENT_QUOTES, 'UTF-8') ?>';
@@ -333,7 +536,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }).filter(Boolean);
 
         if (!codeInput || !requiredInputs.length) {
-            return;
+            return {
+                refresh: function () {}
+            };
         }
 
         codeInput.dataset.autoMode = 'true';
@@ -409,6 +614,50 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         refreshCode(false).catch(function () {});
+
+        return {
+            refresh: function (forceAuto) {
+                refreshCode(Boolean(forceAuto)).catch(function () {});
+            }
+        };
+    }
+
+    function openModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+    }
+
+    function attachModalClose(modal) {
+        if (!modal) {
+            return;
+        }
+
+        modal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(function (button) {
+            button.addEventListener('click', function () {
+                closeModal(modal);
+            });
+        });
+
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) {
+                closeModal(modal);
+            }
+        });
     }
 
     function setupMultiImagePreview(inputId, previewId) {
@@ -461,6 +710,53 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function resetMultiImagePreview(inputId, previewId) {
+        const input = document.getElementById(inputId);
+        const preview = document.getElementById(previewId);
+        const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        if (input) {
+            input.value = '';
+        }
+        if (preview) {
+            preview.innerHTML = '';
+        }
+        if (nameBox) {
+            nameBox.textContent = '';
+            nameBox.classList.add('hidden');
+        }
+    }
+
+    function parseRecord(button) {
+        try {
+            return JSON.parse(button.dataset.record || '{}');
+        } catch (_) {
+            return {};
+        }
+    }
+
+    function renderAttachmentBadges(container, attachments, emptyText) {
+        if (!container) {
+            return;
+        }
+
+        container.innerHTML = '';
+        if (!Array.isArray(attachments) || !attachments.length) {
+            container.innerHTML = '<span class="meta-text-xs">' + (emptyText || '-') + '</span>';
+            return;
+        }
+
+        attachments.forEach(function (attachment) {
+            const link = document.createElement('a');
+            link.href = '#';
+            link.className = 'doc-badge btn-preview-doc';
+            link.dataset.src = attachment.src || '';
+            link.dataset.title = attachment.name || 'Lampiran';
+            link.innerHTML = `<?= ems_icon('paper-clip', 'h-4 w-4') ?><span></span>`;
+            link.querySelector('span').textContent = attachment.name || 'Lampiran';
+            container.appendChild(link);
+        });
+    }
+
     if (window.jQuery && $.fn.DataTable) {
         $('#secretaryConfidentialTable').DataTable({
             language: {
@@ -470,6 +766,22 @@ document.addEventListener('DOMContentLoaded', function () {
             order: [[0, 'desc']]
         });
     }
+
+    const confidentialViewModal = document.getElementById('confidentialViewModal');
+    const confidentialEditModal = document.getElementById('confidentialEditModal');
+    const editConfidentialCodeControl = setupAutoCode({
+        type: 'confidential',
+        codeInputId: 'editConfidentialCode',
+        autoButtonId: 'editConfidentialCodeAutoBtn',
+        dateInputId: 'editConfidentialDate',
+        counterpartyInputId: 'editConfidentialCounterpartyName',
+        directionInputId: 'editConfidentialDirection',
+        requiredInputIds: ['editConfidentialDate', 'editConfidentialCounterpartyName'],
+        watchedInputIds: ['editConfidentialDate', 'editConfidentialCounterpartyName', 'editConfidentialDirection']
+    });
+
+    attachModalClose(confidentialViewModal);
+    attachModalClose(confidentialEditModal);
 
     setupAutoCode({
         type: 'confidential',
@@ -483,14 +795,63 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     setupMultiImagePreview('confidentialAttachments', 'confidentialAttachmentsPreview');
+    setupMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview');
 
-    document.querySelectorAll('.js-delete-form').forEach(function (form) {
-        form.addEventListener('submit', function (event) {
+    document.addEventListener('click', function (event) {
+        const viewButton = event.target.closest('.btn-view-confidential');
+        if (viewButton) {
+            const record = parseRecord(viewButton);
+            document.getElementById('confidentialViewCode').textContent = record.register_code || '-';
+            document.getElementById('confidentialViewStatus').textContent = record.status || '-';
+            document.getElementById('confidentialViewReference').textContent = record.reference_number || '-';
+            document.getElementById('confidentialViewDirection').textContent = record.letter_direction || '-';
+            document.getElementById('confidentialViewSubject').textContent = record.subject || '-';
+            document.getElementById('confidentialViewCounterparty').textContent = record.counterparty_name || '-';
+            document.getElementById('confidentialViewLevel').textContent = record.confidentiality_level || '-';
+            document.getElementById('confidentialViewDate').textContent = record.letter_date || '-';
+            document.getElementById('confidentialViewNotes').textContent = record.notes || '-';
+            renderAttachmentBadges(document.getElementById('confidentialViewAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            openModal(confidentialViewModal);
+            return;
+        }
+
+        const editButton = event.target.closest('.btn-edit-confidential');
+        if (editButton) {
+            const record = parseRecord(editButton);
+            document.getElementById('editConfidentialId').value = record.id || '';
+            document.getElementById('editConfidentialCode').value = record.register_code || '';
+            document.getElementById('editConfidentialCode').dataset.generatedCode = '';
+            document.getElementById('editConfidentialCode').dataset.autoMode = 'false';
+            document.getElementById('editConfidentialReference').value = record.reference_number || '';
+            document.getElementById('editConfidentialDirection').value = record.letter_direction || 'incoming';
+            document.getElementById('editConfidentialSubject').value = record.subject || '';
+            document.getElementById('editConfidentialCounterpartyName').value = record.counterparty_name || '';
+            document.getElementById('editConfidentialLevel').value = record.confidentiality_level || 'confidential';
+            document.getElementById('editConfidentialDate').value = record.letter_date || '';
+            document.getElementById('editConfidentialStatus').value = record.status || 'logged';
+            document.getElementById('editConfidentialNotes').value = record.notes || '';
+            renderAttachmentBadges(document.getElementById('editConfidentialCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
+            resetMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview');
+            editConfidentialCodeControl.refresh(false);
+            openModal(confidentialEditModal);
+        }
+    });
+
+    document.addEventListener('submit', function (event) {
+        const form = event.target;
+        if (form && form.matches('.js-delete-form')) {
             const message = form.dataset.confirm || 'Yakin ingin menghapus data ini?';
             if (!window.confirm(message)) {
                 event.preventDefault();
             }
-        });
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeModal(confidentialViewModal);
+            closeModal(confidentialEditModal);
+        }
     });
 });
 </script>
