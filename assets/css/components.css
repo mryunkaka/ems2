@@ -288,6 +288,69 @@ button,
   transform: translateY(-1px);
 }
 
+.action-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  gap: 0;
+  border-radius: 0.75rem;
+}
+
+.action-icon-btn.btn-sm,
+.action-icon-btn.btn-compact {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+}
+
+.action-icon-btn svg {
+  flex: 0 0 auto;
+}
+
+.action-row-nowrap,
+.candidate-action-stack,
+.manage-user-action-stack,
+.table-action-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.25rem;
+}
+
+.action-row-nowrap > *,
+.candidate-action-stack > *,
+.manage-user-action-stack > *,
+.table-action-row > * {
+  flex: 0 0 auto;
+}
+
+.table-actions {
+  white-space: nowrap;
+}
+
+.table-actions form,
+.table-actions button,
+.table-actions a {
+  vertical-align: middle;
+}
+
+.table-actions form {
+  display: inline-flex;
+}
+
+.table-actions > * + * {
+  margin-left: 0.5rem;
+}
+
 .btn-nonaktif {
   background: rgba(239, 68, 68, 0.12);
   color: #b91c1c;

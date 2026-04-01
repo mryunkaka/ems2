@@ -374,9 +374,11 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <td>
                                         <?php if ($row['status'] === 'pending'): ?>
                                             <button type="button"
-                                                class="btn btn-success btn-sm"
-                                                onclick="openPayModal(<?= $row['id'] ?>, '<?= htmlspecialchars($row['medic_name']) ?>', <?= $row['bonus_40'] ?>)">
-                                                Bayar
+                                                class="btn btn-success btn-sm action-icon-btn"
+                                                onclick="openPayModal(<?= $row['id'] ?>, '<?= htmlspecialchars($row['medic_name']) ?>', <?= $row['bonus_40'] ?>)"
+                                                title="Bayar bonus"
+                                                aria-label="Bayar bonus">
+                                                <?= ems_icon('banknotes', 'h-4 w-4') ?>
                                             </button>
                                             <?php else: ?>-<?php endif; ?>
                                     </td>

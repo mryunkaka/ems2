@@ -126,6 +126,14 @@ include __DIR__ . '/../partials/sidebar.php';
     .secretary-action-row select {
         white-space: nowrap;
     }
+
+    .secretary-action-icon {
+        width: 2.25rem;
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        border-radius: 0.75rem;
+    }
 </style>
 <section class="content">
     <div class="page page-shell">
@@ -293,34 +301,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td>
                                         <div class="secretary-action-row">
-                                            <button type="button" class="btn-secondary btn-sm btn-view-coordination" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-secondary btn-sm secretary-action-icon btn-view-coordination" data-record="<?= $recordPayload ?>" title="Lihat detail koordinasi" aria-label="Lihat detail koordinasi">
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                <span>View</span>
                                             </button>
-                                            <button type="button" class="btn-primary btn-sm btn-edit-coordination" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-primary btn-sm secretary-action-icon btn-edit-coordination" data-record="<?= $recordPayload ?>" title="Edit koordinasi" aria-label="Edit koordinasi">
                                                 <?= ems_icon('pencil-square', 'h-4 w-4') ?>
-                                                <span>Edit</span>
                                             </button>
-                                            <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
-                                                <?= csrfField(); ?>
-                                                <input type="hidden" name="action" value="update_coordination_status">
-                                                <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
-                                                <input type="hidden" name="coordination_id" value="<?= (int) $row['id'] ?>">
-                                                <select name="status">
-                                                    <?php foreach (['draft', 'scheduled', 'done', 'cancelled'] as $status): ?>
-                                                        <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $row['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
-                                            </form>
                                             <form method="POST" action="secretary_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus permanen koordinasi internal ini?">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="delete_internal_coordination">
                                                 <input type="hidden" name="redirect_to" value="secretary_internal_coordination.php">
                                                 <input type="hidden" name="coordination_id" value="<?= (int) $row['id'] ?>">
-                                                <button type="submit" class="btn-danger btn-sm">
+                                                <button type="submit" class="btn-danger btn-sm secretary-action-icon" title="Hapus permanen koordinasi" aria-label="Hapus permanen koordinasi">
                                                     <?= ems_icon('trash', 'h-4 w-4') ?>
-                                                    <span>Hapus Permanen</span>
                                                 </button>
                                             </form>
                                         </div>

@@ -206,13 +206,17 @@ include __DIR__ . '/../partials/sidebar.php';
                         <textarea name="reviewer_note" rows="3" placeholder="Catatan untuk pemohon (opsional)"></textarea>
 
                         <div class="flex gap-2 flex-wrap" style="margin-top:10px;">
-                            <button type="submit" name="action" value="approve" class="btn-success"
+                            <button type="submit" name="action" value="approve" class="btn-success action-icon-btn"
+                                title="Approve pengajuan"
+                                aria-label="Approve pengajuan"
                                 onclick="return confirm('Approve pengajuan ini? Jabatan user akan diupdate.')">
-                                <?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Approve</span>
+                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
                             </button>
-                            <button type="submit" name="action" value="reject" class="btn-danger"
+                            <button type="submit" name="action" value="reject" class="btn-danger action-icon-btn"
+                                title="Reject pengajuan"
+                                aria-label="Reject pengajuan"
                                 onclick="return confirm('Reject pengajuan ini?')">
-                                <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Reject</span>
+                                <?= ems_icon('x-mark', 'h-4 w-4') ?>
                             </button>
                         </div>
                     </form>
@@ -268,9 +272,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <a class="btn-secondary"
-                                            href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&id=<?= (int)$r['id'] ?>">
-                                            Detail
+                                        <a class="btn-secondary action-icon-btn"
+                                            href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&id=<?= (int)$r['id'] ?>"
+                                            title="Lihat detail pengajuan"
+                                            aria-label="Lihat detail pengajuan">
+                                            <?= ems_icon('eye', 'h-4 w-4') ?>
                                         </a>
                                     </td>
                                 </tr>

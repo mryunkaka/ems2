@@ -454,7 +454,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <div class="manage-user-action-stack">
                                                     <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
                                                         <button
-                                                            class="btn-secondary btn-sm candidate-action-btn btn-edit-user"
+                                                            class="btn-secondary btn-sm candidate-action-btn action-icon-btn btn-edit-user"
                                                             data-id="<?= (int)$u['id'] ?>"
                                                             data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
                                                             data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
@@ -463,43 +463,51 @@ uksort($usersByBatch, function ($a, $b) {
                                                             data-unit="<?= htmlspecialchars(ems_normalize_unit_code($u['unit_code'] ?? 'roxwood'), ENT_QUOTES) ?>"
                                                             data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
                                                             data-batch="<?= (int)($u['batch'] ?? 0) ?>"
-                                                            data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>">
-                                                            Edit
+                                                            data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>"
+                                                            title="Edit user"
+                                                            aria-label="Edit user">
+                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php else: ?>
-                                                        <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini">
-                                                            Dilindungi
+                                                        <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini" aria-label="Akun dilindungi">
+                                                            <?= ems_icon('shield-check', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php endif; ?>
 
                                                     <?php if ($u['is_active']): ?>
                                                         <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
-                                                            <button class="btn-resign btn-sm candidate-action-btn btn-resign-user"
+                                                            <button class="btn-resign btn-sm candidate-action-btn action-icon-btn btn-resign-user"
                                                                 data-id="<?= (int)$u['id'] ?>"
-                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                                Resign
+                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                                title="Resign user"
+                                                                aria-label="Resign user">
+                                                                <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
                                                             </button>
                                                         <?php else: ?>
-                                                            <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Hanya pemilik akun yang bisa resign akun ini">
-                                                                Dilindungi
+                                                            <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa resign akun ini" aria-label="Akun dilindungi">
+                                                                <?= ems_icon('shield-check', 'h-4 w-4') ?>
                                                             </button>
                                                         <?php endif; ?>
                                                     <?php else: ?>
-                                                        <button class="btn-success btn-sm candidate-action-btn btn-reactivate-user"
+                                                        <button class="btn-success btn-sm candidate-action-btn action-icon-btn btn-reactivate-user"
                                                             data-id="<?= (int)$u['id'] ?>"
-                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                            Kembali
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            title="Aktifkan kembali user"
+                                                            aria-label="Aktifkan kembali user">
+                                                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php endif; ?>
                                                     <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
-                                                        <button class="btn-danger btn-sm candidate-action-btn btn-delete-user"
+                                                        <button class="btn-danger btn-sm candidate-action-btn action-icon-btn btn-delete-user"
                                                             data-id="<?= (int)$u['id'] ?>"
-                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>">
-                                                            Hapus
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            title="Hapus user"
+                                                            aria-label="Hapus user">
+                                                            <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php else: ?>
-                                                        <button class="btn-secondary btn-sm candidate-action-btn" type="button" disabled title="Akun ini dilindungi dan tidak bisa dihapus">
-                                                            Dilindungi
+                                                        <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Akun ini dilindungi dan tidak bisa dihapus" aria-label="Akun dilindungi">
+                                                            <?= ems_icon('shield-check', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php endif; ?>
                                                 </div>
@@ -544,7 +552,7 @@ uksort($usersByBatch, function ($a, $b) {
             <div class="modal-foot">
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                    <button type="submit" class="btn-nonaktif">Nonaktifkan</button>
+                    <button type="submit" class="btn-nonaktif action-icon-btn" title="Nonaktifkan user" aria-label="Nonaktifkan user"><?= ems_icon('user-minus', 'h-4 w-4') ?></button>
                 </div>
             </div>
         </form>
@@ -578,7 +586,7 @@ uksort($usersByBatch, function ($a, $b) {
             <div class="modal-foot">
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                    <button type="submit" class="btn-success">Aktifkan</button>
+                    <button type="submit" class="btn-success action-icon-btn" title="Aktifkan user" aria-label="Aktifkan user"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                 </div>
             </div>
         </form>

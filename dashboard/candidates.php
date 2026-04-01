@@ -314,9 +314,8 @@ $candidates = $pdo->query("
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="proceed">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-primary btn-sm candidate-action-btn" onclick="return confirm('Lanjutkan ke tahap wawancara?')">
+                                            <button type="submit" class="btn-primary btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Lanjutkan ke tahap wawancara?')" title="Lanjut ke wawancara" aria-label="Lanjut ke wawancara">
                                                 <?= ems_icon('arrow-right', 'h-4 w-4') ?>
-                                                <span>Lanjut</span>
                                             </button>
                                         </form>
 
@@ -324,17 +323,15 @@ $candidates = $pdo->query("
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="ai_decision" value="reject">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-danger btn-sm candidate-action-btn" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')">
+                                            <button type="submit" class="btn-danger btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')" title="Tolak kandidat" aria-label="Tolak kandidat">
                                                 <?= ems_icon('x-mark', 'h-4 w-4') ?>
-                                                <span>Tolak</span>
                                             </button>
                                         </form>
                                     <?php endif; ?>
 
                                     <?php if (in_array($c['status'], ['interview'], true)): ?>
-                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn-primary btn-sm candidate-action-btn">
+                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn-primary btn-sm action-icon-btn candidate-action-btn" title="Interview kandidat" aria-label="Interview kandidat">
                                             <?= ems_icon('microphone', 'h-4 w-4') ?>
-                                            <span>Interview</span>
                                         </a>
                                     <?php endif; ?>
 
@@ -343,16 +340,15 @@ $candidates = $pdo->query("
                                             <?php echo csrfField(); ?>
                                             <input type="hidden" name="finish_interview" value="1">
                                             <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-warning btn-sm btn-finish-interview candidate-action-btn" data-total-hr="<?= (int)$c['total_hr'] ?>">
-                                                Selesai
+                                            <button type="submit" class="btn-warning btn-sm action-icon-btn btn-finish-interview candidate-action-btn" data-total-hr="<?= (int)$c['total_hr'] ?>" title="Selesaikan interview" aria-label="Selesaikan interview">
+                                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
                                             </button>
                                         </form>
                                     <?php endif; ?>
 
                                     <?php if ($c['status'] === 'final_review' || in_array($c['status'], ['accepted', 'rejected'], true)): ?>
-                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm candidate-action-btn">
+                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
                                             <?= ems_icon('check-badge', 'h-4 w-4') ?>
-                                            <span>Keputusan</span>
                                         </a>
                                     <?php endif; ?>
                                     </div>

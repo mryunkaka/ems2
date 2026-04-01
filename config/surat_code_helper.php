@@ -112,6 +112,19 @@ if (!function_exists('surat_generate_formatted_code')) {
     }
 }
 
+if (!function_exists('surat_secretary_file_type_prefix')) {
+    function surat_secretary_file_type_prefix(string $category): string
+    {
+        return match ($category) {
+            'proposal' => 'PRP',
+            'cooperation' => 'KER',
+            'contract' => 'KTR',
+            'report' => 'LPR',
+            default => 'FIL',
+        };
+    }
+}
+
 if (!function_exists('surat_resolve_minutes_institution')) {
     function surat_resolve_minutes_institution(PDO $pdo, int $incomingLetterId, int $outgoingLetterId): string
     {

@@ -108,6 +108,20 @@ function secretaryGenerateConfidentialLetterCode(PDO $pdo, string $letterDirecti
     );
 }
 
+function secretaryGenerateFileRecordCode(PDO $pdo, string $fileCategory, string $documentDate, ?string $counterpartyName): string
+{
+    return surat_generate_formatted_code(
+        $pdo,
+        'secretary_file_records',
+        'file_code',
+        'document_date',
+        surat_secretary_file_type_prefix($fileCategory),
+        $documentDate,
+        $counterpartyName,
+        'SR'
+    );
+}
+
 function secretaryTableExists(PDO $pdo, string $table): bool
 {
     static $cache = [];
@@ -157,18 +171,28 @@ function secretaryAttachmentConfig(string $type): array
             'foreign_key' => 'agenda_id',
             'folder' => 'secretary/visit_agendas',
             'label' => 'agenda kunjungan',
+            'setup_sql' => 'docs/sql/15_2026-03-31_secretary_attachments.sql',
         ],
         'internal_coordination' => [
             'table' => 'secretary_internal_coordination_attachments',
             'foreign_key' => 'coordination_id',
             'folder' => 'secretary/internal_coordinations',
             'label' => 'koordinasi internal',
+            'setup_sql' => 'docs/sql/15_2026-03-31_secretary_attachments.sql',
         ],
         'confidential_letter' => [
             'table' => 'secretary_confidential_letter_attachments',
             'foreign_key' => 'letter_id',
             'folder' => 'secretary/confidential_letters',
             'label' => 'surat rahasia',
+            'setup_sql' => 'docs/sql/15_2026-03-31_secretary_attachments.sql',
+        ],
+        'file_record' => [
+            'table' => 'secretary_file_record_attachments',
+            'foreign_key' => 'record_id',
+            'folder' => 'secretary/file_records',
+            'label' => 'file secretary',
+            'setup_sql' => 'docs/sql/16_2026-04-01_secretary_file_registry.sql',
         ],
         default => throw new Exception('Konfigurasi lampiran secretary tidak dikenali.'),
     };
@@ -182,7 +206,7 @@ function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $
 
     $config = secretaryAttachmentConfig($type);
     if (!secretaryTableExists($pdo, $config['table'])) {
-        throw new Exception('Tabel lampiran Secretary belum tersedia. Jalankan SQL `docs/sql/15_2026-03-31_secretary_attachments.sql` terlebih dahulu.');
+        throw new Exception('Tabel lampiran Secretary belum tersedia. Jalankan SQL `' . $config['setup_sql'] . '` terlebih dahulu.');
     }
 
     $stmt = $pdo->prepare("
@@ -740,6 +764,164 @@ try {
 
         $_SESSION['flash_messages'][] = 'Register surat rahasia berhasil dihapus permanen.';
         secretaryRedirect('secretary_confidential_letters.php');
+    }
+
+    if ($action === 'save_file_record') {
+        $requestedFileCode = trim((string) ($_POST['file_code'] ?? ''));
+        $fileCategory = secretaryAssertAllowed(trim((string) ($_POST['file_category'] ?? 'other')), ['proposal', 'cooperation', 'contract', 'report', 'other'], 'Jenis file tidak valid.');
+        $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $counterpartyName = trim((string) ($_POST['counterparty_name'] ?? ''));
+        $documentDate = secretaryDate(trim((string) ($_POST['document_date'] ?? '')), 'Tanggal file tidak valid.');
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'draft')), ['draft', 'review', 'active', 'archived'], 'Status file tidak valid.');
+        $keywords = trim((string) ($_POST['keywords'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? ''));
+        $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+
+        if ($referenceNumber === '' || $title === '' || $counterpartyName === '') {
+            throw new Exception('Data file secretary wajib lengkap.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("
+            INSERT INTO secretary_file_records
+                (file_code, file_category, reference_number, title, counterparty_name,
+                 document_date, status, keywords, description, created_by)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            surat_resolve_requested_code(
+                $pdo,
+                'secretary_file_records',
+                'file_code',
+                $requestedFileCode,
+                static fn(): string => secretaryGenerateFileRecordCode($pdo, $fileCategory, $documentDate, $counterpartyName)
+            ),
+            $fileCategory,
+            $referenceNumber,
+            $title,
+            $counterpartyName,
+            $documentDate,
+            $status,
+            $keywords !== '' ? $keywords : null,
+            $description !== '' ? $description : null,
+            $userId,
+        ]);
+
+        secretarySaveAttachments($pdo, 'file_record', (int) $pdo->lastInsertId(), $attachmentFiles);
+        $pdo->commit();
+
+        $_SESSION['flash_messages'][] = 'Data file secretary berhasil disimpan.';
+        secretaryRedirect('secretary_file_registry.php');
+    }
+
+    if ($action === 'update_file_record_status') {
+        $recordId = (int) ($_POST['record_id'] ?? 0);
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'draft')), ['draft', 'review', 'active', 'archived'], 'Status file tidak valid.');
+        if ($recordId <= 0) {
+            throw new Exception('Data file secretary tidak valid.');
+        }
+
+        $stmt = $pdo->prepare("UPDATE secretary_file_records SET status = ?, updated_by = ? WHERE id = ?");
+        $stmt->execute([$status, $userId, $recordId]);
+
+        $_SESSION['flash_messages'][] = 'Status file secretary diperbarui.';
+        secretaryRedirect('secretary_file_registry.php');
+    }
+
+    if ($action === 'edit_file_record') {
+        $recordId = (int) ($_POST['record_id'] ?? 0);
+        $requestedFileCode = trim((string) ($_POST['file_code'] ?? ''));
+        $fileCategory = secretaryAssertAllowed(trim((string) ($_POST['file_category'] ?? 'other')), ['proposal', 'cooperation', 'contract', 'report', 'other'], 'Jenis file tidak valid.');
+        $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
+        $title = trim((string) ($_POST['title'] ?? ''));
+        $counterpartyName = trim((string) ($_POST['counterparty_name'] ?? ''));
+        $documentDate = secretaryDate(trim((string) ($_POST['document_date'] ?? '')), 'Tanggal file tidak valid.');
+        $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'draft')), ['draft', 'review', 'active', 'archived'], 'Status file tidak valid.');
+        $keywords = trim((string) ($_POST['keywords'] ?? ''));
+        $description = trim((string) ($_POST['description'] ?? ''));
+        $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+
+        if ($recordId <= 0 || $referenceNumber === '' || $title === '' || $counterpartyName === '') {
+            throw new Exception('Data edit file secretary wajib lengkap.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_file_records WHERE id = ? LIMIT 1");
+        $stmt->execute([$recordId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Data file secretary tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE secretary_file_records
+            SET file_code = ?,
+                file_category = ?,
+                reference_number = ?,
+                title = ?,
+                counterparty_name = ?,
+                document_date = ?,
+                status = ?,
+                keywords = ?,
+                description = ?,
+                updated_by = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            surat_resolve_requested_code(
+                $pdo,
+                'secretary_file_records',
+                'file_code',
+                $requestedFileCode,
+                static fn(): string => secretaryGenerateFileRecordCode($pdo, $fileCategory, $documentDate, $counterpartyName),
+                $recordId
+            ),
+            $fileCategory,
+            $referenceNumber,
+            $title,
+            $counterpartyName,
+            $documentDate,
+            $status,
+            $keywords !== '' ? $keywords : null,
+            $description !== '' ? $description : null,
+            $userId,
+            $recordId,
+        ]);
+
+        secretarySaveAttachments($pdo, 'file_record', $recordId, $attachmentFiles);
+        $pdo->commit();
+
+        $_SESSION['flash_messages'][] = 'Data file secretary berhasil diperbarui.';
+        secretaryRedirect('secretary_file_registry.php');
+    }
+
+    if ($action === 'delete_file_record') {
+        $recordId = (int) ($_POST['record_id'] ?? 0);
+        if ($recordId <= 0) {
+            throw new Exception('Data file secretary tidak valid.');
+        }
+
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM secretary_file_records WHERE id = ? LIMIT 1");
+        $stmt->execute([$recordId]);
+        if (!$stmt->fetchColumn()) {
+            throw new Exception('Data file secretary tidak ditemukan.');
+        }
+
+        $paths = secretaryFetchAttachmentPaths($pdo, 'file_record', $recordId);
+
+        $stmt = $pdo->prepare("DELETE FROM secretary_file_records WHERE id = ?");
+        $stmt->execute([$recordId]);
+
+        $pdo->commit();
+        secretaryDeleteStoredFiles($paths);
+
+        $_SESSION['flash_messages'][] = 'Data file secretary berhasil dihapus permanen.';
+        secretaryRedirect('secretary_file_registry.php');
     }
 
     throw new Exception('Aksi secretary tidak dikenali.');

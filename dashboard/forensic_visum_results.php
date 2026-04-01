@@ -172,11 +172,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <div class="inline-flex gap-2 items-center">
                                         <button
                                             type="button"
-                                            class="btn-primary btn-sm btn-forensic-detail"
+                                            class="btn-primary btn-sm action-icon-btn btn-forensic-detail"
                                             data-modal-title="<?= htmlspecialchars('Review Visum ' . (string) $row['visum_code'], ENT_QUOTES, 'UTF-8') ?>"
-                                            data-modal-subtitle="<?= htmlspecialchars('Detail lengkap hasil pemeriksaan visum forensic.', ENT_QUOTES, 'UTF-8') ?>">
+                                            data-modal-subtitle="<?= htmlspecialchars('Detail lengkap hasil pemeriksaan visum forensic.', ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Lihat detail visum forensic"
+                                            aria-label="Lihat detail visum forensic">
                                             <?= ems_icon('eye', 'h-4 w-4') ?>
-                                            <span>Review</span>
                                         </button>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
@@ -188,14 +189,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $row['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <button type="submit" class="btn-secondary btn-sm">Status</button>
+                                            <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status visum forensic" aria-label="Update status visum forensic"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                         </form>
                                         <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen hasil visum ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_visum">
                                             <input type="hidden" name="redirect_to" value="forensic_visum_results.php">
                                             <input type="hidden" name="visum_id" value="<?= (int) $row['id'] ?>">
-                                            <button type="submit" class="btn-error btn-sm">Hapus</button>
+                                            <button type="submit" class="btn-error btn-sm action-icon-btn" title="Hapus visum forensic" aria-label="Hapus visum forensic"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                         </form>
                                         <div class="hidden forensic-detail-template">
                                             <div class="forensic-detail-shell">

@@ -404,26 +404,29 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 <td class="action-cell min-w-[200px]">
                                     <div class="action-row-nowrap">
                                         <?php if ($canManage && $r['status'] === 'pending'): ?>
-                                            <button class="btn-success btn-compact"
-                                                onclick="approveConsumption(<?= $r['id'] ?>)">
+                                            <button class="btn-success btn-compact action-icon-btn"
+                                                onclick="approveConsumption(<?= $r['id'] ?>)"
+                                                title="Approve konsumsi"
+                                                aria-label="Approve konsumsi">
                                                 <?= ems_icon('check-circle', 'h-4 w-4') ?>
-                                                <span>Approve</span>
                                             </button>
                                         <?php endif; ?>
 
                                         <?php if ($canManage && $r['status'] === 'approved'): ?>
-                                            <button class="btn-primary btn-compact"
-                                                onclick="markPaid(<?= $r['id'] ?>)">
+                                            <button class="btn-primary btn-compact action-icon-btn"
+                                                onclick="markPaid(<?= $r['id'] ?>)"
+                                                title="Tandai sudah dibayar"
+                                                aria-label="Tandai sudah dibayar">
                                                 <?= ems_icon('banknotes', 'h-4 w-4') ?>
-                                                <span>Paid</span>
                                             </button>
                                         <?php endif; ?>
 
                                         <?php if (!empty($isDirector) && $isDirector): ?>
-                                            <button class="btn-danger btn-compact"
-                                                onclick="deleteConsumption(<?= $r['id'] ?>)">
+                                            <button class="btn-danger btn-compact action-icon-btn"
+                                                onclick="deleteConsumption(<?= $r['id'] ?>)"
+                                                title="Hapus data konsumsi"
+                                                aria-label="Hapus data konsumsi">
                                                 <?= ems_icon('trash', 'h-4 w-4') ?>
-                                                <span>Delete</span>
                                             </button>
                                         <?php endif; ?>
                                     </div>

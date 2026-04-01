@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 // =======================
 // GUARD ROLE (KECUALI STAFF)
@@ -121,15 +122,19 @@ $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 	                                <td>
 	                                    <?php if ((int)$u['is_verified'] === 0): ?>
 	                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=approve"
-	                                            class="btn-success btn-compact"
-	                                            onclick="return confirm('Verifikasi user ini?')">
-	                                            Validasi
+	                                            class="btn-success btn-compact action-icon-btn"
+	                                            onclick="return confirm('Verifikasi user ini?')"
+	                                            title="Validasi user"
+	                                            aria-label="Validasi user">
+	                                            <?= ems_icon('check-circle', 'h-4 w-4') ?>
 	                                        </a>
 	                                    <?php else: ?>
 	                                        <a href="/dashboard/validasi_action.php?id=<?= $u['id'] ?>&act=reject"
-	                                            class="btn-danger btn-compact"
-	                                            onclick="return confirm('Batalkan verifikasi user ini?')">
-	                                            Batalkan
+	                                            class="btn-danger btn-compact action-icon-btn"
+	                                            onclick="return confirm('Batalkan verifikasi user ini?')"
+	                                            title="Batalkan validasi user"
+	                                            aria-label="Batalkan validasi user">
+	                                            <?= ems_icon('x-mark', 'h-4 w-4') ?>
 	                                        </a>
 	                                    <?php endif; ?>
 	                                </td>

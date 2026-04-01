@@ -334,11 +334,13 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                     <?php if ($bolehAlasan): ?>
                                         <button
                                             type="button"
-                                            class="btn btn-warning btn-sm btn-alasan"
+                                            class="btn btn-warning btn-sm action-icon-btn btn-alasan"
                                             data-id="<?= $row['id'] ?>"
                                             data-nama="<?= htmlspecialchars($row['nama_medis']) ?>"
-                                            data-alasan="<?= htmlspecialchars($row['alasan']) ?>">
-                                            Alasan
+                                            data-alasan="<?= htmlspecialchars($row['alasan']) ?>"
+                                            title="Lihat alasan"
+                                            aria-label="Lihat alasan">
+                                            <?= ems_icon('chat-bubble-left-right', 'h-4 w-4') ?>
                                         </button>
                                     <?php else: ?>
                                         <span style="color:#9ca3af;">-</span>
@@ -468,8 +470,8 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
             <div class="modal-foot">
                 <div class="modal-actions justify-end">
-                    <button type="button" id="btnApprove" class="btn-success">Approve</button>
-                    <button type="button" id="btnReject" class="btn-danger">Reject</button>
+                    <button type="button" id="btnApprove" class="btn-success action-icon-btn" title="Approve" aria-label="Approve"><?= ems_icon('check-circle', 'h-4 w-4') ?></button>
+                    <button type="button" id="btnReject" class="btn-danger action-icon-btn" title="Reject" aria-label="Reject"><?= ems_icon('x-mark', 'h-4 w-4') ?></button>
                     <button type="button" class="btn-secondary btn-cancel" onclick="closeAlasanModal()">Batal</button>
                 </div>
             </div>

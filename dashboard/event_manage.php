@@ -109,20 +109,24 @@ function formatTanggalHari(string $tanggal): string
                                 <td><?= (int)$e['total_peserta'] ?></td>
                                 <td>
                                     <div class="action-row-nowrap">
-                                        <button class="btn-secondary btn-edit"
+                                        <button class="btn-secondary action-icon-btn btn-edit"
                                             data-id="<?= $e['id'] ?>"
                                             data-nama="<?= htmlspecialchars($e['nama_event'], ENT_QUOTES) ?>"
                                             data-tanggal="<?= $e['tanggal_event'] ?>"
                                             data-lokasi="<?= htmlspecialchars($e['lokasi'], ENT_QUOTES) ?>"
                                             data-ket="<?= htmlspecialchars($e['keterangan'], ENT_QUOTES) ?>"
-                                            data-active="<?= $e['is_active'] ?>">
-                                            Edit
+                                            data-active="<?= $e['is_active'] ?>"
+                                            title="Edit event"
+                                            aria-label="Edit event">
+                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                         </button>
 
-                                        <button type="button" class="btn-danger btn-delete"
+                                        <button type="button" class="btn-danger action-icon-btn btn-delete"
                                             data-id="<?= $e['id'] ?>"
-                                            data-nama="<?= htmlspecialchars($e['nama_event'], ENT_QUOTES) ?>">
-                                            Hapus
+                                            data-nama="<?= htmlspecialchars($e['nama_event'], ENT_QUOTES) ?>"
+                                            title="Hapus event"
+                                            aria-label="Hapus event">
+                                            <?= ems_icon('trash', 'h-4 w-4') ?>
                                         </button>
                                     </div>
                                 </td>

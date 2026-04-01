@@ -139,6 +139,14 @@ include __DIR__ . '/../partials/sidebar.php';
     .secretary-action-row select {
         white-space: nowrap;
     }
+
+    .secretary-action-icon {
+        width: 2.25rem;
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        border-radius: 0.75rem;
+    }
 </style>
 <section class="content">
     <div class="page page-shell">
@@ -323,35 +331,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td>
                                         <div class="secretary-action-row">
-                                            <button type="button" class="btn-secondary btn-sm btn-view-confidential" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-secondary btn-sm secretary-action-icon btn-view-confidential" data-record="<?= $recordPayload ?>" title="Lihat detail surat rahasia" aria-label="Lihat detail surat rahasia">
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                <span>View</span>
                                             </button>
-                                            <button type="button" class="btn-primary btn-sm btn-edit-confidential" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-primary btn-sm secretary-action-icon btn-edit-confidential" data-record="<?= $recordPayload ?>" title="Edit surat rahasia" aria-label="Edit surat rahasia">
                                                 <?= ems_icon('pencil-square', 'h-4 w-4') ?>
-                                                <span>Edit</span>
                                             </button>
-                                            <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
-                                                <?= csrfField(); ?>
-                                                <input type="hidden" name="action" value="update_confidential_status">
-                                                <input type="hidden" name="redirect_to" value="secretary_confidential_letters.php">
-                                                <input type="hidden" name="letter_id" value="<?= (int) $row['id'] ?>">
-                                                <select name="status">
-                                                    <?php foreach (['logged', 'sealed', 'distributed', 'archived'] as $status): ?>
-                                                        <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $row['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords(str_replace('_', ' ', $status)), ENT_QUOTES, 'UTF-8') ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
-                                            </form>
-
                                             <form method="POST" action="secretary_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus permanen dokumen surat rahasia ini?">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="delete_confidential_letter">
                                                 <input type="hidden" name="redirect_to" value="secretary_confidential_letters.php">
                                                 <input type="hidden" name="letter_id" value="<?= (int) $row['id'] ?>">
-                                                <button type="submit" class="btn-danger btn-sm">
+                                                <button type="submit" class="btn-danger btn-sm secretary-action-icon" title="Hapus permanen surat rahasia" aria-label="Hapus permanen surat rahasia">
                                                     <?= ems_icon('trash', 'h-4 w-4') ?>
-                                                    <span>Hapus Permanen</span>
                                                 </button>
                                             </form>
                                         </div>

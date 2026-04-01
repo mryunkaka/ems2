@@ -188,29 +188,35 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                     </small>
                                 </td>
                                 <td class="action-cell">
-                                    <button type="button" class="btn-secondary btn-sm"
-                                        onclick="editRestaurant(<?= $r['id'] ?>, '<?= htmlspecialchars($r['restaurant_name'], ENT_QUOTES) ?>', <?= $r['price_per_packet'] ?>, <?= $r['tax_percentage'] ?>, <?= $r['is_active'] ?>)">
-                                        <?= ems_icon('pencil-square', 'h-4 w-4') ?>
-                                        <span>Edit</span>
-                                    </button>
-                                    <?php if ($r['is_active']): ?>
-                                        <button type="button" class="btn-warning btn-sm"
-                                            onclick="toggleStatus(<?= $r['id'] ?>, 0)">
-                                            <?= ems_icon('lock-closed', 'h-4 w-4') ?>
-                                            <span>Nonaktifkan</span>
+                                    <div class="action-row-nowrap">
+                                        <button type="button" class="btn-secondary btn-sm action-icon-btn"
+                                            title="Edit restoran"
+                                            aria-label="Edit restoran"
+                                            onclick="editRestaurant(<?= $r['id'] ?>, '<?= htmlspecialchars($r['restaurant_name'], ENT_QUOTES) ?>', <?= $r['price_per_packet'] ?>, <?= $r['tax_percentage'] ?>, <?= $r['is_active'] ?>)">
+                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                         </button>
-                                    <?php else: ?>
-                                        <button type="button" class="btn-success btn-sm"
-                                            onclick="toggleStatus(<?= $r['id'] ?>, 1)">
-                                            <?= ems_icon('lock-open', 'h-4 w-4') ?>
-                                            <span>Aktifkan</span>
+                                        <?php if ($r['is_active']): ?>
+                                            <button type="button" class="btn-warning btn-sm action-icon-btn"
+                                                title="Nonaktifkan restoran"
+                                                aria-label="Nonaktifkan restoran"
+                                                onclick="toggleStatus(<?= $r['id'] ?>, 0)">
+                                                <?= ems_icon('lock-closed', 'h-4 w-4') ?>
+                                            </button>
+                                        <?php else: ?>
+                                            <button type="button" class="btn-success btn-sm action-icon-btn"
+                                                title="Aktifkan restoran"
+                                                aria-label="Aktifkan restoran"
+                                                onclick="toggleStatus(<?= $r['id'] ?>, 1)">
+                                                <?= ems_icon('lock-open', 'h-4 w-4') ?>
+                                            </button>
+                                        <?php endif; ?>
+                                        <button type="button" class="btn-danger btn-sm action-icon-btn"
+                                            title="Hapus restoran"
+                                            aria-label="Hapus restoran"
+                                            onclick="deleteRestaurant(<?= $r['id'] ?>)">
+                                            <?= ems_icon('trash', 'h-4 w-4') ?>
                                         </button>
-                                    <?php endif; ?>
-                                    <button type="button" class="btn-danger btn-sm"
-                                        onclick="deleteRestaurant(<?= $r['id'] ?>)">
-                                        <?= ems_icon('trash', 'h-4 w-4') ?>
-                                        <span>Hapus</span>
-                                    </button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

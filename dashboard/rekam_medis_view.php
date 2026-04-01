@@ -96,9 +96,8 @@ include __DIR__ . '/../partials/sidebar.php';
                         <span>Kembali</span>
                     </a>
                     <?php if ($canEditRecord): ?>
-                        <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-primary">
+                        <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-primary action-icon-btn" title="Edit rekam medis" aria-label="Edit rekam medis">
                             <?= ems_icon('document-text', 'h-4 w-4') ?>
-                            <span>Edit</span>
                         </a>
                     <?php endif; ?>
                 </div>

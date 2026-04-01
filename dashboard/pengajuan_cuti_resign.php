@@ -430,18 +430,15 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <td><strong><?= (int)$req['days_total'] ?> hari</strong></td>
                                             <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ic'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div></td>
                                             <td class="action-cell">
-                                                <div class="flex flex-wrap gap-2">
-                                                    <button type="button" onclick="approveCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-success btn-sm">
+                                                <div class="action-row-nowrap">
+                                                    <button type="button" onclick="approveCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-success btn-sm action-icon-btn" title="Setujui cuti" aria-label="Setujui cuti">
                                                         <?= ems_icon('check', 'h-4 w-4') ?>
-                                                        <span>Setujui</span>
                                                     </button>
-                                                    <button type="button" onclick="rejectCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm">
+                                                    <button type="button" onclick="rejectCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm action-icon-btn" title="Tolak cuti" aria-label="Tolak cuti">
                                                         <?= ems_icon('x', 'h-4 w-4') ?>
-                                                        <span>Tolak</span>
                                                     </button>
-                                                    <button type="button" onclick="viewCutiDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
+                                                    <button type="button" onclick="viewCutiDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm action-icon-btn" title="Lihat detail cuti" aria-label="Lihat detail cuti">
                                                         <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                        <span>Detail</span>
                                                     </button>
                                                 </div>
                                             </td>
@@ -492,18 +489,15 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <td><?= htmlspecialchars($req['role']) ?></td>
                                             <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ic'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div></td>
                                             <td class="action-cell">
-                                                <div class="flex flex-wrap gap-2">
-                                                    <button type="button" onclick="approveResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>', '<?= htmlspecialchars($req['full_name']) ?>')" class="btn-resign-soft btn-sm">
+                                                <div class="action-row-nowrap">
+                                                    <button type="button" onclick="approveResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>', '<?= htmlspecialchars($req['full_name']) ?>')" class="btn-resign-soft btn-sm action-icon-btn" title="Setujui resign" aria-label="Setujui resign">
                                                         <?= ems_icon('check', 'h-4 w-4') ?>
-                                                        <span>Setujui Resign</span>
                                                     </button>
-                                                    <button type="button" onclick="rejectResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm">
+                                                    <button type="button" onclick="rejectResign(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-reject-soft btn-sm action-icon-btn" title="Tolak resign" aria-label="Tolak resign">
                                                         <?= ems_icon('x', 'h-4 w-4') ?>
-                                                        <span>Tolak</span>
                                                     </button>
-                                                    <button type="button" onclick="viewResignDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm">
+                                                    <button type="button" onclick="viewResignDetail(<?= (int)$req['id'] ?>)" class="btn-secondary btn-sm action-icon-btn" title="Lihat detail resign" aria-label="Lihat detail resign">
                                                         <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                        <span>Detail</span>
                                                     </button>
                                                 </div>
                                             </td>

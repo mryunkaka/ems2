@@ -133,6 +133,14 @@ include __DIR__ . '/../partials/sidebar.php';
     .secretary-action-row select {
         white-space: nowrap;
     }
+
+    .secretary-action-icon {
+        width: 2.25rem;
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        border-radius: 0.75rem;
+    }
 </style>
 <section class="content">
     <div class="page page-shell">
@@ -313,34 +321,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td>
                                         <div class="secretary-action-row">
-                                            <button type="button" class="btn-secondary btn-sm btn-view-agenda" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-secondary btn-sm secretary-action-icon btn-view-agenda" data-record="<?= $recordPayload ?>" title="Lihat detail agenda" aria-label="Lihat detail agenda">
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                <span>View</span>
                                             </button>
-                                            <button type="button" class="btn-primary btn-sm btn-edit-agenda" data-record="<?= $recordPayload ?>">
+                                            <button type="button" class="btn-primary btn-sm secretary-action-icon btn-edit-agenda" data-record="<?= $recordPayload ?>" title="Edit agenda" aria-label="Edit agenda">
                                                 <?= ems_icon('pencil-square', 'h-4 w-4') ?>
-                                                <span>Edit</span>
                                             </button>
-                                            <form method="POST" action="secretary_action.php" class="inline-flex gap-2 items-center">
-                                                <?= csrfField(); ?>
-                                                <input type="hidden" name="action" value="update_visit_status">
-                                                <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
-                                                <input type="hidden" name="agenda_id" value="<?= (int) $agenda['id'] ?>">
-                                                <select name="status">
-                                                    <?php foreach (['scheduled', 'ongoing', 'completed', 'cancelled'] as $status): ?>
-                                                        <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $agenda['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
-                                            </form>
                                             <form method="POST" action="secretary_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus permanen agenda kunjungan ini?">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="delete_visit_agenda">
                                                 <input type="hidden" name="redirect_to" value="secretary_visit_agenda.php">
                                                 <input type="hidden" name="agenda_id" value="<?= (int) $agenda['id'] ?>">
-                                                <button type="submit" class="btn-danger btn-sm">
+                                                <button type="submit" class="btn-danger btn-sm secretary-action-icon" title="Hapus permanen agenda" aria-label="Hapus permanen agenda">
                                                     <?= ems_icon('trash', 'h-4 w-4') ?>
-                                                    <span>Hapus Permanen</span>
                                                 </button>
                                             </form>
                                         </div>

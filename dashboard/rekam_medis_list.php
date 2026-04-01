@@ -244,9 +244,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     data-modal-title="<?= htmlspecialchars('Detail Rekam Medis ' . $recordCode, ENT_QUOTES, 'UTF-8') ?>"
                                                     data-modal-subtitle="<?= htmlspecialchars($isForensicPrivate ? 'Review keseluruhan rekam medis private forensic.' : 'Review keseluruhan rekam medis pasien.', ENT_QUOTES, 'UTF-8') ?>"
                                                     data-template-id="medical-record-detail-<?= (int) $record['id'] ?>"
-                                                    title="Detail">
+                                                    title="Detail"
+                                                    aria-label="Lihat detail rekam medis">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                    <span>Detail</span>
                                                 </button>
                                                 <?php if ($canEditRecord): ?>
                                                     <a href="rekam_medis_edit.php?id=<?= $record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 

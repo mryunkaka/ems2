@@ -337,14 +337,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <div class="flex flex-wrap gap-2">
+                                        <div class="action-row-nowrap">
                                             <?php if ($canReadThis): ?>
                                                 <form method="POST" action="surat_menyurat_action.php" class="inline">
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="mark_incoming_read">
                                                     <input type="hidden" name="letter_id" value="<?= (int)$row['id'] ?>">
-                                                    <button type="submit" class="btn-success">
-                                                        <?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Tandai Dibaca</span>
+                                                    <button type="submit" class="btn-success action-icon-btn" title="Tandai surat sebagai dibaca" aria-label="Tandai surat sebagai dibaca">
+                                                        <?= ems_icon('check-circle', 'h-4 w-4') ?>
                                                     </button>
                                                 </form>
                                             <?php endif; ?>
@@ -354,8 +354,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="delete_incoming_letter">
                                                     <input type="hidden" name="letter_id" value="<?= (int)$row['id'] ?>">
-                                                    <button type="submit" class="btn-danger">
-                                                        <?= ems_icon('trash', 'h-4 w-4') ?> <span>Hapus</span>
+                                                    <button type="submit" class="btn-danger action-icon-btn" title="Hapus surat masuk" aria-label="Hapus surat masuk">
+                                                        <?= ems_icon('trash', 'h-4 w-4') ?>
                                                     </button>
                                                 </form>
                                             <?php endif; ?>
@@ -605,11 +605,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td>
                                             <?php if ($canManageRecords): ?>
-                                                <div class="flex flex-wrap gap-2">
+                                                <div class="action-row-nowrap">
                                                     <?php if ($hasOutgoingRevisionColumns): ?>
                                                         <button
                                                             type="button"
-                                                            class="btn-secondary btn-edit-outgoing"
+                                                            class="btn-secondary action-icon-btn btn-edit-outgoing"
                                                             data-id="<?= (int)$row['id'] ?>"
                                                             data-outgoing-code="<?= htmlspecialchars((string)$row['outgoing_code'], ENT_QUOTES, 'UTF-8') ?>"
                                                             data-incoming-letter-id="<?= (int)($row['incoming_letter_id'] ?? 0) ?>"
@@ -621,8 +621,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             data-appointment-time="<?= htmlspecialchars((string)($row['appointment_time'] ? substr((string)$row['appointment_time'], 0, 5) : ''), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-letter-body="<?= htmlspecialchars((string)$row['letter_body'], ENT_QUOTES, 'UTF-8') ?>"
-                                                            data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>">
-                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?> <span>Edit</span>
+                                                            data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                            title="Edit surat keluar"
+                                                            aria-label="Edit surat keluar">
+                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php else: ?>
                                                         <span class="meta-text-xs">Edit butuh SQL revisi</span>
@@ -631,8 +633,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <?= csrfField(); ?>
                                                         <input type="hidden" name="action" value="delete_outgoing_letter">
                                                         <input type="hidden" name="letter_id" value="<?= (int)$row['id'] ?>">
-                                                        <button type="submit" class="btn-danger">
-                                                            <?= ems_icon('trash', 'h-4 w-4') ?> <span>Hapus</span>
+                                                        <button type="submit" class="btn-danger action-icon-btn" title="Hapus surat keluar" aria-label="Hapus surat keluar">
+                                                            <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
                                                 </div>
@@ -690,10 +692,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['summary'], 110)) ?></div>
                                         </td>
                                         <td>
-                                            <div class="flex flex-wrap gap-2">
+                                            <div class="action-row-nowrap">
                                                 <button
                                                     type="button"
-                                                    class="btn-secondary btn-view-minutes"
+                                                    class="btn-secondary action-icon-btn btn-view-minutes"
                                                     data-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
                                                     data-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-date="<?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?>"
@@ -704,14 +706,16 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     data-decisions="<?= htmlspecialchars((string)($row['decisions'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
-                                                    data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>">
-                                                    <?= ems_icon('eye', 'h-4 w-4') ?> <span>View</span>
+                                                    data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                    title="Lihat detail notulen"
+                                                    aria-label="Lihat detail notulen">
+                                                    <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 </button>
                                                 <?php if ($canManageRecords): ?>
                                                     <?php if ($hasMinutesRevisionColumns): ?>
                                                         <button
                                                             type="button"
-                                                            class="btn-secondary btn-edit-minutes"
+                                                            class="btn-secondary action-icon-btn btn-edit-minutes"
                                                             data-id="<?= (int)$row['id'] ?>"
                                                             data-minutes-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: ''), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-incoming-letter-id="<?= (int)($row['incoming_letter_id'] ?? 0) ?>"
@@ -724,8 +728,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             data-decisions="<?= htmlspecialchars((string)($row['decisions'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
-                                                            data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>">
-                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?> <span>Edit</span>
+                                                            data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                            title="Edit notulen"
+                                                            aria-label="Edit notulen">
+                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
                                                     <?php else: ?>
                                                         <span class="meta-text-xs">Edit butuh SQL revisi</span>
@@ -734,8 +740,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <?= csrfField(); ?>
                                                         <input type="hidden" name="action" value="delete_meeting_minutes">
                                                         <input type="hidden" name="minutes_id" value="<?= (int)$row['id'] ?>">
-                                                        <button type="submit" class="btn-danger">
-                                                            <?= ems_icon('trash', 'h-4 w-4') ?> <span>Hapus</span>
+                                                        <button type="submit" class="btn-danger action-icon-btn" title="Hapus notulen" aria-label="Hapus notulen">
+                                                            <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
                                                 <?php endif; ?>

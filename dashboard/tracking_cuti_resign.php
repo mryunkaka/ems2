@@ -423,9 +423,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php if ($cutiPeriodStatus === 'active' && isset($cutiProgress)): ?>
                                             <button type="button" 
                                                     onclick="kembaliKerja(<?= (int)$u['id'] ?>, '<?= htmlspecialchars($u['full_name']) ?>', <?= (int)$cutiProgress['total'] ?>, <?= (int)$cutiProgress['used'] ?>)" 
-                                                    class="btn-success btn-sm">
+                                                    class="btn-success btn-sm action-icon-btn"
+                                                    title="Kembalikan user ke status kerja"
+                                                    aria-label="Kembalikan user ke status kerja">
                                                 <?= ems_icon('arrow-left-on-rectangle', 'h-4 w-4') ?>
-                                                <span>Kembali Kerja</span>
                                             </button>
                                         <?php else: ?>
                                             <span class="meta-text-xs">-</span>

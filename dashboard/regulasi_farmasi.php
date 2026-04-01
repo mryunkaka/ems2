@@ -177,7 +177,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td><?= (int)$p['painkiller_qty'] ?></td>
                                 <td>$<?= number_format((int)$p['price']) ?></td>
                                 <td>
-                                    <button type="button" class="btn-secondary btn-edit-package">Ubah</button>
+                                    <button type="button" class="btn-secondary action-icon-btn btn-edit-package" title="Ubah paket farmasi" aria-label="Ubah paket farmasi"><?= ems_icon('pencil-square', 'h-4 w-4') ?></button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -377,7 +377,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         pkgIfaks.value,
                         pkgPainkiller.value,
                         '$' + Number(pkgPrice.value).toLocaleString(),
-                        '<button type="button" class="btn-secondary btn-edit-package">Ubah</button>'
+                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-package" title="Ubah paket farmasi" aria-label="Ubah paket farmasi"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
                     ]).draw(false);
 
                     showAlert('success', 'Paket berhasil diperbarui');
@@ -407,7 +407,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         Number(item.ifaks_qty || 0),
                         Number(item.painkiller_qty || 0),
                         '$' + Number(item.price || 0).toLocaleString(),
-                        '<button type="button" class="btn-secondary btn-edit-package">Ubah</button>'
+                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-package" title="Ubah paket farmasi" aria-label="Ubah paket farmasi"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
                     ]).draw(false).node();
 
                     rowNode.dataset.id = item.id || '';

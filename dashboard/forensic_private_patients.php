@@ -197,11 +197,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <div class="inline-flex gap-2 items-center">
                                         <button
                                             type="button"
-                                            class="btn-primary btn-sm btn-forensic-detail"
+                                            class="btn-primary btn-sm action-icon-btn btn-forensic-detail"
                                             data-modal-title="<?= htmlspecialchars('Detail Kasus ' . (string) $case['case_code'], ENT_QUOTES, 'UTF-8') ?>"
-                                            data-modal-subtitle="<?= htmlspecialchars('Review keseluruhan data pasien private dan administrasi forensic.', ENT_QUOTES, 'UTF-8') ?>">
+                                            data-modal-subtitle="<?= htmlspecialchars('Review keseluruhan data pasien private dan administrasi forensic.', ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Lihat detail kasus forensic"
+                                            aria-label="Lihat detail kasus forensic">
                                             <?= ems_icon('eye', 'h-4 w-4') ?>
-                                            <span>Detail</span>
                                         </button>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
@@ -213,14 +214,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= $case['status'] === $status ? 'selected' : '' ?>><?= htmlspecialchars(ucwords($status), ENT_QUOTES, 'UTF-8') ?></option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <button type="submit" class="btn-secondary btn-sm">Status</button>
+                                            <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status kasus forensic" aria-label="Update status kasus forensic"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                         </form>
                                         <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen kasus forensic ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_private_patient">
                                             <input type="hidden" name="redirect_to" value="forensic_private_patients.php">
                                             <input type="hidden" name="case_id" value="<?= (int) $case['id'] ?>">
-                                            <button type="submit" class="btn-error btn-sm">Hapus</button>
+                                            <button type="submit" class="btn-error btn-sm action-icon-btn" title="Hapus kasus forensic" aria-label="Hapus kasus forensic"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                         </form>
                                         <div class="hidden forensic-detail-template">
                                             <div class="forensic-detail-shell">

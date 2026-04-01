@@ -172,7 +172,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td><?= $p['ifaks_qty'] ?></td>
                                 <td><?= $p['painkiller_qty'] ?></td>
                                 <td>$<?= number_format($p['price']) ?></td>
-                                <td><button class="btn-secondary btn-edit-package">Edit</button></td>
+                                <td><button class="btn-secondary action-icon-btn btn-edit-package" type="button" title="Edit paket" aria-label="Edit paket"><?= ems_icon('pencil-square', 'h-4 w-4') ?></button></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -223,7 +223,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </td>
                                 <td><?= $r['payment_type'] ?></td>
                                 <td><?= $r['is_active'] ? 'Aktif' : 'Nonaktif' ?></td>
-                                <td><button class="btn-secondary btn-edit-reg">Edit</button></td>
+                                <td><button class="btn-secondary action-icon-btn btn-edit-reg" type="button" title="Edit regulasi" aria-label="Edit regulasi"><?= ems_icon('pencil-square', 'h-4 w-4') ?></button></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -475,7 +475,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         pkgIfaks.value,
                         pkgPainkiller.value,
                         '$' + Number(pkgPrice.value).toLocaleString(),
-                        '<button class="btn-secondary btn-edit-package">Edit</button>'
+                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-package" title="Edit paket" aria-label="Edit paket"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
                     ]).draw(false);
 
                     showAlert('success', 'Data package berhasil diperbarui', 'ajaxAlert');
@@ -534,7 +534,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         harga,
                         regPayment.value,
                         regActive.checked ? 'Aktif' : 'Nonaktif',
-                        '<button class="btn-secondary btn-edit-reg">Edit</button>'
+                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Edit regulasi" aria-label="Edit regulasi"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
                     ]).draw(false);
 
                     showAlert('success', 'Data regulasi berhasil diperbarui', 'regAlert');

@@ -128,6 +128,7 @@ if (ems_can_access_division_menu($division, 'Forensic')) {
 if (ems_can_access_division_menu($division, 'Secretary')) {
     $groupedNav['Secretary'] = [
         sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
+        sidebarItem('/dashboard/secretary_file_registry.php', 'secretary_file_registry.php', 'Data File Divisi', 'archive-box'),
         sidebarItem('/dashboard/secretary_visit_agenda.php', 'secretary_visit_agenda.php', 'Agenda Kunjungan Divisi', 'calendar-days'),
         sidebarItem('/dashboard/secretary_internal_coordination.php', 'secretary_internal_coordination.php', 'Koordinasi Internal Divisi', 'user-group'),
         sidebarItem('/dashboard/secretary_confidential_letters.php', 'secretary_confidential_letters.php', 'Rekap Surat Rahasia', 'inbox'),

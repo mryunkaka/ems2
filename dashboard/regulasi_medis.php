@@ -88,7 +88,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td><?= htmlspecialchars($r['payment_type']) ?></td>
                                 <td><?= $r['is_active'] ? 'Aktif' : 'Nonaktif' ?></td>
                                 <td>
-                                    <button type="button" class="btn-secondary btn-edit-reg">Ubah</button>
+                                    <button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Ubah regulasi medis" aria-label="Ubah regulasi medis"><?= ems_icon('pencil-square', 'h-4 w-4') ?></button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -270,7 +270,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         harga,
                         regPayment.value,
                         regActive.checked ? 'Aktif' : 'Nonaktif',
-                        '<button type="button" class="btn-secondary btn-edit-reg">Ubah</button>'
+                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Ubah regulasi medis" aria-label="Ubah regulasi medis"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
                     ]).draw(false);
 
                     showAlert('success', 'Data regulasi berhasil diperbarui');

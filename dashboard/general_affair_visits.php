@@ -224,7 +224,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <div class="flex flex-wrap gap-2">
+                                        <div class="action-row-nowrap">
                                             <form method="POST" action="general_affair_visits_action.php" class="inline-flex gap-2 items-center">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="update_status">
@@ -235,10 +235,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <option value="<?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?>" <?= ($row['status'] === $status) ? 'selected' : '' ?>><?= htmlspecialchars(ucwords(str_replace('_', ' ', $status)), ENT_QUOTES, 'UTF-8') ?></option>
                                                     <?php endforeach; ?>
                                                 </select>
-                                                <button type="submit" class="btn-secondary btn-sm">Status</button>
+                                                <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status visit" aria-label="Update status visit"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                             </form>
 
-                                            <button type="button" class="btn-secondary btn-sm btn-edit-visit"
+                                            <button type="button" class="btn-secondary btn-sm action-icon-btn btn-edit-visit"
                                                 data-id="<?= (int)$row['id'] ?>"
                                                 data-visitor-name="<?= htmlspecialchars((string)$row['visitor_name'], ENT_QUOTES, 'UTF-8') ?>"
                                                 data-institution-name="<?= htmlspecialchars((string)($row['institution_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
@@ -249,8 +249,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 data-end-time="<?= htmlspecialchars($row['end_time'] ? substr((string)$row['end_time'], 0, 5) : '', ENT_QUOTES, 'UTF-8') ?>"
                                                 data-location="<?= htmlspecialchars((string)$row['location'], ENT_QUOTES, 'UTF-8') ?>"
                                                 data-pic-user-id="<?= (int)$row['pic_user_id'] ?>"
-                                                data-notes="<?= htmlspecialchars((string)($row['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                                                Edit
+                                                data-notes="<?= htmlspecialchars((string)($row['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                title="Edit visit"
+                                                aria-label="Edit visit">
+                                                <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                             </button>
 
                                             <form method="POST" action="general_affair_visits_action.php" class="inline js-delete-visit" data-confirm="Yakin ingin menghapus visit ini?">
@@ -258,7 +260,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <input type="hidden" name="action" value="delete_visit">
                                                 <input type="hidden" name="redirect_to" value="general_affair_visits.php">
                                                 <input type="hidden" name="visit_id" value="<?= (int)$row['id'] ?>">
-                                                <button type="submit" class="btn-danger btn-sm">Hapus</button>
+                                                <button type="submit" class="btn-danger btn-sm action-icon-btn" title="Hapus visit" aria-label="Hapus visit"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                             </form>
                                         </div>
                                     </td>

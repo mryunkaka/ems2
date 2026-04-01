@@ -1509,7 +1509,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-        <h1 class="page-title">Rekap Farmasi EMS 2</h1>
+        <h1 class="page-title">Rekap Farmasi EMS</h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
@@ -1567,14 +1567,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </div>
 
                                 <?php if ($canAcknowledgeIncomingLetter): ?>
-                                    <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                                    <div class="action-row-nowrap md:justify-end">
                                         <form method="POST" action="surat_menyurat_action.php" class="inline">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="mark_incoming_read">
                                             <input type="hidden" name="letter_id" value="<?= (int)$letter['id'] ?>">
                                             <input type="hidden" name="redirect_to" value="rekap_farmasi.php">
-                                            <button type="submit" class="btn-success">
-                                                <?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Tandai Dibaca</span>
+                                            <button type="submit" class="btn-success action-icon-btn" title="Tandai surat sebagai dibaca" aria-label="Tandai surat sebagai dibaca">
+                                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
                                             </button>
                                         </form>
                                     </div>

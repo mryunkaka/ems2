@@ -256,21 +256,25 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                                 <!-- AKSI -->
                                 <td class="action-cell">
-                                    <?php if ($canPayReimbursement && $r['status'] === 'submitted'): ?>
-                                        <button class="btn-success"
-                                            onclick="payReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')">
-                                            <?= ems_icon('banknotes', 'h-4 w-4') ?>
-                                            <span>Dibayarkan</span>
-                                        </button>
-                                    <?php endif; ?>
+                                    <div class="action-row-nowrap">
+                                        <?php if ($canPayReimbursement && $r['status'] === 'submitted'): ?>
+                                            <button class="btn-success action-icon-btn"
+                                                onclick="payReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')"
+                                                title="Tandai reimbursement sudah dibayar"
+                                                aria-label="Tandai reimbursement sudah dibayar">
+                                                <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                                            </button>
+                                        <?php endif; ?>
 
-                                    <?php if (!empty($isDirector) && $isDirector): ?>
-                                        <button class="btn-danger"
-                                            onclick="deleteReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')">
-                                            <?= ems_icon('trash', 'h-4 w-4') ?>
-                                            <span>Hapus</span>
-                                        </button>
-                                    <?php endif; ?>
+                                        <?php if (!empty($isDirector) && $isDirector): ?>
+                                            <button class="btn-danger action-icon-btn"
+                                                onclick="deleteReimbursement('<?= htmlspecialchars($r['reimbursement_code']) ?>')"
+                                                title="Hapus reimbursement"
+                                                aria-label="Hapus reimbursement">
+                                                <?= ems_icon('trash', 'h-4 w-4') ?>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
 
                                     <?php if (
                                         ($userRole === 'staff' || $r['status'] !== 'submitted')

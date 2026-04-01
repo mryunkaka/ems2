@@ -119,6 +119,31 @@ try {
             $counterpartyName,
             'SR'
         );
+    } elseif ($type === 'secretary_file') {
+        $fileCategory = strtolower(trim((string)($_GET['file_category'] ?? $_POST['file_category'] ?? 'other')));
+
+        if ($dateValue === '') {
+            throw new Exception('Tanggal file wajib diisi.');
+        }
+
+        if ($counterpartyName === '') {
+            throw new Exception('Pihak terkait wajib diisi.');
+        }
+
+        if (!in_array($fileCategory, ['proposal', 'cooperation', 'contract', 'report', 'other'], true)) {
+            throw new Exception('Jenis file tidak valid.');
+        }
+
+        $code = surat_generate_formatted_code(
+            $pdo,
+            'secretary_file_records',
+            'file_code',
+            'document_date',
+            surat_secretary_file_type_prefix($fileCategory),
+            $dateValue,
+            $counterpartyName,
+            'SR'
+        );
     } else {
         throw new Exception('Tipe surat tidak dikenali.');
     }

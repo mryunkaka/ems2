@@ -239,15 +239,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><?= htmlspecialchars(date('d-m-Y H:i', strtotime((string)$row['created_at']))) ?></td>
                                     <td><?= htmlspecialchars(date('d-m-Y H:i', strtotime((string)$row['updated_at']))) ?></td>
                                     <td class="table-actions">
-                                        <button type="button" class="btn-secondary btn-edit-blacklist">Ubah</button>
-                                        <form method="post" class="inline">
-                                            <input type="hidden" name="action" value="toggle">
-                                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                            <input type="hidden" name="target_state" value="<?= (int)$row['is_active'] === 1 ? '0' : '1' ?>">
-                                            <button type="submit" class="<?= (int)$row['is_active'] === 1 ? 'btn-warning' : 'btn-success' ?>">
-                                                <?= (int)$row['is_active'] === 1 ? 'Nonaktifkan' : 'Aktifkan' ?>
-                                            </button>
-                                        </form>
+                                        <div class="action-row-nowrap">
+                                            <button type="button" class="btn-secondary action-icon-btn btn-edit-blacklist" title="Ubah data blacklist" aria-label="Ubah data blacklist"><?= ems_icon('pencil-square', 'h-4 w-4') ?></button>
+                                            <form method="post" class="inline">
+                                                <input type="hidden" name="action" value="toggle">
+                                                <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                                <input type="hidden" name="target_state" value="<?= (int)$row['is_active'] === 1 ? '0' : '1' ?>">
+                                                <button type="submit" class="<?= (int)$row['is_active'] === 1 ? 'btn-warning' : 'btn-success' ?> action-icon-btn" title="<?= (int)$row['is_active'] === 1 ? 'Nonaktifkan blacklist' : 'Aktifkan blacklist' ?>" aria-label="<?= (int)$row['is_active'] === 1 ? 'Nonaktifkan blacklist' : 'Aktifkan blacklist' ?>">
+                                                    <?= ems_icon((int)$row['is_active'] === 1 ? 'lock-closed' : 'lock-open', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
