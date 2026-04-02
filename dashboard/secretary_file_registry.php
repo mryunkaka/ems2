@@ -156,6 +156,37 @@ include __DIR__ . '/../partials/sidebar.php';
         padding: 0;
         border-radius: 0.75rem;
     }
+
+    .file-preview-frame {
+        width: 100%;
+        height: min(72vh, 900px);
+        border: 0;
+        border-radius: 1rem;
+        background: #f8fafc;
+    }
+
+    .file-preview-image {
+        display: block;
+        max-width: 100%;
+        max-height: min(72vh, 900px);
+        margin: 0 auto;
+        border-radius: 1rem;
+        object-fit: contain;
+        background: #f8fafc;
+    }
+
+    .file-preview-doc {
+        max-height: min(72vh, 900px);
+        overflow: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        background: #f8fafc;
+        padding: 1rem;
+        color: #0f172a;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 14px/1.7 Consolas, "Courier New", monospace;
+    }
 </style>
 <section class="content">
     <div class="page page-shell">
@@ -184,19 +215,12 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="grid gap-4 md:grid-cols-2">
             <div class="card card-section">
                 <div class="card-header">Input Data File</div>
-                <p class="meta-text mb-4">Pilih jenis file lalu simpan nomor, judul, pihak terkait, kata kunci, dan lampiran foto.</p>
+                <p class="meta-text mb-4">Pilih jenis file lalu simpan nomor, judul, pihak terkait, kata kunci, dan lampiran dokumen. Lampiran yang diterima hanya DOC, DOCX, PDF, JPG, dan PNG.</p>
 
                 <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="save_file_record">
                     <input type="hidden" name="redirect_to" value="secretary_file_registry.php">
-
-                    <label>Nomor File</label>
-                    <div class="flex gap-2">
-                        <input type="text" name="file_code" id="addFileCode" maxlength="100" placeholder="Otomatis muncul setelah field wajib lengkap">
-                        <button type="button" class="btn-secondary whitespace-nowrap" id="addFileCodeAutoBtn">Auto</button>
-                    </div>
-                    <div class="meta-text-xs mt-1">Nomor file otomatis bisa diedit manual.</div>
 
                     <div class="row-form-2">
                         <div>
@@ -211,7 +235,10 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div>
                             <label id="addFileReferenceLabel">Nomor Dokumen</label>
-                            <input type="text" name="reference_number" id="addFileReference" required>
+                            <div class="flex gap-2">
+                                <input type="text" name="reference_number" id="addFileReference" required>
+                                <button type="button" class="btn-secondary whitespace-nowrap" id="addFileReferenceAutoBtn">Auto</button>
+                            </div>
                         </div>
                     </div>
 
@@ -247,17 +274,17 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="doc-upload-wrapper m-0">
                         <div class="doc-upload-header">
                             <label class="text-sm font-semibold text-slate-900">Lampiran File</label>
-                            <span class="badge-muted-mini">Opsional, bisa beberapa foto</span>
+                            <span class="badge-muted-mini">Opsional, bisa beberapa file</span>
                         </div>
                         <div class="doc-upload-input">
                             <label for="fileAttachments" class="file-upload-label">
                                 <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih lampiran</strong>
-                                    <small>JPG / PNG, multi file</small>
+                                    <small>Hanya DOC, DOCX, PDF, JPG, PNG. Gambar akan dikompres otomatis.</small>
                                 </span>
                             </label>
-                            <input type="file" id="fileAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                            <input type="file" id="fileAttachments" name="attachments[]" accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/jpeg,image/png" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="fileAttachments"></div>
                             <div id="fileAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
@@ -280,9 +307,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <table id="secretaryFileTable" class="table-custom">
                         <thead>
                             <tr>
-                                <th>Nomor File</th>
+                                <th>Nomor Dokumen</th>
                                 <th>Jenis</th>
-                                <th>Referensi</th>
                                 <th>Detail File</th>
                                 <th>Tanggal</th>
                                 <th>Status</th>
@@ -298,7 +324,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php
                                 $recordPayload = secretaryFileJsonAttr([
                                     'id' => (int) $row['id'],
-                                    'file_code' => (string) $row['file_code'],
                                     'file_category' => (string) $row['file_category'],
                                     'file_category_label' => (string) $categoryMeta['label'],
                                     'reference_number' => (string) $row['reference_number'],
@@ -313,9 +338,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                 ]);
                                 ?>
                                 <tr>
-                                    <td><?= htmlspecialchars((string) $row['file_code'], ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><span class="<?= htmlspecialchars($categoryMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($categoryMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><?= htmlspecialchars((string) $row['reference_number'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><span class="<?= htmlspecialchars($categoryMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($categoryMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td>
                                         <strong><?= htmlspecialchars((string) $row['title'], ENT_QUOTES, 'UTF-8') ?></strong>
                                         <div class="meta-text-xs"><?= htmlspecialchars((string) $row['counterparty_name'], ENT_QUOTES, 'UTF-8') ?></div>
@@ -332,7 +356,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <a href="#"
                                                         class="doc-badge btn-preview-doc"
                                                         data-src="/<?= htmlspecialchars(ltrim((string) $attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
-                                                        data-title="<?= htmlspecialchars((string) ($attachment['file_name'] ?: ('Lampiran ' . $row['file_code'])), ENT_QUOTES, 'UTF-8') ?>">
+                                                        data-title="<?= htmlspecialchars((string) ($attachment['file_name'] ?: ('Lampiran ' . $row['reference_number'])), ENT_QUOTES, 'UTF-8') ?>">
                                                         <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                         <span><?= htmlspecialchars((string) ($attachment['file_name'] ?: 'Lampiran'), ENT_QUOTES, 'UTF-8') ?></span>
                                                     </a>
@@ -384,10 +408,9 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
         <div class="modal-content">
             <div class="grid gap-3 md:grid-cols-2">
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor File</div><div id="fileRecordViewCode" class="mt-1 font-semibold text-slate-900">-</div></div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Dokumen</div><div id="fileRecordViewReference" class="mt-1 font-semibold text-slate-900">-</div></div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Status</div><div id="fileRecordViewStatus" class="mt-1 font-semibold text-slate-900">-</div></div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Jenis File</div><div id="fileRecordViewCategory" class="mt-1 font-semibold text-slate-900">-</div></div>
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Nomor Dokumen</div><div id="fileRecordViewReference" class="mt-1 font-semibold text-slate-900">-</div></div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Judul File</div><div id="fileRecordViewTitle" class="mt-1 font-semibold text-slate-900">-</div></div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Pihak Terkait</div><div id="fileRecordViewCounterparty" class="mt-1 font-semibold text-slate-900">-</div></div>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3"><div class="meta-text-xs">Tanggal Dokumen</div><div id="fileRecordViewDate" class="mt-1 font-semibold text-slate-900">-</div></div>
@@ -429,13 +452,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="hidden" name="redirect_to" value="secretary_file_registry.php">
                 <input type="hidden" name="record_id" id="editFileRecordId">
 
-                <label>Nomor File</label>
-                <div class="flex gap-2">
-                    <input type="text" name="file_code" id="editFileCode" maxlength="100">
-                    <button type="button" class="btn-secondary whitespace-nowrap" id="editFileCodeAutoBtn">Auto</button>
-                </div>
-                <div class="meta-text-xs mt-1">Nomor file bisa diubah manual.</div>
-
                 <div class="row-form-2">
                     <div>
                         <label>Jenis File</label>
@@ -449,7 +465,10 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                     <div>
                         <label id="editFileReferenceLabel">Nomor Dokumen</label>
-                        <input type="text" name="reference_number" id="editFileReference" required>
+                        <div class="flex gap-2">
+                            <input type="text" name="reference_number" id="editFileReference" required>
+                            <button type="button" class="btn-secondary whitespace-nowrap" id="editFileReferenceAutoBtn">Auto</button>
+                        </div>
                     </div>
                 </div>
 
@@ -496,10 +515,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                             <span class="file-text">
                                 <strong>Pilih lampiran</strong>
-                                <small>JPG / PNG, multi file</small>
+                                <small>Hanya DOC, DOCX, PDF, JPG, PNG. Gambar akan dikompres otomatis.</small>
                             </span>
                         </label>
-                        <input type="file" id="editFileAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                        <input type="file" id="editFileAttachments" name="attachments[]" accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/jpeg,image/png" class="sr-only" multiple>
                         <div class="file-selected-name" data-for="editFileAttachments"></div>
                         <div id="editFileAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                     </div>
@@ -514,9 +533,32 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
+<div id="fileAttachmentPreviewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('paper-clip', 'h-5 w-5 text-primary') ?>
+                <span id="fileAttachmentPreviewTitle">Preview Lampiran</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <div id="fileAttachmentPreviewBody"></div>
+            <div id="fileAttachmentPreviewMessage" class="alert alert-warning hidden mt-4"></div>
+            <div class="modal-actions mt-4">
+                <a href="#" id="fileAttachmentPreviewDownload" class="btn-secondary hidden" target="_blank" rel="noopener noreferrer">Buka File Asli</a>
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const generateCodeUrl = '<?= htmlspecialchars(ems_url('/ajax/generate_surat_code.php'), ENT_QUOTES, 'UTF-8') ?>';
+    const filePreviewUrl = '<?= htmlspecialchars(ems_url('/ajax/secretary_file_preview.php'), ENT_QUOTES, 'UTF-8') ?>';
     const fileTypeConfig = {
         proposal: {
             referenceLabel: 'Nomor Proposal',
@@ -785,7 +827,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function setupMultiImagePreview(inputId, previewId) {
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, function (char) {
+            return ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[char] || char;
+        });
+    }
+
+    function setupMultiFilePreview(inputId, previewId) {
         const input = document.getElementById(inputId);
         const preview = document.getElementById(previewId);
         const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
@@ -817,19 +871,23 @@ document.addEventListener('DOMContentLoaded', function () {
             nameBox.classList.remove('hidden');
 
             files.forEach(function (file) {
-                if (!String(file.type || '').startsWith('image/')) {
-                    return;
-                }
-
-                const url = URL.createObjectURL(file);
-                objectUrls.push(url);
-
                 const item = document.createElement('div');
                 item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
-                item.innerHTML = `
-                    <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
-                    <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
-                `;
+
+                if (String(file.type || '').startsWith('image/')) {
+                    const url = URL.createObjectURL(file);
+                    objectUrls.push(url);
+                    item.innerHTML = `
+                        <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
+                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                    `;
+                } else {
+                    item.innerHTML = `
+                        <div class="flex h-28 items-center justify-center rounded-xl bg-slate-100 px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Dokumen akan disimpan sebagai file asli</div>
+                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                    `;
+                }
+
                 preview.appendChild(item);
             });
         });
@@ -882,13 +940,114 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    const fileAttachmentPreviewModal = document.getElementById('fileAttachmentPreviewModal');
+    const fileAttachmentPreviewTitle = document.getElementById('fileAttachmentPreviewTitle');
+    const fileAttachmentPreviewBody = document.getElementById('fileAttachmentPreviewBody');
+    const fileAttachmentPreviewMessage = document.getElementById('fileAttachmentPreviewMessage');
+    const fileAttachmentPreviewDownload = document.getElementById('fileAttachmentPreviewDownload');
+
+    function resetAttachmentPreview() {
+        if (fileAttachmentPreviewTitle) {
+            fileAttachmentPreviewTitle.textContent = 'Preview Lampiran';
+        }
+        if (fileAttachmentPreviewBody) {
+            fileAttachmentPreviewBody.innerHTML = '';
+        }
+        if (fileAttachmentPreviewMessage) {
+            fileAttachmentPreviewMessage.textContent = '';
+            fileAttachmentPreviewMessage.classList.add('hidden');
+        }
+        if (fileAttachmentPreviewDownload) {
+            fileAttachmentPreviewDownload.href = '#';
+            fileAttachmentPreviewDownload.classList.add('hidden');
+        }
+    }
+
+    function showAttachmentPreviewMessage(message, src) {
+        if (fileAttachmentPreviewBody) {
+            fileAttachmentPreviewBody.innerHTML = '';
+        }
+        if (fileAttachmentPreviewMessage) {
+            fileAttachmentPreviewMessage.textContent = message || 'Preview file tidak tersedia.';
+            fileAttachmentPreviewMessage.classList.remove('hidden');
+        }
+        if (fileAttachmentPreviewDownload && src) {
+            fileAttachmentPreviewDownload.href = src;
+            fileAttachmentPreviewDownload.classList.remove('hidden');
+        }
+    }
+
+    function renderAttachmentPreview(payload) {
+        resetAttachmentPreview();
+
+        const title = payload && payload.title ? payload.title : 'Preview Lampiran';
+        const src = payload && payload.src ? payload.src : '';
+        if (fileAttachmentPreviewTitle) {
+            fileAttachmentPreviewTitle.textContent = title;
+        }
+        if (fileAttachmentPreviewDownload && src) {
+            fileAttachmentPreviewDownload.href = src;
+            fileAttachmentPreviewDownload.classList.remove('hidden');
+        }
+
+        if (!fileAttachmentPreviewBody) {
+            return;
+        }
+
+        if (payload.type === 'image' && src) {
+            fileAttachmentPreviewBody.innerHTML = '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(title) + '" class="file-preview-image">';
+            return;
+        }
+
+        if (payload.type === 'pdf' && src) {
+            fileAttachmentPreviewBody.innerHTML = '<iframe src="' + escapeHtml(src) + '#toolbar=0&navpanes=0&scrollbar=1" class="file-preview-frame" loading="lazy"></iframe>';
+            return;
+        }
+
+        if (payload.type === 'doc') {
+            fileAttachmentPreviewBody.innerHTML = '<div class="file-preview-doc">' + escapeHtml(payload.content || 'Preview dokumen tidak tersedia.') + '</div>';
+            return;
+        }
+
+        showAttachmentPreviewMessage('Preview file tidak tersedia untuk lampiran ini.', src);
+    }
+
+    async function openAttachmentPreview(src, title) {
+        if (!src) {
+            return;
+        }
+
+        resetAttachmentPreview();
+        if (fileAttachmentPreviewTitle) {
+            fileAttachmentPreviewTitle.textContent = title || 'Preview Lampiran';
+        }
+        openModal(fileAttachmentPreviewModal);
+
+        try {
+            const url = new URL(filePreviewUrl, window.location.origin);
+            url.searchParams.set('path', src.replace(/^\/+/, ''));
+            url.searchParams.set('name', title || 'Lampiran');
+
+            const response = await fetch(url.toString(), { credentials: 'same-origin' });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                showAttachmentPreviewMessage(payload.message || 'Gagal memuat preview lampiran.', src);
+                return;
+            }
+
+            renderAttachmentPreview(payload);
+        } catch (_) {
+            showAttachmentPreviewMessage('Gagal memuat preview lampiran.', src);
+        }
+    }
+
     if (window.jQuery && $.fn.DataTable) {
         $('#secretaryFileTable').DataTable({
             language: {
                 url: '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>'
             },
             pageLength: 10,
-            order: [[4, 'desc']]
+            order: [[3, 'desc']]
         });
     }
 
@@ -918,10 +1077,10 @@ document.addEventListener('DOMContentLoaded', function () {
         descriptionInputId: 'editFileDescription',
         keywordsInputId: 'editFileKeywords'
     });
-    const editFileCodeControl = setupAutoCode({
+    const editFileReferenceControl = setupAutoCode({
         type: 'secretary_file',
-        codeInputId: 'editFileCode',
-        autoButtonId: 'editFileCodeAutoBtn',
+        codeInputId: 'editFileReference',
+        autoButtonId: 'editFileReferenceAutoBtn',
         dateInputId: 'editFileDate',
         counterpartyInputId: 'editFileCounterparty',
         requiredInputIds: ['editFileDate', 'editFileCounterparty', 'editFileCategory'],
@@ -936,13 +1095,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     attachModalClose(fileRecordViewModal);
     attachModalClose(fileRecordEditModal);
+    attachModalClose(fileAttachmentPreviewModal);
     addFileFormState.apply();
     editFileFormState.apply();
 
     setupAutoCode({
         type: 'secretary_file',
-        codeInputId: 'addFileCode',
-        autoButtonId: 'addFileCodeAutoBtn',
+        codeInputId: 'addFileReference',
+        autoButtonId: 'addFileReferenceAutoBtn',
         dateInputId: 'addFileDate',
         counterpartyInputId: 'addFileCounterparty',
         requiredInputIds: ['addFileDate', 'addFileCounterparty', 'addFileCategory'],
@@ -955,14 +1115,20 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    setupMultiImagePreview('fileAttachments', 'fileAttachmentsPreview');
-    setupMultiImagePreview('editFileAttachments', 'editFileAttachmentsPreview');
+    setupMultiFilePreview('fileAttachments', 'fileAttachmentsPreview');
+    setupMultiFilePreview('editFileAttachments', 'editFileAttachmentsPreview');
 
     document.addEventListener('click', function (event) {
+        const previewLink = event.target.closest('.btn-preview-doc');
+        if (previewLink) {
+            event.preventDefault();
+            openAttachmentPreview(previewLink.dataset.src || '', previewLink.dataset.title || 'Lampiran');
+            return;
+        }
+
         const viewButton = event.target.closest('.btn-view-file-record');
         if (viewButton) {
             const record = parseRecord(viewButton);
-            document.getElementById('fileRecordViewCode').textContent = record.file_code || '-';
             document.getElementById('fileRecordViewStatus').textContent = record.status_label || record.status || '-';
             document.getElementById('fileRecordViewCategory').textContent = record.file_category_label || record.file_category || '-';
             document.getElementById('fileRecordViewReference').textContent = record.reference_number || '-';
@@ -980,12 +1146,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (editButton) {
             const record = parseRecord(editButton);
             document.getElementById('editFileRecordId').value = record.id || '';
-            document.getElementById('editFileCode').value = record.file_code || '';
-            document.getElementById('editFileCode').dataset.generatedCode = '';
-            document.getElementById('editFileCode').dataset.autoMode = 'false';
             document.getElementById('editFileCategory').value = record.file_category || 'other';
             editFileFormState.apply();
             document.getElementById('editFileReference').value = record.reference_number || '';
+            document.getElementById('editFileReference').dataset.generatedCode = '';
+            document.getElementById('editFileReference').dataset.autoMode = 'false';
             document.getElementById('editFileTitle').value = record.title || '';
             document.getElementById('editFileCounterparty').value = record.counterparty_name || '';
             document.getElementById('editFileDate').value = record.document_date || '';
@@ -994,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('editFileDescription').value = record.description || '';
             renderAttachmentBadges(document.getElementById('editFileCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
             resetMultiImagePreview('editFileAttachments', 'editFileAttachmentsPreview');
-            editFileCodeControl.refresh(false);
+            editFileReferenceControl.refresh(false);
             openModal(fileRecordEditModal);
         }
     });
@@ -1013,6 +1178,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.key === 'Escape') {
             closeModal(fileRecordViewModal);
             closeModal(fileRecordEditModal);
+            closeModal(fileAttachmentPreviewModal);
         }
     });
 });

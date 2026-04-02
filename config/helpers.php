@@ -1415,3 +1415,485 @@ function uploadAndCompressFile(array $file, string $folder, int $maxSize = 30000
 
     return null;
 }
+
+function emsCreateTempDirectory(string $prefix = 'ems_'): ?string
+{
+    $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);
+    $path = $base . DIRECTORY_SEPARATOR . $prefix . bin2hex(random_bytes(8));
+
+    if (@mkdir($path, 0700, true)) {
+        return $path;
+    }
+
+    return null;
+}
+
+function emsRemoveDirectory(string $path): void
+{
+    if (!is_dir($path)) {
+        return;
+    }
+
+    $items = scandir($path);
+    if ($items === false) {
+        return;
+    }
+
+    foreach ($items as $item) {
+        if ($item === '.' || $item === '..') {
+            continue;
+        }
+
+        $target = $path . DIRECTORY_SEPARATOR . $item;
+        if (is_dir($target)) {
+            emsRemoveDirectory($target);
+            continue;
+        }
+
+        @unlink($target);
+    }
+
+    @rmdir($path);
+}
+
+function emsFindHeadlessBrowserPath(): ?string
+{
+    static $resolved = false;
+    static $browserPath = null;
+
+    if ($resolved) {
+        return $browserPath;
+    }
+
+    $resolved = true;
+    $candidates = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            $browserPath = $candidate;
+            return $browserPath;
+        }
+    }
+
+    foreach (['chrome', 'msedge'] as $command) {
+        $whereOutput = [];
+        $status = 1;
+        @exec('where ' . escapeshellarg($command) . ' 2>NUL', $whereOutput, $status);
+        if ($status === 0 && !empty($whereOutput[0]) && is_file(trim((string) $whereOutput[0]))) {
+            $browserPath = trim((string) $whereOutput[0]);
+            return $browserPath;
+        }
+    }
+
+    return null;
+}
+
+function emsFilePathToBrowserUrl(string $path): string
+{
+    $realPath = realpath($path) ?: $path;
+    $normalized = str_replace('\\', '/', $realPath);
+
+    if (preg_match('/^[A-Za-z]:\//', $normalized) === 1) {
+        [$drive, $rest] = explode(':/', $normalized, 2);
+        $segments = array_map('rawurlencode', array_filter(explode('/', $rest), static fn($segment): bool => $segment !== ''));
+        return 'file:///' . $drive . ':/' . implode('/', $segments);
+    }
+
+    $segments = array_map('rawurlencode', array_filter(explode('/', ltrim($normalized, '/')), static fn($segment): bool => $segment !== ''));
+    return 'file:///' . implode('/', $segments);
+}
+
+function emsRenderUrlToPng(string $url, string $targetPath, int $width = 1400, int $height = 2000): bool
+{
+    $browser = emsFindHeadlessBrowserPath();
+    if ($browser === null) {
+        return false;
+    }
+
+    $tempProfile = emsCreateTempDirectory('ems_browser_');
+    if ($tempProfile === null) {
+        return false;
+    }
+
+    $command = implode(' ', [
+        escapeshellarg($browser),
+        '--headless=new',
+        '--disable-gpu',
+        '--force-color-profile=srgb',
+        '--disable-features=AutoDarkMode,WebContentsForceDark',
+        '--blink-settings=darkMode=0',
+        '--hide-scrollbars',
+        '--allow-file-access-from-files',
+        '--disable-software-rasterizer',
+        '--run-all-compositor-stages-before-draw',
+        '--virtual-time-budget=3000',
+        '--user-data-dir=' . escapeshellarg($tempProfile),
+        '--window-size=' . (int) $width . ',' . (int) $height,
+        '--screenshot=' . escapeshellarg($targetPath),
+        escapeshellarg($url),
+    ]);
+
+    $output = [];
+    $status = 1;
+    @exec($command . ' 2>&1', $output, $status);
+    emsRemoveDirectory($tempProfile);
+
+    return $status === 0 && is_file($targetPath) && filesize($targetPath) > 0;
+}
+
+function emsBuildBrowserPreviewHtml(string $title, string $embeddedUrl): string
+{
+    $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+    $safeUrl = htmlspecialchars($embeddedUrl, ENT_QUOTES, 'UTF-8');
+
+    return '<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="color-scheme" content="light">'
+        . '<title>' . $safeTitle . '</title><style>'
+        . 'html,body{margin:0;padding:0;background:#ffffff;color:#0f172a;color-scheme:light;width:100%;height:100%;overflow:hidden;}'
+        . '.frame{width:1400px;height:2000px;margin:0 auto;background:#ffffff;}'
+        . 'embed,iframe{display:block;width:100%;height:100%;border:0;background:#ffffff;}'
+        . '</style></head><body><div class="frame"><embed src="' . $safeUrl . '" type="application/pdf"></div></body></html>';
+}
+
+function emsSaveImageResourceAsPng($image, string $targetPath, int $maxWidth = 1400): bool
+{
+    if (!is_resource($image) && !($image instanceof GdImage)) {
+        return false;
+    }
+
+    $width = imagesx($image);
+    $height = imagesy($image);
+    $target = $image;
+
+    if ($width > $maxWidth) {
+        $newWidth = $maxWidth;
+        $newHeight = (int) round(($height / max($width, 1)) * $newWidth);
+        $resized = imagecreatetruecolor($newWidth, $newHeight);
+        imagealphablending($resized, false);
+        imagesavealpha($resized, true);
+        $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
+        imagefill($resized, 0, 0, $transparent);
+        imagecopyresampled($resized, $image, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+        $target = $resized;
+    }
+
+    imagesavealpha($target, true);
+    $saved = imagepng($target, $targetPath, 7);
+
+    if ($target !== $image) {
+        imagedestroy($target);
+    }
+
+    return $saved;
+}
+
+function emsConvertImageToPng(string $sourcePath, string $targetPath): bool
+{
+    $info = @getimagesize($sourcePath);
+    if (!$info) {
+        return false;
+    }
+
+    $mime = (string) ($info['mime'] ?? '');
+    $image = null;
+
+    if ($mime === 'image/jpeg') {
+        $image = @imagecreatefromjpeg($sourcePath);
+    } elseif ($mime === 'image/png') {
+        $image = @imagecreatefrompng($sourcePath);
+    } elseif ($mime === 'image/gif' && function_exists('imagecreatefromgif')) {
+        $image = @imagecreatefromgif($sourcePath);
+    } elseif ($mime === 'image/webp' && function_exists('imagecreatefromwebp')) {
+        $image = @imagecreatefromwebp($sourcePath);
+    } elseif ($mime === 'image/bmp' && function_exists('imagecreatefrombmp')) {
+        $image = @imagecreatefrombmp($sourcePath);
+    }
+
+    if (!$image) {
+        return false;
+    }
+
+    $saved = emsSaveImageResourceAsPng($image, $targetPath);
+    imagedestroy($image);
+
+    return $saved;
+}
+
+function emsExtractDocxText(string $sourcePath): string
+{
+    $zip = new ZipArchive();
+    if ($zip->open($sourcePath) !== true) {
+        return '';
+    }
+
+    $documentXml = $zip->getFromName('word/document.xml') ?: '';
+    $zip->close();
+
+    if ($documentXml === '') {
+        return '';
+    }
+
+    $documentXml = preg_replace('/<\/w:p>/', "</w:p>\n", $documentXml) ?? $documentXml;
+    $text = trim(html_entity_decode(strip_tags($documentXml), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+
+    return preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+}
+
+function emsExtractOdtText(string $sourcePath): string
+{
+    $zip = new ZipArchive();
+    if ($zip->open($sourcePath) !== true) {
+        return '';
+    }
+
+    $contentXml = $zip->getFromName('content.xml') ?: '';
+    $zip->close();
+
+    if ($contentXml === '') {
+        return '';
+    }
+
+    $contentXml = preg_replace('/<\/text:p>/', "</text:p>\n", $contentXml) ?? $contentXml;
+    $text = trim(html_entity_decode(strip_tags($contentXml), ENT_QUOTES | ENT_XML1, 'UTF-8'));
+
+    return preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+}
+
+function emsExtractLegacyDocText(string $sourcePath): string
+{
+    $content = @file_get_contents($sourcePath);
+    if ($content === false || $content === '') {
+        return '';
+    }
+
+    $content = preg_replace("/[\x00-\x08\x0B\x0C\x0E-\x1F]/", ' ', $content) ?? $content;
+    $content = preg_replace('/[^[:print:]\r\n\t]/u', ' ', $content) ?? $content;
+    $content = preg_replace('/\s{2,}/', ' ', $content) ?? $content;
+
+    return trim($content);
+}
+
+function emsBuildTextPreviewHtml(string $title, string $content): string
+{
+    $safeTitle = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
+    $safeContent = htmlspecialchars($content !== '' ? $content : 'Dokumen tidak memiliki teks yang dapat ditampilkan.', ENT_QUOTES, 'UTF-8');
+
+    return '<!doctype html><html lang="id"><head><meta charset="utf-8"><title>' . $safeTitle . '</title><style>'
+        . 'body{margin:0;background:#e2e8f0;font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#0f172a;}'
+        . '.sheet{width:1100px;min-height:1500px;margin:0 auto;padding:56px 64px;background:#fff;box-sizing:border-box;}'
+        . 'h1{margin:0 0 24px;font-size:28px;line-height:1.3;}'
+        . 'pre{margin:0;white-space:pre-wrap;word-break:break-word;font:16px/1.7 Consolas,"Courier New",monospace;color:#1e293b;}'
+        . '</style></head><body><div class="sheet"><h1>' . $safeTitle . '</h1><pre>' . $safeContent . '</pre></div></body></html>';
+}
+
+function emsConvertDocumentToPng(string $sourcePath, string $originalName, string $targetPath): bool
+{
+    $extension = strtolower((string) pathinfo($originalName !== '' ? $originalName : $sourcePath, PATHINFO_EXTENSION));
+    $mime = (string) (mime_content_type($sourcePath) ?: '');
+
+    if (str_starts_with($mime, 'image/')) {
+        return emsConvertImageToPng($sourcePath, $targetPath);
+    }
+
+    if (in_array($extension, ['html', 'htm'], true)) {
+        return emsRenderUrlToPng(emsFilePathToBrowserUrl($sourcePath), $targetPath);
+    }
+
+    if ($extension === 'pdf') {
+        $tempDir = emsCreateTempDirectory('ems_pdf_preview_');
+        if ($tempDir === null) {
+            return false;
+        }
+
+        $htmlPath = $tempDir . DIRECTORY_SEPARATOR . 'preview.html';
+        $pdfUrl = emsFilePathToBrowserUrl($sourcePath) . '#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH';
+        $written = @file_put_contents($htmlPath, emsBuildBrowserPreviewHtml($originalName !== '' ? $originalName : basename($sourcePath), $pdfUrl));
+        if ($written === false) {
+            emsRemoveDirectory($tempDir);
+            return false;
+        }
+
+        $rendered = emsRenderUrlToPng(emsFilePathToBrowserUrl($htmlPath), $targetPath);
+        emsRemoveDirectory($tempDir);
+        return $rendered;
+    }
+
+    $textContent = '';
+
+    if (in_array($extension, ['txt', 'log', 'csv', 'json', 'xml', 'md', 'ini'], true) || str_starts_with($mime, 'text/')) {
+        $textContent = (string) @file_get_contents($sourcePath);
+    } elseif ($extension === 'docx') {
+        $textContent = emsExtractDocxText($sourcePath);
+    } elseif ($extension === 'odt') {
+        $textContent = emsExtractOdtText($sourcePath);
+    } elseif ($extension === 'doc') {
+        $textContent = emsExtractLegacyDocText($sourcePath);
+    }
+
+    if ($textContent === '') {
+        return false;
+    }
+
+    $tempDir = emsCreateTempDirectory('ems_preview_');
+    if ($tempDir === null) {
+        return false;
+    }
+
+    $htmlPath = $tempDir . DIRECTORY_SEPARATOR . 'preview.html';
+    $written = @file_put_contents($htmlPath, emsBuildTextPreviewHtml($originalName !== '' ? $originalName : basename($sourcePath), $textContent));
+    if ($written === false) {
+        emsRemoveDirectory($tempDir);
+        return false;
+    }
+
+    $rendered = emsRenderUrlToPng(emsFilePathToBrowserUrl($htmlPath), $targetPath);
+    emsRemoveDirectory($tempDir);
+
+    return $rendered;
+}
+
+function uploadFileAsPngPreview(array $file, string $folder, int $uploadMaxSize = 10000000): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    if ((int) ($file['size'] ?? 0) > $uploadMaxSize) {
+        return null;
+    }
+
+    $sourcePath = (string) ($file['tmp_name'] ?? '');
+    if ($sourcePath === '' || !is_uploaded_file($sourcePath)) {
+        return null;
+    }
+
+    $baseDir = __DIR__ . '/../storage/' . $folder;
+    if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+        return null;
+    }
+
+    $filename = uniqid('', true) . '_' . time() . '.png';
+    $targetPath = $baseDir . '/' . $filename;
+
+    if (!emsConvertDocumentToPng($sourcePath, (string) ($file['name'] ?? ''), $targetPath)) {
+        return null;
+    }
+
+    return 'storage/' . $folder . '/' . $filename;
+}
+
+function emsUploadedFileExtension(array $file): string
+{
+    return strtolower((string) pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+}
+
+function emsUploadedFileMime(array $file): string
+{
+    $sourcePath = (string) ($file['tmp_name'] ?? '');
+    if ($sourcePath === '' || !is_file($sourcePath)) {
+        return '';
+    }
+
+    $finfo = function_exists('finfo_open') ? @finfo_open(FILEINFO_MIME_TYPE) : false;
+    if ($finfo) {
+        $mime = (string) (@finfo_file($finfo, $sourcePath) ?: '');
+        @finfo_close($finfo);
+        if ($mime !== '') {
+            return strtolower($mime);
+        }
+    }
+
+    return strtolower((string) (@mime_content_type($sourcePath) ?: ''));
+}
+
+function emsIsAllowedSecretaryAttachment(array $file): bool
+{
+    $extension = emsUploadedFileExtension($file);
+    $mime = emsUploadedFileMime($file);
+
+    if (in_array($extension, ['jpg', 'jpeg'], true)) {
+        return $mime === 'image/jpeg';
+    }
+
+    if ($extension === 'png') {
+        return $mime === 'image/png';
+    }
+
+    if ($extension === 'pdf') {
+        return in_array($mime, ['application/pdf', 'application/x-pdf'], true);
+    }
+
+    if ($extension === 'doc') {
+        return in_array($mime, [
+            'application/msword',
+            'application/octet-stream',
+            'application/x-ole-storage',
+            'application/ole',
+            'application/vnd.ms-office',
+        ], true);
+    }
+
+    if ($extension === 'docx') {
+        return in_array($mime, [
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/zip',
+            'application/octet-stream',
+        ], true);
+    }
+
+    return false;
+}
+
+function emsStoreUploadedFileOriginal(array $file, string $folder, int $uploadMaxSize = 10000000): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    if ((int) ($file['size'] ?? 0) > $uploadMaxSize) {
+        return null;
+    }
+
+    $sourcePath = (string) ($file['tmp_name'] ?? '');
+    if ($sourcePath === '' || !is_uploaded_file($sourcePath)) {
+        return null;
+    }
+
+    $extension = emsUploadedFileExtension($file);
+    if ($extension === '') {
+        return null;
+    }
+
+    $baseDir = __DIR__ . '/../storage/' . $folder;
+    if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+        return null;
+    }
+
+    $filename = uniqid('', true) . '_' . time() . '.' . $extension;
+    $targetPath = $baseDir . '/' . $filename;
+
+    if (!@move_uploaded_file($sourcePath, $targetPath)) {
+        return null;
+    }
+
+    return 'storage/' . $folder . '/' . $filename;
+}
+
+function uploadSecretaryAttachmentFile(array $file, string $folder, int $imageMaxSize = 400000, int $uploadMaxSize = 10000000): ?string
+{
+    if (!emsIsAllowedSecretaryAttachment($file)) {
+        return null;
+    }
+
+    $extension = emsUploadedFileExtension($file);
+
+    if (in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+        return uploadAndCompressFile($file, $folder, $imageMaxSize, $uploadMaxSize);
+    }
+
+    return emsStoreUploadedFileOriginal($file, $folder, $uploadMaxSize);
+}

@@ -220,9 +220,9 @@ function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $
 
     try {
         foreach (array_values($files) as $index => $file) {
-            $path = uploadAndCompressFile($file, $config['folder'], 400000, 5000000);
+            $path = uploadSecretaryAttachmentFile($file, $config['folder'], 400000, 10000000);
             if (!$path) {
-                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Hanya menerima DOC, DOCX, PDF, JPG, atau PNG dengan ukuran maksimal 10MB.');
             }
 
             $storedPaths[] = $path;
@@ -767,9 +767,9 @@ try {
     }
 
     if ($action === 'save_file_record') {
-        $requestedFileCode = trim((string) ($_POST['file_code'] ?? ''));
         $fileCategory = secretaryAssertAllowed(trim((string) ($_POST['file_category'] ?? 'other')), ['proposal', 'cooperation', 'contract', 'report', 'other'], 'Jenis file tidak valid.');
         $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
+        $requestedFileCode = $referenceNumber;
         $title = trim((string) ($_POST['title'] ?? ''));
         $counterpartyName = trim((string) ($_POST['counterparty_name'] ?? ''));
         $documentDate = secretaryDate(trim((string) ($_POST['document_date'] ?? '')), 'Tanggal file tidak valid.');
@@ -833,9 +833,9 @@ try {
 
     if ($action === 'edit_file_record') {
         $recordId = (int) ($_POST['record_id'] ?? 0);
-        $requestedFileCode = trim((string) ($_POST['file_code'] ?? ''));
         $fileCategory = secretaryAssertAllowed(trim((string) ($_POST['file_category'] ?? 'other')), ['proposal', 'cooperation', 'contract', 'report', 'other'], 'Jenis file tidak valid.');
         $referenceNumber = trim((string) ($_POST['reference_number'] ?? ''));
+        $requestedFileCode = $referenceNumber;
         $title = trim((string) ($_POST['title'] ?? ''));
         $counterpartyName = trim((string) ($_POST['counterparty_name'] ?? ''));
         $documentDate = secretaryDate(trim((string) ($_POST['document_date'] ?? '')), 'Tanggal file tidak valid.');
