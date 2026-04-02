@@ -118,7 +118,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <!-- KTP (WAJIB) -->
                         <div>
-                            <label class="form-label">KTP <span class="text-danger">*</span></label>
+                            <label class="form-label"><?= $isForensicPrivate ? 'KTP Pasien' : 'KTP' ?> <span class="text-danger">*</span></label>
                             <div class="file-upload-wrapper">
                                 <input type="file" id="ktp_file" name="ktp_file"
                                     accept="image/png,image/jpeg" hidden required
@@ -136,12 +136,12 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                         </div>
 
-                        <!-- MRI (OPSIONAL) -->
+                        <!-- MRI -->
                         <div>
-                            <label class="form-label">Foto MRI (Opsional)</label>
+                            <label class="form-label">Foto MRI<?= $isForensicPrivate ? '' : ' (Opsional)' ?><?= $isForensicPrivate ? ' <span class="text-danger">*</span>' : '' ?></label>
                             <div class="file-upload-wrapper">
                                 <input type="file" id="mri_file" name="mri_file"
-                                    accept="image/png,image/jpeg" hidden
+                                    accept="image/png,image/jpeg" hidden <?= $isForensicPrivate ? 'required' : '' ?>
                                     @change="previewImage($event, 'mri_preview')" />
                                 <label for="mri_file" class="file-upload-label">
                                     <div class="preview-container h-48 flex items-center justify-center bg-gray-50 rounded border border-gray-200"

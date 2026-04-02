@@ -106,13 +106,18 @@ try {
     }
     
     // =====================
-    // 3. FILE UPLOAD MRI (OPSIONAL)
+    // 3. FILE UPLOAD MRI
     // =====================
     
     $mriPath = null;
     if (isset($_FILES['mri_file']) && $_FILES['mri_file']['error'] === UPLOAD_ERR_OK) {
         $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
-        // MRI optional, jadi jika gagal upload tetap lanjut
+        if (!$mriPath && $visibilityScope === 'forensic_private') {
+            throw new Exception('Gagal upload Foto MRI. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi 5MB.');
+        }
+        // MRI tetap optional untuk mode standard
+    } elseif ($visibilityScope === 'forensic_private') {
+        throw new Exception('Upload Foto MRI wajib dilakukan.');
     }
     
     // =====================
