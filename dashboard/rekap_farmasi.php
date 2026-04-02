@@ -611,6 +611,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ===============================
                 $rawConsumerName = trim((string)($_POST['consumer_name'] ?? ''));
                 $consumerName = farmasiConsumerNameDisplay($rawConsumerName);
+                $submittedIdentityId = (int)($_POST['identity_id'] ?? 0);
                 $mergeTargets = [];
 
 
@@ -987,6 +988,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 implode(', ', $itemsText),
                                 dollar($logTotalPrice)
                             );
+
+                            if ($submittedIdentityId > 0) {
+                                $description .= ' [otomatis foto]';
+                            }
 
                             $logActivity = $pdo->prepare("
                                 INSERT INTO farmasi_activities 
@@ -1382,6 +1387,47 @@ $stmtSales = $pdo->prepare($sqlSales);
 $stmtSales->execute($paramsSales);
 $filteredSales = $stmtSales->fetchAll(PDO::FETCH_ASSOC);
 
+$consumerIdentityPhotoMap = [];
+$identityMasterReady = ems_table_exists($pdo, 'identity_master');
+
+if ($identityMasterReady && !empty($filteredSales)) {
+    $citizenIdsForLookup = [];
+
+    foreach ($filteredSales as $saleRow) {
+        $rawConsumerName = trim((string)($saleRow['consumer_name'] ?? ''));
+        if (!ems_looks_like_citizen_id($rawConsumerName)) {
+            continue;
+        }
+
+        $normalizedCitizenId = ems_normalize_citizen_id($rawConsumerName);
+        if ($normalizedCitizenId !== '') {
+            $citizenIdsForLookup[$normalizedCitizenId] = $normalizedCitizenId;
+        }
+    }
+
+    if ($citizenIdsForLookup !== []) {
+        $placeholders = implode(',', array_fill(0, count($citizenIdsForLookup), '?'));
+        $stmtIdentityLookup = $pdo->prepare("
+            SELECT id, citizen_id, image_path
+            FROM identity_master
+            WHERE citizen_id IN ($placeholders)
+        ");
+        $stmtIdentityLookup->execute(array_values($citizenIdsForLookup));
+
+        foreach ($stmtIdentityLookup->fetchAll(PDO::FETCH_ASSOC) as $identityRow) {
+            $normalizedCitizenId = ems_normalize_citizen_id((string)($identityRow['citizen_id'] ?? ''));
+            if ($normalizedCitizenId === '') {
+                continue;
+            }
+
+            $consumerIdentityPhotoMap[$normalizedCitizenId] = [
+                'identity_id' => (int)($identityRow['id'] ?? 0),
+                'has_photo' => trim((string)($identityRow['image_path'] ?? '')) !== '',
+            ];
+        }
+    }
+}
+
 // ======================================================
 // EXPORT EXCEL (FINAL - SATU KALI SAJA)
 // ======================================================
@@ -1687,20 +1733,38 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" name="tx_token" value="<?= $_SESSION['tx_token'] ?>">
                     <!-- Tambahan: flag untuk override batas harian -->
                     <input type="hidden" name="force_overlimit" id="force_overlimit" value="0">
+                    <input type="hidden" name="identity_id" id="identity_id" value="">
+                    <input type="hidden" id="ocr_citizen_id" value="">
+                    <input type="hidden" id="ocr_first_name" value="">
+                    <input type="hidden" id="ocr_last_name" value="">
                     <div class="row-form-2">
                         <div class="col">
                             <label><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
-                            <input
-                                type="text"
-                                name="consumer_name"
-                                id="consumerNameInput"
-                                list="consumer-list"
-                                placeholder="RH39IQLC"
-                                autocomplete="off"
-                                autocapitalize="characters"
-                                spellcheck="false"
-                                style="text-transform: uppercase;"
-                                required>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input
+                                    type="text"
+                                    name="consumer_name"
+                                    id="consumerNameInput"
+                                    list="consumer-list"
+                                    placeholder="RH39IQLC"
+                                    autocomplete="off"
+                                    autocapitalize="characters"
+                                    spellcheck="false"
+                                    style="text-transform: uppercase;flex:1;"
+                                    required>
+                                <button
+                                    type="button"
+                                    class="btn-secondary"
+                                    onclick="openIdentityScan()"
+                                    title="Foto KTP untuk deteksi otomatis">
+                                    <?= ems_icon('camera', 'h-4 w-4') ?>
+                                </button>
+                            </div>
+                            <div id="ocrIdentityInfo" class="notice-box notice-info" style="display:none;margin-top:8px;">
+                                <strong>Hasil scan KTP</strong><br>
+                                <span id="ocrIdentityName">-</span><br>
+                                <span id="ocrIdentityCitizenId">-</span>
+                            </div>
                             <div id="similarConsumerBox" class="consumer-similar-box">
                             </div>
                             <datalist id="consumer-list">
@@ -1708,6 +1772,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <option value="<?= htmlspecialchars($cn) ?>"></option>
                                 <?php endforeach; ?>
                             </datalist>
+                            <small>
+                                Tombol kamera bersifat opsional. Bisa scan/foto KTP untuk isi otomatis, atau tetap ketik manual Citizen ID.
+                            </small>
                             <small>
                                 Input wajib memakai Citizen ID Konsumen, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
                             </small>
@@ -1955,146 +2022,147 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
             </div>
 
-            <!-- TOTAL TRANSAKSI HARI INI -->
-            <div class="card">
-                <h3 class="section-title-compact">
-                    <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
-                </h3>
+            <div class="grid items-start gap-4 lg:grid-cols-3">
+                <!-- TOTAL TRANSAKSI HARI INI -->
+                <div class="card mb-0">
+                    <h3 class="section-title-compact">
+                        <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
+                    </h3>
 
-                <p class="muted-copy-tight">
-                    Rekap otomatis <strong>khusus hari ini</strong> (reset setiap pergantian tanggal).
-                </p>
-
-                <?php if ($todayStats && $todayStats['total_transaksi'] > 0): ?>
-                    <div class="table-wrapper table-wrapper-sm">
-                        <table class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>Total Transaksi</th>
-                                    <th>Total Harga</th>
-                                    <th>Bonus (40%)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><?= (int)$todayStats['total_transaksi'] ?></td>
-                                    <td><?= dollar((int)$todayStats['total_harga']) ?></td>
-                                    <td><?= dollar((int)$todayStats['bonus_40']) ?></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php else: ?>
-                    <p class="empty-copy">
-                        Belum ada transaksi hari ini.
+                    <p class="muted-copy-tight">
+                        Rekap otomatis <strong>khusus hari ini</strong> (reset setiap pergantian tanggal).
                     </p>
-                <?php endif; ?>
-            </div>
 
-            <!-- Card Filter & Transaksi -->
-            <div class="card">
-                <div class="card-header">Filter Tanggal & Transaksi</div>
-
-                <!-- Form Filter (GET) -->
-                <form method="get" class="mb-2.5">
-                    <div class="row-form-2">
-                        <div class="col">
-                            <label>Rentang Tanggal</label>
-                            <select name="range" id="rangeSelect">
-                                <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
-                                <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
-                                <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
-
-                                <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
-                                    <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
-                                </option>
-
-                                <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
-                                    <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
-                                </option>
-
-                                <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
-                                    <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
-                                </option>
-
-                                <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
-                                    <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
-                                </option>
-
-                                <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
-                            </select>
-
+                    <?php if ($todayStats && $todayStats['total_transaksi'] > 0): ?>
+                        <div class="table-wrapper table-wrapper-sm">
+                            <table class="table-custom">
+                                <thead>
+                                    <tr>
+                                        <th>Total Transaksi</th>
+                                        <th>Total Harga</th>
+                                        <th>Bonus (40%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><?= (int)$todayStats['total_transaksi'] ?></td>
+                                        <td><?= dollar((int)$todayStats['total_harga']) ?></td>
+                                        <td><?= dollar((int)$todayStats['bonus_40']) ?></td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                    </div>
-                    <div class="row-form-2 hidden" id="customDateRow">
-                        <div class="col">
-                            <label>Dari tanggal</label>
-                            <input type="date" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
-                        </div>
-                        <div class="col">
-                            <label>Sampai tanggal</label>
-                            <input type="date" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
-                        </div>
-                    </div>
-
-                    <?php if ($showAll): ?>
-                        <!-- Kalau lagi mode "tampilkan semua data", pertahankan saat ganti filter -->
-                        <input type="hidden" name="show_all" value="1">
+                    <?php else: ?>
+                        <p class="empty-copy">
+                            Belum ada transaksi hari ini.
+                        </p>
                     <?php endif; ?>
+                </div>
 
-                    <div class="mt-2">
-                        <button type="submit" class="btn-secondary">Terapkan Filter</button>
-                    </div>
-                </form>
+                <!-- Card Filter & Transaksi -->
+                <div class="card mb-0">
+                    <div class="card-header">Filter Tanggal & Transaksi</div>
 
-                <p class="muted-copy-tight">
-                    Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
-                </p>
-            </div>
+                    <!-- Form Filter (GET) -->
+                    <form method="get" class="mb-2.5">
+                        <div class="row-form-2">
+                            <div class="col">
+                                <label>Rentang Tanggal</label>
+                                <select name="range" id="rangeSelect">
+                                    <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
+                                    <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
+                                    <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
 
-            <!-- Rekapan Bonus Medis (berdasarkan filter tanggal) -->
-            <div class="card">
-                <h3 class="section-title-compact">Rekapan Bonus Medis (berdasarkan filter tanggal)</h3>
-                <p class="muted-copy-tight">
-                    Ditampilkan berdasarkan <strong>petugas medis yang sedang aktif</strong> pada rentang tanggal aktif.
-                </p>
+                                    <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
+                                        <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
+                                    </option>
 
-                <?php if ($singleMedicStats): ?>
-                    <div class="table-wrapper table-wrapper-sm table-section-spacer">
-                        <table class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Nama Medis</th>
-                                    <th>Jabatan</th>
-                                    <th>Total Transaksi</th>
-                                    <th>Total Item</th>
-                                    <th>Total Harga</th>
-                                    <th>Bonus (40%)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>1</td>
-                                    <td><?= htmlspecialchars($singleMedicStats['medic_name']) ?></td>
-                                    <td><?= htmlspecialchars($singleMedicStats['medic_jabatan']) ?></td>
-                                    <td><?= (int)$singleMedicStats['total_transaksi'] ?></td>
-                                    <td><?= (int)$singleMedicStats['total_item'] ?></td>
-                                    <td><?= dollar((int)$singleMedicStats['total_harga']) ?></td>
-                                    <td><?= dollar((int)$singleMedicStats['bonus_40']) ?></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php else: ?>
-                    <p class="empty-copy mb-3">
-                        Belum ada data untuk petugas medis aktif pada rentang tanggal yang dipilih.
+                                    <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
+                                        <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
+                                    </option>
+
+                                    <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
+                                        <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
+                                    </option>
+
+                                    <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
+                                        <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
+                                    </option>
+
+                                    <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
+                                </select>
+
+                            </div>
+                        </div>
+                        <div class="row-form-2 hidden" id="customDateRow">
+                            <div class="col">
+                                <label>Dari tanggal</label>
+                                <input type="date" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
+                            </div>
+                            <div class="col">
+                                <label>Sampai tanggal</label>
+                                <input type="date" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
+                            </div>
+                        </div>
+
+                        <?php if ($showAll): ?>
+                            <input type="hidden" name="show_all" value="1">
+                        <?php endif; ?>
+
+                        <div class="mt-2">
+                            <button type="submit" class="btn-secondary">Terapkan Filter</button>
+                        </div>
+                    </form>
+
+                    <p class="muted-copy-tight">
+                        Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
                     </p>
-                <?php endif; ?>
+                </div>
+
+                <!-- Rekapan Bonus Medis (berdasarkan filter tanggal) -->
+                <div class="card mb-0">
+                    <h3 class="section-title-compact">Rekapan Bonus Medis (berdasarkan filter tanggal)</h3>
+                    <p class="muted-copy-tight">
+                        Ditampilkan berdasarkan <strong>petugas medis yang sedang aktif</strong> pada rentang tanggal aktif.
+                    </p>
+
+                    <?php if ($singleMedicStats): ?>
+                        <div class="table-wrapper table-wrapper-sm table-section-spacer overflow-x-auto" style="overflow-x:auto;">
+                            <table class="table-custom" style="min-width: 920px; width: max-content;">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Nama Medis</th>
+                                        <th>Jabatan</th>
+                                        <th>Total Transaksi</th>
+                                        <th>Total Item</th>
+                                        <th>Total Harga</th>
+                                        <th>Bonus (40%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>1</td>
+                                        <td><?= htmlspecialchars($singleMedicStats['medic_name']) ?></td>
+                                        <td><?= htmlspecialchars($singleMedicStats['medic_jabatan']) ?></td>
+                                        <td><?= (int)$singleMedicStats['total_transaksi'] ?></td>
+                                        <td><?= (int)$singleMedicStats['total_item'] ?></td>
+                                        <td><?= dollar((int)$singleMedicStats['total_harga']) ?></td>
+                                        <td><?= dollar((int)$singleMedicStats['bonus_40']) ?></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php else: ?>
+                        <p class="empty-copy mb-3">
+                            Belum ada data untuk petugas medis aktif pada rentang tanggal yang dipilih.
+                        </p>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <!-- Tabel Transaksi dengan DataTables + checkbox -->
-            <div class="card">
+            <div class="card mt-4">
                 <div class="switcher-bar">
                     <div>
                         <h3 class="section-title-tight">Transaksi (sesuai filter)</h3>
@@ -2167,6 +2235,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <tbody>
                                     <?php foreach ($filteredSales as $s): ?>
                                         <?php $bonus = (int)floor(((int)$s['price']) * 0.4); ?>
+                                        <?php
+                                        $consumerDisplayName = ems_looks_like_citizen_id((string)$s['consumer_name'])
+                                            ? ems_normalize_citizen_id((string)$s['consumer_name'])
+                                            : trim((string)$s['consumer_name']);
+                                        $consumerIdentityMeta = $consumerIdentityPhotoMap[$consumerDisplayName] ?? null;
+                                        ?>
                                         <tr>
                                             <td class="table-align-center">
                                                 <?php if ($medicName && $s['medic_name'] === $medicName): ?>
@@ -2181,7 +2255,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <td data-order="<?= strtotime($s['created_at']) ?>">
                                                 <?= formatTanggalID($s['created_at']) ?>
                                             </td>
-                                            <td><?= htmlspecialchars(ems_looks_like_citizen_id($s['consumer_name']) ? ems_normalize_citizen_id($s['consumer_name']) : trim((string)$s['consumer_name'])) ?></td>
+                                            <td>
+                                                <?php if (!empty($consumerIdentityMeta['has_photo']) && !empty($consumerIdentityMeta['identity_id'])): ?>
+                                                    <button
+                                                        type="button"
+                                                        class="btn-link"
+                                                        onclick="openIdentityViewModal(<?= (int)$consumerIdentityMeta['identity_id'] ?>)"
+                                                        title="Lihat foto KTP konsumen">
+                                                        <?= htmlspecialchars($consumerDisplayName) ?>
+                                                    </button>
+                                                <?php else: ?>
+                                                    <?= htmlspecialchars($consumerDisplayName) ?>
+                                                <?php endif; ?>
+                                            </td>
                                             <td><?= htmlspecialchars($s['medic_name']) ?></td>
                                             <td><?= htmlspecialchars($s['medic_jabatan']) ?></td>
                                             <td><?= htmlspecialchars($s['package_name']) ?></td>
@@ -2438,6 +2524,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 pkg_bandage: getValue('pkg_bandage'),
                 pkg_ifaks: getValue('pkg_ifaks'),
                 pkg_painkiller: getValue('pkg_painkiller'),
+                identity_id: getValue('identity_id'),
+                ocr_citizen_id: getValue('ocr_citizen_id'),
+                ocr_first_name: getValue('ocr_first_name'),
+                ocr_last_name: getValue('ocr_last_name'),
             };
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -2462,9 +2552,71 @@ include __DIR__ . '/../partials/sidebar.php';
                         el.value = data[id];
                     }
                 });
+                ['identity_id', 'ocr_citizen_id', 'ocr_first_name', 'ocr_last_name'].forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (typeof data[id] !== 'undefined') {
+                        el.value = data[id];
+                    }
+                });
+                updateOcrIdentityInfo();
             } catch (e) {
                 // abaikan
             }
+        }
+
+        function updateOcrIdentityInfo() {
+            const infoBox = document.getElementById('ocrIdentityInfo');
+            const nameEl = document.getElementById('ocrIdentityName');
+            const citizenEl = document.getElementById('ocrIdentityCitizenId');
+            const firstName = (document.getElementById('ocr_first_name') || {}).value || '';
+            const lastName = (document.getElementById('ocr_last_name') || {}).value || '';
+            const citizenId = (document.getElementById('ocr_citizen_id') || {}).value || '';
+            const fullName = (firstName + ' ' + lastName).trim();
+
+            if (!infoBox || !nameEl || !citizenEl) {
+                return;
+            }
+
+            if (!fullName && !citizenId) {
+                infoBox.style.display = 'none';
+                nameEl.textContent = '-';
+                citizenEl.textContent = '-';
+                return;
+            }
+
+            nameEl.textContent = fullName || 'Nama tidak terdeteksi';
+            citizenEl.textContent = citizenId ? ('Citizen ID: ' + citizenId) : 'Citizen ID tidak terdeteksi';
+            infoBox.style.display = 'block';
+        }
+
+        function setOcrIdentityPayload(payload) {
+            const identityIdInput = document.getElementById('identity_id');
+            const citizenIdInput = document.getElementById('ocr_citizen_id');
+            const firstNameInput = document.getElementById('ocr_first_name');
+            const lastNameInput = document.getElementById('ocr_last_name');
+            const consumerInput = document.getElementById('consumerNameInput');
+
+            if (identityIdInput) identityIdInput.value = payload.identity_id || '';
+            if (citizenIdInput) citizenIdInput.value = formatConsumerName(payload.citizen_id || '');
+            if (firstNameInput) firstNameInput.value = payload.first_name || '';
+            if (lastNameInput) lastNameInput.value = payload.last_name || '';
+            if (consumerInput && payload.citizen_id) {
+                consumerInput.value = formatConsumerName(payload.citizen_id);
+            }
+
+            updateOcrIdentityInfo();
+            updateSimilarConsumerBox();
+            saveFormState();
+            recalcTotals();
+        }
+
+        function clearOcrIdentityPayload() {
+            ['identity_id', 'ocr_citizen_id', 'ocr_first_name', 'ocr_last_name'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            updateOcrIdentityInfo();
         }
 
         function getSelectedPackageMode() {
@@ -2961,6 +3113,7 @@ include __DIR__ . '/../partials/sidebar.php';
             const btnSubmit = document.getElementById('btnSubmit');
 
             if (consumerInput) consumerInput.value = '';
+            clearOcrIdentityPayload();
 
             ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(id => {
                 const el = document.getElementById(id);
@@ -3298,6 +3451,10 @@ include __DIR__ . '/../partials/sidebar.php';
                         const formattedValue = formatConsumerName(consumerInput.value);
                         if (consumerInput.value !== formattedValue) {
                             consumerInput.value = formattedValue;
+                        }
+                        const ocrCitizenIdInput = document.getElementById('ocr_citizen_id');
+                        if (ocrCitizenIdInput && ocrCitizenIdInput.value && consumerInput.value !== ocrCitizenIdInput.value) {
+                            clearOcrIdentityPayload();
                         }
                         saveFormState();
                         updateSimilarConsumerBox();
@@ -4125,7 +4282,79 @@ include __DIR__ . '/../partials/sidebar.php';
 
         })();
     </script>
+    <div id="identityModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-lg p-0">
+            <div class="modal-head px-5 py-4">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('document-text', 'h-5 w-5') ?> <span>Scan Identitas</span>
+                </div>
+                <button type="button" onclick="closeIdentityScan()" class="btn-danger btn-compact">
+                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
+                </button>
+            </div>
+            <div class="modal-content p-0">
+                <iframe src="/dashboard/identity_test.php" class="block h-[calc(100vh-180px)] w-full border-0"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div id="identityViewModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-lg p-0">
+            <div class="modal-head sticky top-0 rounded-t-3xl bg-white px-5 py-4">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?> <span>Data Konsumen</span>
+                </div>
+                <button type="button" onclick="closeIdentityViewModal()" class="btn-danger btn-compact">
+                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
+                </button>
+            </div>
+            <div class="modal-content p-0">
+                <div id="identityViewContent" class="max-h-[calc(100vh-220px)] overflow-auto p-5">
+                    <p class="text-sm text-slate-500">Memuat data...</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </section>
+<script>
+    function openIdentityViewModal(identityId) {
+        const modal = document.getElementById('identityViewModal');
+        const content = document.getElementById('identityViewContent');
+
+        if (!modal || !content || !identityId) return;
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+        content.innerHTML = '<p class="text-sm text-slate-500">Memuat data...</p>';
+
+        fetch(window.emsUrl('/ajax/get_identity_detail.php?id=') + encodeURIComponent(identityId))
+            .then(res => res.text())
+            .then(html => {
+                content.innerHTML = html;
+            })
+            .catch(err => {
+                console.error('Error loading identity:', err);
+                content.innerHTML = '<p class="text-sm text-rose-600">Gagal memuat data.</p>';
+            });
+    }
+
+    function closeIdentityViewModal() {
+        const modal = document.getElementById('identityViewModal');
+        if (!modal) return;
+
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.classList.remove('modal-open');
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeIdentityViewModal();
+        }
+    });
+</script>
+
 <script>
     function koreksiNamaKonsumen(oldName, newName) {
         const msg =
@@ -4470,6 +4699,43 @@ include __DIR__ . '/../partials/sidebar.php';
             isBusy = false;
         });
     })();
+</script>
+
+<script>
+    function openIdentityScan() {
+        const modal = document.getElementById('identityModal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+    }
+
+    function closeIdentityScan() {
+        const modal = document.getElementById('identityModal');
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.classList.remove('modal-open');
+    }
+
+    window.addEventListener('message', function(e) {
+        if (e.data && e.data.action === 'close_modal') {
+            closeIdentityScan();
+            return;
+        }
+
+        if (!e.data || !e.data.citizen_id) return;
+
+        setOcrIdentityPayload({
+            identity_id: e.data.identity_id || '',
+            citizen_id: e.data.citizen_id || '',
+            first_name: e.data.first_name || '',
+            last_name: e.data.last_name || ''
+        });
+
+        alert('Scan KTP berhasil. Citizen ID terisi otomatis, silakan cek kembali sebelum simpan.');
+        closeIdentityScan();
+    });
 </script>
 
 <script>

@@ -159,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     $json = json_decode($res, true);
 
     if ($httpCode !== 200 || !isset($json['ParsedResults'])) {
+        @unlink($tmpFile);
         echo json_encode([
             'error' => 'OCR API error',
             'debug' => $json
@@ -169,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     $parsed = $json['ParsedResults'][0] ?? [];
 
     if (isset($parsed['ErrorMessage']) && $parsed['ErrorMessage']) {
+        @unlink($tmpFile);
         echo json_encode([
             'error' => $parsed['ErrorMessage'],
             'debug' => $json
@@ -197,6 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     }
 
     if ($text === '') {
+        @unlink($tmpFile);
         echo json_encode([
             'error' => 'OCR tidak menghasilkan teks',
             'debug' => $json
@@ -272,8 +275,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     // ===============================
     // HANYA RETURN DATA, TIDAK SAVE
     // ===============================
-    $data['temp_file'] = $tmpFile; // Simpan path temporary untuk nanti
     $data['compressed_size'] = round(filesize($tmpFile) / 1024, 2) . ' KB';
+    @unlink($tmpFile);
 
     echo json_encode($data);
     exit;
@@ -359,8 +362,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         'dob' => trim($_POST['dob'] ?? ''),
         'sex' => trim($_POST['sex'] ?? ''),
         'nationality' => trim($_POST['nationality'] ?? ''),
-        'change_reason' => trim($_POST['change_reason'] ?? ''),
-        'temp_file' => trim($_POST['temp_file'] ?? '')
+        'change_reason' => trim($_POST['change_reason'] ?? '')
     ];
 
     if (empty($data['citizen_id'])) {
@@ -368,8 +370,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         exit;
     }
 
-    if (empty($data['temp_file']) || !file_exists($data['temp_file'])) {
-        echo json_encode(['error' => 'File temporary tidak ditemukan, silakan upload ulang']);
+    if (empty($_FILES['image']['tmp_name']) || !is_uploaded_file($_FILES['image']['tmp_name'])) {
+        echo json_encode(['error' => 'Foto KTP belum tersedia, silakan upload atau scan ulang']);
+        exit;
+    }
+
+    $mime = mime_content_type($_FILES['image']['tmp_name']);
+    $allowed = ['image/jpeg', 'image/png'];
+
+    if (!in_array($mime, $allowed, true)) {
+        echo json_encode(['error' => 'Format gambar tidak didukung (hanya JPG/PNG)']);
+        exit;
+    }
+
+    $src = imagecreatefromstring(file_get_contents($_FILES['image']['tmp_name']));
+    if (!$src) {
+        echo json_encode(['error' => 'Gambar KTP tidak valid']);
+        exit;
+    }
+
+    $w = imagesx($src);
+    $h = imagesy($src);
+
+    if ($w > MAX_WIDTH) {
+        $ratio = MAX_WIDTH / $w;
+        $nw = MAX_WIDTH;
+        $nh = (int)($h * $ratio);
+        $dst = imagecreatetruecolor($nw, $nh);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        imagedestroy($src);
+    } else {
+        $dst = $src;
+    }
+
+    if (!is_dir(UPLOAD_DIR)) {
+        mkdir(UPLOAD_DIR, 0777, true);
+    }
+
+    $tempFileForSave = UPLOAD_DIR . 'save_' . uniqid('', true) . '.jpg';
+    imageinterlace($dst, true);
+    compressImage($dst, $tempFileForSave, TARGET_FILE_SIZE, MIN_QUALITY);
+    imagedestroy($dst);
+
+    if (!file_exists($tempFileForSave)) {
+        echo json_encode(['error' => 'Gagal memproses gambar KTP, silakan coba lagi']);
         exit;
     }
 
@@ -414,7 +458,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $finalPath = __DIR__ . '/../' . $existingImagePath;
 
             // Hapus file temporary
-            @unlink($data['temp_file']);
+            @unlink($tempFileForSave);
 
             $identityId = $master['id'];
             $versionId = $master['active_version_id'];
@@ -426,8 +470,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             $finalRelativePath = 'storage/identity/' . $data['citizen_id'] . '/' . $versionFilename;
 
             // Copy dan hapus temp
-            copy($data['temp_file'], $finalPath);
-            @unlink($data['temp_file']);
+            copy($tempFileForSave, $finalPath);
+            @unlink($tempFileForSave);
 
             // ===============================
             // 4. INSERT/UPDATE identity_master
@@ -532,7 +576,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         exit;
     } catch (Exception $e) {
         $pdo->rollBack();
-        @unlink($data['temp_file']);
+        @unlink($tempFileForSave);
         echo json_encode([
             'error' => 'Gagal menyimpan identitas',
             'detail' => $e->getMessage()
@@ -947,6 +991,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             border-radius: 12px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
             border: 3px solid #e2e8f0;
+            cursor: zoom-in;
+        }
+
+        .preview-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .image-lightbox {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.88);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 999999;
+        }
+
+        .image-lightbox.active {
+            display: flex;
+        }
+
+        .lightbox-image {
+            max-width: min(96vw, 1200px);
+            max-height: 88vh;
+            object-fit: contain;
+            border-radius: 14px;
+            box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 28px;
+            line-height: 1;
+            cursor: pointer;
         }
 
         /* ===== FORM FIELDS ===== */
@@ -1328,6 +1417,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         <div class="preview-area" id="previewArea">
             <div class="preview-label">Gambar Hasil Pindai</div>
             <img id="preview" alt="Preview">
+            <div class="preview-hint">Klik gambar untuk memperbesar</div>
         </div>
 
         <!-- Form Results -->
@@ -1379,9 +1469,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             <input type="text" name="custom_reason" class="form-input" id="customReasonInput" placeholder="Tulis alasan Anda...">
         </div>
 
-        <!-- Hidden field untuk menyimpan temp_file path -->
-        <input type="hidden" name="temp_file" id="tempFile">
-
         <!-- Tombol Simpan -->
         <button type="button" id="saveBtn" class="save-button" style="display: none;">
             Simpan Data
@@ -1391,6 +1478,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         <button type="button" id="resetBtn" class="reset-button" style="display: none;">
             Pindai Ulang
         </button>
+    </div>
+
+    <div id="imageLightbox" class="image-lightbox">
+        <button type="button" class="lightbox-close" onclick="closePreviewLightbox()">&times;</button>
+        <img id="lightboxPreviewImage" class="lightbox-image" src="" alt="Preview KTP">
     </div>
 
     <script>
@@ -1451,7 +1543,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         const changeReason = document.getElementById('changeReason');
         const customReasonGroup = document.getElementById('customReasonGroup');
         const customReasonInput = document.getElementById('customReasonInput');
-        const tempFileInput = document.getElementById('tempFile');
+        const resetBtn = document.getElementById('resetBtn');
+        const lightbox = document.getElementById('imageLightbox');
+        const lightboxPreviewImage = document.getElementById('lightboxPreviewImage');
+
+        function openPreviewLightbox(src) {
+            if (!src || !lightbox || !lightboxPreviewImage) return;
+            lightboxPreviewImage.src = src;
+            lightbox.classList.add('active');
+        }
+
+        function closePreviewLightbox() {
+            if (!lightbox || !lightboxPreviewImage) return;
+            lightbox.classList.remove('active');
+            lightboxPreviewImage.src = '';
+        }
+
+        preview.addEventListener('click', function() {
+            if (preview.src) {
+                openPreviewLightbox(preview.src);
+            }
+        });
+
+        if (lightbox) {
+            lightbox.addEventListener('click', function(e) {
+                if (e.target === lightbox) {
+                    closePreviewLightbox();
+                }
+            });
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePreviewLightbox();
+            }
+        });
 
         // Drag & Drop
         uploadArea.addEventListener('dragover', (e) => {
@@ -1569,92 +1695,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             const stored = loadFromLocalStorage();
 
             if (stored && stored.image) {
-                // Tampilkan foto yang bisa diperbesar
                 preview.src = stored.image;
-                preview.style.cursor = 'pointer';
-                preview.onclick = function() {
-                    const lightbox = document.createElement('div');
-                    lightbox.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0,0,0,0.9);
-                z-index: 999999;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-            `;
+                previewArea.classList.add('show');
 
-                    const img = document.createElement('img');
-                    img.src = stored.image;
-                    img.style.cssText = 'max-width: 95%; max-height: 95%; border-radius: 8px;';
+                document.querySelectorAll('.form-input').forEach(input => {
+                    if (input.name !== 'change_reason' && input.name !== 'custom_reason') {
+                        input.removeAttribute('readonly');
+                        input.style.background = '#fff7ed';
+                        input.style.borderColor = '#f59e0b';
+                    }
+                });
 
-                    lightbox.appendChild(img);
-                    lightbox.onclick = () => document.body.removeChild(lightbox);
-
-                    document.body.appendChild(lightbox);
-                };
-
-                // ========================================
-                // UPLOAD BASE64 KE SERVER (DAPAT TEMP_FILE)
-                // ========================================
-                loading.classList.add('show');
-
-                fetch(stored.image)
-                    .then(res => res.blob())
-                    .then(blob => {
-                        const fd = new FormData();
-                        fd.append('action', 'save_base64');
-                        fd.append('image', blob, 'manual.jpg');
-
-                        return fetch('', {
-                            method: 'POST',
-                            body: fd
-                        });
-                    })
-                    .then(res => res.json())
-                    .then(d => {
-                        loading.classList.remove('show');
-
-                        if (d.error) {
-                            alert('Gagal menyimpan foto: ' + d.error);
-                            return;
-                        }
-
-                        // SET TEMP_FILE DARI SERVER
-                        tempFileInput.value = d.temp_file;
-
-                        // Make inputs editable
-                        document.querySelectorAll('.form-input').forEach(input => {
-                            if (input.name !== 'change_reason' && input.name !== 'custom_reason') {
-                                input.removeAttribute('readonly');
-                                input.style.background = '#fff7ed';
-                                input.style.borderColor = '#f59e0b';
-                            }
-                        });
-
-                        // Hide error, show info
-                        error.classList.remove('show');
-                        info.classList.add('show');
-                        infoMessage.innerHTML = `
+                error.classList.remove('show');
+                info.classList.add('show');
+                infoMessage.innerHTML = `
                     Silakan isi data secara manual berdasarkan foto KTP<br>
                     Klik foto untuk memperbesar jika tidak jelas
                 `;
 
-                        // Show save button
-                        saveBtn.style.display = 'block';
-                        resetBtn.style.display = 'block';
-
-                        // Set default reason
-                        changeReason.value = 'Daftar Baru';
-                    })
-                    .catch(err => {
-                        loading.classList.remove('show');
-                        alert('Gagal upload foto: ' + err.message);
-                    });
+                saveBtn.style.display = 'block';
+                resetBtn.style.display = 'block';
+                changeReason.value = 'Daftar Baru';
             } else {
                 alert('Foto tidak ditemukan di localStorage');
             }
@@ -1698,9 +1759,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     document.querySelector('[name="sex"]').value = d.sex || '';
                     document.querySelector('[name="nationality"]').value = d.nationality || '';
                     document.querySelector('[name="citizen_id"]').value = d.citizen_id || '';
-
-                    // Simpan temp_file path
-                    tempFileInput.value = d.temp_file || '';
 
                     // SIMPAN HASIL OCR KE LOCALSTORAGE
                     const stored = loadFromLocalStorage();
@@ -1764,10 +1822,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         // ========================================
                         info.classList.add('show');
                         infoMessage.innerHTML = `${d.message}<br>ID Identitas: ${d.identity_id}<br>Data sudah ada, tidak perlu upload ulang`;
-
-                        // HAPUS TEMP FILE (PENTING)
-                        deleteTempFile(tempFileInput.value);
-                        tempFileInput.value = '';
 
                         // Make inputs readonly
                         document.querySelectorAll('.form-input').forEach(input => {
@@ -1856,7 +1910,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         }
 
         // Handle Save Button Click
-        saveBtn.addEventListener('click', function() {
+        saveBtn.addEventListener('click', async function() {
             // Validasi field wajib
             const citizenId = document.querySelector('[name="citizen_id"]').value.trim();
             const firstName = document.querySelector('[name="first_name"]').value.trim();
@@ -1880,9 +1934,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 return;
             }
 
-            const tempFile = tempFileInput.value;
-            if (!tempFile) {
-                alert('File tidak ditemukan, silakan upload ulang');
+            const stored = loadFromLocalStorage();
+            if (!stored || !stored.image) {
+                alert('Foto KTP belum tersedia, silakan upload atau scan ulang');
                 return;
             }
 
@@ -1897,81 +1951,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 }
             }
 
+            if (!confirm('Silakan periksa kembali data karena sistem scan otomatis kadang keliru. Lanjut simpan data?')) {
+                return;
+            }
+
             // Disable button
             saveBtn.disabled = true;
             saveBtn.textContent = 'Menyimpan...';
 
-            // Prepare data
-            const fd = new FormData();
-            fd.append('action', 'save_identity');
-            fd.append('citizen_id', document.querySelector('[name="citizen_id"]').value);
-            fd.append('first_name', document.querySelector('[name="first_name"]').value);
-            fd.append('last_name', document.querySelector('[name="last_name"]').value);
-            fd.append('dob', document.querySelector('[name="dob"]').value);
-            fd.append('sex', document.querySelector('[name="sex"]').value);
-            fd.append('nationality', document.querySelector('[name="nationality"]').value);
-            fd.append('change_reason', reason);
-            fd.append('temp_file', tempFile);
+            try {
+                const imageResponse = await fetch(stored.image);
+                const imageBlob = await imageResponse.blob();
 
-            fetch('', {
+                const fd = new FormData();
+                fd.append('action', 'save_identity');
+                fd.append('citizen_id', document.querySelector('[name="citizen_id"]').value);
+                fd.append('first_name', document.querySelector('[name="first_name"]').value);
+                fd.append('last_name', document.querySelector('[name="last_name"]').value);
+                fd.append('dob', document.querySelector('[name="dob"]').value);
+                fd.append('sex', document.querySelector('[name="sex"]').value);
+                fd.append('nationality', document.querySelector('[name="nationality"]').value);
+                fd.append('change_reason', reason);
+                fd.append('image', imageBlob, 'identity-scan.jpg');
+
+                const response = await fetch('', {
                     method: 'POST',
                     body: fd
-                })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.error) {
-                        alert(d.error);
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = 'Simpan Data';
-                        return;
-                    }
-
-                    // Success
-                    info.classList.add('show');
-                    infoMessage.innerHTML = `${d.message}<br>ID Identitas: ${d.identity_id}<br>ID Versi: ${d.version_id}`;
-
-                    // Update preview dengan gambar yang sudah tersimpan
-                    if (d.image_path) {
-                        // Pastikan path dimulai dengan /
-                        const imagePath = d.image_path.startsWith('/') ? d.image_path : '/' + d.image_path;
-                        preview.src = imagePath + '?t=' + Date.now();
-                    }
-
-                    // Send to parent window
-                    if (window.parent) {
-                        window.parent.postMessage({
-                            identity_id: d.identity_id,
-                            first_name: document.querySelector('[name="first_name"]').value,
-                            last_name: document.querySelector('[name="last_name"]').value,
-                            citizen_id: document.querySelector('[name="citizen_id"]').value
-                        }, '*');
-                    }
-
-                    alert('Data berhasil disimpan!');
-
-                    // CLEAR LOCALSTORAGE
-                    clearLocalStorage();
-
-                    // Reset form
-                    saveBtn.style.display = 'none';
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Simpan Data';
-
-                    // Make inputs readonly again
-                    document.querySelectorAll('.form-input').forEach(input => {
-                        if (input.name !== 'change_reason' && input.name !== 'custom_reason') {
-                            input.setAttribute('readonly', true);
-                        }
-                    });
-                })
-                .catch(err => {
-                    alert('Error: ' + err.message);
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Simpan Data';
                 });
-        });
+                const d = await response.json();
 
-        const resetBtn = document.getElementById('resetBtn');
+                if (d.error) {
+                    alert(d.error);
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Simpan Data';
+                    return;
+                }
+
+                info.classList.add('show');
+                infoMessage.innerHTML = `${d.message}<br>ID Identitas: ${d.identity_id}<br>ID Versi: ${d.version_id}`;
+
+                if (d.image_path) {
+                    const imagePath = d.image_path.startsWith('/') ? d.image_path : '/' + d.image_path;
+                    preview.src = imagePath + '?t=' + Date.now();
+                }
+
+                if (window.parent) {
+                    window.parent.postMessage({
+                        identity_id: d.identity_id,
+                        first_name: document.querySelector('[name="first_name"]').value,
+                        last_name: document.querySelector('[name="last_name"]').value,
+                        citizen_id: document.querySelector('[name="citizen_id"]').value
+                    }, '*');
+                }
+
+                alert('Data berhasil disimpan!');
+                clearLocalStorage();
+
+                saveBtn.style.display = 'none';
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Simpan Data';
+
+                document.querySelectorAll('.form-input').forEach(input => {
+                    if (input.name !== 'change_reason' && input.name !== 'custom_reason') {
+                        input.setAttribute('readonly', true);
+                    }
+                });
+            } catch (err) {
+                alert('Error: ' + err.message);
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Simpan Data';
+            }
+        });
 
         // Tampilkan reset button bersamaan dengan save button
         // Di dalam handleUpload() setelah saveBtn.style.display = 'block';
@@ -1980,15 +2030,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         // Handler untuk reset
         resetBtn.addEventListener('click', function() {
             if (confirm('Yakin ingin scan ulang? Data yang belum disimpan akan hilang.')) {
-                // Hapus temp file jika ada
-                const tempFile = tempFileInput.value;
-                if (tempFile) {
-                    deleteTempFile(tempFile);
-                }
-
-                // Clear localStorage
                 clearLocalStorage();
-
                 location.reload();
             }
         });
@@ -2000,19 +2042,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 this.style.background = '';
             });
         });
-
-        function deleteTempFile(tempFile) {
-            if (!tempFile) return;
-
-            const fd = new FormData();
-            fd.append('action', 'delete_temp');
-            fd.append('temp_file', tempFile);
-
-            fetch('', {
-                method: 'POST',
-                body: fd
-            }).catch(() => {});
-        }
 
         // ========================================
         // RESTORE DATA ON PAGE LOAD
@@ -2038,7 +2067,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                         document.querySelector('[name="sex"]').value = stored.ocr.sex || '';
                         document.querySelector('[name="nationality"]').value = stored.ocr.nationality || '';
                         document.querySelector('[name="citizen_id"]').value = stored.ocr.citizen_id || '';
-                        tempFileInput.value = stored.ocr.temp_file || '';
 
                         showEditForm('Data dipulihkan dari sesi sebelumnya');
                     }
