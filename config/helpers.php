@@ -474,11 +474,11 @@ function ems_looks_like_citizen_id(?string $value): bool
         return false;
     }
 
-    if (preg_match('/^\d{6,}$/', $normalized)) {
-        return true;
+    if (preg_match('/^\d+$/', $normalized)) {
+        return false;
     }
 
-    return preg_match('/^(?=.*\d)[A-Z0-9]{6,20}$/', $normalized) === 1;
+    return preg_match('/^[A-Z0-9]{6,20}$/', $normalized) === 1;
 }
 
 function ems_consumer_identifier_label(): string

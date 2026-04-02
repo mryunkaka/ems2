@@ -626,7 +626,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($consumerName === '') {
                     $errors[] = "{$consumerIdentifierLabel} wajib diisi.";
                 } elseif (!ems_looks_like_citizen_id($rawConsumerName)) {
-                    $errors[] = "{$consumerIdentifierLabel} tidak valid. Gunakan format Citizen ID game/alfanumerik, bukan nama konsumen.";
+                    $errors[] = "{$consumerIdentifierLabel} tidak valid. Gunakan format Citizen ID huruf besar atau kombinasi huruf besar dan angka, bukan nama konsumen.";
                 } else {
                     if ($consumerName !== strtoupper(trim($rawConsumerName))) {
                         $warnings[] = "{$consumerIdentifierLabel} dinormalisasi menjadi {$consumerName}.";
@@ -2279,8 +2279,8 @@ include __DIR__ . '/../partials/sidebar.php';
         function looksLikeCitizenId(str) {
             const normalized = normalizeName(str);
             if (!normalized) return false;
-            if (/^\d{6,}$/.test(normalized)) return true;
-            return /^(?=.*\d)[A-Z0-9]{6,20}$/.test(normalized);
+            if (/^\d+$/.test(normalized)) return false;
+            return /^[A-Z0-9]{6,20}$/.test(normalized);
         }
 
         function levenshteinDistance(a, b) {
@@ -3013,7 +3013,7 @@ include __DIR__ . '/../partials/sidebar.php';
             updateSimilarConsumerBox();
 
             if (!looksLikeCitizenId(cname)) {
-                alert('Citizen ID Konsumen tidak valid. Gunakan format Citizen ID game/alfanumerik, contoh RH39IQLC.');
+                alert('Citizen ID Konsumen tidak valid. Gunakan huruf besar atau kombinasi huruf besar dan angka, contoh RH39IQLC.');
                 return;
             }
 

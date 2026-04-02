@@ -11,6 +11,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/session_helper.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 
 /*
@@ -78,13 +79,6 @@ if (strlen($citizenId) < 6) {
     exit;
 }
 
-// Validasi: harus ada minimal 1 angka
-if (!preg_match('/\d/', $citizenId)) {
-    $_SESSION['flash_errors'][] = 'Citizen ID harus mengandung minimal 1 angka.';
-    header('Location: setting_akun.php');
-    exit;
-}
-
 // Validasi: harus ada minimal 1 huruf
 if (!preg_match('/[A-Z]/', $citizenId)) {
     $_SESSION['flash_errors'][] = 'Citizen ID harus mengandung minimal 1 huruf.';
@@ -92,15 +86,8 @@ if (!preg_match('/[A-Z]/', $citizenId)) {
     exit;
 }
 
-// Validasi: tidak boleh hanya angka atau hanya huruf
-if (preg_match('/^[A-Z]+$/', $citizenId)) {
-    $_SESSION['flash_errors'][] = 'Citizen ID tidak boleh hanya huruf saja. Harus kombinasi huruf dan angka.';
-    header('Location: setting_akun.php');
-    exit;
-}
-
 if (preg_match('/^[0-9]+$/', $citizenId)) {
-    $_SESSION['flash_errors'][] = 'Citizen ID tidak boleh hanya angka saja. Harus kombinasi huruf dan angka.';
+    $_SESSION['flash_errors'][] = 'Citizen ID tidak boleh hanya angka saja. Gunakan huruf besar atau kombinasi huruf besar dan angka.';
     header('Location: setting_akun.php');
     exit;
 }

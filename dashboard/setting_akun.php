@@ -196,7 +196,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
                             value="<?= htmlspecialchars($citizenId) ?>"
                             class="uppercase">
                         <small class="hint-warning">
-                            Format: <strong>HURUF BESAR + ANGKA</strong>, tanpa spasi
+                            Format: <strong>HURUF BESAR</strong> atau <strong>kombinasi huruf besar dan angka</strong>, tanpa spasi
                         </small>
                     </div>
 
@@ -578,14 +578,6 @@ DOKUMEN PENDUKUNG
                     return false;
                 }
 
-                // Validasi: harus ada minimal 1 angka
-                if (!/\d/.test(value)) {
-                    e.preventDefault();
-                    alert('Citizen ID harus mengandung minimal 1 angka');
-                    citizenIdInput.focus();
-                    return false;
-                }
-
                 // Validasi: harus ada minimal 1 huruf
                 if (!/[A-Z]/i.test(value)) {
                     e.preventDefault();
@@ -616,17 +608,9 @@ DOKUMEN PENDUKUNG
                     }
                 }
 
-                // Validasi: tidak boleh hanya huruf saja atau angka saja
-                if (/^[A-Z]+$/.test(value)) {
-                    e.preventDefault();
-                    alert('Citizen ID tidak boleh hanya huruf saja.\n\nHarus kombinasi huruf BESAR dan angka.');
-                    citizenIdInput.focus();
-                    return false;
-                }
-
                 if (/^[0-9]+$/.test(value)) {
                     e.preventDefault();
-                    alert('Citizen ID tidak boleh hanya angka saja.\n\nHarus kombinasi huruf BESAR dan angka.');
+                    alert('Citizen ID tidak boleh hanya angka saja.\n\nGunakan huruf BESAR atau kombinasi huruf BESAR dan angka.');
                     citizenIdInput.focus();
                     return false;
                 }
