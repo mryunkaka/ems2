@@ -45,7 +45,10 @@ if (isset($_SESSION['user_rh'])) {
                 $_SESSION['user_rh']['cuti_status'] = $row['cuti_status'] ?? null;
                 $_SESSION['user_rh']['cuti_start_date'] = $row['cuti_start_date'] ?? null;
                 $_SESSION['user_rh']['cuti_end_date'] = $row['cuti_end_date'] ?? null;
-                $_SESSION['user_rh']['division'] = ems_normalize_division($row['division'] ?? ($_SESSION['user_rh']['division'] ?? ''));
+                $_SESSION['user_rh']['division'] = ems_resolve_user_division(
+                    $row['division'] ?? ($_SESSION['user_rh']['division'] ?? ''),
+                    $row['position'] ?? ($_SESSION['user_rh']['position'] ?? '')
+                );
                 $_SESSION['user_rh']['unit_code'] = ems_normalize_unit_code($row['unit_code'] ?? ($_SESSION['user_rh']['unit_code'] ?? 'roxwood'));
                 $_SESSION['user_rh']['can_view_all_units'] = isset($row['can_view_all_units'])
                     ? ((int)$row['can_view_all_units'] === 1 ? 1 : 0)
@@ -105,7 +108,7 @@ if (!empty($_COOKIE['remember_login'])) {
             'name'     => $user['full_name'],
             'role'     => $user['role'],
             'position' => ems_normalize_position($user['position'] ?? ''),
-            'division' => ems_normalize_division($user['division'] ?? ''),
+            'division' => ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? ''),
             'unit_code' => ems_normalize_unit_code($user['unit_code'] ?? 'roxwood'),
             'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
             'cuti_status' => $user['cuti_status'] ?? null,

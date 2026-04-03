@@ -263,6 +263,8 @@ if (empty($user['name']) || empty($user['position'])) {
 $medicName    = $user['name'] ?? '';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $medicRole    = $user['role'] ?? '';
+$medicRoleLabel = ems_role_label($medicRole);
+$medicDivisionLabel = ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? '') ?: '-';
 $userId       = (int)($user['id'] ?? 0);
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
@@ -325,6 +327,12 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
+
+// Jika halaman ini berhasil diakses, jangan tampilkan flash error guard division yang tersisa
+// dari redirect halaman lain karena itu menyesatkan pengguna.
+$errors = array_values(array_filter($errors, static function ($error) {
+    return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
+}));
 
 $shouldClearForm = !empty($_SESSION['clear_form'] ?? false);
 unset($_SESSION['clear_form']);
@@ -1656,11 +1664,13 @@ include __DIR__ . '/../partials/sidebar.php';
                     $isOnline = $statusFarmasi === 'online';
                     ?>
 
-                    <div class="medic-info">
+                        <div class="medic-info">
                         <div class="medic-name">
                             Anda telah login sebagai
                             <strong><?= htmlspecialchars($medicName) ?></strong>
-                            <span class="medic-role">(<?= htmlspecialchars($medicJabatan) ?>)</span>
+                            <span class="medic-role">• <?= htmlspecialchars($medicRoleLabel) ?></span>
+                            <span class="medic-role">• <?= htmlspecialchars($medicDivisionLabel) ?></span>
+                            <span class="medic-role">• <?= htmlspecialchars($medicJabatan) ?></span>
                         </div>
 
                         <div class="medic-status">
@@ -1739,7 +1749,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="hidden" id="ocr_last_name" value="">
                     <div class="row-form-2">
                         <div class="col">
-                            <label><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
+                            <label for="consumerNameInput"><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
                             <div style="display:flex;gap:8px;align-items:center;">
                                 <input
                                     type="text"
@@ -1780,7 +1790,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </small>
                         </div>
                         <div class="col">
-                            <label>Pilihan Paket</label>
+                            <label for="pkg_main">Pilihan Paket</label>
                             <select name="package_main" id="pkg_main">
                                 <option value="">-- Tidak Pakai Paket --</option>
                                 <?php foreach ($paketAB as $pkg): ?>
@@ -1823,7 +1833,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     <div class="row-form-2 hidden" id="customPackageRow">
                         <div class="col">
-                            <label>Paket Bandage</label>
+                            <label for="pkg_bandage">Paket Bandage</label>
                             <select name="package_bandage" id="pkg_bandage">
                                 <option value="">-- Tidak pilih paket Bandage --</option>
                                 <?php foreach ($bandagePackages as $pkg): ?>
@@ -1834,7 +1844,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </select>
                         </div>
                         <div class="col">
-                            <label>Paket IFAKS</label>
+                            <label for="pkg_ifaks">Paket IFAKS</label>
                             <select name="package_ifaks" id="pkg_ifaks">
                                 <option value="">-- Tidak pilih paket IFAKS --</option>
                                 <?php foreach ($ifaksPackages as $pkg): ?>
@@ -1845,7 +1855,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </select>
                         </div>
                         <div class="col">
-                            <label>Paket Painkiller</label>
+                            <label for="pkg_painkiller">Paket Painkiller</label>
                             <select name="package_painkiller" id="pkg_painkiller">
                                 <option value="">-- Tidak pilih paket Painkiller --</option>
                                 <?php foreach ($painkillerPackages as $pkg): ?>
@@ -2067,7 +2077,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <form method="get" class="mb-2.5">
                         <div class="row-form-2">
                             <div class="col">
-                                <label>Rentang Tanggal</label>
+                                <label for="rangeSelect">Rentang Tanggal</label>
                                 <select name="range" id="rangeSelect">
                                     <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
                                     <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
@@ -2096,12 +2106,12 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div class="row-form-2 hidden" id="customDateRow">
                             <div class="col">
-                                <label>Dari tanggal</label>
-                                <input type="date" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
+                                <label for="filterFromDate">Dari tanggal</label>
+                                <input type="date" id="filterFromDate" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
                             </div>
                             <div class="col">
-                                <label>Sampai tanggal</label>
-                                <input type="date" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
+                                <label for="filterToDate">Sampai tanggal</label>
+                                <input type="date" id="filterToDate" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
                             </div>
                         </div>
 

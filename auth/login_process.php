@@ -127,7 +127,7 @@ $_SESSION['user_rh'] = [
     'name'     => $user['full_name'],
     'role'     => $user['role'],
     'position' => ems_normalize_position($user['position'] ?? ''),
-    'division' => ems_normalize_division($user['division'] ?? ''),
+    'division' => ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? ''),
     'unit_code' => $userLoginUnit,
     'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
 ];

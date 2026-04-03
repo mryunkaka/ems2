@@ -50,8 +50,7 @@ if ($userId && !$hideAltaTopbarUtilities) {
     }
 }
 
-?>
-<!DOCTYPE html>
+?><!DOCTYPE html>
 <html lang="id">
 
 <head>

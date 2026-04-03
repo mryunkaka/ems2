@@ -659,6 +659,22 @@ function ems_normalize_division(?string $division): string
     };
 }
 
+function ems_resolve_user_division(?string $division, ?string $position = null): string
+{
+    $normalizedDivision = ems_normalize_division($division);
+    if ($normalizedDivision !== '') {
+        return $normalizedDivision;
+    }
+
+    // Akun trainee hasil registrasi lama tidak selalu menyimpan division.
+    // Secara bisnis trainee diperlakukan sebagai tenaga Medis.
+    if (ems_normalize_position($position) === 'trainee') {
+        return 'Medis';
+    }
+
+    return '';
+}
+
 function ems_is_valid_division(?string $division): bool
 {
     return in_array(
