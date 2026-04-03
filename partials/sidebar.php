@@ -2,6 +2,8 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $position = strtolower(trim($_SESSION['user_rh']['position'] ?? ''));
+$userFullName = trim((string) ($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? ''));
+$normalizedUserFullName = strtolower($userFullName);
 $division = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 $isTrainee = ($position === 'trainee');
 $currentUnit = isset($pdo) ? ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []) : ems_normalize_unit_code($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
@@ -175,6 +177,31 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
             ],
         ];
+    }
+}
+
+$canAccessOcrApiStatus = in_array($normalizedUserFullName, [
+    'programmer roxwood',
+    'programmer alta',
+], true);
+
+if ($canAccessOcrApiStatus) {
+    if (!isset($groupedNav['Pengaturan']) || !is_array($groupedNav['Pengaturan'])) {
+        $groupedNav['Pengaturan'] = [];
+    }
+
+    $hasOcrApiStatusMenu = false;
+    foreach ($groupedNav as $items) {
+        foreach ($items as $item) {
+            if (($item['page'] ?? '') === 'ocr_api_status.php') {
+                $hasOcrApiStatusMenu = true;
+                break 2;
+            }
+        }
+    }
+
+    if (!$hasOcrApiStatusMenu) {
+        $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/ocr_api_status.php', 'ocr_api_status.php', 'Status OCR API', 'arrow-path');
     }
 }
 
