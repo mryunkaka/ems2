@@ -14,17 +14,29 @@
 /* =========================================================
    TOPBAR
    ========================================================= */
+:root {
+  --ems-safe-top: env(safe-area-inset-top, 0px);
+  --ems-topbar-height: 56px;
+  --ems-topbar-offset: calc(var(--ems-safe-top) + var(--ems-topbar-height));
+}
+
+@media (max-width: 768px) {
+  :root {
+    --ems-safe-top: max(env(safe-area-inset-top, 0px), 10px);
+  }
+}
+
 .topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: var(--ems-topbar-offset);
   background: linear-gradient(135deg, #0b3c5d, #0f5c8c);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 16px;
+  padding: var(--ems-safe-top) 16px 0;
   z-index: 2500;
 }
 
@@ -83,10 +95,10 @@
    ========================================================= */
 .sidebar {
   position: fixed;
-  top: 56px;
+  top: var(--ems-topbar-offset);
   left: 0;
   width: 260px;
-  height: calc(100vh - 56px);
+  height: calc(100vh - var(--ems-topbar-offset));
   background: linear-gradient(180deg, #062a40 0%, #041f30 100%);
   display: flex;
   flex-direction: column;
@@ -239,7 +251,7 @@
    ========================================================= */
 .main-content {
   position: relative;
-  padding-top: 72px;
+  padding-top: calc(var(--ems-topbar-offset) + 16px);
   padding-left: 16px;
   padding-right: 16px;
   z-index: 1;
@@ -348,5 +360,13 @@ body.sidebar-open {
     padding-bottom: env(safe-area-inset-bottom);
     font-size: 12px;
     opacity: 0.8;
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    top: var(--ems-topbar-offset);
+    height: calc(100dvh - var(--ems-topbar-offset));
+    max-height: calc(100dvh - var(--ems-topbar-offset));
   }
 }

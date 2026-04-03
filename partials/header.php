@@ -56,7 +56,7 @@ if ($userId && !$hideAltaTopbarUtilities) {
 <head>
     <meta charset="UTF-8">
     <title><?= htmlspecialchars($pageTitle ?? 'Farmasi EMS') ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
     <link rel="icon" type="image/png" href="<?= htmlspecialchars(ems_asset($currentLogoPath), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="apple-touch-icon" href="<?= htmlspecialchars(ems_asset($currentLogoPath), ENT_QUOTES, 'UTF-8') ?>">
