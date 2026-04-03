@@ -24,6 +24,7 @@ $jenisKelamin = $_POST['jenis_kelamin'] ?? '';
 $batch  = intval($_POST['batch'] ?? 0);
 $role   = $_POST['role'] ?? 'Staff';
 $unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
+$loginRedirect = 'login.php?unit=' . urlencode($unitCode);
 
 // DEFAULT
 $position = 'trainee';
@@ -35,26 +36,40 @@ if ($name === '' || !preg_match('/^\d{4}$/', $pin)) {
 
 if ($batch < 1 || $batch > 26) {
     $_SESSION['error'] = 'Batch tidak valid';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
 }
 
 if ($citizenId === '' || $noHpIc === '' || $jenisKelamin === '') {
     $_SESSION['error'] = 'Data pribadi wajib diisi';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
 }
 
 if (!in_array($unitCode, ['roxwood', 'alta'], true)) {
     $_SESSION['error'] = 'Unit tidak valid';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
 }
 
 if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
     $_SESSION['error'] = 'Jenis kelamin tidak valid';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
+}
+
+if ($unitCode === 'roxwood') {
+    if (empty($_FILES['file_ktp']['tmp_name']) || (int)($_FILES['file_ktp']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        $_SESSION['error'] = 'Upload KTP wajib untuk Roxwood';
+        header("Location: {$loginRedirect}");
+        exit;
+    }
+
+    if (empty($_FILES['file_skb']['tmp_name']) || (int)($_FILES['file_skb']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        $_SESSION['error'] = 'Upload SKB wajib untuk Roxwood';
+        header("Location: {$loginRedirect}");
+        exit;
+    }
 }
 
 $checkCitizen = $pdo->prepare("SELECT id FROM user_rh WHERE citizen_id = ?");
@@ -62,7 +77,7 @@ $checkCitizen->execute([$citizenId]);
 
 if ($checkCitizen->fetch()) {
     $_SESSION['error'] = 'Citizen ID sudah terdaftar';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
 }
 
@@ -71,12 +86,12 @@ $check->execute([$name]);
 
 if ($check->fetch()) {
     $_SESSION['error'] = 'Nama sudah terdaftar';
-    header("Location: login.php");
+    header("Location: {$loginRedirect}");
     exit;
 }
 
-$is_verified = ($role === 'Staff') ? 1 : 0;
-$is_active = 0;
+$is_verified = 1;
+$is_active = 1;
 
 $insertColumns = [
     'full_name',
@@ -149,7 +164,7 @@ $uploadDir  = $baseDir . $folderName;
 
 if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
     $_SESSION['error'] = 'Gagal membuat folder dokumen';
-    header('Location: login.php');
+    header("Location: {$loginRedirect}");
     exit;
 }
 
@@ -177,7 +192,7 @@ foreach ($docFields as $field) {
 
     if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
         $_SESSION['error'] = "File sertifikat harus JPG atau PNG";
-        header('Location: login.php');
+        header("Location: {$loginRedirect}");
         exit;
     }
 
@@ -186,7 +201,7 @@ foreach ($docFields as $field) {
 
     if (!compressImageSmart($tmp, $finalPath)) {
         $_SESSION['error'] = "Gagal memproses sertifikat";
-        header('Location: login.php');
+        header("Location: {$loginRedirect}");
         exit;
     }
 
@@ -217,7 +232,7 @@ for ($i = 0; $i < $max; $i++) {
     $info = getimagesize($fileTmp);
     if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
         $_SESSION['error'] = 'File lainnya harus JPG atau PNG';
-        header('Location: login.php');
+        header("Location: {$loginRedirect}");
         exit;
     }
 
@@ -227,7 +242,7 @@ for ($i = 0; $i < $max; $i++) {
 
     if (!compressImageSmart($fileTmp, $finalPath)) {
         $_SESSION['error'] = 'Gagal memproses file lainnya';
-        header('Location: login.php');
+        header("Location: {$loginRedirect}");
         exit;
     }
 
@@ -261,6 +276,6 @@ $params[] = $userId;
 
 $pdo->prepare($sql)->execute($params);
 
-$_SESSION['success'] = 'Registrasi berhasil. Akun menunggu aktivasi manager sebelum bisa login.';
-header("Location: login.php");
+$_SESSION['success'] = 'Registrasi berhasil. Akun sudah aktif dan bisa langsung login.';
+header("Location: {$loginRedirect}");
 exit;

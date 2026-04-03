@@ -8,6 +8,7 @@ $loginHospitalName = ems_unit_hospital_name($loginUnit);
 $loginLogoPath = ems_unit_logo_path($loginUnit);
 $loginSystemName = ems_unit_system_name($loginUnit);
 $loginPageUrl = 'login.php?unit=' . urlencode($loginUnit);
+$registerRequiresIdentityDocs = $loginUnit === 'roxwood';
 
 function authRenderRegisterDocField(string $label, string $inputId, string $fieldName, bool $optional = true): void
 {
@@ -29,8 +30,9 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                 id="<?= htmlspecialchars($inputId) ?>"
                 name="<?= htmlspecialchars($fieldName) ?>"
                 accept="image/png,image/jpeg"
+                <?= $optional ? '' : 'required' ?>
                 class="sr-only">
-            <div class="file-selected-name" data-for="<?= htmlspecialchars($inputId) ?>"></div>
+            <div class="file-selected-name auth-file-selected-name" data-for="<?= htmlspecialchars($inputId) ?>"></div>
         </div>
     </div>
 <?php
@@ -49,6 +51,47 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
     <!-- Local assets only (no old CSS, no CDN) -->
     <link rel="stylesheet" href="/assets/vendor/photoswipe/photoswipe.css">
     <link rel="stylesheet" href="/assets/design/tailwind/build.css">
+    <style>
+        .auth-file-selected-name {
+            display: none;
+            width: 100%;
+            margin-top: 10px;
+            padding: 10px 12px;
+            border: 1px solid #bfdbfe;
+            border-radius: 14px;
+            background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%);
+        }
+
+        .auth-file-selected-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .auth-file-selected-name-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            line-height: 1.4;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
+
+        .auth-file-selected-size {
+            flex: 0 0 auto;
+            white-space: nowrap;
+            font-size: 11px;
+            line-height: 1.2;
+            font-weight: 700;
+            color: #2563eb;
+        }
+    </style>
 </head>
 
 <body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-sky-900">
@@ -274,8 +317,8 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                             <div class="section-form-title">Dokumen Pendukung</div>
 
                             <div class="grid gap-4 md:grid-cols-3">
-                                <?php authRenderRegisterDocField('Upload KTP', 'registerFileKtp', 'file_ktp'); ?>
-                                <?php authRenderRegisterDocField('Upload SKB', 'registerFileSkb', 'file_skb'); ?>
+                                <?php authRenderRegisterDocField('Upload KTP', 'registerFileKtp', 'file_ktp', !$registerRequiresIdentityDocs); ?>
+                                <?php authRenderRegisterDocField('Upload SKB', 'registerFileSkb', 'file_skb', !$registerRequiresIdentityDocs); ?>
                                 <?php authRenderRegisterDocField('Upload SIM', 'registerFileSim', 'file_sim'); ?>
                                 <?php authRenderRegisterDocField('Upload KTA', 'registerFileKta', 'file_kta'); ?>
                                 <?php authRenderRegisterDocField('Sertifikat Heli', 'registerSertifikatHeli', 'sertifikat_heli'); ?>
@@ -314,7 +357,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                                                         name="academy_doc_file[]"
                                                         accept="image/png,image/jpeg"
                                                         class="sr-only">
-                                                    <div class="file-selected-name" data-for="registerOtherDoc0"></div>
+                                                    <div class="file-selected-name auth-file-selected-name" data-for="registerOtherDoc0"></div>
                                                 </div>
                                             </div>
                                         </div>
@@ -444,12 +487,20 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                 input.addEventListener('change', function() {
                     const file = this.files && this.files[0] ? this.files[0] : null;
                     if (!file) {
-                        nameBox.textContent = '';
-                        nameBox.classList.add('hidden');
+                        nameBox.innerHTML = '';
+                        nameBox.style.display = 'none';
                         return;
                     }
-                    nameBox.textContent = file.name || 'File dipilih';
-                    nameBox.classList.remove('hidden');
+
+                    const fileName = file.name || 'File dipilih';
+                    const fileSizeKb = (file.size / 1024).toFixed(1);
+                    nameBox.innerHTML = `
+                        <span class="auth-file-selected-info">
+                            <span class="auth-file-selected-name-text" title="${fileName}">${fileName}</span>
+                            <span class="auth-file-selected-size">${fileSizeKb} KB</span>
+                        </span>
+                    `;
+                    nameBox.style.display = 'block';
                 });
             }
 
@@ -486,7 +537,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                                     name="academy_doc_file[]"
                                     accept="image/png,image/jpeg"
                                     class="sr-only">
-                                <div class="file-selected-name" data-for="${inputId}"></div>
+                                <div class="file-selected-name auth-file-selected-name" data-for="${inputId}"></div>
                             </div>
                         </div>
                     </div>
