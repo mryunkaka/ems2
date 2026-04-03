@@ -1508,6 +1508,83 @@ if (!empty($_SESSION['user_rh']['id'])) {
     $todayStats = $stmtToday->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+// ======================================================
+// KONSUMEN TERATAS (MINGGUAN / BULANAN / 3 BULAN)
+// ======================================================
+$topConsumerPeriods = [
+    'weekly' => [
+        'label' => 'Mingguan',
+        'sql' => "YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1)",
+    ],
+    'monthly' => [
+        'label' => 'Bulanan',
+        'sql' => "YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE())",
+    ],
+    'quarter' => [
+        'label' => '3 Bulan',
+        'sql' => "created_at >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)",
+    ],
+];
+
+$topConsumerStats = [];
+foreach ($topConsumerPeriods as $periodKey => $period) {
+    $sql = "
+        SELECT
+            consumer_name,
+            COUNT(*) AS total_transaksi,
+            COALESCE(SUM(price), 0) AS total_belanja,
+            COALESCE(SUM(qty_bandage), 0) AS total_bandage,
+            COALESCE(SUM(qty_ifaks), 0) AS total_ifaks,
+            COALESCE(SUM(qty_painkiller), 0) AS total_painkiller,
+            MAX(created_at) AS last_purchase_at
+        FROM sales
+        WHERE consumer_name IS NOT NULL
+          AND consumer_name <> ''
+          AND {$period['sql']}
+          " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
+        GROUP BY consumer_name
+        ORDER BY total_transaksi DESC, total_belanja DESC, last_purchase_at DESC
+        LIMIT 1
+    ";
+
+    $stmtTopConsumer = $pdo->prepare($sql);
+    $paramsTopConsumer = [];
+    if ($salesHasUnitCode) {
+        $paramsTopConsumer[':unit_code'] = $effectiveUnit;
+    }
+    $stmtTopConsumer->execute($paramsTopConsumer);
+    $rowTopConsumer = $stmtTopConsumer->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if ($rowTopConsumer) {
+        $displayName = trim((string)($rowTopConsumer['consumer_name'] ?? ''));
+        if (ems_looks_like_citizen_id($displayName)) {
+            $displayName = ems_normalize_citizen_id($displayName);
+        }
+
+        $topConsumerStats[] = [
+            'label' => $period['label'],
+            'consumer_name' => $displayName !== '' ? $displayName : '-',
+            'total_transaksi' => (int)($rowTopConsumer['total_transaksi'] ?? 0),
+            'total_belanja' => (int)($rowTopConsumer['total_belanja'] ?? 0),
+            'total_bandage' => (int)($rowTopConsumer['total_bandage'] ?? 0),
+            'total_ifaks' => (int)($rowTopConsumer['total_ifaks'] ?? 0),
+            'total_painkiller' => (int)($rowTopConsumer['total_painkiller'] ?? 0),
+            'last_purchase_at' => (string)($rowTopConsumer['last_purchase_at'] ?? ''),
+        ];
+    } else {
+        $topConsumerStats[] = [
+            'label' => $period['label'],
+            'consumer_name' => '-',
+            'total_transaksi' => 0,
+            'total_belanja' => 0,
+            'total_bandage' => 0,
+            'total_ifaks' => 0,
+            'total_painkiller' => 0,
+            'last_purchase_at' => '',
+        ];
+    }
+}
+
 // Untuk form custom date supaya tetap isi
 $fromDateInput = ($range === 'custom' && $startDT instanceof DateTime)
     ? $startDT->format('Y-m-d')
@@ -1644,49 +1721,49 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if ($medicName): ?>
             <!-- Card Input Transaksi -->
-            <div class="card">
-                <div class="card-header card-header-actions card-header-flex">
-                    <div class="card-header-actions-title">
-                        Input Transaksi Baru
-                    </div>
+            <div class="card farmasi-card">
+                <div class="farmasi-card-header">
+                    <h2 class="farmasi-card-title">Input Transaksi</h2>
+                    <p class="farmasi-card-subtitle">Form transaksi farmasi aktif.</p>
                 </div>
+                <div class="farmasi-card-content">
 
-                <?php if ($medicName): ?>
-                    <?php
-                    // Ambil status farmasi (aman, fallback offline)
-                    $stmt = $pdo->prepare("
+                    <?php if ($medicName): ?>
+                        <?php
+                        // Ambil status farmasi (aman, fallback offline)
+                        $stmt = $pdo->prepare("
                         SELECT status 
                         FROM user_farmasi_status 
                         WHERE user_id = ?
                     ");
-                    $stmt->execute([$_SESSION['user_rh']['id']]);
-                    $statusFarmasi = $stmt->fetchColumn() ?: 'offline';
-                    $isOnline = $statusFarmasi === 'online';
-                    ?>
+                        $stmt->execute([$_SESSION['user_rh']['id']]);
+                        $statusFarmasi = $stmt->fetchColumn() ?: 'offline';
+                        $isOnline = $statusFarmasi === 'online';
+                        ?>
 
                         <div class="medic-info">
-                        <div class="medic-name">
-                            Anda telah login sebagai
-                            <strong><?= htmlspecialchars($medicName) ?></strong>
-                            <span class="medic-role">• <?= htmlspecialchars($medicRoleLabel) ?></span>
-                            <span class="medic-role">• <?= htmlspecialchars($medicDivisionLabel) ?></span>
-                            <span class="medic-role">• <?= htmlspecialchars($medicJabatan) ?></span>
-                        </div>
+                            <div class="medic-name">
+                                Anda telah login sebagai
+                                <strong><?= htmlspecialchars($medicName) ?></strong>
+                                <span class="medic-role">• <?= htmlspecialchars($medicRoleLabel) ?></span>
+                                <span class="medic-role">• <?= htmlspecialchars($medicDivisionLabel) ?></span>
+                                <span class="medic-role">• <?= htmlspecialchars($medicJabatan) ?></span>
+                            </div>
 
-                        <div class="medic-status">
-                            <span id="farmasiStatusBadge"
-                                data-status="<?= $isOnline ? 'online' : 'offline' ?>"
-                                class="status-badge <?= $isOnline ? 'status-online' : 'status-offline' ?> status-clickable"
-                                title="Klik untuk ubah status">
-                                <span class="dot"></span>
-                                <span id="farmasiStatusText">
-                                    <?= $isOnline ? ' ONLINE' : ' OFFLINE' ?>
+                            <div class="medic-status">
+                                <span id="farmasiStatusBadge"
+                                    data-status="<?= $isOnline ? 'online' : 'offline' ?>"
+                                    class="status-badge <?= $isOnline ? 'status-online' : 'status-offline' ?> status-clickable"
+                                    title="Klik untuk ubah status">
+                                    <span class="dot"></span>
+                                    <span id="farmasiStatusText">
+                                        <?= $isOnline ? ' ONLINE' : ' OFFLINE' ?>
+                                    </span>
                                 </span>
-                            </span>
+                            </div>
                         </div>
-                    </div>
 
-                    <!-- <div id="dailyNotice" class="info-notice">
+                        <!-- <div id="dailyNotice" class="info-notice">
                         <strong>Informasi:</strong><br>
                         <strong>1 konsumen / pasien hanya diperbolehkan melakukan 1 transaksi dalam 1 hari.</strong><br>
                         Jika pasien menyatakan belum pernah membeli hari ini,
@@ -1699,227 +1776,230 @@ include __DIR__ . '/../partials/sidebar.php';
                         </a>
                         yang ditampilkan oleh sistem.
                     </div> -->
-                <?php endif; ?>
+                    <?php endif; ?>
 
-                <!-- NOTICE COOLDOWN GLOBAL (REALTIME) -->
-                <div id="cooldownNotice" class="notice-box notice-info">
+                    <!-- NOTICE COOLDOWN GLOBAL (REALTIME) -->
+                    <div id="cooldownNotice" class="notice-box notice-info">
+                    </div>
+
+                    <?php if ($profileIncompleteForFarmasi): ?>
+                        <div id="profileRequirementNotice" class="notice-box notice-danger" style="display: block;">
+                            <strong>Data profil belum lengkap</strong><br><br>
+                            Transaksi farmasi belum bisa disimpan karena data berikut belum diisi:
+                            <strong><?= htmlspecialchars(implode(', ', $missingProfileFields)) ?></strong>.<br>
+                            Silakan lengkapi data tersebut di <strong>Setting Akun</strong> terlebih dahulu.
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- NOTICE FAIRNESS (GLOBAL, TIDAK TERPENGARUH INPUT) -->
+                    <div id="fairnessNotice" class="notice-box notice-warning">
+                    </div>
+
+                    <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT CITIZEN ID) -->
+                    <?php
+                    ems_component('ui/consumer-merge-notice', [
+                        'id' => 'consumerNotice',
+                        'variant' => 'danger',
+                    ]);
+                    ?>
+                    <div id="blacklistNotice" class="notice-box notice-danger" style="display:none;"></div>
+
+                    <?php
+                    // ===============================
+                    // IDEMPOTENCY TOKEN (ANTI DOUBLE)
+                    // ===============================
+                    if (empty($_SESSION['tx_token'])) {
+                        $_SESSION['tx_token'] = bin2hex(random_bytes(32));
+                    }
+                    ?>
+
+                    <form method="post" id="saleForm">
+                        <input type="hidden" name="auto_merge" id="auto_merge" value="0">
+                        <input type="hidden" name="merge_targets" id="merge_targets">
+                        <input type="hidden" name="action" value="add_sale">
+                        <input type="hidden" name="tx_token" value="<?= $_SESSION['tx_token'] ?>">
+                        <!-- Tambahan: flag untuk override batas harian -->
+                        <input type="hidden" name="force_overlimit" id="force_overlimit" value="0">
+                        <input type="hidden" name="identity_id" id="identity_id" value="">
+                        <input type="hidden" id="ocr_citizen_id" value="">
+                        <input type="hidden" id="ocr_first_name" value="">
+                        <input type="hidden" id="ocr_last_name" value="">
+                        <div class="row-form-2">
+                            <div class="col">
+                                <label for="consumerNameInput"><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <input
+                                        type="text"
+                                        name="consumer_name"
+                                        id="consumerNameInput"
+                                        list="consumer-list"
+                                        placeholder="RH39IQLC"
+                                        autocomplete="off"
+                                        autocapitalize="characters"
+                                        spellcheck="false"
+                                        style="text-transform: uppercase;flex:1;"
+                                        required>
+                                    <button
+                                        type="button"
+                                        class="btn-secondary"
+                                        onclick="openIdentityScan()"
+                                        title="Foto KTP untuk deteksi otomatis">
+                                        <?= ems_icon('camera', 'h-4 w-4') ?>
+                                    </button>
+                                </div>
+                                <div id="ocrIdentityInfo" class="notice-box notice-info" style="display:none;margin-top:8px;">
+                                    <strong>Hasil scan KTP</strong><br>
+                                    <span id="ocrIdentityName">-</span><br>
+                                    <span id="ocrIdentityCitizenId">-</span>
+                                </div>
+                                <div id="similarConsumerBox" class="consumer-similar-box">
+                                </div>
+                                <datalist id="consumer-list">
+                                    <?php foreach ($consumerNames as $cn): ?>
+                                        <option value="<?= htmlspecialchars($cn) ?>"></option>
+                                    <?php endforeach; ?>
+                                </datalist>
+                                <small>
+                                    Tombol kamera bersifat opsional. Bisa scan/foto KTP untuk isi otomatis, atau tetap ketik manual Citizen ID.
+                                </small>
+                                <small>
+                                    Input wajib memakai Citizen ID Konsumen, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
+                                </small>
+                            </div>
+                            <div class="col">
+                                <label for="pkg_main">Pilihan Paket</label>
+                                <select name="package_main" id="pkg_main">
+                                    <option value="">-- Tidak Pakai Paket --</option>
+                                    <?php foreach ($paketAB as $pkg): ?>
+                                        <option value="<?= (int)$pkg['id'] ?>">
+                                            <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                    <option value="custom">Paket Custom</option>
+                                </select>
+                                <small>Pilih paket combo <?= htmlspecialchars($comboPackageModeLabel) ?> atau gunakan Paket Custom untuk memilih item satu per satu.</small>
+                            </div>
+                        </div>
+
+                        <div id="consumerMergeModal" class="modal-overlay hidden">
+                            <div class="modal-box modal-shell max-w-2xl">
+                                <div class="modal-head px-5 py-4">
+                                    <div class="modal-title inline-flex items-center gap-2">
+                                        <?= ems_icon('users', 'h-5 w-5') ?> <span>Informasi Citizen ID</span>
+                                    </div>
+                                    <button type="button" id="closeConsumerMergeModal" class="btn-danger btn-compact">
+                                        <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
+                                    </button>
+                                </div>
+                                <div class="modal-content p-5">
+                                    <p class="meta-text mb-3">
+                                        Fitur merge nama sudah dimatikan karena transaksi farmasi sekarang memakai Citizen ID Konsumen.
+                                    </p>
+                                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 mb-4">
+                                        <div class="meta-text-xs"><?= htmlspecialchars($consumerIdentifierLabel) ?> yang akan dipakai</div>
+                                        <div id="mergeConsumerTargetName" class="text-base font-semibold text-slate-800">-</div>
+                                    </div>
+                                    <div id="mergeConsumerCandidateList" class="flex flex-wrap gap-2"></div>
+                                    <div class="modal-actions mt-5">
+                                        <button type="button" id="cancelConsumerMergeBtn" class="btn-secondary">Batal</button>
+                                        <button type="button" id="confirmConsumerMergeBtn" class="btn-success">Lanjut Simpan</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row-form-2 hidden" id="customPackageRow">
+                            <div class="col">
+                                <label for="pkg_bandage">Paket Bandage</label>
+                                <select name="package_bandage" id="pkg_bandage">
+                                    <option value="">-- Tidak pilih paket Bandage --</option>
+                                    <?php foreach ($bandagePackages as $pkg): ?>
+                                        <option value="<?= (int)$pkg['id'] ?>">
+                                            <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label for="pkg_ifaks">Paket IFAKS</label>
+                                <select name="package_ifaks" id="pkg_ifaks">
+                                    <option value="">-- Tidak pilih paket IFAKS --</option>
+                                    <?php foreach ($ifaksPackages as $pkg): ?>
+                                        <option value="<?= (int)$pkg['id'] ?>">
+                                            <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label for="pkg_painkiller">Paket Painkiller</label>
+                                <select name="package_painkiller" id="pkg_painkiller">
+                                    <option value="">-- Tidak pilih paket Painkiller --</option>
+                                    <?php foreach ($painkillerPackages as $pkg): ?>
+                                        <option value="<?= (int)$pkg['id'] ?>">
+                                            <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="total-item-info bg-white">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Ringkasan Item</div>
+                                    <div class="meta-text-xs">Jumlah item dan bonus akan berubah otomatis sesuai mode paket aktif.</div>
+                                </div>
+                                <span class="badge-counter">Bonus 40%: <span id="totalBonus">0</span></span>
+                            </div>
+                            <div class="grid gap-2 mt-3 sm:grid-cols-2">
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                    <div class="meta-text-xs">Bandage</div>
+                                    <div class="font-semibold text-slate-900"><span id="totalBandage">0</span> pcs</div>
+                                    <div class="meta-text-xs">Harga satuan: <span id="priceBandage">-</span>/pcs</div>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                    <div class="meta-text-xs">IFAKS</div>
+                                    <div class="font-semibold text-slate-900"><span id="totalIfaks">0</span> pcs</div>
+                                    <div class="meta-text-xs">Harga satuan: <span id="priceIfaks">-</span>/pcs</div>
+                                </div>
+                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                    <div class="meta-text-xs">Painkiller</div>
+                                    <div class="font-semibold text-slate-900"><span id="totalPainkiller">0</span> pcs</div>
+                                    <div class="meta-text-xs">Harga satuan: <span id="pricePainkiller">-</span>/pcs</div>
+                                </div>
+                                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                                    <div class="meta-text-xs text-emerald-700">Mode Paket Aktif</div>
+                                    <div class="font-semibold text-emerald-700" id="activePackageLabel"><?= htmlspecialchars($comboPackageModeLabel) ?></div>
+                                    <div class="meta-text-xs text-emerald-700">Gunakan Paket Custom untuk memilih item satu per satu.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- DISPLAY KASIR: Total Harga besar -->
+                        <div class="total-display border border-emerald-200 bg-emerald-50 text-emerald-700">
+                            <div class="flex flex-wrap items-end justify-between gap-3">
+                                <div>
+                                    <div class="total-display-label text-emerald-700">Total yang harus dibayar</div>
+                                    <div class="meta-text-xs text-emerald-700">Nominal akhir transaksi yang siap dikonfirmasi.</div>
+                                </div>
+                                <div class="total-amount mt-0 text-emerald-700" id="totalPriceDisplay">$ 0</div>
+                            </div>
+                        </div>
+
                 </div>
 
-                <?php if ($profileIncompleteForFarmasi): ?>
-                    <div id="profileRequirementNotice" class="notice-box notice-danger" style="display: block;">
-                        <strong>Data profil belum lengkap</strong><br><br>
-                        Transaksi farmasi belum bisa disimpan karena data berikut belum diisi:
-                        <strong><?= htmlspecialchars(implode(', ', $missingProfileFields)) ?></strong>.<br>
-                        Silakan lengkapi data tersebut di <strong>Setting Akun</strong> terlebih dahulu.
-                    </div>
-                <?php endif; ?>
-
-                <!-- NOTICE FAIRNESS (GLOBAL, TIDAK TERPENGARUH INPUT) -->
-                <div id="fairnessNotice" class="notice-box notice-warning">
-                </div>
-
-                <!-- NOTICE KONSUMEN (LOKAL, BERDASARKAN INPUT CITIZEN ID) -->
-                <?php
-                ems_component('ui/consumer-merge-notice', [
-                    'id' => 'consumerNotice',
-                    'variant' => 'danger',
-                ]);
-                ?>
-                <div id="blacklistNotice" class="notice-box notice-danger" style="display:none;"></div>
-
-                <?php
-                // ===============================
-                // IDEMPOTENCY TOKEN (ANTI DOUBLE)
-                // ===============================
-                if (empty($_SESSION['tx_token'])) {
-                    $_SESSION['tx_token'] = bin2hex(random_bytes(32));
-                }
-                ?>
-
-                <form method="post" id="saleForm">
-                    <input type="hidden" name="auto_merge" id="auto_merge" value="0">
-                    <input type="hidden" name="merge_targets" id="merge_targets">
-                    <input type="hidden" name="action" value="add_sale">
-                    <input type="hidden" name="tx_token" value="<?= $_SESSION['tx_token'] ?>">
-                    <!-- Tambahan: flag untuk override batas harian -->
-                    <input type="hidden" name="force_overlimit" id="force_overlimit" value="0">
-                    <input type="hidden" name="identity_id" id="identity_id" value="">
-                    <input type="hidden" id="ocr_citizen_id" value="">
-                    <input type="hidden" id="ocr_first_name" value="">
-                    <input type="hidden" id="ocr_last_name" value="">
-                    <div class="row-form-2">
-                        <div class="col">
-                            <label for="consumerNameInput"><?= htmlspecialchars($consumerIdentifierLabel) ?></label>
-                            <div style="display:flex;gap:8px;align-items:center;">
-                                <input
-                                    type="text"
-                                    name="consumer_name"
-                                    id="consumerNameInput"
-                                    list="consumer-list"
-                                    placeholder="RH39IQLC"
-                                    autocomplete="off"
-                                    autocapitalize="characters"
-                                    spellcheck="false"
-                                    style="text-transform: uppercase;flex:1;"
-                                    required>
-                                <button
-                                    type="button"
-                                    class="btn-secondary"
-                                    onclick="openIdentityScan()"
-                                    title="Foto KTP untuk deteksi otomatis">
-                                    <?= ems_icon('camera', 'h-4 w-4') ?>
-                                </button>
-                            </div>
-                            <div id="ocrIdentityInfo" class="notice-box notice-info" style="display:none;margin-top:8px;">
-                                <strong>Hasil scan KTP</strong><br>
-                                <span id="ocrIdentityName">-</span><br>
-                                <span id="ocrIdentityCitizenId">-</span>
-                            </div>
-                            <div id="similarConsumerBox" class="consumer-similar-box">
-                            </div>
-                            <datalist id="consumer-list">
-                                <?php foreach ($consumerNames as $cn): ?>
-                                    <option value="<?= htmlspecialchars($cn) ?>"></option>
-                                <?php endforeach; ?>
-                            </datalist>
-                            <small>
-                                Tombol kamera bersifat opsional. Bisa scan/foto KTP untuk isi otomatis, atau tetap ketik manual Citizen ID.
-                            </small>
-                            <small>
-                                Input wajib memakai Citizen ID Konsumen, contoh <strong>RH39IQLC</strong>. Sistem tidak lagi memakai nama konsumen untuk Alta maupun Roxwood.
-                            </small>
-                        </div>
-                        <div class="col">
-                            <label for="pkg_main">Pilihan Paket</label>
-                            <select name="package_main" id="pkg_main">
-                                <option value="">-- Tidak Pakai Paket --</option>
-                                <?php foreach ($paketAB as $pkg): ?>
-                                    <option value="<?= (int)$pkg['id'] ?>">
-                                        <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                                <option value="custom">Paket Custom</option>
-                            </select>
-                            <small>Pilih paket combo <?= htmlspecialchars($comboPackageModeLabel) ?> atau gunakan Paket Custom untuk memilih item satu per satu.</small>
-                        </div>
-                    </div>
-
-                    <div id="consumerMergeModal" class="modal-overlay hidden">
-                        <div class="modal-box modal-shell max-w-2xl">
-                            <div class="modal-head px-5 py-4">
-                                <div class="modal-title inline-flex items-center gap-2">
-                                    <?= ems_icon('users', 'h-5 w-5') ?> <span>Informasi Citizen ID</span>
-                                </div>
-                                <button type="button" id="closeConsumerMergeModal" class="btn-danger btn-compact">
-                                    <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
-                                </button>
-                            </div>
-                            <div class="modal-content p-5">
-                                <p class="meta-text mb-3">
-                                    Fitur merge nama sudah dimatikan karena transaksi farmasi sekarang memakai Citizen ID Konsumen.
-                                </p>
-                                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 mb-4">
-                                    <div class="meta-text-xs"><?= htmlspecialchars($consumerIdentifierLabel) ?> yang akan dipakai</div>
-                                    <div id="mergeConsumerTargetName" class="text-base font-semibold text-slate-800">-</div>
-                                </div>
-                                <div id="mergeConsumerCandidateList" class="flex flex-wrap gap-2"></div>
-                                <div class="modal-actions mt-5">
-                                    <button type="button" id="cancelConsumerMergeBtn" class="btn-secondary">Batal</button>
-                                    <button type="button" id="confirmConsumerMergeBtn" class="btn-success">Lanjut Simpan</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row-form-2 hidden" id="customPackageRow">
-                        <div class="col">
-                            <label for="pkg_bandage">Paket Bandage</label>
-                            <select name="package_bandage" id="pkg_bandage">
-                                <option value="">-- Tidak pilih paket Bandage --</option>
-                                <?php foreach ($bandagePackages as $pkg): ?>
-                                    <option value="<?= (int)$pkg['id'] ?>">
-                                        <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col">
-                            <label for="pkg_ifaks">Paket IFAKS</label>
-                            <select name="package_ifaks" id="pkg_ifaks">
-                                <option value="">-- Tidak pilih paket IFAKS --</option>
-                                <?php foreach ($ifaksPackages as $pkg): ?>
-                                    <option value="<?= (int)$pkg['id'] ?>">
-                                        <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="col">
-                            <label for="pkg_painkiller">Paket Painkiller</label>
-                            <select name="package_painkiller" id="pkg_painkiller">
-                                <option value="">-- Tidak pilih paket Painkiller --</option>
-                                <?php foreach ($painkillerPackages as $pkg): ?>
-                                    <option value="<?= (int)$pkg['id'] ?>">
-                                        <?= htmlspecialchars($pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="total-item-info bg-white">
-                        <div class="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Ringkasan Item</div>
-                                <div class="meta-text-xs">Jumlah item dan bonus akan berubah otomatis sesuai mode paket aktif.</div>
-                            </div>
-                            <span class="badge-counter">Bonus 40%: <span id="totalBonus">0</span></span>
-                        </div>
-                        <div class="grid gap-2 mt-3 sm:grid-cols-2">
-                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                <div class="meta-text-xs">Bandage</div>
-                                <div class="font-semibold text-slate-900"><span id="totalBandage">0</span> pcs</div>
-                                <div class="meta-text-xs">Harga satuan: <span id="priceBandage">-</span>/pcs</div>
-                            </div>
-                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                <div class="meta-text-xs">IFAKS</div>
-                                <div class="font-semibold text-slate-900"><span id="totalIfaks">0</span> pcs</div>
-                                <div class="meta-text-xs">Harga satuan: <span id="priceIfaks">-</span>/pcs</div>
-                            </div>
-                            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                <div class="meta-text-xs">Painkiller</div>
-                                <div class="font-semibold text-slate-900"><span id="totalPainkiller">0</span> pcs</div>
-                                <div class="meta-text-xs">Harga satuan: <span id="pricePainkiller">-</span>/pcs</div>
-                            </div>
-                            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                                <div class="meta-text-xs text-emerald-700">Mode Paket Aktif</div>
-                                <div class="font-semibold text-emerald-700" id="activePackageLabel"><?= htmlspecialchars($comboPackageModeLabel) ?></div>
-                                <div class="meta-text-xs text-emerald-700">Gunakan Paket Custom untuk memilih item satu per satu.</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- DISPLAY KASIR: Total Harga besar -->
-                    <div class="total-display border border-emerald-200 bg-emerald-50 text-emerald-700">
-                        <div class="flex flex-wrap items-end justify-between gap-3">
-                            <div>
-                                <div class="total-display-label text-emerald-700">Total yang harus dibayar</div>
-                                <div class="meta-text-xs text-emerald-700">Nominal akhir transaksi yang siap dikonfirmasi.</div>
-                            </div>
-                            <div class="total-amount mt-0 text-emerald-700" id="totalPriceDisplay">$ 0</div>
-                        </div>
-                    </div>
-
+                <div class="farmasi-card-footer">
                     <div class="action-row-wrap">
                         <button type="button" id="btnSubmit" class="btn-success<?= $profileIncompleteForFarmasi ? ' btn-disabled' : '' ?>" onclick="handleSaveClick();" <?= $profileIncompleteForFarmasi ? 'disabled' : '' ?>>
                             Simpan Transaksi
                         </button>
 
-                        <!-- Tombol CLEAR untuk menghapus inputan yang lengket -->
                         <button type="button" class="btn-secondary" onclick="clearFormInputs();">
                             Bersihkan
                         </button>
                     </div>
+                </div>
                 </form>
 
             </div>
@@ -1928,380 +2008,417 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="farmasi-side-grid">
                 <div class="activity-feed-container">
 
-                    <div class="activity-feed-card">
-
-                        <!-- HEADER -->
-                        <div class="activity-feed-header">
-                            <span class="activity-feed-title"><?= ems_icon('document-text', 'h-4 w-4 text-primary') ?> Aktivitas</span>
+                    <div class="activity-feed-card farmasi-card">
+                        <div class="farmasi-card-header">
+                            <h3 class="farmasi-card-title">Aktivitas</h3>
                         </div>
-
-                        <div class="activity-feed-list" id="activityFeedList"></div>
-
+                        <div class="farmasi-card-content">
+                            <div class="activity-feed-list" id="activityFeedList"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="card card-online-medics">
-                    <div class="card-header-between">
-                        <div class="flex min-w-0 flex-wrap items-center gap-2">
-                            <?= ems_icon('user-group', 'h-5 w-5 text-primary') ?>
-                            <span class="font-semibold text-text">Medis Online Hari Ini</span>
+                <div class="card card-online-medics farmasi-card">
+                    <div class="farmasi-card-header">
+                        <div class="card-header-between">
+                            <h3 class="farmasi-card-title">Medis Online</h3>
                             <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
                         </div>
-                        <small class="card-subnote hidden md:block">
-                            (prioritas penjualan paling sedikit di sortir paling atas)
-                        </small>
-                    </div>
-                    <div class="meta-text-xs md:hidden">
-                        (prioritas penjualan paling sedikit di sortir paling atas)
+                        <p class="farmasi-card-subtitle">Prioritas penjualan paling sedikit di urutan atas.</p>
                     </div>
 
-                    <div class="online-medics-list" id="onlineMedicsContainer">
+                    <div class="farmasi-card-content">
+                        <div class="online-medics-list" id="onlineMedicsContainer">
 
-                        <?php if (empty($onlineMedics)): ?>
+                            <?php if (empty($onlineMedics)): ?>
 
-                            <p class="meta-text">
-                                Tidak ada medis yang sedang online.
-                            </p>
+                                <p class="meta-text">
+                                    Tidak ada medis yang sedang online.
+                                </p>
 
-                        <?php else: ?>
+                            <?php else: ?>
 
-                            <?php foreach ($onlineMedics as $m): ?>
-                                <div class="online-medic-row">
-                                    <div class="online-medic-main">
-                                        <div class="online-medic-head">
-                                            <div class="online-medic-identity">
-                                                <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
-                                                <div class="online-medic-subtitle">
-                                                    <?= htmlspecialchars($m['medic_position_label']) ?> •
-                                                    <?= htmlspecialchars($m['medic_role_label']) ?> •
-                                                    <?= htmlspecialchars($m['medic_division_label']) ?>
+                                <?php foreach ($onlineMedics as $m): ?>
+                                    <div class="online-medic-row">
+                                        <div class="online-medic-main">
+                                            <div class="online-medic-head">
+                                                <div class="online-medic-identity">
+                                                    <strong><?= htmlspecialchars($m['medic_name']) ?></strong>
+                                                    <div class="online-medic-subtitle">
+                                                        <?= htmlspecialchars($m['medic_position_label']) ?> •
+                                                        <?= htmlspecialchars($m['medic_role_label']) ?> •
+                                                        <?= htmlspecialchars($m['medic_division_label']) ?>
+                                                    </div>
+                                                </div>
+                                                <div class="online-medic-badges">
+                                                    <span class="weekly-badge">Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx</span>
+                                                    <span class="weekly-badge weekly-badge-muted">Batch <?= !empty($m['medic_batch']) ? (int)$m['medic_batch'] : '-' ?></span>
                                                 </div>
                                             </div>
-                                            <div class="online-medic-badges">
-                                                <span class="weekly-badge">Minggu ini: <?= (int)$m['weekly_transaksi'] ?> trx</span>
-                                                <span class="weekly-badge weekly-badge-muted">Batch <?= !empty($m['medic_batch']) ? (int)$m['medic_batch'] : '-' ?></span>
+
+                                            <div class="online-medic-inline-meta">
+                                                <span><strong>Join:</strong> <?= htmlspecialchars($m['join_duration_text']) ?></span>
+                                                <span><strong>Online:</strong>
+                                                    <strong class="weekly-online"
+                                                        data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
+                                                        data-user-id="<?= (int)$m['user_id'] ?>">
+                                                        <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
+                                                    </strong>
+                                                </span>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                class="btn-force-offline"
+                                                data-user-id="<?= (int)$m['user_id'] ?>"
+                                                data-name="<?= htmlspecialchars($m['medic_name']) ?>"
+                                                data-jabatan="<?= htmlspecialchars($m['medic_position_label']) ?>">
+                                                <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
+                                            </button>
+                                        </div>
+
+                                        <div class="online-medic-stats">
+                                            <div class="online-medic-stat-card">
+                                                <span class="online-medic-stat-label">Transaksi Hari Ini</span>
+                                                <strong class="tx"><?= (int)$m['total_transaksi'] ?> trx</strong>
+                                            </div>
+                                            <div class="online-medic-stat-card">
+                                                <span class="online-medic-stat-label">Total Seluruh Transaksi</span>
+                                                <strong><?= (int)($m['total_transaksi_semua'] ?? 0) ?> trx</strong>
+                                            </div>
+                                            <div class="online-medic-stat-card">
+                                                <span class="online-medic-stat-label">Pendapatan Hari Ini</span>
+                                                <strong class="amount"><?= dollar((int)$m['total_pendapatan']) ?></strong>
+                                            </div>
+                                            <div class="online-medic-stat-card online-medic-stat-card-success">
+                                                <span class="online-medic-stat-label">Bonus Hari Ini</span>
+                                                <strong class="bonus text-success-xs"><?= dollar((int)$m['bonus_40']) ?></strong>
                                             </div>
                                         </div>
-
-                                        <div class="online-medic-inline-meta">
-                                            <span><strong>Join:</strong> <?= htmlspecialchars($m['join_duration_text']) ?></span>
-                                            <span><strong>Online:</strong>
-                                                <strong class="weekly-online"
-                                                    data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
-                                                    data-user-id="<?= (int)$m['user_id'] ?>">
-                                                    <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
-                                                </strong>
-                                            </span>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            class="btn-force-offline"
-                                            data-user-id="<?= (int)$m['user_id'] ?>"
-                                            data-name="<?= htmlspecialchars($m['medic_name']) ?>"
-                                            data-jabatan="<?= htmlspecialchars($m['medic_position_label']) ?>">
-                                            <?= ems_icon('exclamation-triangle', 'h-4 w-4') ?> Force Offline
-                                        </button>
                                     </div>
+                                <?php endforeach; ?>
 
-                                    <div class="online-medic-stats">
-                                        <div class="online-medic-stat-card">
-                                            <span class="online-medic-stat-label">Transaksi Hari Ini</span>
-                                            <strong class="tx"><?= (int)$m['total_transaksi'] ?> trx</strong>
+                            <?php endif; ?>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="farmasi-summary-grid">
+                <!-- TOTAL TRANSAKSI HARI INI -->
+                <div class="card mb-0 farmasi-card">
+                    <div class="farmasi-card-header">
+                        <h3 class="farmasi-card-title">Rekap Hari Ini</h3>
+                        <p class="farmasi-card-subtitle">Ringkasan transaksi hari ini.</p>
+                    </div>
+                    <div class="farmasi-card-content">
+                        <?php if ($todayStats && $todayStats['total_transaksi'] > 0): ?>
+                            <div class="farmasi-stat-list">
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Transaksi</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= (int)$todayStats['total_transaksi'] ?> transaksi</div>
+                                    </div>
+                                </div>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Total Penjualan</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= dollar((int)$todayStats['total_harga']) ?></div>
+                                    </div>
+                                </div>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Bonus 40%</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= dollar((int)$todayStats['bonus_40']) ?></div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <p class="empty-copy">
+                                Belum ada transaksi hari ini.
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Card Filter & Transaksi -->
+                <div class="card mb-0 farmasi-card">
+                    <div class="farmasi-card-header">
+                        <h3 class="farmasi-card-title">Filter Tanggal</h3>
+                        <p class="farmasi-card-subtitle">Pilih rentang data transaksi.</p>
+                    </div>
+
+                    <!-- Form Filter (GET) -->
+                    <div class="farmasi-card-content">
+                        <form method="get" class="mb-2.5 filter-transaction-form">
+                        <div class="farmasi-filter-field">
+                            <label for="rangeSelect">Rentang Tanggal</label>
+                            <select name="range" id="rangeSelect" class="farmasi-filter-control" style="display:block;width:100%!important;min-width:100%!important;max-width:none!important;box-sizing:border-box;">
+                                <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
+                                <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
+                                <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
+
+                                <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
+                                    <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
+                                </option>
+
+                                <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
+                                    <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
+                                </option>
+
+                                <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
+                                    <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
+                                </option>
+
+                                <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
+                                    <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
+                                </option>
+
+                                <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
+                            </select>
+                        </div>
+                            <div class="row-form-2 hidden" id="customDateRow">
+                                <div class="col">
+                                    <label for="filterFromDate">Dari tanggal</label>
+                                    <input type="date" id="filterFromDate" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
+                                </div>
+                                <div class="col">
+                                    <label for="filterToDate">Sampai tanggal</label>
+                                    <input type="date" id="filterToDate" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
+                                </div>
+                            </div>
+
+                            <?php if ($showAll): ?>
+                                <input type="hidden" name="show_all" value="1">
+                            <?php endif; ?>
+
+                            <div class="mt-2">
+                                <button type="submit" class="btn-secondary farmasi-filter-button">Terapkan Filter</button>
+                            </div>
+                        </form>
+
+                        <p class="muted-copy-tight">
+                            Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Rekapan Bonus Medis (berdasarkan filter tanggal) -->
+                <div class="card mb-0 farmasi-card">
+                    <div class="farmasi-card-header">
+                        <h3 class="farmasi-card-title">Rekap Bonus</h3>
+                        <p class="farmasi-card-subtitle">Ringkasan bonus pada rentang aktif.</p>
+                    </div>
+                    <div class="farmasi-card-content">
+                        <?php if ($singleMedicStats): ?>
+                            <div class="farmasi-stat-list">
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Nama Medis</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= htmlspecialchars($singleMedicStats['medic_name']) ?></div>
+                                        <div class="farmasi-stat-meta"><?= htmlspecialchars($singleMedicStats['medic_jabatan']) ?></div>
+                                    </div>
+                                </div>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Transaksi</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= (int)$singleMedicStats['total_transaksi'] ?> transaksi</div>
+                                        <div class="farmasi-stat-meta"><?= (int)$singleMedicStats['total_item'] ?> item</div>
+                                    </div>
+                                </div>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Total Penjualan</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= dollar((int)$singleMedicStats['total_harga']) ?></div>
+                                    </div>
+                                </div>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label">Bonus 40%</div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= dollar((int)$singleMedicStats['bonus_40']) ?></div>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <p class="empty-copy mb-3">
+                                Belum ada data untuk petugas medis aktif pada rentang tanggal yang dipilih.
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="card mb-0 farmasi-card">
+                    <div class="farmasi-card-header">
+                        <h3 class="farmasi-card-title">Konsumen Teratas</h3>
+                        <p class="farmasi-card-subtitle">Pembelian terbanyak per periode.</p>
+                    </div>
+                    <div class="farmasi-card-content">
+                        <div class="farmasi-stat-list">
+                            <?php foreach ($topConsumerStats as $consumerStat): ?>
+                                <div class="farmasi-stat-row">
+                                    <div class="farmasi-stat-label"><?= htmlspecialchars($consumerStat['label']) ?></div>
+                                    <div class="farmasi-stat-value">
+                                        <div class="farmasi-stat-title"><?= htmlspecialchars($consumerStat['consumer_name']) ?></div>
+                                        <div class="farmasi-stat-meta">
+                                            <?= (int)$consumerStat['total_transaksi'] ?> transaksi · <?= dollar((int)$consumerStat['total_belanja']) ?>
                                         </div>
-                                        <div class="online-medic-stat-card">
-                                            <span class="online-medic-stat-label">Total Seluruh Transaksi</span>
-                                            <strong><?= (int)($m['total_transaksi_semua'] ?? 0) ?> trx</strong>
+                                        <div class="farmasi-stat-meta">
+                                            BD <?= (int)$consumerStat['total_bandage'] ?> · IF <?= (int)$consumerStat['total_ifaks'] ?> · PK <?= (int)$consumerStat['total_painkiller'] ?>
                                         </div>
-                                        <div class="online-medic-stat-card">
-                                            <span class="online-medic-stat-label">Pendapatan Hari Ini</span>
-                                            <strong class="amount"><?= dollar((int)$m['total_pendapatan']) ?></strong>
-                                        </div>
-                                        <div class="online-medic-stat-card online-medic-stat-card-success">
-                                            <span class="online-medic-stat-label">Bonus Hari Ini</span>
-                                            <strong class="bonus text-success-xs"><?= dollar((int)$m['bonus_40']) ?></strong>
+                                        <div class="farmasi-stat-meta">
+                                            Terakhir: <?= $consumerStat['last_purchase_at'] !== '' ? htmlspecialchars(formatTanggalID($consumerStat['last_purchase_at'])) : '-' ?>
                                         </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
-
-                        <?php endif; ?>
-
+                        </div>
                     </div>
-
-                </div>
-            </div>
-
-            <div class="grid items-start gap-4 lg:grid-cols-3">
-                <!-- TOTAL TRANSAKSI HARI INI -->
-                <div class="card mb-0">
-                    <h3 class="section-title-compact">
-                        <?= ems_icon('chart-bar', 'h-5 w-5 text-primary') ?> Total Transaksi Hari Ini
-                    </h3>
-
-                    <p class="muted-copy-tight">
-                        Rekap otomatis <strong>khusus hari ini</strong> (reset setiap pergantian tanggal).
-                    </p>
-
-                    <?php if ($todayStats && $todayStats['total_transaksi'] > 0): ?>
-                        <div class="table-wrapper table-wrapper-sm">
-                            <table class="table-custom">
-                                <thead>
-                                    <tr>
-                                        <th>Total Transaksi</th>
-                                        <th>Total Harga</th>
-                                        <th>Bonus (40%)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><?= (int)$todayStats['total_transaksi'] ?></td>
-                                        <td><?= dollar((int)$todayStats['total_harga']) ?></td>
-                                        <td><?= dollar((int)$todayStats['bonus_40']) ?></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p class="empty-copy">
-                            Belum ada transaksi hari ini.
-                        </p>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Card Filter & Transaksi -->
-                <div class="card mb-0">
-                    <div class="card-header">Filter Tanggal & Transaksi</div>
-
-                    <!-- Form Filter (GET) -->
-                    <form method="get" class="mb-2.5">
-                        <div class="row-form-2">
-                            <div class="col">
-                                <label for="rangeSelect">Rentang Tanggal</label>
-                                <select name="range" id="rangeSelect">
-                                    <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
-                                    <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
-                                    <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
-
-                                    <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
-                                        <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
-                                    </option>
-
-                                    <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
-                                        <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
-                                    </option>
-
-                                    <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
-                                        <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
-                                    </option>
-
-                                    <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
-                                        <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
-                                    </option>
-
-                                    <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
-                                </select>
-
-                            </div>
-                        </div>
-                        <div class="row-form-2 hidden" id="customDateRow">
-                            <div class="col">
-                                <label for="filterFromDate">Dari tanggal</label>
-                                <input type="date" id="filterFromDate" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
-                            </div>
-                            <div class="col">
-                                <label for="filterToDate">Sampai tanggal</label>
-                                <input type="date" id="filterToDate" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
-                            </div>
-                        </div>
-
-                        <?php if ($showAll): ?>
-                            <input type="hidden" name="show_all" value="1">
-                        <?php endif; ?>
-
-                        <div class="mt-2">
-                            <button type="submit" class="btn-secondary">Terapkan Filter</button>
-                        </div>
-                    </form>
-
-                    <p class="muted-copy-tight">
-                        Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
-                    </p>
-                </div>
-
-                <!-- Rekapan Bonus Medis (berdasarkan filter tanggal) -->
-                <div class="card mb-0">
-                    <h3 class="section-title-compact">Rekapan Bonus Medis (berdasarkan filter tanggal)</h3>
-                    <p class="muted-copy-tight">
-                        Ditampilkan berdasarkan <strong>petugas medis yang sedang aktif</strong> pada rentang tanggal aktif.
-                    </p>
-
-                    <?php if ($singleMedicStats): ?>
-                        <div class="table-wrapper table-wrapper-sm table-section-spacer overflow-x-auto" style="overflow-x:auto;">
-                            <table class="table-custom" style="min-width: 920px; width: max-content;">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>Nama Medis</th>
-                                        <th>Jabatan</th>
-                                        <th>Total Transaksi</th>
-                                        <th>Total Item</th>
-                                        <th>Total Harga</th>
-                                        <th>Bonus (40%)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>1</td>
-                                        <td><?= htmlspecialchars($singleMedicStats['medic_name']) ?></td>
-                                        <td><?= htmlspecialchars($singleMedicStats['medic_jabatan']) ?></td>
-                                        <td><?= (int)$singleMedicStats['total_transaksi'] ?></td>
-                                        <td><?= (int)$singleMedicStats['total_item'] ?></td>
-                                        <td><?= dollar((int)$singleMedicStats['total_harga']) ?></td>
-                                        <td><?= dollar((int)$singleMedicStats['bonus_40']) ?></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <p class="empty-copy mb-3">
-                            Belum ada data untuk petugas medis aktif pada rentang tanggal yang dipilih.
-                        </p>
-                    <?php endif; ?>
                 </div>
             </div>
 
             <!-- Tabel Transaksi dengan DataTables + checkbox -->
-            <div class="card mt-4">
-                <div class="switcher-bar">
-                    <div>
-                        <h3 class="section-title-tight">Transaksi (sesuai filter)</h3>
-                        <div class="switcher-caption">
-                            <?php if ($showAll): ?>
-                                Mode: <strong>Semua medis</strong>
-                            <?php else: ?>
-                                Mode: <strong>Medis aktif (<?= htmlspecialchars($medicName) ?>)</strong>
-                            <?php endif; ?>
+            <div class="card mt-4 farmasi-card">
+                <div class="farmasi-card-header">
+                    <div class="switcher-bar">
+                        <div>
+                            <h3 class="farmasi-card-title">Riwayat Transaksi</h3>
+                            <div class="farmasi-card-subtitle">
+                                <?php if ($showAll): ?>
+                                    Mode: <strong>Semua medis</strong>
+                                <?php else: ?>
+                                    Mode: <strong>Medis aktif (<?= htmlspecialchars($medicName) ?>)</strong>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="switcher-actions">
+                            <form method="get" class="switcher-form">
+                                <!-- bawa filter range yang sedang aktif -->
+                                <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
+                                <?php if ($range === 'custom'): ?>
+                                    <input type="hidden" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
+                                    <input type="hidden" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
+                                <?php endif; ?>
+
+                                <?php if ($showAll): ?>
+                                    <!-- Sedang mode "tampilkan semua data" → tombol kembali ke hanya medis aktif -->
+                                    <button type="submit" class="btn-secondary">
+                                        Kembali (Hanya Medis Aktif)
+                                    </button>
+                                <?php else: ?>
+                                    <!-- Sedang mode hanya medis aktif → tombol untuk tampilkan semua data -->
+                                    <input type="hidden" name="show_all" value="1">
+                                    <button type="submit" class="btn-secondary">
+                                        Tampilkan Semua Data
+                                    </button>
+                                <?php endif; ?>
+                            </form>
+
+                            <div class="hidden" id="bulkSelectionControls">
+                                <strong id="bulkSelectionCount">0 data terpilih</strong>
+                                <button type="button" class="btn-secondary" id="btnSelectAllRows">
+                                    Select all
+                                </button>
+                                <button type="button" class="btn-secondary" id="btnDeselectAllRows">
+                                    Deselect all
+                                </button>
+                                <button type="submit" class="btn-danger" id="btnBulkDelete" form="bulkDeleteForm" disabled>
+                                    Hapus Data Terpilih
+                                </button>
+                            </div>
                         </div>
                     </div>
-
-                    <form method="get" class="switcher-form">
-                        <!-- bawa filter range yang sedang aktif -->
-                        <input type="hidden" name="range" value="<?= htmlspecialchars($range) ?>">
-                        <?php if ($range === 'custom'): ?>
-                            <input type="hidden" name="from" value="<?= htmlspecialchars($fromDateInput) ?>">
-                            <input type="hidden" name="to" value="<?= htmlspecialchars($toDateInput) ?>">
-                        <?php endif; ?>
-
-                        <?php if ($showAll): ?>
-                            <!-- Sedang mode "tampilkan semua data" → tombol kembali ke hanya medis aktif -->
-                            <button type="submit" class="btn-secondary">
-                                Kembali (Hanya Medis Aktif)
-                            </button>
-                        <?php else: ?>
-                            <!-- Sedang mode hanya medis aktif → tombol untuk tampilkan semua data -->
-                            <input type="hidden" name="show_all" value="1">
-                            <button type="submit" class="btn-secondary">
-                                Tampilkan Semua Data
-                            </button>
-                        <?php endif; ?>
-                    </form>
                 </div>
 
-                <?php if (!$filteredSales): ?>
-                    <p class="empty-copy">Belum ada transaksi pada rentang ini.</p>
-                <?php else: ?>
-                    <form method="post" id="bulkDeleteForm" onsubmit="return confirmBulkDelete();">
-                        <input type="hidden" name="action" value="delete_selected">
-                        <div class="table-wrapper-sm">
-                            <table id="salesTable" class="table-custom">
-                                <thead>
-                                    <tr>
-                                        <th class="checkbox-col">
-                                            <input type="checkbox" id="selectAll">
-                                        </th>
-                                        <th>Waktu</th>
-                                        <th><?= htmlspecialchars($consumerIdentifierLabel) ?></th>
-                                        <th>Nama Medis</th>
-                                        <th>Jabatan</th>
-                                        <th>Paket</th>
-                                        <th>Bandage</th>
-                                        <th>IFAKS</th>
-                                        <th>Painkiller</th>
-                                        <th>Harga</th>
-                                        <th>Bonus (40%)</th>
-                                    </tr>
-                                </thead>
-                                <tfoot>
-                                    <tr>
-                                        <th colspan="6" class="table-align-right">TOTAL</th>
-                                        <th></th>
-                                        <th></th>
-                                        <th></th>
-                                        <th></th>
-                                        <th></th>
-                                    </tr>
-                                </tfoot>
-                                <tbody>
-                                    <?php foreach ($filteredSales as $s): ?>
-                                        <?php $bonus = (int)floor(((int)$s['price']) * 0.4); ?>
-                                        <?php
-                                        $consumerDisplayName = ems_looks_like_citizen_id((string)$s['consumer_name'])
-                                            ? ems_normalize_citizen_id((string)$s['consumer_name'])
-                                            : trim((string)$s['consumer_name']);
-                                        $consumerIdentityMeta = $consumerIdentityPhotoMap[$consumerDisplayName] ?? null;
-                                        ?>
+                <div class="farmasi-card-content">
+                    <?php if (!$filteredSales): ?>
+                        <p class="empty-copy">Belum ada transaksi pada rentang ini.</p>
+                    <?php else: ?>
+                        <form method="post" id="bulkDeleteForm" onsubmit="return confirmBulkDelete();">
+                            <input type="hidden" name="action" value="delete_selected">
+                            <div class="table-wrapper-sm">
+                                <table id="salesTable" class="table-custom">
+                                    <thead>
                                         <tr>
-                                            <td class="table-align-center">
-                                                <?php if ($medicName && $s['medic_name'] === $medicName): ?>
-                                                    <input type="checkbox"
-                                                        class="row-check"
-                                                        name="sale_ids[]"
-                                                        value="<?= (int)$s['id'] ?>">
-                                                <?php else: ?>
-                                                    <span class="switcher-caption">-</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td data-order="<?= strtotime($s['created_at']) ?>">
-                                                <?= formatTanggalID($s['created_at']) ?>
-                                            </td>
-                                            <td>
-                                                <?php if (!empty($consumerIdentityMeta['has_photo']) && !empty($consumerIdentityMeta['identity_id'])): ?>
-                                                    <button
-                                                        type="button"
-                                                        class="btn-link"
-                                                        onclick="openIdentityViewModal(<?= (int)$consumerIdentityMeta['identity_id'] ?>)"
-                                                        title="Lihat foto KTP konsumen">
-                                                        <?= htmlspecialchars($consumerDisplayName) ?>
-                                                    </button>
-                                                <?php else: ?>
-                                                    <?= htmlspecialchars($consumerDisplayName) ?>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td><?= htmlspecialchars($s['medic_name']) ?></td>
-                                            <td><?= htmlspecialchars($s['medic_jabatan']) ?></td>
-                                            <td><?= htmlspecialchars($s['package_name']) ?></td>
-                                            <td><?= (int)$s['qty_bandage'] ?></td>
-                                            <td><?= (int)$s['qty_ifaks'] ?></td>
-                                            <td><?= (int)$s['qty_painkiller'] ?></td>
-                                            <td><?= dollar((int)$s['price']) ?></td>
-                                            <td><?= dollar($bonus) ?></td>
+                                            <th class="checkbox-col">
+                                                <input type="checkbox" id="selectAll">
+                                            </th>
+                                            <th>Waktu</th>
+                                            <th><?= htmlspecialchars($consumerIdentifierLabel) ?></th>
+                                            <th>Nama Medis</th>
+                                            <th>Jabatan</th>
+                                            <th>Paket</th>
+                                            <th>Bandage</th>
+                                            <th>IFAKS</th>
+                                            <th>Painkiller</th>
+                                            <th>Harga</th>
+                                            <th>Bonus (40%)</th>
                                         </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <div class="action-row-wrap">
-                            <button type="submit" class="btn-danger" id="btnBulkDelete" disabled>
-                                Hapus Data Terpilih
-                            </button>
-                            <small class="muted-copy">
-                                Checklist baris yang ingin dihapus. Hanya transaksi milik Anda yang akan dihapus.
-                            </small>
-                        </div>
-                    </form>
-                <?php endif; ?>
+                                    </thead>
+                                    <tfoot>
+                                        <tr>
+                                            <th colspan="6" class="table-align-right">TOTAL</th>
+                                            <th></th>
+                                            <th></th>
+                                            <th></th>
+                                            <th></th>
+                                            <th></th>
+                                        </tr>
+                                    </tfoot>
+                                    <tbody>
+                                        <?php foreach ($filteredSales as $s): ?>
+                                            <?php $bonus = (int)floor(((int)$s['price']) * 0.4); ?>
+                                            <?php
+                                            $consumerDisplayName = ems_looks_like_citizen_id((string)$s['consumer_name'])
+                                                ? ems_normalize_citizen_id((string)$s['consumer_name'])
+                                                : trim((string)$s['consumer_name']);
+                                            $consumerIdentityMeta = $consumerIdentityPhotoMap[$consumerDisplayName] ?? null;
+                                            ?>
+                                            <tr>
+                                                <td class="table-align-center">
+                                                    <?php if ($medicName && $s['medic_name'] === $medicName): ?>
+                                                        <input type="checkbox"
+                                                            class="row-check"
+                                                            name="sale_ids[]"
+                                                            value="<?= (int)$s['id'] ?>">
+                                                    <?php else: ?>
+                                                        <span class="switcher-caption">-</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td data-order="<?= strtotime($s['created_at']) ?>">
+                                                    <?= formatTanggalID($s['created_at']) ?>
+                                                </td>
+                                                <td>
+                                                    <?php if (!empty($consumerIdentityMeta['has_photo']) && !empty($consumerIdentityMeta['identity_id'])): ?>
+                                                        <button
+                                                            type="button"
+                                                            class="btn-link"
+                                                            onclick="openIdentityViewModal(<?= (int)$consumerIdentityMeta['identity_id'] ?>)"
+                                                            title="Lihat foto KTP konsumen">
+                                                            <?= htmlspecialchars($consumerDisplayName) ?>
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <?= htmlspecialchars($consumerDisplayName) ?>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td><?= htmlspecialchars($s['medic_name']) ?></td>
+                                                <td><?= htmlspecialchars($s['medic_jabatan']) ?></td>
+                                                <td><?= htmlspecialchars($s['package_name']) ?></td>
+                                                <td><?= (int)$s['qty_bandage'] ?></td>
+                                                <td><?= (int)$s['qty_ifaks'] ?></td>
+                                                <td><?= (int)$s['qty_painkiller'] ?></td>
+                                                <td><?= dollar((int)$s['price']) ?></td>
+                                                <td><?= dollar($bonus) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </form>
+                    <?php endif; ?>
+                </div>
             </div>
 
         <?php else: ?>
@@ -3196,12 +3313,10 @@ include __DIR__ . '/../partials/sidebar.php';
             // ===============================
             // COOLDOWN CLIENT (UX SAJA)
             // ===============================
-            if (window.__lastSubmitAt) {
-                const now = Date.now();
-                const diff = Math.floor((now - window.__lastSubmitAt) / 1000);
-
-                if (diff < 60) {
-                    alert(`Mohon tunggu ${60 - diff} detik sebelum transaksi berikutnya.`);
+            if (typeof window.getFarmasiCooldownRemaining === 'function') {
+                const remain = window.getFarmasiCooldownRemaining();
+                if (remain > 0) {
+                    alert(`Mohon tunggu ${remain} detik sebelum transaksi berikutnya.`);
                     return;
                 }
             }
@@ -3292,7 +3407,9 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             if (form) {
-                window.__lastSubmitAt = Date.now();
+                if (typeof window.setFarmasiCooldown === 'function') {
+                    window.setFarmasiCooldown(60);
+                }
                 form.submit();
             }
         }
@@ -3574,6 +3691,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     order: [
                         [1, 'desc']
                     ],
+                    columnDefs: [{
+                        targets: 0,
+                        orderable: false,
+                        searchable: false
+                    }],
                     language: {
                         url: "<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>"
                     },
@@ -3627,32 +3749,71 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const $selectAll = jQuery('#selectAll');
             const $bulkBtn = jQuery('#btnBulkDelete');
+            const $selectAllRowsBtn = jQuery('#btnSelectAllRows');
+            const $deselectAllRowsBtn = jQuery('#btnDeselectAllRows');
+            const $bulkControls = jQuery('#bulkSelectionControls');
+            const $bulkSelectionCount = jQuery('#bulkSelectionCount');
 
-            function updateBulkButton() {
-                const anyChecked = jQuery('.row-check:checked').length > 0;
-                $bulkBtn.prop('disabled', !anyChecked);
+            function getRowCheckboxes() {
+                if (table) {
+                    return jQuery(table.rows({
+                        search: 'applied'
+                    }).nodes()).find('.row-check');
+                }
+
+                return jQuery('#salesTable tbody .row-check');
             }
 
-            // Select/Deselect all (hanya yang ada checkboxnya)
-            $selectAll.on('click', function() {
-                const checked = this.checked;
-                jQuery('#salesTable tbody .row-check').prop('checked', checked);
+            function syncSelectAllState() {
+                const $checkboxes = getRowCheckboxes();
+                const total = $checkboxes.length;
+                const checked = $checkboxes.filter(':checked').length;
+
+                $selectAll.prop('checked', total > 0 && checked === total);
+                $selectAll.prop('indeterminate', checked > 0 && checked < total);
+            }
+
+            function updateBulkButton() {
+                const checkedCount = getRowCheckboxes().filter(':checked').length;
+                const anyChecked = checkedCount > 0;
+                $bulkBtn.prop('disabled', !anyChecked);
+                $bulkControls.toggleClass('hidden', !anyChecked);
+                $bulkSelectionCount.text(checkedCount + ' data terpilih');
+                syncSelectAllState();
+            }
+
+            function setAllRowsChecked(checked) {
+                getRowCheckboxes().prop('checked', checked);
+                $selectAll.prop('checked', checked);
+                $selectAll.prop('indeterminate', false);
                 updateBulkButton();
+            }
+
+            // Select/Deselect all (semua baris sesuai filter DataTables)
+            $selectAll.on('click', function() {
+                setAllRowsChecked(this.checked);
+            });
+
+            $selectAllRowsBtn.on('click', function() {
+                setAllRowsChecked(true);
+            });
+
+            $deselectAllRowsBtn.on('click', function() {
+                setAllRowsChecked(false);
             });
 
             // Per row checkbox
             jQuery(document).on('change', '.row-check', function() {
-                const total = jQuery('#salesTable tbody .row-check').length;
-                const checked = jQuery('#salesTable tbody .row-check:checked').length;
-
-                if (!this.checked) {
-                    $selectAll.prop('checked', false);
-                } else if (checked === total && total > 0) {
-                    $selectAll.prop('checked', true);
-                }
-
                 updateBulkButton();
             });
+
+            if (table) {
+                table.on('draw', function() {
+                    updateBulkButton();
+                });
+            }
+
+            updateBulkButton();
         });
     </script>
     <script>
@@ -4581,28 +4742,42 @@ include __DIR__ . '/../partials/sidebar.php';
         if (!box || !btn) return;
 
         let timer = null;
+        let clockOffsetMs = 0;
+        let cooldownUntilMs = 0;
+
+        function getSyncedNowMs() {
+            return Date.now() + clockOffsetMs;
+        }
+
+        function getCooldownRemainingSeconds() {
+            if (!cooldownUntilMs) {
+                return 0;
+            }
+
+            return Math.max(0, Math.ceil((cooldownUntilMs - getSyncedNowMs()) / 1000));
+        }
 
         function clearCooldownUI() {
             box.style.display = 'none';
             box.innerHTML = '';
             btn.disabled = false;
             btn.classList.remove('btn-disabled');
+            cooldownUntilMs = 0;
             if (timer) {
                 clearInterval(timer);
                 timer = null;
             }
         }
 
-        function applyCooldownData(data) {
-            if (!data.active) {
+        function renderCooldownUI() {
+            const remain = getCooldownRemainingSeconds();
+            if (remain <= 0) {
                 clearCooldownUI();
                 return;
             }
 
             btn.disabled = true;
             btn.classList.add('btn-disabled');
-
-            const remain = parseInt(data.remain || 0, 10);
             box.innerHTML = `
                 <strong>Cooldown transaksi</strong><br>
                 Anda baru saja menyimpan transaksi.<br>
@@ -4612,31 +4787,71 @@ include __DIR__ . '/../partials/sidebar.php';
             box.style.display = 'block';
         }
 
-        const cooldownPoller = window.EMSRealtime.createPollingTask({
-            url: window.emsUrl('/actions/get_global_cooldown.php'),
-            interval: 10000,
-            maxInterval: 90000,
-            timeoutMs: 5000,
-            onSuccess: function(data) {
-                if (!data || typeof data.active === 'undefined') {
-                    clearCooldownUI();
-                    return;
-                }
-                applyCooldownData(data);
-            },
-            onError: function(result, failCount) {
-                clearCooldownUI();
-                if (failCount === 1) {
-                    window.EMSRealtime.logOnce(
-                        'cooldown:' + result.reason,
-                        'Cooldown status sementara gagal dimuat.',
-                        result
-                    );
-                }
+        function startCooldownTimer() {
+            renderCooldownUI();
+            if (timer) {
+                clearInterval(timer);
             }
-        });
 
-        cooldownPoller.start();
+            timer = setInterval(function() {
+                renderCooldownUI();
+            }, 250);
+        }
+
+        function applyCooldownData(data) {
+            if (!data || !data.active) {
+                clearCooldownUI();
+                return;
+            }
+
+            if (typeof data.server_now === 'number') {
+                clockOffsetMs = (data.server_now * 1000) - Date.now();
+            }
+
+            if (typeof data.cooldown_until === 'number') {
+                cooldownUntilMs = data.cooldown_until * 1000;
+            } else {
+                const remain = parseInt(data.remain || 0, 10);
+                cooldownUntilMs = getSyncedNowMs() + (Math.max(0, remain) * 1000);
+            }
+
+            startCooldownTimer();
+        }
+
+        window.getFarmasiCooldownRemaining = getCooldownRemainingSeconds;
+        window.setFarmasiCooldown = function(seconds) {
+            const remain = Math.max(0, parseInt(seconds || 0, 10));
+            if (remain <= 0) {
+                clearCooldownUI();
+                return;
+            }
+
+            cooldownUntilMs = getSyncedNowMs() + (remain * 1000);
+            startCooldownTimer();
+        };
+
+        fetch(window.emsUrl('/actions/get_global_cooldown.php'), {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store'
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                applyCooldownData(data);
+            })
+            .catch(function(error) {
+                clearCooldownUI();
+                window.emsLogOnce(
+                    'cooldown:init',
+                    'Cooldown status sementara gagal dimuat.',
+                    error
+                );
+            });
     })();
 </script>
 

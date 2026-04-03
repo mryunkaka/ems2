@@ -40,6 +40,10 @@
   .page {
     max-width: 1200px;
   }
+
+  .farmasi-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* =========================================================
@@ -48,6 +52,10 @@
 @media (max-width: 1199px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .farmasi-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Login Page */
@@ -158,6 +166,22 @@
   /* Cards */
   .card {
     padding: 16px;
+  }
+
+  .farmasi-card-header,
+  .farmasi-card-content,
+  .farmasi-card-footer {
+    padding: 16px;
+  }
+
+  .switcher-actions,
+  #bulkSelectionControls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .farmasi-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   /* Dashboard */

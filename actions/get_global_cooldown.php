@@ -50,6 +50,8 @@ try {
         'active' => true,
         'remain' => $remain,
         'last_by' => $row['medic_name'],
+        'server_now' => time(),
+        'cooldown_until' => $lastTime + $cooldownSeconds,
     ]);
 } catch (Throwable $e) {
     error_log('[get_global_cooldown] ' . $e->getMessage());

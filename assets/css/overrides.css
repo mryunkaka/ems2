@@ -7,6 +7,168 @@
 }
 
 /* =========================================================
+   GLOBAL CARD SHELL
+   ========================================================= */
+.farmasi-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.farmasi-card-header,
+.farmasi-card-content,
+.farmasi-card-footer {
+  padding: 18px 22px;
+}
+
+.farmasi-card-header {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.farmasi-card-footer {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.farmasi-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.farmasi-card-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.farmasi-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.farmasi-summary-grid > .farmasi-card {
+  height: 100%;
+}
+
+.farmasi-stat-list {
+  display: grid;
+  gap: 10px;
+}
+
+.farmasi-stat-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.farmasi-stat-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.farmasi-stat-value {
+  min-width: 0;
+  width: 100%;
+}
+
+.farmasi-stat-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e293b;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.farmasi-stat-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #64748b;
+  word-break: break-word;
+}
+
+.filter-transaction-form .col,
+.filter-transaction-form select,
+.filter-transaction-form input[type="date"] {
+  width: 100%;
+}
+
+.farmasi-filter-field {
+  width: 100%;
+}
+
+.farmasi-filter-control,
+.farmasi-filter-button {
+  display: block;
+  width: 100%;
+  min-width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.filter-transaction-form,
+.filter-transaction-form .row-form-2,
+.filter-transaction-form .col,
+.filter-transaction-form #rangeSelect {
+  width: 100%;
+  max-width: none;
+}
+
+.filter-transaction-form #rangeSelect {
+  display: block;
+  min-width: 100%;
+  flex: 1 1 auto;
+}
+
+.farmasi-filter-button {
+  justify-content: center;
+}
+
+.switcher-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.switcher-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.switcher-actions .switcher-form {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+#bulkSelectionControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+/* =========================================================
    TABLE BORDERS (generic)
    ========================================================= */
 .table-wrapper,
