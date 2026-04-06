@@ -42,6 +42,7 @@ $groupedNav = [
         sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
         sidebarItem('/dashboard/rekam_medis_list.php', 'rekam_medis_list.php', 'Rekam Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/operasi_plastik.php', 'operasi_plastik.php', 'Operasi Plastik', 'building-office-2'),
+        sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
     ],
     'Farmasi' => [
         sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
@@ -147,6 +148,9 @@ if ($isAltaUnit && !$canViewAllUnits) {
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
             ],
+            'Medis' => [
+                sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
+            ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
                 sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
@@ -160,6 +164,9 @@ if ($isAltaUnit && !$canViewAllUnits) {
         $groupedNav = [
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+            ],
+            'Medis' => [
+                sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
             ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),

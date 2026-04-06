@@ -741,6 +741,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'rekap_farmasi.php',
             'konsumen.php',
             'ranking.php',
+            'emt_doj.php',
+            'emt_doj_action.php',
             'setting_akun.php',
             'setting_akun_action.php',
         ];
@@ -764,6 +766,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'rekam_medis_edit_action.php',
         'rekam_medis_delete.php',
         'operasi_plastik.php',
+        'emt_doj.php',
+        'emt_doj_action.php',
         'rekap_farmasi.php',
         'rekap_farmasi_v2.php',
         'konsumen.php',

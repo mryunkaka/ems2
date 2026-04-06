@@ -46,12 +46,24 @@
 .farmasi-summary-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
 }
 
 .farmasi-summary-grid > .farmasi-card {
   height: 100%;
+}
+
+@media (min-width: 768px) {
+  .farmasi-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .farmasi-summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .farmasi-stat-list {
