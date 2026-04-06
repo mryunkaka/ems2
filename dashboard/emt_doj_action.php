@@ -24,7 +24,8 @@ $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
 $userDivision = ems_normalize_division($user['division'] ?? '');
 $userFullName = trim((string)($user['full_name'] ?? $user['name'] ?? ''));
-
+$canManageMaster = ems_is_manager_plus_role($userRole);
+$canInputDelivery = $userDivision === 'Medis' || $canManageMaster;
 if ($userId <= 0) {
     $_SESSION['flash_errors'][] = 'Session tidak valid.';
     header('Location: ' . $redirectTo);
@@ -41,7 +42,7 @@ $action = trim((string)($_POST['action'] ?? ''));
 
 try {
     if ($action === 'create_emt') {
-        if (!ems_is_manager_plus_role($userRole)) {
+        if (!$canManageMaster) {
             throw new RuntimeException('Hanya manager yang dapat menambah data EMT DOJ.');
         }
 
@@ -83,8 +84,81 @@ try {
         exit;
     }
 
+    if ($action === 'update_emt') {
+        if (!$canManageMaster) {
+            throw new RuntimeException('Hanya manager yang dapat mengubah data EMT DOJ.');
+        }
+
+        $emtId = (int)($_POST['emt_id'] ?? 0);
+        $fullName = preg_replace('/\s+/u', ' ', trim((string)($_POST['full_name'] ?? ''))) ?: '';
+        $cid = ems_normalize_citizen_id($_POST['cid'] ?? '');
+        $targetPatients = (int)($_POST['target_patients'] ?? 0);
+        $isActive = (int)($_POST['is_active'] ?? 1) === 1 ? 1 : 0;
+
+        if ($emtId <= 0) {
+            throw new RuntimeException('Data EMT DOJ tidak valid.');
+        }
+
+        if ($fullName === '') {
+            throw new RuntimeException('Nama lengkap EMT DOJ wajib diisi.');
+        }
+
+        if (!ems_looks_like_citizen_id($cid)) {
+            throw new RuntimeException('CID EMT DOJ tidak valid.');
+        }
+
+        if ($targetPatients <= 0) {
+            throw new RuntimeException('Jumlah pasien wajib lebih dari 0.');
+        }
+
+        $stmtDuplicate = $pdo->prepare("
+            SELECT id
+            FROM emt_doj
+            WHERE cid = ?
+              AND id <> ?
+            LIMIT 1
+        ");
+        $stmtDuplicate->execute([$cid, $emtId]);
+        if ($stmtDuplicate->fetchColumn()) {
+            throw new RuntimeException('CID tersebut sudah dipakai data EMT DOJ lain.');
+        }
+
+        $stmtDelivered = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM emt_doj_deliveries
+            WHERE emt_id = ?
+        ");
+        $stmtDelivered->execute([$emtId]);
+        $deliveredCount = (int)$stmtDelivered->fetchColumn();
+
+        if ($targetPatients < $deliveredCount) {
+            throw new RuntimeException('Target pasien tidak boleh lebih kecil dari jumlah pasien yang sudah diantar.');
+        }
+
+        $stmtUpdate = $pdo->prepare("
+            UPDATE emt_doj
+            SET
+                full_name = ?,
+                cid = ?,
+                target_patients = ?,
+                is_active = ?
+            WHERE id = ?
+        ");
+        $stmtUpdate->execute([
+            $fullName,
+            $cid,
+            $targetPatients,
+            $isActive,
+            $emtId,
+        ]);
+
+        $_SESSION['flash_messages'][] = 'Data EMT DOJ berhasil diperbarui.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
     if ($action === 'create_delivery') {
-        if ($userDivision !== 'Medis' && !ems_is_manager_plus_role($userRole)) {
+        if (!$canInputDelivery) {
             throw new RuntimeException('Hanya division Medis atau manager yang dapat menginput pengantaran pasien.');
         }
 
@@ -140,6 +214,56 @@ try {
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Riwayat pengantaran pasien berhasil disimpan.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($action === 'delete_delivery') {
+        if (!$canManageMaster) {
+            throw new RuntimeException('Hanya manager yang dapat menghapus history pengantaran pasien.');
+        }
+
+        $deliveryId = (int)($_POST['delivery_id'] ?? 0);
+        if ($deliveryId <= 0) {
+            throw new RuntimeException('History pengantaran tidak valid.');
+        }
+
+        $stmtDelete = $pdo->prepare("
+            DELETE FROM emt_doj_deliveries
+            WHERE id = ?
+        ");
+        $stmtDelete->execute([$deliveryId]);
+
+        if ($stmtDelete->rowCount() <= 0) {
+            throw new RuntimeException('History pengantaran tidak ditemukan.');
+        }
+
+        $_SESSION['flash_messages'][] = 'History pengantaran pasien berhasil dihapus permanen.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($action === 'delete_emt') {
+        if (!$canManageMaster) {
+            throw new RuntimeException('Hanya manager yang dapat menghapus data EMT DOJ.');
+        }
+
+        $emtId = (int)($_POST['emt_id'] ?? 0);
+        if ($emtId <= 0) {
+            throw new RuntimeException('Data EMT DOJ tidak valid.');
+        }
+
+        $stmtDelete = $pdo->prepare("
+            DELETE FROM emt_doj
+            WHERE id = ?
+        ");
+        $stmtDelete->execute([$emtId]);
+
+        if ($stmtDelete->rowCount() <= 0) {
+            throw new RuntimeException('Data EMT DOJ tidak ditemukan.');
+        }
+
+        $_SESSION['flash_messages'][] = 'Data EMT DOJ berhasil dihapus permanen.';
         header('Location: ' . $redirectTo);
         exit;
     }
