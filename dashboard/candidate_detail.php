@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 if (strtolower($user['role'] ?? '') === 'staff') {
@@ -51,6 +52,23 @@ foreach ($answers as $answerValue) {
         $noCount++;
     }
 }
+$questionIds = array_map('intval', array_keys($questions));
+$traitItems = $recruitmentType === 'assistant_manager'
+    ? ems_assistant_manager_trait_items($questionIds)
+    : getTraitItems($recruitmentType);
+$chartScoreMap = [];
+foreach ($traitItems as $trait => $items) {
+    $chartScoreMap[$trait] = calculateTraitScore($answers, $items);
+}
+$chartScores = [
+    (int) round((float) ($chartScoreMap['focus']['score'] ?? 0)),
+    (int) round((float) ($chartScoreMap['consistency']['score'] ?? 0)),
+    (int) round((float) ($chartScoreMap['social']['score'] ?? 0)),
+    (int) round((float) ($chartScoreMap['emotional_stability']['score'] ?? 0)),
+    (int) round((float) ($chartScoreMap['obedience']['score'] ?? 0)),
+    (int) round((float) ($chartScoreMap['honesty_humility']['score'] ?? 0)),
+];
+
 $durationSeconds = (int)($result['duration_seconds'] ?? 0);
 $durationHours = intdiv($durationSeconds, 3600);
 $durationMinutes = intdiv($durationSeconds % 3600, 60);
@@ -327,12 +345,12 @@ function candidateDisplayLabel(?string $value): string
             datasets: [{
                 label: 'Profil Kandidat',
                 data: [
-                    <?= (int)$result['focus_score'] ?>,
-                    <?= (int)$result['consistency_score'] ?>,
-                    <?= (int)$result['social_score'] ?>,
-                    <?= (int)$result['attitude_score'] ?>,
-                    <?= (int)$result['loyalty_score'] ?>,
-                    <?= (int)$result['honesty_score'] ?>
+                    <?= (int)$chartScores[0] ?>,
+                    <?= (int)$chartScores[1] ?>,
+                    <?= (int)$chartScores[2] ?>,
+                    <?= (int)$chartScores[3] ?>,
+                    <?= (int)$chartScores[4] ?>,
+                    <?= (int)$chartScores[5] ?>
                 ],
                 backgroundColor: 'rgba(37, 99, 235, 0.2)',
                 borderColor: 'rgba(37, 99, 235, 1)'

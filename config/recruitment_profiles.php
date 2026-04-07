@@ -84,7 +84,6 @@ function ems_assistant_manager_question_bank(): array
     $criteriaDefinitions = [
         'obedience' => [
             'label' => 'Kepatuhan SOP',
-            'direction' => 'normal',
             'weight' => 1.0,
             'statements' => [
                 'Saya tetap menjalankan SOP EMS meskipun situasi lapangan sedang menekan.',
@@ -92,11 +91,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya lebih memilih tindakan yang sesuai aturan meskipun hasilnya tidak instan.',
                 'Saya terbiasa memastikan tim memahami SOP sebelum mulai bertugas.',
                 'Saya melihat kepatuhan SOP sebagai dasar profesionalisme anggota EMS.',
-                'Saya merasa aturan medis tidak boleh ditawar hanya demi kenyamanan.',
-                'Saya akan menghentikan tindakan tim bila prosedurnya jelas menyimpang.',
-                'Saya menilai disiplin prosedur lebih penting daripada kesan cepat selesai.',
-                'Saya tetap memegang prosedur resmi walau pihak lain mendorong jalan pintas.',
-                'Saya menegur pelanggaran SOP walau pelakunya orang yang sudah dekat dengan saya.',
+                ['text' => 'Saya merasa aturan medis boleh ditawar demi kenyamanan kerja.', 'direction' => 'reverse'],
+                ['text' => 'Saya membiarkan tindakan tim tetap berjalan walau prosedurnya jelas menyimpang.', 'direction' => 'reverse'],
+                ['text' => 'Saya menilai kesan cepat selesai lebih penting daripada disiplin prosedur.', 'direction' => 'reverse'],
+                ['text' => 'Saya mudah mengikuti jalan pintas bila pihak lain terus mendorongnya.', 'direction' => 'reverse'],
+                ['text' => 'Saya memilih diam saat ada pelanggaran SOP dari orang yang dekat dengan saya.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Saat respon emergency berlangsung.',
@@ -108,7 +107,6 @@ function ems_assistant_manager_question_bank(): array
         ],
         'consistency' => [
             'label' => 'Konsistensi & Komitmen',
-            'direction' => 'normal',
             'weight' => 1.0,
             'statements' => [
                 'Saya dapat menjaga standar kerja yang sama di shift sibuk maupun sepi.',
@@ -116,11 +114,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya memegang komitmen duty walau kondisi pribadi sedang tidak nyaman.',
                 'Saya tetap menjaga ritme kerja meski hasilnya belum langsung terlihat.',
                 'Saya menilai konsistensi tindakan lebih penting daripada janji lisan.',
-                'Saya tidak mudah berpindah fokus hanya karena ada distraksi kecil.',
-                'Saya tetap bisa menjaga etika kerja dari awal sampai akhir duty.',
-                'Saya berusaha hadir stabil sesuai tanggung jawab yang sudah disepakati.',
-                'Saya tidak mudah menurunkan standar hanya karena lingkungan mulai longgar.',
-                'Saya dapat mempertahankan disiplin kerja tanpa harus terus diingatkan.',
+                ['text' => 'Saya mudah berpindah fokus hanya karena ada distraksi kecil.', 'direction' => 'reverse'],
+                ['text' => 'Etika kerja saya mudah berubah antara awal dan akhir duty.', 'direction' => 'reverse'],
+                ['text' => 'Kehadiran saya sering bergantung pada mood, bukan tanggung jawab yang sudah disepakati.', 'direction' => 'reverse'],
+                ['text' => 'Saya mudah menurunkan standar kerja saat lingkungan mulai longgar.', 'direction' => 'reverse'],
+                ['text' => 'Saya baru disiplin bekerja jika terus diingatkan.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Dalam periode kerja beberapa hari berturut-turut.',
@@ -132,7 +130,6 @@ function ems_assistant_manager_question_bank(): array
         ],
         'focus' => [
             'label' => 'Fokus & Ketelitian',
-            'direction' => 'normal',
             'weight' => 0.9,
             'statements' => [
                 'Saya terbiasa memeriksa ulang detail kecil sebelum pekerjaan dianggap selesai.',
@@ -140,11 +137,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya mengecek ulang laporan sebelum meneruskannya ke atasan.',
                 'Saya tidak nyaman meninggalkan detail penting tanpa verifikasi.',
                 'Saya biasa menyusun prioritas kerja sebelum mulai bertugas.',
-                'Saya memeriksa kelengkapan perlengkapan sebelum tim bergerak ke lapangan.',
-                'Saya lebih suka memastikan data akurat daripada bergerak tergesa-gesa.',
-                'Saya menilai kesalahan kecil dapat berkembang menjadi masalah besar.',
-                'Saya mampu menjaga fokus walau banyak komunikasi masuk bersamaan.',
-                'Saya terbiasa memastikan dokumen atau catatan kerja tidak ada yang terlewat.',
+                ['text' => 'Saya sering melewatkan pengecekan kelengkapan perlengkapan sebelum tim bergerak ke lapangan.', 'direction' => 'reverse'],
+                ['text' => 'Saya lebih memilih bergerak cepat meski akurasi data belum benar-benar pasti.', 'direction' => 'reverse'],
+                ['text' => 'Saya menganggap kesalahan kecil jarang berdampak besar pada operasional.', 'direction' => 'reverse'],
+                ['text' => 'Fokus saya mudah pecah ketika banyak komunikasi masuk bersamaan.', 'direction' => 'reverse'],
+                ['text' => 'Saya cukup sering melewatkan dokumen atau catatan kerja yang seharusnya dicek.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Saat harus menyiapkan koordinasi lintas jabatan.',
@@ -156,7 +153,6 @@ function ems_assistant_manager_question_bank(): array
         ],
         'social' => [
             'label' => 'Koordinasi & Komunikasi',
-            'direction' => 'normal',
             'weight' => 0.9,
             'statements' => [
                 'Saya mampu menjelaskan instruksi kerja dengan bahasa yang jelas kepada tim.',
@@ -164,11 +160,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya terbiasa menjadi penghubung antara kebutuhan pimpinan dan tim lapangan.',
                 'Saya bisa mendengar komplain tanpa langsung terpancing emosi.',
                 'Saya berusaha memastikan pesan yang saya sampaikan dipahami dengan benar.',
-                'Saya nyaman melakukan koordinasi cepat dengan instansi lain bila diperlukan.',
-                'Saya menganggap komunikasi yang rapi sebagai bagian dari pelayanan EMS.',
-                'Saya tidak keberatan memberi penjelasan ulang jika tim masih belum paham.',
-                'Saya dapat menyampaikan koreksi tanpa menjatuhkan harga diri anggota tim.',
-                'Saya menilai briefing singkat penting untuk mencegah miskomunikasi saat duty.',
+                ['text' => 'Saya cenderung menghindari koordinasi cepat dengan instansi lain meski diperlukan.', 'direction' => 'reverse'],
+                ['text' => 'Saya menganggap komunikasi yang rapi bukan bagian penting dari pelayanan EMS.', 'direction' => 'reverse'],
+                ['text' => 'Saya enggan memberi penjelasan ulang jika tim belum memahami instruksi saya.', 'direction' => 'reverse'],
+                ['text' => 'Saya sering menyampaikan koreksi dengan cara yang membuat anggota tim merasa dijatuhkan.', 'direction' => 'reverse'],
+                ['text' => 'Saya menilai briefing singkat tidak terlalu penting sebelum duty.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Dalam situasi penuh tekanan.',
@@ -180,7 +176,6 @@ function ems_assistant_manager_question_bank(): array
         ],
         'emotional_stability' => [
             'label' => 'Kontrol Emosi',
-            'direction' => 'normal',
             'weight' => 0.9,
             'statements' => [
                 'Saya tetap bisa berpikir jernih saat situasi kerja memanas.',
@@ -188,11 +183,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya mampu memisahkan emosi pribadi dari keputusan kerja.',
                 'Saya tetap dapat bersikap tenang saat menerima tekanan dari banyak arah.',
                 'Saya tidak mudah terbawa emosi ketika mendapat penolakan atau komplain.',
-                'Saya masih bisa bersikap profesional meski sedang lelah.',
-                'Saya cenderung menyelesaikan masalah lebih dulu sebelum bereaksi secara emosional.',
-                'Saya tetap dapat menjaga sikap saat menghadapi anggota tim yang sulit diarahkan.',
-                'Saya tidak mudah kehilangan kontrol ketika rencana berubah mendadak.',
-                'Saya terbiasa menjaga ekspresi dan nada bicara saat kondisi tidak nyaman.',
+                ['text' => 'Profesionalitas saya mudah turun saat kondisi tubuh sedang lelah.', 'direction' => 'reverse'],
+                ['text' => 'Saya sering bereaksi emosional lebih dulu sebelum mencoba menyelesaikan masalah.', 'direction' => 'reverse'],
+                ['text' => 'Saya mudah terpancing saat menghadapi anggota tim yang sulit diarahkan.', 'direction' => 'reverse'],
+                ['text' => 'Saya mudah kehilangan kontrol ketika rencana berubah mendadak.', 'direction' => 'reverse'],
+                ['text' => 'Saya kesulitan menjaga ekspresi dan nada bicara saat kondisi tidak nyaman.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Ketika harus mengambil keputusan di depan tim.',
@@ -204,7 +199,6 @@ function ems_assistant_manager_question_bank(): array
         ],
         'honesty_humility' => [
             'label' => 'Integritas & Kejujuran',
-            'direction' => 'normal',
             'weight' => 1.0,
             'statements' => [
                 'Saya lebih memilih laporan yang jujur walau hasilnya terlihat kurang baik.',
@@ -212,11 +206,11 @@ function ems_assistant_manager_question_bank(): array
                 'Saya tidak nyaman mengambil keuntungan pribadi dari fasilitas EMS.',
                 'Saya menjaga informasi internal sesuai kebutuhan tugas, bukan demi kepentingan pribadi.',
                 'Saya menilai kepercayaan tim dibangun dari keterbukaan dan akuntabilitas.',
-                'Saya tidak akan memanipulasi data agar terlihat lebih rapi dari kenyataan.',
-                'Saya merasa integritas lebih penting daripada pencitraan jabatan.',
-                'Saya tetap melaporkan kondisi sebenarnya walau berisiko mendapat evaluasi.',
-                'Saya tidak menggunakan wewenang EMS untuk membantu kepentingan pihak tertentu.',
-                'Saya memandang kejujuran dalam administrasi sama pentingnya dengan kerja lapangan.',
+                ['text' => 'Saya bersedia memanipulasi data bila itu membuat laporan terlihat lebih rapi.', 'direction' => 'reverse'],
+                ['text' => 'Bagi saya, pencitraan jabatan lebih penting daripada integritas.', 'direction' => 'reverse'],
+                ['text' => 'Saya cenderung menyembunyikan kondisi sebenarnya bila khawatir mendapat evaluasi.', 'direction' => 'reverse'],
+                ['text' => 'Saya tidak masalah memakai wewenang EMS untuk membantu kepentingan pihak tertentu.', 'direction' => 'reverse'],
+                ['text' => 'Kejujuran administrasi menurut saya tidak sepenting kerja lapangan.', 'direction' => 'reverse'],
             ],
             'variants' => [
                 'Dalam urusan dokumen maupun laporan.',
@@ -258,13 +252,18 @@ function ems_assistant_manager_question_bank(): array
     $id = 1001;
     foreach ($criteriaDefinitions as $trait => $definition) {
         foreach ($definition['statements'] as $statement) {
+            $statementText = is_array($statement) ? (string) ($statement['text'] ?? '') : (string) $statement;
+            $statementDirection = is_array($statement)
+                ? (string) ($statement['direction'] ?? 'normal')
+                : (string) ($definition['direction'] ?? 'normal');
+
             foreach ($definition['variants'] as $variant) {
                 $bank[$id] = [
                     'id' => $id,
-                    'text' => $statement . ' ' . $variant,
+                    'text' => trim($statementText . ' ' . $variant),
                     'trait' => $trait,
                     'criteria' => $definition['label'],
-                    'direction' => $definition['direction'],
+                    'direction' => $statementDirection,
                     'weight' => $definition['weight'],
                     'trap' => !empty($definition['trap']),
                     'risky_answer' => $definition['risky_answer'] ?? null,
