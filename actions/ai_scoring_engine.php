@@ -244,7 +244,10 @@ function detectResponseBias(array $answers): array
         $prev = $a;
     }
 
-    if ($maxRun >= 10) {
+    // Assistant-manager items are grouped by trait and polarity, so moderate same-answer
+    // runs can happen naturally. Treat pattern answering as a red flag only when the run
+    // is both very long and paired with a heavily one-sided answer distribution.
+    if ($total > 0 && $maxRun >= 20 && (($ya / $total) > 0.7 || ($tidak / $total) > 0.7)) {
         $flags[] = 'pattern_answering';
     }
 

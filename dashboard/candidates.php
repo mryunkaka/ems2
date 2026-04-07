@@ -256,7 +256,7 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th>Confidence</th>
                             <th>Skor Gabungan</th>
                             <th>Interviewer</th>
-                            <th>Hasil Akhir</th>
+                            <th>Hasil</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
