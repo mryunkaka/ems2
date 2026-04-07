@@ -14,6 +14,7 @@ node_modules/
 # Logs & dumps
 *.log
 *.sql
+!docs/sql/*.sql
 cron/error_log
 actions/error_log
 config/database.php

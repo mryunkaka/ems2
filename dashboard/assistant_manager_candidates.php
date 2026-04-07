@@ -12,16 +12,14 @@ require_once __DIR__ . '/../config/recruitment_profiles.php';
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
 
-// HARD GUARD
 if (strtolower($role) === 'staff') {
     header('Location: dashboard.php');
     exit;
 }
 
-$listRecruitmentType = 'medical_candidate';
-$pageTitle = 'Calon Kandidat';
+$pageTitle = 'Calon Asisten Manager';
 
-function candidateStatusMeta(string $status): array
+function assistantManagerStatusMeta(string $status): array
 {
     return match ($status) {
         'ai_completed' => ['label' => 'Menunggu', 'class' => 'badge-warning'],
@@ -29,14 +27,11 @@ function candidateStatusMeta(string $status): array
         'final_review' => ['label' => 'Final Review', 'class' => 'badge-info'],
         'accepted' => ['label' => 'Diterima', 'class' => 'badge-success'],
         'rejected' => ['label' => 'Ditolak', 'class' => 'badge-danger'],
-        default => [
-            'label' => ucwords(str_replace('_', ' ', $status)),
-            'class' => 'badge-secondary',
-        ],
+        default => ['label' => ucwords(str_replace('_', ' ', $status)), 'class' => 'badge-secondary'],
     };
 }
 
-function candidateDecisionMeta(?string $decision): array
+function assistantManagerDecisionMeta(?string $decision): array
 {
     $decision = (string)($decision ?? '');
 
@@ -49,18 +44,11 @@ function candidateDecisionMeta(?string $decision): array
         'proceed' => ['label' => 'Lanjut Interview', 'class' => 'badge-info'],
         'reject' => ['label' => 'Ditolak Sistem', 'class' => 'badge-danger'],
         '' => ['label' => '-', 'class' => 'badge-secondary'],
-        default => [
-            'label' => ucwords(str_replace('_', ' ', $decision)),
-            'class' => 'badge-secondary',
-        ],
+        default => ['label' => ucwords(str_replace('_', ' ', $decision)), 'class' => 'badge-secondary'],
     };
 }
 
-/* ===============================
-   SELESAI INTERVIEW (DARI LIST)
-   =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) {
-
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         exit('Invalid CSRF token');
     }
@@ -71,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) 
     }
 
     $stmt = $pdo->prepare("
-    SELECT COUNT(*)
+        SELECT COUNT(*)
         FROM (
             SELECT hr_id
             FROM applicant_interview_scores
@@ -83,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) 
     $totalHr = (int)$stmt->fetchColumn();
 
     if ($totalHr < 2) {
-        header('Location: candidates.php?error=min_hr');
+        header('Location: assistant_manager_candidates.php?error=min_hr');
         exit;
     }
 
@@ -95,15 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) 
     ");
     $stmt->execute([$applicantId]);
 
-    header('Location: candidates.php?interview_done=1');
+    header('Location: assistant_manager_candidates.php?interview_done=1');
     exit;
 }
 
-/* ===============================
-   KEPUTUSAN PASCA AI (TANPA INTERVIEW)
-   =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
-
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         exit('Invalid CSRF token');
     }
@@ -130,40 +114,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
 
         try {
             $stmt = $pdo->prepare("
-            UPDATE medical_applicants
-            SET status = 'rejected',
-                rejection_stage = 'ai'
-            WHERE id = ?
-              AND status = 'ai_completed'
-        ");
+                UPDATE medical_applicants
+                SET status = 'rejected',
+                    rejection_stage = 'ai'
+                WHERE id = ?
+                  AND status = 'ai_completed'
+            ");
             $stmt->execute([$applicantId]);
 
             $stmt = $pdo->prepare("
-            SELECT score_total
-            FROM ai_test_results
-            WHERE applicant_id = ?
-        ");
-            $stmt->execute([$applicantId]);
-            $ai = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            $aiScore = (float)($ai['score_total'] ?? 0);
-
-            $stmt = $pdo->prepare("
-            INSERT INTO applicant_final_decisions
-            (
-                applicant_id,
-                system_result,
-                overridden,
-                override_reason,
-                final_result,
-                decided_by
-            ) VALUES (?, ?, 0, NULL, ?, ?)
-        ");
+                INSERT INTO applicant_final_decisions
+                (
+                    applicant_id,
+                    system_result,
+                    overridden,
+                    override_reason,
+                    final_result,
+                    decided_by
+                ) VALUES (?, ?, 0, NULL, ?, ?)
+            ");
             $stmt->execute([
                 $applicantId,
                 'tidak_lolos',
                 'tidak_lolos',
-                $user['name'] ?? 'System (AI)'
+                $user['name'] ?? 'System (AI)',
             ]);
 
             $pdo->commit();
@@ -175,14 +149,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
         }
     }
 
-    header('Location: candidates.php');
+    header('Location: assistant_manager_candidates.php');
     exit;
 }
 
-$candidateSql = "
+$query = "
     SELECT
         m.id,
         m.ic_name,
+        m.citizen_id,
         m.created_at,
         m.status,
         m.rejection_stage,
@@ -204,25 +179,29 @@ $candidateSql = "
             WHERE s.applicant_id = m.id
         ) AS interviewers
     FROM medical_applicants m
-    LEFT JOIN ai_test_results r
-        ON r.applicant_id = m.id
-    LEFT JOIN applicant_interview_results ir
-        ON ir.applicant_id = m.id
-    LEFT JOIN applicant_final_decisions fd
-        ON fd.applicant_id = m.id
+    LEFT JOIN ai_test_results r ON r.applicant_id = m.id
+    LEFT JOIN applicant_interview_results ir ON ir.applicant_id = m.id
+    LEFT JOIN applicant_final_decisions fd ON fd.applicant_id = m.id
 ";
-$candidateParams = [];
 
 if (ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
-    $candidateSql .= " WHERE COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = ?";
-    $candidateParams[] = $listRecruitmentType;
+    $query .= "
+        INNER JOIN (
+            SELECT MAX(id) AS latest_id
+            FROM medical_applicants
+            WHERE COALESCE(NULLIF(recruitment_type, ''), 'medical_candidate') = 'assistant_manager'
+            GROUP BY COALESCE(NULLIF(citizen_id, ''), CONCAT('__assistant_manager__', id))
+        ) latest_assistant_manager ON latest_assistant_manager.latest_id = m.id
+        WHERE COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = 'assistant_manager'
+    ";
+} else {
+    $query .= " WHERE 1 = 0";
 }
 
-$candidateSql .= " ORDER BY m.created_at DESC";
-$stmt = $pdo->prepare($candidateSql);
-$stmt->execute($candidateParams);
+$query .= " ORDER BY m.created_at DESC";
+$stmt = $pdo->prepare($query);
+$stmt->execute();
 $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
@@ -232,20 +211,20 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="page page-shell-md">
         <div class="flex justify-between items-center mb-4">
             <div>
-                <h1 class="page-title">Daftar Calon Kandidat</h1>
-                <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
+                <h1 class="page-title">Daftar Calon Asisten Manager</h1>
+                <p class="page-subtitle">Monitoring jalur rekrutmen General Affair untuk calon asisten manager</p>
             </div>
-            <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
+            <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form_assistant_manager.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
                 <?= ems_icon('plus', 'h-4 w-4') ?>
-                <span>Kandidat Baru</span>
+                <span>Asisten Manager Baru</span>
             </a>
         </div>
 
         <div class="card">
-            <div class="card-header">Calon Kandidat</div>
+            <div class="card-header">Calon Asisten Manager</div>
 
             <div class="table-wrapper">
-                <table id="candidateTable" class="table-custom">
+                <table id="assistantManagerCandidateTable" class="table-custom">
                     <thead>
                         <tr>
                             <th>#</th>
@@ -269,32 +248,20 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             $combinedScore = '-';
 
                             if ((int)($c['interview_locked'] ?? 0) === 1) {
-                                $combinedScore = round(
-                                    ($interviewScore * 0.6) +
-                                        ($aiScore * 0.3) +
-                                        ($confidence * 0.1),
-                                    2
-                                );
+                                $combinedScore = round(($interviewScore * 0.6) + ($aiScore * 0.3) + ($confidence * 0.1), 2);
                             }
 
-                            $statusMeta = candidateStatusMeta((string)$c['status']);
-                            $statusBadge = '<span class="' . htmlspecialchars($statusMeta['class']) . '">' . htmlspecialchars($statusMeta['label']) . '</span>';
-                            $finalDecisionMeta = candidateDecisionMeta($c['final_result']);
-                            $aiDecisionMeta = candidateDecisionMeta($c['ai_decision']);
+                            $statusMeta = assistantManagerStatusMeta((string)$c['status']);
+                            $finalDecisionMeta = assistantManagerDecisionMeta($c['final_result']);
+                            $aiDecisionMeta = assistantManagerDecisionMeta($c['ai_decision']);
                             ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
                                 <td>
-                                    <strong>
-                                        <a href="candidate_detail.php?id=<?= (int)$c['id'] ?>">
-                                            <?= htmlspecialchars($c['ic_name']) ?>
-                                        </a>
-                                    </strong>
-                                    <div class="meta-text">
-                                        Daftar: <?= date('d M Y', strtotime($c['created_at'])) ?>
-                                    </div>
+                                    <strong><a href="candidate_detail.php?id=<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['ic_name']) ?></a></strong>
+                                    <div class="meta-text">Daftar: <?= date('d M Y', strtotime($c['created_at'])) ?></div>
                                 </td>
-                                <td><?= $statusBadge ?></td>
+                                <td><span class="<?= htmlspecialchars($statusMeta['class']) ?>"><?= htmlspecialchars($statusMeta['label']) ?></span></td>
                                 <td><?= $aiScore ?: '-' ?></td>
                                 <td><?= $interviewScore ?: '-' ?></td>
                                 <td><?= $confidence ? $confidence . '%' : '-' ?></td>
@@ -311,59 +278,55 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 </td>
                                 <td>
                                     <?php if ($c['final_result']): ?>
-                                        <span class="<?= htmlspecialchars($finalDecisionMeta['class']) ?>">
-                                            <?= htmlspecialchars($finalDecisionMeta['label']) ?>
-                                        </span>
+                                        <span class="<?= htmlspecialchars($finalDecisionMeta['class']) ?>"><?= htmlspecialchars($finalDecisionMeta['label']) ?></span>
                                     <?php else: ?>
-                                        <span class="<?= htmlspecialchars($aiDecisionMeta['class']) ?>">
-                                            <?= htmlspecialchars($aiDecisionMeta['label']) ?>
-                                        </span>
+                                        <span class="<?= htmlspecialchars($aiDecisionMeta['class']) ?>"><?= htmlspecialchars($aiDecisionMeta['label']) ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="action-cell">
                                     <div class="candidate-action-stack">
-                                    <?php if ($c['status'] === 'ai_completed'): ?>
-                                        <form method="post">
-                                            <?php echo csrfField(); ?>
-                                            <input type="hidden" name="ai_decision" value="proceed">
-                                            <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-primary btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Lanjutkan ke tahap wawancara?')" title="Lanjut ke wawancara" aria-label="Lanjut ke wawancara">
-                                                <?= ems_icon('arrow-right', 'h-4 w-4') ?>
-                                            </button>
-                                        </form>
+                                        <?php if ($c['status'] === 'ai_completed'): ?>
+                                            <form method="post">
+                                                <?php echo csrfField(); ?>
+                                                <input type="hidden" name="ai_decision" value="proceed">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <button type="submit" class="btn-primary btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Lanjutkan ke tahap wawancara?')" title="Lanjut ke wawancara" aria-label="Lanjut ke wawancara">
+                                                    <?= ems_icon('arrow-right', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
 
-                                        <form method="post">
-                                            <?php echo csrfField(); ?>
-                                            <input type="hidden" name="ai_decision" value="reject">
-                                            <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-danger btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')" title="Tolak kandidat" aria-label="Tolak kandidat">
-                                                <?= ems_icon('x-mark', 'h-4 w-4') ?>
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
+                                            <form method="post">
+                                                <?php echo csrfField(); ?>
+                                                <input type="hidden" name="ai_decision" value="reject">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <button type="submit" class="btn-danger btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Tolak kandidat tanpa proses wawancara?')" title="Tolak kandidat" aria-label="Tolak kandidat">
+                                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
 
-                                    <?php if (in_array($c['status'], ['interview'], true)): ?>
-                                        <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn-primary btn-sm action-icon-btn candidate-action-btn" title="Interview kandidat" aria-label="Interview kandidat">
-                                            <?= ems_icon('microphone', 'h-4 w-4') ?>
-                                        </a>
-                                    <?php endif; ?>
+                                        <?php if (in_array($c['status'], ['interview'], true)): ?>
+                                            <a href="candidate_interview_multi.php?id=<?= (int)$c['id'] ?>" class="btn-primary btn-sm action-icon-btn candidate-action-btn" title="Interview kandidat" aria-label="Interview kandidat">
+                                                <?= ems_icon('microphone', 'h-4 w-4') ?>
+                                            </a>
+                                        <?php endif; ?>
 
-                                    <?php if ($c['status'] === 'interview'): ?>
-                                        <form method="post">
-                                            <?php echo csrfField(); ?>
-                                            <input type="hidden" name="finish_interview" value="1">
-                                            <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
-                                            <button type="submit" class="btn-warning btn-sm action-icon-btn btn-finish-interview candidate-action-btn" data-total-hr="<?= (int)$c['total_hr'] ?>" title="Selesaikan interview" aria-label="Selesaikan interview">
-                                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
-                                            </button>
-                                        </form>
-                                    <?php endif; ?>
+                                        <?php if ($c['status'] === 'interview'): ?>
+                                            <form method="post">
+                                                <?php echo csrfField(); ?>
+                                                <input type="hidden" name="finish_interview" value="1">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <button type="submit" class="btn-warning btn-sm action-icon-btn btn-finish-interview candidate-action-btn" data-total-hr="<?= (int)$c['total_hr'] ?>" title="Selesaikan interview" aria-label="Selesaikan interview">
+                                                    <?= ems_icon('check-circle', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
 
-                                    <?php if ($c['status'] === 'final_review' || in_array($c['status'], ['accepted', 'rejected'], true)): ?>
-                                        <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
-                                            <?= ems_icon('check-badge', 'h-4 w-4') ?>
-                                        </a>
-                                    <?php endif; ?>
+                                        <?php if ($c['status'] === 'final_review' || in_array($c['status'], ['accepted', 'rejected'], true)): ?>
+                                            <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
+                                                <?= ems_icon('check-badge', 'h-4 w-4') ?>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 </td>
                             </tr>
@@ -380,19 +343,12 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         document.addEventListener('submit', function(e) {
             const form = e.target;
             const button = form.querySelector('.btn-finish-interview');
-
             if (!button) return;
 
             const totalHr = parseInt(button.dataset.totalHr || '0', 10);
-
             if (totalHr < 2) {
                 e.preventDefault();
-                alert(
-                    'Interview belum dapat diselesaikan.\n\n' +
-                    'Penilaian baru diberikan oleh ' + totalHr + ' HR.\n' +
-                    'Minimal diperlukan 2 HR.\n\n' +
-                    'Silakan tunggu HR lain memberikan penilaian.'
-                );
+                alert('Interview belum dapat diselesaikan. Minimal diperlukan 2 HR.');
                 return false;
             }
 
@@ -401,13 +357,9 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 return false;
             }
         }, true);
-    });
-</script>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
         if (window.jQuery && jQuery.fn.DataTable) {
-            jQuery('#candidateTable').DataTable({
+            jQuery('#assistantManagerCandidateTable').DataTable({
                 pageLength: 10,
                 scrollX: true,
                 autoWidth: false,

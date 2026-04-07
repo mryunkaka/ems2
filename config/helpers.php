@@ -315,6 +315,7 @@ function ems_normalize_role(?string $role): string
 
     return match ($raw) {
         'staff' => 'staff',
+        'probation manager', 'probation_manager' => 'probation manager',
         'staff manager', 'assistant manager', 'assisten manager' => 'assisten manager',
         'lead manager' => 'lead manager',
         'manager', 'head manager' => 'head manager',
@@ -328,6 +329,7 @@ function ems_role_label(?string $role): string
 {
     return match (ems_normalize_role($role)) {
         'staff' => 'Staff',
+        'probation manager' => 'Probation Manager',
         'assisten manager' => 'Assisten Manager',
         'lead manager' => 'Lead Manager',
         'head manager' => 'Head Manager',
@@ -342,6 +344,7 @@ function ems_role_options(): array
 {
     return [
         ['value' => 'Staff', 'label' => 'Staff'],
+        ['value' => 'Probation Manager', 'label' => 'Probation Manager'],
         ['value' => 'Assisten Manager', 'label' => 'Assisten Manager'],
         ['value' => 'Lead Manager', 'label' => 'Lead Manager'],
         ['value' => 'Head Manager', 'label' => 'Head Manager'],
@@ -368,7 +371,7 @@ function ems_is_manager_plus_role(?string $role): bool
 {
     return in_array(
         ems_normalize_role($role),
-        ['assisten manager', 'lead manager', 'head manager', 'vice director', 'director'],
+        ['probation manager', 'assisten manager', 'lead manager', 'head manager', 'vice director', 'director'],
         true
     );
 }
@@ -1300,7 +1303,7 @@ function format_surat_resign(array $data): string
 function can_approve_cuti_resign(?string $role): bool
 {
     $normalizedRole = ems_normalize_role($role);
-    return in_array($normalizedRole, ['assisten manager', 'lead manager', 'head manager', 'vice director', 'director'], true);
+    return in_array($normalizedRole, ['probation manager', 'assisten manager', 'lead manager', 'head manager', 'vice director', 'director'], true);
 }
 
 /**

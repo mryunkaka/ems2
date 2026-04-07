@@ -20,8 +20,75 @@
 /* =========================================================
    1. TRAIT ITEM DEFINITIONS
    ========================================================= */
-function getTraitItems(): array
+function getTraitItems(string $profile = 'medical_candidate'): array
 {
+    $profile = function_exists('ems_normalize_recruitment_type')
+        ? ems_normalize_recruitment_type($profile)
+        : $profile;
+
+    if ($profile === 'assistant_manager') {
+        return [
+            'focus' => [
+                3  => ['direction' => 'normal',  'weight' => 1.0],
+                18 => ['direction' => 'normal',  'weight' => 1.0],
+                23 => ['direction' => 'normal',  'weight' => 0.9],
+                26 => ['direction' => 'normal',  'weight' => 1.0],
+                39 => ['direction' => 'normal',  'weight' => 1.0],
+                61 => ['direction' => 'normal',  'weight' => 1.0],
+            ],
+            'social' => [
+                8  => ['direction' => 'normal',  'weight' => 1.0],
+                24 => ['direction' => 'normal',  'weight' => 0.9],
+                37 => ['direction' => 'normal',  'weight' => 1.0],
+                44 => ['direction' => 'normal',  'weight' => 1.0],
+                50 => ['direction' => 'normal',  'weight' => 1.0],
+                59 => ['direction' => 'normal',  'weight' => 1.0],
+            ],
+            'obedience' => [
+                1  => ['direction' => 'normal',  'weight' => 0.9],
+                9  => ['direction' => 'normal',  'weight' => 1.0],
+                15 => ['direction' => 'reverse', 'weight' => 1.0],
+                22 => ['direction' => 'normal',  'weight' => 1.0],
+                31 => ['direction' => 'normal',  'weight' => 1.0],
+                38 => ['direction' => 'normal',  'weight' => 1.0],
+                49 => ['direction' => 'normal',  'weight' => 1.0],
+                68 => ['direction' => 'normal',  'weight' => 1.0],
+            ],
+            'consistency' => [
+                5  => ['direction' => 'normal',  'weight' => 1.0],
+                10 => ['direction' => 'normal',  'weight' => 1.0],
+                14 => ['direction' => 'normal',  'weight' => 0.9],
+                21 => ['direction' => 'normal',  'weight' => 0.9],
+                30 => ['direction' => 'normal',  'weight' => 1.0],
+                33 => ['direction' => 'normal',  'weight' => 1.0],
+                41 => ['direction' => 'normal',  'weight' => 0.8],
+                42 => ['direction' => 'normal',  'weight' => 1.0],
+                46 => ['direction' => 'normal',  'weight' => 1.0],
+                48 => ['direction' => 'normal',  'weight' => 0.8],
+                58 => ['direction' => 'normal',  'weight' => 0.8],
+                62 => ['direction' => 'normal',  'weight' => 0.9],
+            ],
+            'emotional_stability' => [
+                11 => ['direction' => 'reverse', 'weight' => 0.9],
+                16 => ['direction' => 'normal',  'weight' => 1.0],
+                19 => ['direction' => 'normal',  'weight' => 0.8],
+                35 => ['direction' => 'normal',  'weight' => 0.9],
+                52 => ['direction' => 'normal',  'weight' => 1.0],
+                64 => ['direction' => 'normal',  'weight' => 1.0],
+            ],
+            'honesty_humility' => [
+                2  => ['direction' => 'normal',  'weight' => 0.9],
+                25 => ['direction' => 'normal',  'weight' => 1.0],
+                27 => ['direction' => 'normal',  'weight' => 0.8],
+                36 => ['direction' => 'normal',  'weight' => 1.0],
+                45 => ['direction' => 'normal',  'weight' => 1.0],
+                55 => ['direction' => 'normal',  'weight' => 0.9],
+                57 => ['direction' => 'normal',  'weight' => 1.0],
+                69 => ['direction' => 'normal',  'weight' => 1.0],
+            ],
+        ];
+    }
+
     return [
 
         /* ===============================
@@ -187,9 +254,28 @@ function detectResponseBias(array $answers): array
 /* =========================================================
    5. CROSS VALIDATION WITH FORM
    ========================================================= */
-function crossValidateWithForm(array $scores, array $applicant): array
+function crossValidateWithForm(array $scores, array $applicant, string $profile = 'medical_candidate'): array
 {
     $flags = [];
+    $profile = function_exists('ems_normalize_recruitment_type')
+        ? ems_normalize_recruitment_type($profile)
+        : $profile;
+
+    if ($profile === 'assistant_manager') {
+        if (($scores['obedience']['score'] ?? 0) < 55) {
+            $flags[] = 'sop_alignment_risk';
+        }
+
+        if (($scores['consistency']['score'] ?? 0) < 60) {
+            $flags[] = 'consistency_risk';
+        }
+
+        if (($scores['social']['score'] ?? 0) < 45) {
+            $flags[] = 'coordination_risk';
+        }
+
+        return $flags;
+    }
 
     if (
         ($applicant['rule_commitment'] ?? '') === 'ya' &&
@@ -222,35 +308,69 @@ function makeFinalDecision(
     array $scores,
     array $biasFlags,
     array $crossFlags,
-    int $durationSeconds
+    int $durationSeconds,
+    string $profile = 'medical_candidate'
 ): array {
+    $profile = function_exists('ems_normalize_recruitment_type')
+        ? ems_normalize_recruitment_type($profile)
+        : $profile;
+
     $avg = array_sum(array_column($scores, 'score')) / count($scores);
 
     $decision = 'consider';
     $confidence = 'medium';
     $reasons = [];
 
-    if (
-        $avg >= 65 &&
-        ($scores['honesty_humility']['score'] ?? 0) >= 60 &&
-        count($biasFlags) === 0 &&
-        $durationSeconds >= 300 &&
-        $durationSeconds <= 3600
-    ) {
-        $decision = 'recommended';
-        $confidence = 'high';
-        $reasons[] = 'Profil psikologis seimbang & integritas baik';
-    }
+    if ($profile === 'assistant_manager') {
+        if (
+            $avg >= 70 &&
+            ($scores['honesty_humility']['score'] ?? 0) >= 65 &&
+            ($scores['obedience']['score'] ?? 0) >= 65 &&
+            ($scores['consistency']['score'] ?? 0) >= 65 &&
+            count($biasFlags) === 0 &&
+            $durationSeconds >= 420 &&
+            $durationSeconds <= 5400
+        ) {
+            $decision = 'recommended';
+            $confidence = 'high';
+            $reasons[] = 'Kesiapan SOP, koordinasi, dan akuntabilitas dinilai kuat';
+        }
 
-    if (
-        $avg < 40 ||
-        ($scores['honesty_humility']['score'] ?? 0) < 40 ||
-        count($biasFlags) >= 2 ||
-        $durationSeconds < 180
-    ) {
-        $decision = 'not_recommended';
-        $confidence = 'high';
-        $reasons[] = 'Risiko integritas atau kualitas respon';
+        if (
+            $avg < 50 ||
+            ($scores['honesty_humility']['score'] ?? 0) < 45 ||
+            ($scores['obedience']['score'] ?? 0) < 45 ||
+            count($biasFlags) >= 2 ||
+            count($crossFlags) >= 2 ||
+            $durationSeconds < 240
+        ) {
+            $decision = 'not_recommended';
+            $confidence = 'high';
+            $reasons[] = 'Risiko konsistensi, kepatuhan SOP, atau kualitas respon';
+        }
+    } else {
+        if (
+            $avg >= 65 &&
+            ($scores['honesty_humility']['score'] ?? 0) >= 60 &&
+            count($biasFlags) === 0 &&
+            $durationSeconds >= 300 &&
+            $durationSeconds <= 3600
+        ) {
+            $decision = 'recommended';
+            $confidence = 'high';
+            $reasons[] = 'Profil psikologis seimbang & integritas baik';
+        }
+
+        if (
+            $avg < 40 ||
+            ($scores['honesty_humility']['score'] ?? 0) < 40 ||
+            count($biasFlags) >= 2 ||
+            $durationSeconds < 180
+        ) {
+            $decision = 'not_recommended';
+            $confidence = 'high';
+            $reasons[] = 'Risiko integritas atau kualitas respon';
+        }
     }
 
     if (!$reasons) {
@@ -268,9 +388,12 @@ function makeFinalDecision(
     ];
 }
 
-function generatePsychologicalNarrative(array $scores, array $finalDecision): string
+function generatePsychologicalNarrative(array $scores, array $finalDecision, string $profile = 'medical_candidate'): string
 {
     $lines = [];
+    $profile = function_exists('ems_normalize_recruitment_type')
+        ? ems_normalize_recruitment_type($profile)
+        : $profile;
 
     /* =========================================================
        INTEGRITAS (HEXACO)
@@ -290,7 +413,13 @@ function generatePsychologicalNarrative(array $scores, array $finalDecision): st
     /* =========================================================
        FOKUS & KETAHANAN KERJA
        ========================================================= */
-    if ($scores['focus']['score'] >= 65 && $scores['consistency']['score'] >= 65) {
+    if ($profile === 'assistant_manager') {
+        if ($scores['focus']['score'] >= 65 && $scores['consistency']['score'] >= 65) {
+            $lines[] = 'Memiliki kecenderungan menjaga detail operasional dan konsistensi tindak lanjut, sesuai untuk peran pengawasan General Affair.';
+        } elseif ($scores['focus']['score'] < 50) {
+            $lines[] = 'Perlu dukungan sistem kerja yang rapi agar detail operasional dan tindak lanjut tidak mudah terlewat.';
+        }
+    } elseif ($scores['focus']['score'] >= 65 && $scores['consistency']['score'] >= 65) {
         $lines[] = 'Memiliki fokus dan daya tahan kerja yang baik, cocok untuk tugas dengan durasi panjang dan tekanan operasional.';
     } elseif ($scores['focus']['score'] < 50) {
         $lines[] = 'Perlu dukungan strategi kerja untuk menjaga fokus dalam tugas jangka panjang.';
@@ -308,7 +437,13 @@ function generatePsychologicalNarrative(array $scores, array $finalDecision): st
     /* =========================================================
        GAYA SOSIAL
        ========================================================= */
-    if ($scores['social']['score'] >= 65) {
+    if ($profile === 'assistant_manager') {
+        if ($scores['social']['score'] >= 65) {
+            $lines[] = 'Memiliki modal komunikasi dan koordinasi yang baik untuk menjembatani kebutuhan pimpinan dan tim lapangan.';
+        } else {
+            $lines[] = 'Cenderung berhati-hati dalam komunikasi sehingga perlu penguatan saat memimpin koordinasi lintas pihak.';
+        }
+    } elseif ($scores['social']['score'] >= 65) {
         $lines[] = 'Memiliki kecenderungan komunikatif dan relatif mudah berinteraksi dengan tim.';
     } else {
         $lines[] = 'Cenderung bekerja dengan gaya observatif dan tidak terlalu ekspresif secara sosial.';
@@ -318,9 +453,13 @@ function generatePsychologicalNarrative(array $scores, array $finalDecision): st
        FINAL TONE
        ========================================================= */
     if ($finalDecision['decision'] === 'recommended') {
-        $lines[] = 'Secara keseluruhan, profil psikologis mendukung untuk dipertimbangkan pada peran yang membutuhkan tanggung jawab dan kepercayaan.';
+        $lines[] = $profile === 'assistant_manager'
+            ? 'Secara keseluruhan, profil psikologis mendukung untuk dipertimbangkan pada peran General Affair yang menuntut SOP, koordinasi, dan akuntabilitas.'
+            : 'Secara keseluruhan, profil psikologis mendukung untuk dipertimbangkan pada peran yang membutuhkan tanggung jawab dan kepercayaan.';
     } elseif ($finalDecision['decision'] === 'not_recommended') {
-        $lines[] = 'Secara keseluruhan, profil psikologis menunjukkan beberapa risiko yang perlu dipertimbangkan secara serius.';
+        $lines[] = $profile === 'assistant_manager'
+            ? 'Secara keseluruhan, profil psikologis menunjukkan risiko yang perlu dipertimbangkan serius sebelum diberi peran kepemimpinan operasional.'
+            : 'Secara keseluruhan, profil psikologis menunjukkan beberapa risiko yang perlu dipertimbangkan secara serius.';
     } else {
         $lines[] = 'Profil psikologis menunjukkan kombinasi kekuatan dan area pengembangan yang perlu dievaluasi lebih lanjut.';
     }

@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 if (strtolower($user['role'] ?? '') === 'staff') {
@@ -32,65 +33,56 @@ if (!$candidate || !$result) {
     exit('Data kandidat tidak lengkap');
 }
 
-$answers = json_decode($result['answers_json'], true) ?? [];
-
 /* ===============================
    DAFTAR PERTANYAAN AI TEST
    =============================== */
-$questions = [
-    1  => 'Apakah Anda pernah menyesuaikan jawaban agar terlihat lebih baik?',
-    2  => 'Apakah Anda merasa sulit fokus jika duty terlalu lama?',
-    3  => 'Apakah Anda lebih memilih mengikuti SOP meski situasi menekan?',
-    4  => 'Apakah Anda merasa tidak semua orang perlu tahu isi pikiran Anda?',
-    5  => 'Apakah Anda pernah menangani kondisi darurat di mana keputusan harus diambil tanpa alat medis lengkap?',
-    6  => 'Apakah Anda merasa stabilitas lingkungan kerja memengaruhi performa Anda?',
-    7  => 'Apakah Anda sering berubah jam online karena faktor lain di luar pekerjaan ini?',
-    8  => 'Apakah Anda percaya adab dan etika kerja sama pentingnya dengan skill?',
-    9  => 'Apakah Anda lebih nyaman bekerja tanpa banyak berbicara?',
-    10 => 'Apakah Anda pernah meninggalkan tugas karena kewajiban di tempat lain?',
-    11 => 'Apakah dalam situasi kritis, keselamatan nyawa lebih utama dibanding prosedur administratif?',
-    12 => 'Apakah Anda merasa cepat kehilangan semangat jika hasil tidak langsung terlihat?',
-    13 => 'Apakah Anda jarang menunjukkan stres meskipun sedang tertekan?',
-    14 => 'Apakah Anda merasa wajar untuk sering berpindah instansi dalam waktu singkat?',
-    15 => 'Apakah Anda merasa aturan kerja bisa diabaikan dalam kondisi tertentu?',
-    16 => 'Apakah Anda lebih memilih diam saat emosi meningkat?',
-    17 => 'Apakah Anda terbiasa menyelesaikan tugas meski waktu duty sudah panjang?',
-    18 => 'Apakah Anda merasa jawaban jujur tidak selalu aman?',
-    19 => 'Apakah Anda yakin dapat memisahkan tanggung jawab antar instansi secara profesional?',
-    20 => 'Apakah Anda pernah menyesal karena melanggar prinsip kerja sendiri?',
-    21 => 'Apakah Anda memahami bahwa tidak semua kondisi medis memungkinkan pemeriksaan lengkap sebelum tindakan?',
-    22 => 'Apakah Anda lebih memilih mengamati sebelum terlibat aktif?',
-    23 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-    24 => 'Apakah Anda cenderung menyimpan emosi daripada mengungkapkannya?',
-    25 => 'Apakah Anda jarang meninggalkan tugas saat sudah mulai bertugas?',
-    26 => 'Apakah Anda percaya kesan pertama sangat menentukan?',
-    27 => 'Apakah Anda merasa sulit membagi fokus jika memiliki tanggung jawab di lebih dari satu instansi?',
-    28 => 'Apakah Anda merasa prinsip kerja dapat berubah tergantung situasi?',
-    29 => 'Apakah Anda membutuhkan waktu untuk beradaptasi dengan tekanan baru?',
-    30 => 'Apakah Anda merasa tidak nyaman jika jadwal kerja terlalu berubah-ubah?',
-    31 => 'Apakah pada kondisi pasien sekarat dengan dugaan patah tulang, tindakan stabilisasi lebih diprioritaskan daripada pemeriksaan lanjutan seperti MRI?',
-    32 => 'Apakah Anda jarang memulai percakapan lebih dulu dalam tim?',
-    33 => 'Apakah Anda merasa jadwal tetap justru membatasi fleksibilitas Anda?',
-    34 => 'Apakah Anda pernah bergabung ke instansi hanya karena ajakan lingkungan?',
-    35 => 'Apakah Anda merasa stamina kerja memengaruhi kualitas pelayanan?',
-    36 => 'Apakah Anda cenderung bertahan lebih lama jika sudah merasa cocok di satu tempat?',
-    37 => 'Apakah Anda memiliki kecenderungan memprioritaskan peran lain jika terjadi bentrok jadwal?',
-    38 => 'Apakah Anda sering menilai diri sendiri secara diam-diam?',
-    39 => 'Apakah Anda merasa sulit berkomitmen jika baru berada di suatu kota dalam waktu singkat?',
-    40 => 'Apakah Anda jarang memulai interaksi kecuali diperlukan?',
-    41 => 'Apakah menurut Anda pemeriksaan MRI selalu wajib sebelum tindakan medis darurat?',
-    42 => 'Apakah Anda terbiasa menyesuaikan jadwal demi tanggung jawab pekerjaan?',
-    43 => 'Apakah Anda memilih diam saat tidak setuju demi menjaga suasana?',
-    44 => 'Apakah Anda merasa loyalitas perlu dibagi secara seimbang jika memiliki banyak peran?',
-    45 => 'Apakah Anda tetap bertahan meski peran yang dijalani terasa berat?',
-    46 => 'Apakah Anda lebih memilih patuh demi menjaga suasana kerja?',
-    47 => 'Apakah Anda sering menghitung waktu untuk segera menyelesaikan duty?',
-    48 => 'Apakah Anda merasa betah di satu lingkungan kerja setelah waktu tertentu?',
-    49 => 'Apakah Anda menyesuaikan sikap saat berbicara dengan atasan?',
-    50 => 'Apakah Anda merasa menahan emosi adalah bentuk kedewasaan?',
-];
+$recruitmentType = ems_normalize_recruitment_type($candidate['recruitment_type'] ?? 'medical_candidate');
+$profile = ems_recruitment_profile($recruitmentType);
+$questions = ems_recruitment_questions_for_applicant($recruitmentType, $id);
 
-$pageTitle = 'Detail Kandidat';
+$answers = json_decode($result['answers_json'], true) ?? [];
+$answers = is_array($answers) ? $answers : [];
+$yesCount = 0;
+$noCount = 0;
+foreach ($answers as $answerValue) {
+    if ($answerValue === 'ya') {
+        $yesCount++;
+    } elseif ($answerValue === 'tidak') {
+        $noCount++;
+    }
+}
+$durationSeconds = (int)($result['duration_seconds'] ?? 0);
+$durationHours = intdiv($durationSeconds, 3600);
+$durationMinutes = intdiv($durationSeconds % 3600, 60);
+$durationRemainSeconds = $durationSeconds % 60;
+$durationText = $durationSeconds > 0
+    ? sprintf('%02d:%02d:%02d', $durationHours, $durationMinutes, $durationRemainSeconds)
+    : '-';
+$questionEntries = [];
+foreach ($questions as $questionId => $questionText) {
+    $questionEntries[] = [
+        'id' => $questionId,
+        'question' => $questionText,
+        'answer' => $answers[$questionId] ?? '-',
+    ];
+}
+$answerChunkSize = (int)ceil(max(1, count($questionEntries)) / 3);
+$answerChunks = array_chunk($questionEntries, max(1, $answerChunkSize));
+
+$pageTitle = 'Detail ' . ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate');
+
+$userDocuments = null;
+$candidateCitizenId = trim((string)($candidate['citizen_id'] ?? ''));
+if ($candidateCitizenId !== '') {
+    $stmt = $pdo->prepare("
+        SELECT file_ktp, file_skb, file_kta, file_sim
+        FROM user_rh
+        WHERE citizen_id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$candidateCitizenId]);
+    $userDocuments = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+}
 
 function candidateDisplayLabel(?string $value): string
 {
@@ -121,7 +113,7 @@ function candidateDisplayLabel(?string $value): string
 <section class="content">
     <div class="page page-shell-md">
 
-        <h1 class="page-title">Detail Kandidat</h1>
+        <h1 class="page-title">Detail <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></h1>
 
         <div class="card">
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong>
@@ -129,6 +121,72 @@ function candidateDisplayLabel(?string $value): string
                 Status: <?= htmlspecialchars(candidateDisplayLabel($candidate['status'])) ?> |
                 Skor: <?= $result['score_total'] ?> |
                 Keputusan: <?= htmlspecialchars(candidateDisplayLabel($result['decision'])) ?>
+            </div>
+        </div>
+
+        <div class="candidate-grid mb-4">
+            <div class="card">
+                <h3>Identitas Dasar</h3>
+                <div class="space-y-2 text-sm text-slate-700">
+                    <div><strong>Nama IC:</strong> <?= htmlspecialchars((string)($candidate['ic_name'] ?? '-')) ?></div>
+                    <div><strong>Citizen ID:</strong> <?= htmlspecialchars((string)($candidate['citizen_id'] ?? '-')) ?></div>
+                    <div><strong>Jenis Kelamin:</strong> <?= htmlspecialchars((string)($candidate['jenis_kelamin'] ?? '-')) ?></div>
+                    <div><strong>Umur OOC:</strong> <?= htmlspecialchars((string)($candidate['ooc_age'] ?? '-')) ?></div>
+                    <div><strong>Nomor Telepon IC:</strong> <?= htmlspecialchars((string)($candidate['ic_phone'] ?? '-')) ?></div>
+                    <div><strong>Lama di RS:</strong> <?= htmlspecialchars((string)($candidate['city_duration'] ?? '-')) ?></div>
+                    <div><strong>Jam Biasanya Online:</strong><br><span class="whitespace-pre-line"><?= htmlspecialchars((string)($candidate['online_schedule'] ?? '-')) ?></span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Pengalaman dan Komitmen</h3>
+                <div class="space-y-3 text-sm text-slate-700">
+                    <div>
+                        <strong>Pengalaman Organisasi / Operasional</strong>
+                        <div class="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3"><?= htmlspecialchars((string)($candidate['medical_experience'] ?? '-')) ?></div>
+                    </div>
+                    <div>
+                        <strong>Tanggung Jawab di Kota / Instansi Lain</strong>
+                        <div class="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3"><?= htmlspecialchars((string)($candidate['other_city_responsibility'] ?? '-')) ?></div>
+                    </div>
+                    <div><strong>Bersedia Probation:</strong> <?= htmlspecialchars(candidateDisplayLabel((string)($candidate['academy_ready'] ?? '-'))) ?></div>
+                    <div><strong>Komitmen SOP / Aturan:</strong> <?= htmlspecialchars(candidateDisplayLabel((string)($candidate['rule_commitment'] ?? '-'))) ?></div>
+                    <div><strong>Perkiraan Duty / Monitoring:</strong> <?= htmlspecialchars((string)($candidate['duty_duration'] ?? '-')) ?></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Motivasi</h3>
+                <div class="space-y-3 text-sm text-slate-700">
+                    <div>
+                        <strong>Alasan Ingin Bergabung</strong>
+                        <div class="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3"><?= htmlspecialchars((string)($candidate['motivation'] ?? '-')) ?></div>
+                    </div>
+                    <div>
+                        <strong>Prinsip Kerja</strong>
+                        <div class="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3"><?= htmlspecialchars((string)($candidate['work_principle'] ?? '-')) ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="candidate-grid mb-4">
+            <div class="card">
+                <h3>Lama Menjawab Soal</h3>
+                <div class="mt-2 text-2xl font-bold text-slate-900"><?= htmlspecialchars($durationText) ?></div>
+                <div class="mt-2 text-sm text-slate-500">Durasi total pengerjaan assessment.</div>
+            </div>
+
+            <div class="card">
+                <h3>Jumlah Jawaban Ya</h3>
+                <div class="mt-2 text-2xl font-bold text-emerald-700"><?= (int)$yesCount ?></div>
+                <div class="mt-2 text-sm text-slate-500">Total jawaban `Ya` pada assessment.</div>
+            </div>
+
+            <div class="card">
+                <h3>Jumlah Jawaban Tidak</h3>
+                <div class="mt-2 text-2xl font-bold text-rose-700"><?= (int)$noCount ?></div>
+                <div class="mt-2 text-sm text-slate-500">Total jawaban `Tidak` pada assessment.</div>
             </div>
         </div>
 
@@ -146,92 +204,30 @@ function candidateDisplayLabel(?string $value): string
                 </div>
             </div>
 
-            <!-- CARD: JAWABAN -->
             <div class="card">
-                <h3>Jawaban Kandidat</h3>
-                <div class="table-wrapper candidate-answers">
-
-                    <table class="table-custom">
-                        <thead>
-                            <tr>
-                                <th class="w-14">No</th>
-                                <th>Pertanyaan</th>
-                                <th class="w-24">Jawaban</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($questions as $no => $question): ?>
-                                <tr>
-                                    <td><?= $no ?></td>
-                                    <td><?= htmlspecialchars($question) ?></td>
-                                    <td>
-                                        <?php
-                                        $ans = $answers[$no] ?? '-';
-                                        if ($ans === 'ya') {
-                                            echo '<span class="badge-success">YA</span>';
-                                        } elseif ($ans === 'tidak') {
-                                            echo '<span class="badge-danger">TIDAK</span>';
-                                        } else {
-                                            echo '-';
-                                        }
-                                        ?>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- CARD BAWAH (FULL WIDTH) -->
-        <div class="card mt-4">
-            <h3>Ringkasan Calon Medis</h3>
-
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
-                <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
-            </div>
-
-            <div class="mt-2 text-xs text-slate-500">
-                Catatan: Ringkasan ini dihasilkan otomatis sebagai alat bantu HR dan
-                <strong>bukan diagnosis psikologis</strong>.
-            </div>
-        </div>
-
-        <!-- CARD: DOKUMEN PELAMAR (PINDAH KE SINI) -->
-        <div class="card mt-4">
-            <h3>Dokumen Pelamar</h3>
+                <h3>Dokumen Pelamar</h3>
 
             <div class="table-wrapper">
                 <table class="table-custom">
                     <tbody>
                         <?php
                         $documents = [
-                            'KTP' => 'ktp_ic',
-                            'SKB' => 'skb',
-                            'SIM' => 'sim',
+                            'KTP' => $userDocuments['file_ktp'] ?? '',
+                            'SKB' => $userDocuments['file_skb'] ?? '',
+                            'KTA' => $userDocuments['file_kta'] ?? '',
+                            'SIM' => $userDocuments['file_sim'] ?? '',
                         ];
-
-                        $uploadBase = '../'; // karena path sudah storage/...
+                        $uploadBase = '../';
                         ?>
 
-                        <?php foreach ($documents as $label => $type): ?>
+                        <?php foreach ($documents as $label => $filePath): ?>
                             <?php
-                            $stmt = $pdo->prepare("
-	                    SELECT file_path, is_valid, validation_notes
-	                    FROM applicant_documents
-	                    WHERE applicant_id = ? AND document_type = ?
-	                    LIMIT 1
-	                ");
-                            $stmt->execute([$id, $type]);
-                            $doc = $stmt->fetch(PDO::FETCH_ASSOC);
+                            $docUrl = trim((string)$filePath) !== '' ? $uploadBase . ltrim((string)$filePath, '/') : '';
                             ?>
 	                            <tr>
 	                                <td class="w-56"><strong><?= $label ?></strong></td>
 	                                <td>
-	                                    <?php if ($doc): ?>
-	                                        <?php $docUrl = $uploadBase . $doc['file_path']; ?>
+	                                    <?php if ($docUrl !== ''): ?>
 	                                        <a href="<?= htmlspecialchars($docUrl) ?>"
 	                                            target="_blank"
 	                                            class="doc-badge btn-preview-doc"
@@ -241,18 +237,6 @@ function candidateDisplayLabel(?string $value): string
 	                                            <?= ems_icon('document-text', 'h-4 w-4') ?>
 	                                            <span>Lihat Dokumen</span>
 	                                        </a>
-
-	                                        <?php if ($doc['is_valid'] === '0'): ?>
-	                                            <span class="badge-danger">Tidak valid</span>
-	                                        <?php elseif ($doc['is_valid'] === '1'): ?>
-	                                            <span class="badge-success">Valid</span>
-                                        <?php endif; ?>
-
-                                        <?php if ($doc['validation_notes']): ?>
-                                            <div class="mt-1 text-xs font-medium text-rose-600">
-                                                <?= htmlspecialchars($doc['validation_notes']) ?>
-                                            </div>
-                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="muted-placeholder text-sm">Tidak tersedia</span>
                                     <?php endif; ?>
@@ -264,7 +248,62 @@ function candidateDisplayLabel(?string $value): string
             </div>
 
             <div class="mt-2 text-xs text-slate-500">
-                Dokumen ditampilkan sesuai file yang diunggah pelamar.
+                Dokumen ditampilkan dari data akun `user_rh` berdasarkan `Citizen ID`.
+            </div>
+        </div>
+
+        </div>
+
+        <div class="card mt-4">
+            <h3>Ringkasan <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></h3>
+
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
+                <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
+            </div>
+
+            <div class="mt-2 text-xs text-slate-500">
+                Catatan: Ringkasan ini dihasilkan otomatis sebagai alat bantu HR dan
+                <strong>bukan diagnosis psikologis</strong>.
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <h3>Jawaban Kandidat</h3>
+            <div class="candidate-grid">
+                <?php foreach ($answerChunks as $chunkIndex => $chunk): ?>
+                    <div class="table-wrapper candidate-answers">
+                        <table class="table-custom">
+                            <thead>
+                                <tr>
+                                    <th class="w-14">No</th>
+                                    <th>Pertanyaan</th>
+                                    <th class="w-24">Jawaban</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($chunk as $rowIndex => $entry): ?>
+                                    <?php $displayNumber = ($chunkIndex * $answerChunkSize) + $rowIndex + 1; ?>
+                                    <tr>
+                                        <td><?= $displayNumber ?></td>
+                                        <td><?= htmlspecialchars($entry['question']) ?></td>
+                                        <td>
+                                            <?php
+                                            $ans = $entry['answer'];
+                                            if ($ans === 'ya') {
+                                                echo '<span class="badge-success">YA</span>';
+                                            } elseif ($ans === 'tidak') {
+                                                echo '<span class="badge-danger">TIDAK</span>';
+                                            } else {
+                                                echo '-';
+                                            }
+                                            ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </div>

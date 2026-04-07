@@ -1,6 +1,11 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 
 $applicantId = (int)($_GET['applicant_id'] ?? 0);
 
@@ -9,8 +14,9 @@ if ($applicantId <= 0) {
     exit;
 }
 
+$hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recruitment_type');
 $stmt = $pdo->prepare("
-    SELECT id, ic_name, status
+    SELECT id, ic_name, status" . ($hasRecruitmentTypeColumn ? ", recruitment_type" : "") . "
     FROM medical_applicants
     WHERE id = ?
 ");
@@ -34,58 +40,18 @@ if ($stmt->fetch()) {
     exit;
 }
 
-$questions = [
-    1  => 'Apakah Anda pernah menyesuaikan jawaban agar terlihat lebih baik?',
-    2  => 'Apakah Anda merasa sulit fokus jika duty terlalu lama?',
-    3  => 'Apakah Anda lebih memilih mengikuti SOP meski situasi menekan?',
-    4  => 'Apakah Anda merasa tidak semua orang perlu tahu isi pikiran Anda?',
-    5  => 'Apakah Anda pernah menangani kondisi darurat di mana keputusan harus diambil tanpa alat medis lengkap?',
-    6  => 'Apakah Anda merasa stabilitas lingkungan kerja memengaruhi performa Anda?',
-    7  => 'Apakah Anda sering berubah jam online karena faktor lain di luar pekerjaan ini?',
-    8  => 'Apakah Anda percaya adab dan etika kerja sama pentingnya dengan skill?',
-    9  => 'Apakah Anda lebih nyaman bekerja tanpa banyak berbicara?',
-    10 => 'Apakah Anda pernah meninggalkan tugas karena kewajiban di tempat lain?',
-    11 => 'Apakah dalam situasi kritis, keselamatan nyawa lebih utama dibanding prosedur administratif?',
-    12 => 'Apakah Anda merasa cepat kehilangan semangat jika hasil tidak langsung terlihat?',
-    13 => 'Apakah Anda jarang menunjukkan stres meskipun sedang tertekan?',
-    14 => 'Apakah Anda merasa wajar untuk sering berpindah instansi dalam waktu singkat?',
-    15 => 'Apakah Anda merasa aturan kerja bisa diabaikan dalam kondisi tertentu?',
-    16 => 'Apakah Anda lebih memilih diam saat emosi meningkat?',
-    17 => 'Apakah Anda terbiasa menyelesaikan tugas meski waktu duty sudah panjang?',
-    18 => 'Apakah Anda merasa jawaban jujur tidak selalu aman?',
-    19 => 'Apakah Anda yakin dapat memisahkan tanggung jawab antar instansi secara profesional?',
-    20 => 'Apakah Anda pernah menyesal karena melanggar prinsip kerja sendiri?',
-    21 => 'Apakah Anda memahami bahwa tidak semua kondisi medis memungkinkan pemeriksaan lengkap sebelum tindakan?',
-    22 => 'Apakah Anda lebih memilih mengamati sebelum terlibat aktif?',
-    23 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-    24 => 'Apakah Anda cenderung menyimpan emosi daripada mengungkapkannya?',
-    25 => 'Apakah Anda jarang meninggalkan tugas saat sudah mulai bertugas?',
-    26 => 'Apakah Anda percaya kesan pertama sangat menentukan?',
-    27 => 'Apakah Anda merasa sulit membagi fokus jika memiliki tanggung jawab di lebih dari satu instansi?',
-    28 => 'Apakah Anda merasa prinsip kerja dapat berubah tergantung situasi?',
-    29 => 'Apakah Anda membutuhkan waktu untuk beradaptasi dengan tekanan baru?',
-    30 => 'Apakah Anda merasa tidak nyaman jika jadwal kerja terlalu berubah-ubah?',
-    31 => 'Apakah pada kondisi pasien sekarat dengan dugaan patah tulang, tindakan stabilisasi lebih diprioritaskan daripada pemeriksaan lanjutan seperti MRI?',
-    32 => 'Apakah Anda jarang memulai percakapan lebih dulu dalam tim?',
-    33 => 'Apakah Anda merasa jadwal tetap justru membatasi fleksibilitas Anda?',
-    34 => 'Apakah Anda pernah bergabung ke instansi hanya karena ajakan lingkungan?',
-    35 => 'Apakah Anda merasa stamina kerja memengaruhi kualitas pelayanan?',
-    36 => 'Apakah Anda cenderung bertahan lebih lama jika sudah merasa cocok di satu tempat?',
-    37 => 'Apakah Anda memiliki kecenderungan memprioritaskan peran lain jika terjadi bentrok jadwal?',
-    38 => 'Apakah Anda sering menilai diri sendiri secara diam-diam?',
-    39 => 'Apakah Anda merasa sulit berkomitmen jika baru berada di suatu kota dalam waktu singkat?',
-    40 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-    41 => 'Apakah Anda lebih nyaman bekerja tanpa banyak arahan?',
-    42 => 'Apakah Anda cenderung menghindari konflik langsung?',
-    43 => 'Apakah Anda merasa sulit menerima kritik?',
-    44 => 'Apakah Anda lebih memilih bekerja sendiri?',
-    45 => 'Apakah Anda mudah panik dalam situasi darurat?',
-    46 => 'Apakah Anda merasa kelelahan memengaruhi pengambilan keputusan?',
-    47 => 'Apakah Anda pernah merasa tidak dihargai dalam tim?',
-    48 => 'Apakah Anda cenderung menunda pekerjaan jika tidak diawasi?',
-    49 => 'Apakah Anda sering overthinking setelah mengambil keputusan?',
-    50 => 'Apakah Anda siap mengikuti arahan senior saat training?',
-];
+$sessionTrackMap = $_SESSION['recruitment_track_map'] ?? [];
+$requestTrack = ems_normalize_recruitment_type($_GET['track'] ?? '');
+$sessionTrack = ems_normalize_recruitment_type($sessionTrackMap[(string)$applicantId] ?? '');
+$dbTrack = ems_normalize_recruitment_type($applicant['recruitment_type'] ?? 'medical_candidate');
+$recruitmentType = $hasRecruitmentTypeColumn
+    ? $dbTrack
+    : ($requestTrack !== 'medical_candidate' ? $requestTrack : ($sessionTrack !== 'medical_candidate' ? $sessionTrack : $dbTrack));
+$profile = ems_recruitment_profile($recruitmentType);
+$questions = ems_recruitment_questions_for_applicant($recruitmentType, $applicantId);
+$questionCount = count($questions);
+$questionPoolCount = (int)($profile['question_pool_count'] ?? $questionCount);
+$hideQuestionCounts = $recruitmentType === 'assistant_manager';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -93,14 +59,38 @@ $questions = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Form Pertanyaan - Roxwood Hospital</title>
+    <title><?= htmlspecialchars($profile['test_title']) ?> - Roxwood Hospital</title>
     <link rel="stylesheet" href="/assets/design/tailwind/build.css">
+    <style>
+        @media (min-width: 1024px) {
+            body.ai-test-scroll-split {
+                overflow: hidden;
+            }
+
+            .ai-test-scroll-shell {
+                height: 100vh;
+                padding: 16px;
+            }
+
+            .ai-test-scroll-layout {
+                height: calc(100vh - 32px);
+                align-items: stretch;
+            }
+
+            .ai-test-scroll-panel {
+                height: calc(100vh - 32px);
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                scrollbar-gutter: stable;
+            }
+        }
+    </style>
 </head>
 
-<body>
-    <div class="public-shell">
-        <div class="public-layout">
-            <aside class="public-panel public-panel-hero public-sticky">
+<body class="ai-test-scroll-split">
+    <div class="public-shell ai-test-scroll-shell">
+        <div class="public-layout ai-test-scroll-layout">
+            <aside class="public-panel public-panel-hero public-sticky ai-test-scroll-panel">
                 <div class="public-brand">
                     <img src="/assets/logo.png" alt="Logo Roxwood Hospital" class="public-brand-logo">
                     <div class="public-brand-text">
@@ -110,7 +100,7 @@ $questions = [
                     </div>
                 </div>
 
-                <h1 class="public-heading">Form Pertanyaan AI</h1>
+                <h1 class="public-heading"><?= htmlspecialchars($profile['test_title']) ?></h1>
                 <p class="public-copy">
                     Halo, <strong><?= htmlspecialchars($applicant['ic_name']) ?></strong>. Jawab seluruh pertanyaan dengan jujur sesuai kebiasaan, sikap kerja, dan kondisi Anda yang sebenarnya.
                 </p>
@@ -120,10 +110,12 @@ $questions = [
                 </div>
 
                 <div class="public-test-meta">
+                    <?php if (!$hideQuestionCounts): ?>
                     <div class="public-test-stat">
                         <div class="public-test-stat-label">Total Pertanyaan</div>
-                        <div class="public-test-stat-value">50 Soal</div>
+                        <div class="public-test-stat-value"><?= $questionCount . ' Soal' ?></div>
                     </div>
+                    <?php endif; ?>
                     <div class="public-test-stat">
                         <div class="public-test-stat-label">Format Jawaban</div>
                         <div class="public-test-stat-value">Ya / Tidak</div>
@@ -147,17 +139,18 @@ $questions = [
                 </div>
             </aside>
 
-            <main class="public-panel">
+            <main class="public-panel ai-test-scroll-panel">
                 <div class="public-form-header">
                     <div>
-                        <h2 class="public-form-title">Assessment Kandidat</h2>
-                        <p class="public-form-subtitle">Isi semua pertanyaan berikut sebelum mengirim hasil akhir.</p>
+                        <h2 class="public-form-title"><?= htmlspecialchars($profile['test_title']) ?></h2>
+                        <p class="public-form-subtitle"><?= htmlspecialchars($profile['test_subtitle']) ?></p>
                     </div>
                     <div class="badge-muted">Applicant #<?= (int)$applicantId ?></div>
                 </div>
 
                 <form action="ai_test_submit.php" method="post" id="aiTestForm">
                     <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">
+                    <input type="hidden" name="recruitment_type" value="<?= htmlspecialchars($recruitmentType) ?>">
                     <input type="hidden" name="start_time" id="start_time">
                     <input type="hidden" name="end_time" id="end_time">
                     <input type="hidden" name="duration_seconds" id="duration_seconds">
@@ -173,16 +166,17 @@ $questions = [
                     </div>
 
                     <div class="space-y-4">
-                        <?php foreach ($questions as $no => $question): ?>
+                        <?php $displayNumber = 1; ?>
+                        <?php foreach ($questions as $questionId => $question): ?>
                             <section class="question-card">
                                 <div class="question-card-head">
-                                    <div class="question-number"><?= (int)$no ?></div>
+                                    <div class="question-number"><?= $displayNumber++ ?></div>
                                     <div class="question-text"><?= htmlspecialchars($question) ?></div>
                                 </div>
 
                                 <div class="answer-grid">
                                     <label class="answer-option" data-answer-option>
-                                        <input type="radio" name="q<?= (int)$no ?>" value="ya" required>
+                                        <input type="radio" name="q<?= (int)$questionId ?>" value="ya" required>
                                         <span class="answer-option-copy">
                                             <span class="answer-option-title">Ya</span>
                                             <span class="answer-option-desc">Pernyataan ini sesuai dengan saya.</span>
@@ -190,7 +184,7 @@ $questions = [
                                     </label>
 
                                     <label class="answer-option" data-answer-option>
-                                        <input type="radio" name="q<?= (int)$no ?>" value="tidak" required>
+                                        <input type="radio" name="q<?= (int)$questionId ?>" value="tidak" required>
                                         <span class="answer-option-copy">
                                             <span class="answer-option-title">Tidak</span>
                                             <span class="answer-option-desc">Pernyataan ini tidak sesuai dengan saya.</span>
@@ -323,8 +317,9 @@ $questions = [
 
             form.addEventListener('submit', (event) => {
                 let allAnswered = true;
-                for (let i = 1; i <= 50; i++) {
-                    if (!data.answers['q' + i]) {
+                const requiredQuestions = <?= json_encode(array_map(static fn($id) => 'q' . $id, array_keys($questions))) ?>;
+                for (const questionKey of requiredQuestions) {
+                    if (!data.answers[questionKey]) {
                         allAnswered = false;
                         break;
                     }

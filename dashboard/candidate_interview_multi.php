@@ -10,6 +10,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $currentUnit = ems_effective_unit($pdo, $user);
@@ -68,6 +69,10 @@ if (!$candidate) {
     exit('Kandidat tidak ditemukan');
 }
 
+$recruitmentType = ems_normalize_recruitment_type($candidate['recruitment_type'] ?? 'medical_candidate');
+$profile = ems_recruitment_profile($recruitmentType);
+$listPage = $recruitmentType === 'assistant_manager' ? 'assistant_manager_candidates.php' : 'candidates.php';
+
 if (!in_array($candidate['status'], ['ai_completed', 'interview'], true)) {
     exit('Status kandidat belum valid untuk interview');
 }
@@ -81,16 +86,26 @@ $stmt->execute([$applicantId]);
 $isLocked = (int)$stmt->fetchColumn();
 
 if ($isLocked === 1) {
-    header('Location: candidates.php?error=interview_locked');
+    header('Location: ' . $listPage . '?error=interview_locked');
     exit;
 }
 
-$criteria = $pdo->query("
+$criteriaSql = "
     SELECT id, label, description
     FROM interview_criteria
     WHERE is_active = 1
-    ORDER BY id ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+";
+$criteriaParams = [];
+
+if (ems_column_exists($pdo, 'interview_criteria', 'recruitment_type')) {
+    $criteriaSql .= " AND recruitment_type IN ('all', ?)";
+    $criteriaParams[] = $recruitmentType;
+}
+
+$criteriaSql .= " ORDER BY id ASC";
+$stmt = $pdo->prepare($criteriaSql);
+$stmt->execute($criteriaParams);
+$criteria = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $stmt = $pdo->prepare("
     SELECT criteria_id, score, notes
@@ -182,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
-        header('Location: candidates.php?interview_saved=1');
+        header('Location: ' . $listPage . '?interview_saved=1');
         exit;
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
@@ -201,6 +216,7 @@ $submittedFields = [
     ['label' => 'Nomor Telepon IC', 'value' => $candidate['ic_phone'] ?? '-'],
     ['label' => 'Umur OOC', 'value' => isset($candidate['ooc_age']) ? (string)$candidate['ooc_age'] : '-'],
     ['label' => 'Status Kandidat', 'value' => candidateInterviewStatusLabel($candidate['status'] ?? '')],
+    ['label' => 'Tipe Rekrutmen', 'value' => ems_recruitment_type_label($recruitmentType)],
     ['label' => 'Pengalaman Medis', 'value' => $candidate['medical_experience'] ?? '-'],
     ['label' => 'Lama di Kota IME', 'value' => $candidate['city_duration'] ?? '-'],
     ['label' => 'Jam Online', 'value' => $candidate['online_schedule'] ?? '-'],
@@ -212,58 +228,7 @@ $submittedFields = [
     ['label' => 'Prinsip Kerja', 'value' => $candidate['work_principle'] ?? '-'],
 ];
 
-$aiQuestions = [
-    1  => 'Apakah Anda pernah menyesuaikan jawaban agar terlihat lebih baik?',
-    2  => 'Apakah Anda merasa sulit fokus jika duty terlalu lama?',
-    3  => 'Apakah Anda lebih memilih mengikuti SOP meski situasi menekan?',
-    4  => 'Apakah Anda merasa tidak semua orang perlu tahu isi pikiran Anda?',
-    5  => 'Apakah Anda pernah menangani kondisi darurat di mana keputusan harus diambil tanpa alat medis lengkap?',
-    6  => 'Apakah Anda merasa stabilitas lingkungan kerja memengaruhi performa Anda?',
-    7  => 'Apakah Anda sering berubah jam online karena faktor lain di luar pekerjaan ini?',
-    8  => 'Apakah Anda percaya adab dan etika kerja sama pentingnya dengan skill?',
-    9  => 'Apakah Anda lebih nyaman bekerja tanpa banyak berbicara?',
-    10 => 'Apakah Anda pernah meninggalkan tugas karena kewajiban di tempat lain?',
-    11 => 'Apakah dalam situasi kritis, keselamatan nyawa lebih utama dibanding prosedur administratif?',
-    12 => 'Apakah Anda merasa cepat kehilangan semangat jika hasil tidak langsung terlihat?',
-    13 => 'Apakah Anda jarang menunjukkan stres meskipun sedang tertekan?',
-    14 => 'Apakah Anda merasa wajar untuk sering berpindah instansi dalam waktu singkat?',
-    15 => 'Apakah Anda merasa aturan kerja bisa diabaikan dalam kondisi tertentu?',
-    16 => 'Apakah Anda lebih memilih diam saat emosi meningkat?',
-    17 => 'Apakah Anda terbiasa menyelesaikan tugas meski waktu duty sudah panjang?',
-    18 => 'Apakah Anda merasa jawaban jujur tidak selalu aman?',
-    19 => 'Apakah Anda yakin dapat memisahkan tanggung jawab antar instansi secara profesional?',
-    20 => 'Apakah Anda pernah menyesal karena melanggar prinsip kerja sendiri?',
-    21 => 'Apakah Anda memahami bahwa tidak semua kondisi medis memungkinkan pemeriksaan lengkap sebelum tindakan?',
-    22 => 'Apakah Anda lebih memilih mengamati sebelum terlibat aktif?',
-    23 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-    24 => 'Apakah Anda cenderung menyimpan emosi daripada mengungkapkannya?',
-    25 => 'Apakah Anda jarang meninggalkan tugas saat sudah mulai bertugas?',
-    26 => 'Apakah Anda percaya kesan pertama sangat menentukan?',
-    27 => 'Apakah Anda merasa sulit membagi fokus jika memiliki tanggung jawab di lebih dari satu instansi?',
-    28 => 'Apakah Anda merasa prinsip kerja dapat berubah tergantung situasi?',
-    29 => 'Apakah Anda membutuhkan waktu untuk beradaptasi dengan tekanan baru?',
-    30 => 'Apakah Anda merasa tidak nyaman jika jadwal kerja terlalu berubah-ubah?',
-    31 => 'Apakah pada kondisi pasien sekarat dengan dugaan patah tulang, tindakan stabilisasi lebih diprioritaskan daripada pemeriksaan lanjutan seperti MRI?',
-    32 => 'Apakah Anda jarang memulai percakapan lebih dulu dalam tim?',
-    33 => 'Apakah Anda merasa jadwal tetap justru membatasi fleksibilitas Anda?',
-    34 => 'Apakah Anda pernah bergabung ke instansi hanya karena ajakan lingkungan?',
-    35 => 'Apakah Anda merasa stamina kerja memengaruhi kualitas pelayanan?',
-    36 => 'Apakah Anda cenderung bertahan lebih lama jika sudah merasa cocok di satu tempat?',
-    37 => 'Apakah Anda memiliki kecenderungan memprioritaskan peran lain jika terjadi bentrok jadwal?',
-    38 => 'Apakah Anda sering menilai diri sendiri secara diam-diam?',
-    39 => 'Apakah Anda merasa sulit berkomitmen jika baru berada di suatu kota dalam waktu singkat?',
-    40 => 'Apakah Anda merasa makna pekerjaan lebih penting daripada posisi?',
-    41 => 'Apakah Anda lebih nyaman bekerja tanpa banyak arahan?',
-    42 => 'Apakah Anda cenderung menghindari konflik langsung?',
-    43 => 'Apakah Anda merasa sulit menerima kritik?',
-    44 => 'Apakah Anda lebih memilih bekerja sendiri?',
-    45 => 'Apakah Anda mudah panik dalam situasi darurat?',
-    46 => 'Apakah Anda merasa kelelahan memengaruhi pengambilan keputusan?',
-    47 => 'Apakah Anda pernah merasa tidak dihargai dalam tim?',
-    48 => 'Apakah Anda cenderung menunda pekerjaan jika tidak diawasi?',
-    49 => 'Apakah Anda sering overthinking setelah mengambil keputusan?',
-    50 => 'Apakah Anda siap mengikuti arahan senior saat training?',
-];
+$aiQuestions = ems_recruitment_questions_for_applicant($recruitmentType, $applicantId);
 
 $interviewScriptSections = [
     [
@@ -352,6 +317,48 @@ $interviewScriptSections = [
     ],
 ];
 
+$interviewScriptSections = $recruitmentType === 'assistant_manager'
+    ? [
+        [
+            'title' => '1. Pembukaan',
+            'type' => 'copy',
+            'content' => "Selamat (pagi/siang/malam). Saya akan melakukan interview terkait pendaftaran Anda sebagai calon asisten manager pada divisi General Affair di {$currentHospitalName}. Mohon jawab dengan jelas sesuai pengalaman Anda.",
+        ],
+        [
+            'title' => '2. Pengalaman Operasional',
+            'type' => 'list',
+            'items' => [
+                'Jelaskan pengalaman Anda memimpin tim, mengelola fasilitas, atau menangani kebutuhan operasional.',
+                'Ceritakan situasi saat Anda harus memastikan SOP tetap berjalan walau kondisi lapangan tidak ideal.',
+                'Bagaimana Anda membagi prioritas ketika beberapa kebutuhan operasional muncul bersamaan?',
+            ],
+        ],
+        [
+            'title' => '3. SOP dan Disiplin',
+            'type' => 'list',
+            'items' => [
+                'Bagaimana Anda menegur anggota tim yang melanggar SOP secara berulang?',
+                'Apa yang Anda lakukan jika ada pihak yang meminta jalan pintas di luar prosedur?',
+                'Mengapa dokumentasi dan laporan tertulis penting dalam pekerjaan General Affair?',
+            ],
+        ],
+        [
+            'title' => '4. Koordinasi dan Komplain',
+            'type' => 'list',
+            'items' => [
+                'Bagaimana Anda menghadapi komplain keras dari divisi lain atau warga?',
+                'Bagaimana Anda memastikan instruksi dari pimpinan dipahami oleh tim lapangan?',
+                'Ceritakan pengalaman saat Anda harus menjadi penghubung antara kebutuhan pimpinan dan pelaksanaan teknis.',
+            ],
+        ],
+        [
+            'title' => '5. Penutup',
+            'type' => 'copy',
+            'content' => 'Terima kasih. Tim akan mengevaluasi konsistensi jawaban Anda antara formulir awal, assessment, dan sesi interview ini sebelum menentukan tahap berikutnya.',
+        ],
+    ]
+    : $interviewScriptSections;
+
 $scoreOptions = [
     1 => 'Sangat Buruk',
     2 => 'Buruk',
@@ -366,26 +373,49 @@ $documentLabels = [
     'sim' => 'SIM',
 ];
 
-$pageTitle = 'Interview Kandidat';
+$pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
+<style>
+    @media (min-width: 1024px) {
+        .interview-split-shell {
+            min-height: calc(100vh - 180px);
+        }
+
+        .interview-split-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.3fr) minmax(380px, .9fr);
+            gap: 1rem;
+            align-items: stretch;
+        }
+
+        .interview-split-panel {
+            max-height: calc(100vh - 280px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+            padding-right: 4px;
+        }
+    }
+</style>
+
 <section class="content">
-    <div class="page page-shell">
+    <div class="page page-shell interview-split-shell">
         <div class="card">
             <div class="card-header-between">
                 <div>
-                    <h1 class="page-title">Workspace Interview Kandidat</h1>
-                    <p class="page-subtitle">Lihat data formulir, dokumen, dan jawaban AI di satu tempat agar interviewer mudah memverifikasi konsistensi kandidat.</p>
+                    <h1 class="page-title">Workspace Interview <?= htmlspecialchars(ems_recruitment_type_label($recruitmentType)) ?></h1>
+                    <p class="page-subtitle">Lihat data formulir, dokumen, dan jawaban assessment di satu tempat agar interviewer mudah memverifikasi konsistensi kandidat.</p>
                 </div>
                 <div class="badge-info"><?= htmlspecialchars(candidateInterviewStatusLabel($candidate['status'] ?? '')) ?></div>
             </div>
         </div>
 
-        <div class="interview-workspace">
-            <div class="interview-reference-stack">
+        <div class="interview-workspace interview-split-grid">
+            <div class="interview-reference-stack interview-split-panel">
                 <div class="card">
                     <div class="card-header">
                         <?= ems_icon('user-group', 'h-5 w-5') ?>
@@ -486,10 +516,11 @@ $pageTitle = 'Interview Kandidat';
 
                     <?php if (!empty($answers)): ?>
                         <div class="interview-answer-list">
+                            <?php $displayQuestionNumber = 1; ?>
                             <?php foreach ($aiQuestions as $questionNumber => $questionText): ?>
                                 <div class="interview-answer-item">
                                     <div class="interview-answer-question">
-                                        <span class="text-slate-500">#<?= (int)$questionNumber ?></span>
+                                        <span class="text-slate-500">#<?= $displayQuestionNumber++ ?></span>
                                         <?= htmlspecialchars($questionText) ?>
                                     </div>
                                     <div class="interview-answer-meta">
@@ -535,7 +566,7 @@ $pageTitle = 'Interview Kandidat';
                 </div>
             </div>
 
-            <div class="interview-panel-stack">
+            <div class="interview-panel-stack interview-split-panel">
                 <form method="post" class="card mb-0">
                     <?php echo csrfField(); ?>
                     <input type="hidden" name="applicant_id" value="<?= $applicantId ?>">

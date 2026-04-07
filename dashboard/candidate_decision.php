@@ -10,6 +10,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
 
 /* ===============================
    ROLE GUARD
@@ -41,6 +42,9 @@ $candidate = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$candidate) {
     exit('Kandidat tidak ditemukan');
 }
+
+$recruitmentType = ems_normalize_recruitment_type($candidate['recruitment_type'] ?? 'medical_candidate');
+$isAssistantManagerTrack = $recruitmentType === 'assistant_manager';
 
 /* ===============================
    HASIL AI (REKOMENDASI)
@@ -215,6 +219,73 @@ function candidateCreateUserFromApplicant(PDO $pdo, array $candidate, string $re
     return $newUserId;
 }
 
+function candidateCreateManagerUserFromApplicant(PDO $pdo, array $candidate, string $recommendedRole, string $recommendedDivision): int
+{
+    $fullName = trim((string)($candidate['ic_name'] ?? ''));
+    $citizenId = trim((string)($candidate['citizen_id'] ?? ''));
+    $jenisKelamin = trim((string)($candidate['jenis_kelamin'] ?? ''));
+    $recommendedRole = ems_role_label($recommendedRole);
+    $recommendedDivision = ems_normalize_division($recommendedDivision);
+
+    if ($fullName === '') {
+        throw new Exception('Nama kandidat tidak valid untuk pembuatan user.');
+    }
+
+    if (!ems_is_valid_role($recommendedRole) || !in_array(ems_normalize_role($recommendedRole), ['probation manager', 'assisten manager'], true)) {
+        throw new Exception('Role final kandidat tidak valid.');
+    }
+
+    if ($recommendedDivision === '') {
+        throw new Exception('Division final kandidat wajib dipilih.');
+    }
+
+    $check = $pdo->prepare("SELECT id FROM user_rh WHERE full_name = ? LIMIT 1");
+    $check->execute([$fullName]);
+    if ($check->fetchColumn()) {
+        throw new Exception('Akun user_rh dengan nama tersebut sudah ada.');
+    }
+
+    if ($citizenId !== '') {
+        $checkCitizen = $pdo->prepare("SELECT id FROM user_rh WHERE citizen_id = ? LIMIT 1");
+        $checkCitizen->execute([$citizenId]);
+        if ($checkCitizen->fetchColumn()) {
+            throw new Exception('Akun user_rh dengan citizen ID tersebut sudah ada.');
+        }
+    }
+
+    if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
+        $jenisKelamin = null;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO user_rh (
+            full_name,
+            citizen_id,
+            jenis_kelamin,
+            no_hp_ic,
+            pin,
+            role,
+            division,
+            position,
+            batch,
+            tanggal_masuk,
+            is_verified,
+            is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, CURDATE(), 1, 1)
+    ");
+    $stmt->execute([
+        $fullName,
+        $citizenId !== '' ? $citizenId : null,
+        $jenisKelamin,
+        trim((string)($candidate['ic_phone'] ?? '')) ?: null,
+        password_hash('0000', PASSWORD_BCRYPT),
+        $recommendedRole,
+        $recommendedDivision,
+    ]);
+
+    return (int)$pdo->lastInsertId();
+}
+
 function candidateGenerateMedicalCode(int $userId, string $fullName, int $batch): string
 {
     if ($batch < 1 || $batch > 26) {
@@ -368,6 +439,8 @@ if (
     $reason           = trim($_POST['override_reason'] ?? '');
     $recommendedPosition = ems_normalize_position($_POST['recommended_position'] ?? '');
     $recommendedBatch = (int)($_POST['recommended_batch'] ?? 0);
+    $recommendedRole = ems_role_label($_POST['recommended_role'] ?? '');
+    $recommendedDivision = ems_normalize_division($_POST['recommended_division'] ?? '');
 
     if (!in_array($systemResultPost, ['lolos', 'tidak_lolos'], true)) {
         exit('System result tidak valid');
@@ -383,12 +456,22 @@ if (
         $reason = null;
     }
 
-    if ($finalResult === 'lolos' && !ems_is_valid_position($recommendedPosition)) {
+    if ($finalResult === 'lolos' && !$isAssistantManagerTrack && !ems_is_valid_position($recommendedPosition)) {
         exit('Posisi yang direkomendasikan wajib dipilih untuk kandidat yang diloloskan.');
     }
 
-    if ($finalResult === 'lolos' && ($recommendedBatch < 1 || $recommendedBatch > 26)) {
+    if ($finalResult === 'lolos' && !$isAssistantManagerTrack && ($recommendedBatch < 1 || $recommendedBatch > 26)) {
         exit('Batch wajib diisi untuk kandidat yang diloloskan. Gunakan angka 1 sampai 26.');
+    }
+
+    if ($finalResult === 'lolos' && $isAssistantManagerTrack) {
+        if (!in_array(ems_normalize_role($recommendedRole), ['probation manager', 'assisten manager'], true)) {
+            exit('Role final wajib dipilih untuk calon asisten manager yang diloloskan.');
+        }
+
+        if ($recommendedDivision === '') {
+            exit('Division final wajib dipilih untuk calon asisten manager yang diloloskan.');
+        }
     }
 
     $pdo->beginTransaction();
@@ -405,28 +488,55 @@ if (
             throw new Exception('Keputusan sudah dibuat oleh user lain. Refresh halaman.');
         }
 
-        $stmt = $pdo->prepare("
-            INSERT INTO applicant_final_decisions
-            (
-                applicant_id,
-                system_result,
-                overridden,
-                override_reason,
-                final_result,
-                decided_by
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([
+        $decisionColumns = [
+            'applicant_id',
+            'system_result',
+            'overridden',
+            'override_reason',
+            'final_result',
+            'decided_by',
+        ];
+        $decisionValues = [
             $applicantId,
             $systemResultPost,
             $override,
             $reason,
             $finalResult,
-            $user['name'] ?? 'Manager'
-        ]);
+            $user['name'] ?? 'Manager',
+        ];
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'recommended_role')) {
+            $decisionColumns[] = 'recommended_role';
+            $decisionValues[] = $finalResult === 'lolos' ? ($isAssistantManagerTrack ? $recommendedRole : 'Staff') : null;
+        }
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'recommended_division')) {
+            $decisionColumns[] = 'recommended_division';
+            $decisionValues[] = $finalResult === 'lolos'
+                ? ($isAssistantManagerTrack ? $recommendedDivision : 'Medis')
+                : null;
+        }
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'recommended_position')) {
+            $decisionColumns[] = 'recommended_position';
+            $decisionValues[] = $finalResult === 'lolos' && !$isAssistantManagerTrack ? $recommendedPosition : null;
+        }
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'recommended_batch')) {
+            $decisionColumns[] = 'recommended_batch';
+            $decisionValues[] = $finalResult === 'lolos' && !$isAssistantManagerTrack ? $recommendedBatch : null;
+        }
+
+        $stmt = $pdo->prepare("
+            INSERT INTO applicant_final_decisions (" . implode(', ', $decisionColumns) . ")
+            VALUES (" . implode(', ', array_fill(0, count($decisionColumns), '?')) . ")
+        ");
+        $stmt->execute($decisionValues);
 
         if ($finalResult === 'lolos') {
-            $newUserId = candidateCreateUserFromApplicant($pdo, $candidate, $recommendedPosition, $recommendedBatch);
+            $newUserId = $isAssistantManagerTrack
+                ? candidateCreateManagerUserFromApplicant($pdo, $candidate, $recommendedRole, $recommendedDivision)
+                : candidateCreateUserFromApplicant($pdo, $candidate, $recommendedPosition, $recommendedBatch);
             $copiedDocuments = candidateCopyApplicantDocsToUser($pdo, $applicantId, $newUserId);
 
             if ($copiedDocuments) {
@@ -473,7 +583,7 @@ if (
         <div class="card">
             <div class="card-header-between">
                 <div>
-                    <h1 class="page-title">Keputusan Akhir Kandidat</h1>
+                    <h1 class="page-title">Keputusan Akhir <?= htmlspecialchars(ems_recruitment_type_label($recruitmentType)) ?></h1>
                     <p class="page-subtitle">Ringkasan hasil AI, preview interview, konsistensi antar HR, dan panel finalisasi keputusan.</p>
                 </div>
                 <div class="badge-info"><?= htmlspecialchars($candidate['ic_name']) ?></div>
@@ -614,6 +724,10 @@ if (
                                 <strong>Data user yang akan dipakai saat pelolosan</strong><br>
                                 Citizen ID: <strong><?= htmlspecialchars($candidate['citizen_id'] ?: '-') ?></strong><br>
                                 Jenis Kelamin: <strong><?= htmlspecialchars($candidate['jenis_kelamin'] ?: '-') ?></strong>
+                                <?php if ($isAssistantManagerTrack): ?>
+                                    <br>Role Final: <strong><?= htmlspecialchars((string)($existingDecision['recommended_role'] ?? '-')) ?></strong>
+                                    <br>Division Final: <strong><?= htmlspecialchars((string)($existingDecision['recommended_division'] ?? '-')) ?></strong>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
 
@@ -664,28 +778,59 @@ if (
 
                             <input type="hidden" name="system_result" value="<?= $systemResult ?>">
 
-                            <div class="form-group mt-4">
-                                <label for="recommended_position" class="text-sm font-semibold text-slate-900">Posisi yang Direkomendasikan</label>
-                                <select id="recommended_position" name="recommended_position">
-                                    <option value="">-- Pilih Posisi --</option>
-                                    <?php foreach (ems_position_options() as $positionOption): ?>
-                                        <option value="<?= htmlspecialchars($positionOption['value']) ?>">
-                                            <?= htmlspecialchars($positionOption['label']) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <div id="recommendedPositionHelp" class="helper-note">
-                                    Posisi ini akan dipakai saat sistem membuat akun `user_rh` otomatis jika hasil final kandidat adalah lolos.
-                                </div>
-                            </div>
+                            <?php if ($isAssistantManagerTrack): ?>
+                                <div id="assistantManagerFinalFields" class="hidden">
+                                    <div class="form-group mt-4">
+                                        <label for="recommended_role" class="text-sm font-semibold text-slate-900">Role Final</label>
+                                        <select id="recommended_role" name="recommended_role">
+                                            <option value="">-- Pilih Role --</option>
+                                            <option value="Probation Manager">Probation Manager</option>
+                                            <option value="Assisten Manager">Assisten Manager</option>
+                                        </select>
+                                        <div id="recommendedRoleHelp" class="helper-note">
+                                            Role ini akan dipakai saat sistem membuat akun `user_rh` otomatis jika hasil final kandidat adalah lolos.
+                                        </div>
+                                    </div>
 
-                            <div class="form-group mt-4">
-                                <label for="recommended_batch" class="text-sm font-semibold text-slate-900">Batch Pelamar</label>
-                                <input type="number" id="recommended_batch" name="recommended_batch" min="1" max="26" placeholder="Contoh: 7">
-                                <div id="recommendedBatchHelp" class="helper-note">
-                                    Batch ini akan dipakai saat sistem membuat akun `user_rh` otomatis jika hasil final kandidat adalah lolos.
+                                    <div class="form-group mt-4">
+                                        <label for="recommended_division" class="text-sm font-semibold text-slate-900">Division Final</label>
+                                        <select id="recommended_division" name="recommended_division">
+                                            <option value="">-- Pilih Division --</option>
+                                            <?php foreach (ems_division_options() as $divisionOption): ?>
+                                                <option value="<?= htmlspecialchars($divisionOption['value']) ?>" <?= ($divisionOption['value'] === 'General Affair') ? 'selected' : '' ?>>
+                                                    <?= htmlspecialchars($divisionOption['label']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <div id="recommendedDivisionHelp" class="helper-note">
+                                            Division ini akan dipakai saat sistem membuat akun `user_rh` otomatis untuk jalur asisten manager.
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            <?php else: ?>
+                                <div class="form-group mt-4">
+                                    <label for="recommended_position" class="text-sm font-semibold text-slate-900">Posisi yang Direkomendasikan</label>
+                                    <select id="recommended_position" name="recommended_position">
+                                        <option value="">-- Pilih Posisi --</option>
+                                        <?php foreach (ems_position_options() as $positionOption): ?>
+                                            <option value="<?= htmlspecialchars($positionOption['value']) ?>">
+                                                <?= htmlspecialchars($positionOption['label']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div id="recommendedPositionHelp" class="helper-note">
+                                        Posisi ini akan dipakai saat sistem membuat akun `user_rh` otomatis jika hasil final kandidat adalah lolos.
+                                    </div>
+                                </div>
+
+                                <div class="form-group mt-4">
+                                    <label for="recommended_batch" class="text-sm font-semibold text-slate-900">Batch Pelamar</label>
+                                    <input type="number" id="recommended_batch" name="recommended_batch" min="1" max="26" placeholder="Contoh: 7">
+                                    <div id="recommendedBatchHelp" class="helper-note">
+                                        Batch ini akan dipakai saat sistem membuat akun `user_rh` otomatis jika hasil final kandidat adalah lolos.
+                                    </div>
+                                </div>
+                            <?php endif; ?>
 
                             <?php
                             $overrideToggleLabel = $systemResult === 'lolos'
@@ -728,31 +873,48 @@ if (
                                 const toggle = document.getElementById('overrideToggle');
                                 const recommendedPosition = document.getElementById('recommended_position');
                                 const recommendedBatch = document.getElementById('recommended_batch');
-                                const help = document.getElementById('recommendedPositionHelp');
-                                const batchHelp = document.getElementById('recommendedBatchHelp');
+                                const recommendedRole = document.getElementById('recommended_role');
+                                const recommendedDivision = document.getElementById('recommended_division');
+                                const assistantManagerFinalFields = document.getElementById('assistantManagerFinalFields');
+                                const help = document.getElementById('recommendedPositionHelp') || document.getElementById('recommendedRoleHelp');
+                                const batchHelp = document.getElementById('recommendedBatchHelp') || document.getElementById('recommendedDivisionHelp');
                                 const systemResult = <?= json_encode($systemResult) ?>;
+                                const isAssistantManagerTrack = <?= $isAssistantManagerTrack ? 'true' : 'false' ?>;
 
                                 function refreshRecommendedFieldsRequirement() {
-                                    if (!recommendedPosition) return;
-
                                     const willPass = toggle
                                         ? ((systemResult === 'lolos' && !toggle.checked) || (systemResult === 'tidak_lolos' && toggle.checked))
                                         : (systemResult === 'lolos');
 
-                                    recommendedPosition.required = willPass;
+                                    if (recommendedPosition) {
+                                        recommendedPosition.required = willPass;
+                                    }
                                     if (recommendedBatch) {
                                         recommendedBatch.required = willPass;
+                                    }
+                                    if (recommendedRole) {
+                                        recommendedRole.required = willPass;
+                                    }
+                                    if (recommendedDivision) {
+                                        recommendedDivision.required = willPass;
+                                    }
+                                    if (assistantManagerFinalFields) {
+                                        assistantManagerFinalFields.classList.toggle('hidden', !willPass);
                                     }
 
                                     if (help) {
                                         help.textContent = willPass
-                                            ? 'Wajib dipilih karena hasil final kandidat akan diloloskan dan akun user_rh akan dibuat otomatis.'
+                                            ? (isAssistantManagerTrack
+                                                ? 'Wajib dipilih karena hasil final kandidat akan diloloskan dan akun user_rh manager akan dibuat otomatis.'
+                                                : 'Wajib dipilih karena hasil final kandidat akan diloloskan dan akun user_rh akan dibuat otomatis.')
                                             : 'Tidak wajib dipilih jika hasil final kandidat tidak diloloskan.';
                                     }
 
                                     if (batchHelp) {
                                         batchHelp.textContent = willPass
-                                            ? 'Wajib diisi karena hasil final kandidat akan diloloskan dan batch akan dipakai untuk akun user_rh baru.'
+                                            ? (isAssistantManagerTrack
+                                                ? 'Wajib dipilih karena hasil final kandidat akan diloloskan dan division akan dipakai untuk akun user_rh baru.'
+                                                : 'Wajib diisi karena hasil final kandidat akan diloloskan dan batch akan dipakai untuk akun user_rh baru.')
                                             : 'Tidak wajib diisi jika hasil final kandidat tidak diloloskan.';
                                     }
                                 }

@@ -16,8 +16,13 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/status_validator.php';
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
 
 /* =========================================================
    VALIDASI REQUEST
@@ -47,8 +52,10 @@ if ($stmt->fetch()) {
 /* =========================================================
    AMBIL DATA DARI FORM REKRUTMEN
    ========================================================= */
+$hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recruitment_type');
 $stmt = $pdo->prepare("
     SELECT
+        " . ($hasRecruitmentTypeColumn ? "recruitment_type," : "") . "
         medical_experience,
         city_duration,
         online_schedule,
@@ -69,13 +76,25 @@ if (!$applicant) {
     exit('Applicant not found');
 }
 
+$sessionTrackMap = $_SESSION['recruitment_track_map'] ?? [];
+$requestTrack = ems_normalize_recruitment_type($_POST['recruitment_type'] ?? '');
+$sessionTrack = ems_normalize_recruitment_type($sessionTrackMap[(string)$applicantId] ?? '');
+$dbTrack = ems_normalize_recruitment_type($applicant['recruitment_type'] ?? 'medical_candidate');
+$profileType = $hasRecruitmentTypeColumn
+    ? $dbTrack
+    : ($requestTrack !== 'medical_candidate' ? $requestTrack : ($sessionTrack !== 'medical_candidate' ? $sessionTrack : $dbTrack));
+$questionBank = ems_recruitment_profile($profileType);
+$selectedQuestions = ems_recruitment_questions_for_applicant($profileType, $applicantId);
+$questionIds = array_map('intval', array_keys($selectedQuestions));
+$questionCount = count($questionIds);
+
 /* =========================================================
-   AMBIL JAWABAN AI TEST (50 SOAL)
+   AMBIL JAWABAN AI TEST
    ========================================================= */
 $answers = [];
-for ($i = 1; $i <= 50; $i++) {
-    $answers[$i] = $_POST['q' . $i] ?? null;
-    if ($answers[$i] === null) {
+foreach ($questionIds as $questionId) {
+    $answers[$questionId] = $_POST['q' . $questionId] ?? null;
+    if ($answers[$questionId] === null) {
         http_response_code(400);
         exit('Pertanyaan tidak lengkap');
     }
@@ -93,7 +112,9 @@ $duration = (int)($_POST['duration_seconds'] ?? max(0, $endTime - $startTime));
    ========================================================= */
 
 // 1. Hitung skor tiap trait
-$traitItems = getTraitItems();
+$traitItems = $profileType === 'assistant_manager'
+    ? ems_assistant_manager_trait_items($questionIds)
+    : getTraitItems($profileType);
 $scores = [];
 
 foreach ($traitItems as $trait => $items) {
@@ -102,22 +123,27 @@ foreach ($traitItems as $trait => $items) {
 
 // 2. Deteksi bias respon
 $biasFlags = detectResponseBias($answers);
+if ($profileType === 'assistant_manager') {
+    $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
+}
 
 // 3. Cross validation dengan form rekrutmen
-$crossFlags = crossValidateWithForm($scores, $applicant);
+$crossFlags = crossValidateWithForm($scores, $applicant, $profileType);
 
 // 4. Final decision
 $finalDecision = makeFinalDecision(
     $scores,
     $biasFlags,
     $crossFlags,
-    $duration
+    $duration,
+    $profileType
 );
 
 // 5. Narasi psikologis otomatis (UNTUK HR)
 $personalityNarrative = generatePsychologicalNarrative(
     $scores,
-    $finalDecision
+    $finalDecision,
+    $profileType
 );
 
 /* =========================================================

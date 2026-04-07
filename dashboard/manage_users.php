@@ -864,6 +864,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         const roleMap = {
             'staff': 'Staff',
+            'probation manager': 'Probation Manager',
             'assisten manager': 'Assisten Manager',
             'lead manager': 'Lead Manager',
             'head manager': 'Head Manager',

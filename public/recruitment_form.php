@@ -1,5 +1,8 @@
 <?php
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
+
+$profile = ems_recruitment_profile('medical_candidate');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -7,7 +10,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pendaftaran Calon Medis - Roxwood Hospital</title>
+    <title><?= htmlspecialchars($profile['title']) ?> - Roxwood Hospital</title>
 
     <link rel="stylesheet" href="/assets/vendor/photoswipe/photoswipe.css">
     <link rel="stylesheet" href="/assets/design/tailwind/build.css">
@@ -26,9 +29,9 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                     </div>
                 </div>
 
-                <h1 class="public-heading">Pendaftaran Calon Medis</h1>
+                <h1 class="public-heading"><?= htmlspecialchars($profile['title']) ?></h1>
                 <p class="public-copy">
-                    Lengkapi data dengan jujur dan jelas. Setelah formulir ini dikirim, Anda akan diarahkan ke tahap pertanyaan lanjutan oleh sistem rekrutmen.
+                    <?= htmlspecialchars($profile['description']) ?>
                 </p>
 
                 <div class="alert alert-info mt-5 mb-0 border-white/15 bg-white/10 text-slate-100">
@@ -68,10 +71,11 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                         <h2 class="public-form-title">Formulir Kandidat Baru</h2>
                         <p class="public-form-subtitle">Isi seluruh kolom wajib sebelum mengirim pendaftaran.</p>
                     </div>
-                    <div class="badge-muted">Public Recruitment Form</div>
+                    <div class="badge-muted"><?= htmlspecialchars($profile['badge']) ?></div>
                 </div>
 
                 <form action="recruitment_submit.php" method="post" enctype="multipart/form-data">
+                    <input type="hidden" name="recruitment_type" value="<?= htmlspecialchars($profile['type']) ?>">
                     <section class="card">
                         <div class="card-header">
                             <?= ems_icon('identification', 'h-5 w-5') ?>

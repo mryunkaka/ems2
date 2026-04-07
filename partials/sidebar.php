@@ -82,7 +82,13 @@ if (ems_can_access_division_menu($division, 'Human Resource')) {
         sidebarItem('/dashboard/tracking_cuti_resign.php', 'tracking_cuti_resign.php', 'Tracking Cuti & Resign', 'clock'),
         sidebarItem('/dashboard/history_cuti_resign.php', 'history_cuti_resign.php', 'History Cuti & Resign', 'clipboard-document-list'),
         sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'receipt-percent'),
+    ];
+}
+
+if (!$isMedicalDivision && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+    $groupedNav['Recruitment'] = [
         sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
+        sidebarItem('/dashboard/assistant_manager_candidates.php', 'assistant_manager_candidates.php', 'Calon Asisten Manager', 'briefcase'),
     ];
 }
 
