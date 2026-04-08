@@ -293,16 +293,28 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </section>
 <script>
-    function deleteReimbursement(code) {
+    async function deleteReimbursement(code) {
         if (!confirm('Yakin hapus reimbursement ini? Data akan hilang permanen!')) return;
 
-        fetch('reimbursement_delete.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: 'code=' + encodeURIComponent(code)
-        }).then(() => location.reload());
+        try {
+            const response = await fetch('reimbursement_delete.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'code=' + encodeURIComponent(code)
+            });
+
+            const result = await response.json().catch(() => null);
+
+            if (!response.ok || !result || !result.success) {
+                throw new Error(result && result.message ? result.message : 'Gagal menghapus reimbursement.');
+            }
+
+            location.reload();
+        } catch (error) {
+            alert(error.message || 'Gagal menghapus reimbursement.');
+        }
     }
 </script>
 
