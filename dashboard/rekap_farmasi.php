@@ -1640,7 +1640,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-        <h1 class="page-title">Rekap Farmasi EMS</h1>
+        <h1 class="page-title">Rekap Farmasi EMS </h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
@@ -2153,32 +2153,32 @@ include __DIR__ . '/../partials/sidebar.php';
                     <!-- Form Filter (GET) -->
                     <div class="farmasi-card-content">
                         <form method="get" class="mb-2.5 filter-transaction-form">
-                        <div class="farmasi-filter-field">
-                            <label for="rangeSelect">Rentang Tanggal</label>
-                            <select name="range" id="rangeSelect" class="farmasi-filter-control" style="display:block;width:100%!important;min-width:100%!important;max-width:none!important;box-sizing:border-box;">
-                                <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
-                                <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
-                                <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
+                            <div class="farmasi-filter-field">
+                                <label for="rangeSelect">Rentang Tanggal</label>
+                                <select name="range" id="rangeSelect" class="farmasi-filter-control" style="display:block;width:100%!important;min-width:100%!important;max-width:none!important;box-sizing:border-box;">
+                                    <option value="today" <?= $range === 'today' ? 'selected' : '' ?>>Hari ini</option>
+                                    <option value="yesterday" <?= $range === 'yesterday' ? 'selected' : '' ?>>Kemarin</option>
+                                    <option value="last7" <?= $range === 'last7' ? 'selected' : '' ?>>7 hari terakhir</option>
 
-                                <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
-                                    <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
-                                </option>
+                                    <option value="week1" <?= $range === 'week1' ? 'selected' : '' ?>>
+                                        <?= $weeks['week1']['start']->format('d M') ?> – <?= $weeks['week1']['end']->format('d M') ?>
+                                    </option>
 
-                                <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
-                                    <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
-                                </option>
+                                    <option value="week2" <?= $range === 'week2' ? 'selected' : '' ?>>
+                                        <?= $weeks['week2']['start']->format('d M') ?> – <?= $weeks['week2']['end']->format('d M') ?>
+                                    </option>
 
-                                <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
-                                    <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
-                                </option>
+                                    <option value="week3" <?= $range === 'week3' ? 'selected' : '' ?>>
+                                        <?= $weeks['week3']['start']->format('d M') ?> – <?= $weeks['week3']['end']->format('d M') ?>
+                                    </option>
 
-                                <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
-                                    <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
-                                </option>
+                                    <option value="week4" <?= $range === 'week4' ? 'selected' : '' ?>>
+                                        <?= $weeks['week4']['start']->format('d M') ?> – <?= $weeks['week4']['end']->format('d M') ?>
+                                    </option>
 
-                                <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
-                            </select>
-                        </div>
+                                    <option value="custom" <?= $range === 'custom' ? 'selected' : '' ?>>Custom (pilih tanggal)</option>
+                                </select>
+                            </div>
                             <div class="row-form-2 hidden" id="customDateRow">
                                 <div class="col">
                                     <label for="filterFromDate">Dari tanggal</label>
