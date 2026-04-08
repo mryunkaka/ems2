@@ -1,1 +1,0 @@
-[2026-03-09 13:20:47] [FARMASI INSERT ERROR] consumer=Ahmad Zaydan | user_id=1 | package_main=custom | selected_ids=[33,22,27] | error=SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`farmasi_ems`.`sales`, CONSTRAINT `fk_sales_package` FOREIGN KEY (`package_id`) REFERENCES `packages` (`id`))
