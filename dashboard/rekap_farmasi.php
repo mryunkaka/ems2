@@ -1900,9 +1900,11 @@ include __DIR__ . '/../partials/sidebar.php';
             transform: translate3d(0, 0, 0) scale(0.4);
             opacity: 0;
         }
+
         14% {
             opacity: 1;
         }
+
         100% {
             transform: translate3d(var(--tx), var(--ty), 0) scale(1.2);
             opacity: 0;
@@ -1945,7 +1947,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-        <h1 class="page-title">Rekap Farmasi EMS</h1>
+        <h1 class="page-title">Rekap Farmasi EMS </h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
@@ -5570,9 +5572,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function renderCooldownView(cooldown, personal) {
             const nextSeconds = getSecondsUntil(cooldown.next_available_at);
-            const cooldownText = cooldown.active
-                ? ('Sesi berikutnya akan tersedia dalam ' + formatDuration(nextSeconds) + '.')
-                : 'Quiz baru akan otomatis dibuat saat tersedia.';
+            const cooldownText = cooldown.active ?
+                ('Sesi berikutnya akan tersedia dalam ' + formatDuration(nextSeconds) + '.') :
+                'Quiz baru akan otomatis dibuat saat tersedia.';
 
             if (cooldown.last_summary) {
                 stageEl.innerHTML = buildSummaryHtml(cooldown.last_summary, personal || {}, cooldownText);
@@ -5690,11 +5692,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     '</div>';
             }
 
-            const nextButtonHtml = answered
-                ? '<button type="button" class="btn-success" id="farmasiQuizNextBtn">' +
-                    (answeredCount >= totalQuestions ? 'Lihat Hasil' : 'Next Soal') +
-                  '</button>'
-                : '<div class="farmasi-quiz-meta">Pilih salah satu jawaban. Sistem akan langsung memberi tahu jawaban benar, lalu tombol next muncul.</div>';
+            const nextButtonHtml = answered ?
+                '<button type="button" class="btn-success" id="farmasiQuizNextBtn">' +
+                (answeredCount >= totalQuestions ? 'Lihat Hasil' : 'Next Soal') +
+                '</button>' :
+                '<div class="farmasi-quiz-meta">Pilih salah satu jawaban. Sistem akan langsung memberi tahu jawaban benar, lalu tombol next muncul.</div>';
 
             stageEl.innerHTML = '' +
                 '<div>' +
@@ -5704,10 +5706,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 '  </div>' +
                 '  <div class="farmasi-quiz-question">' + escapeHtml(question.prompt || '') + '</div>' +
                 '  <div class="farmasi-quiz-answer-list">' + options + '</div>' +
-                     feedbackHtml +
+                feedbackHtml +
                 '  <div class="farmasi-quiz-action-row mt-4">' +
                 '    <div class="farmasi-quiz-meta">Kategori: ' + escapeHtml(question.category || '-') + '</div>' +
-                     nextButtonHtml +
+                nextButtonHtml +
                 '  </div>' +
                 '</div>';
 
@@ -5721,16 +5723,16 @@ include __DIR__ . '/../partials/sidebar.php';
                     submitBusy = true;
 
                     fetch(submitUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
-                            session_question_id: question.session_question_id,
-                            selected_option: button.dataset.option || ''
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            credentials: 'same-origin',
+                            body: JSON.stringify({
+                                session_question_id: question.session_question_id,
+                                selected_option: button.dataset.option || ''
+                            })
                         })
-                    })
                         .then(function(response) {
                             return response.json();
                         })
@@ -5812,10 +5814,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function fetchState() {
             fetch(stateUrl, {
-                method: 'GET',
-                credentials: 'same-origin',
-                cache: 'no-store'
-            })
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                })
                 .then(function(response) {
                     return response.json();
                 })
