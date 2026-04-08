@@ -71,6 +71,11 @@ if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
 }
 
+if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+    $groupedNav['Keuangan'][] = sidebarItem('/dashboard/regulasi_medis.php', 'regulasi_medis.php', 'Regulasi Medis', 'document-text');
+    $groupedNav['Keuangan'][] = sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Regulasi Farmasi', 'beaker');
+}
+
 if ($division !== 'Medis') {
     $groupedNav['Utama'][] = sidebarItem('/dashboard/surat_monitoring.php', 'surat_monitoring.php', 'Monitoring Surat', 'inbox');
 }
@@ -145,7 +150,7 @@ if (ems_can_access_division_menu($division, 'Secretary')) {
 }
 
 if ($isTrainee) {
-    $groupedNav['Pengaturan'][] = sidebarItem('#', '', 'Info Trainee', 'information-circle');
+    $groupedNav['Pengaturan'][] = sidebarItem('#', '', 'Info Trainee', 'exclamation-triangle');
 }
 
 if ($isAltaUnit && !$canViewAllUnits) {
@@ -179,9 +184,11 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
                 sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
             ],
-            'General Affair' => [
+            'Keuangan' => [
                 sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
-                sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Update Regulasi', 'pencil-square'),
+                sidebarItem('/dashboard/regulasi_medis.php', 'regulasi_medis.php', 'Regulasi Medis', 'document-text'),
+                sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Regulasi Farmasi', 'beaker'),
+                sidebarItem('/dashboard/regulasi_roxwood_hospital.php', 'regulasi_roxwood_hospital.php', 'Regulasi Roxwood Hospital', 'document-text'),
                 sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'check-circle'),
                 sidebarItem('/dashboard/blacklist_names.php', 'blacklist_names.php', 'Blacklist Nama', 'no-symbol'),
                 sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
@@ -193,10 +200,59 @@ if ($isAltaUnit && !$canViewAllUnits) {
     }
 }
 
+if ($isAltaUnit && !$canViewAllUnits && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+    if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {
+        $groupedNav['Keuangan'] = [];
+    }
+
+    $requiredFinanceMenus = [
+        sidebarItem('/dashboard/regulasi_medis.php', 'regulasi_medis.php', 'Regulasi Medis', 'document-text'),
+        sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Regulasi Farmasi', 'beaker'),
+    ];
+
+    foreach ($requiredFinanceMenus as $requiredItem) {
+        $exists = false;
+        foreach ($groupedNav['Keuangan'] as $item) {
+            if (($item['page'] ?? '') === ($requiredItem['page'] ?? '')) {
+                $exists = true;
+                break;
+            }
+        }
+
+        if (!$exists) {
+            $groupedNav['Keuangan'][] = $requiredItem;
+        }
+    }
+}
+
+if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {
+    $groupedNav['Keuangan'] = [];
+}
+
+$hasRegulasiHospitalMenu = false;
+foreach ($groupedNav['Keuangan'] as $item) {
+    if (($item['page'] ?? '') === 'regulasi_roxwood_hospital.php') {
+        $hasRegulasiHospitalMenu = true;
+        break;
+    }
+}
+
+if (!$hasRegulasiHospitalMenu) {
+    $groupedNav['Keuangan'][] = sidebarItem('/dashboard/regulasi_roxwood_hospital.php', 'regulasi_roxwood_hospital.php', 'Regulasi Roxwood Hospital', 'document-text');
+}
+
 $canAccessOcrApiStatus = in_array($normalizedUserFullName, [
     'programmer roxwood',
     'programmer alta',
 ], true);
+
+if (ems_current_user_is_programmer_roxwood()) {
+    if (!isset($groupedNav['Pengaturan']) || !is_array($groupedNav['Pengaturan'])) {
+        $groupedNav['Pengaturan'] = [];
+    }
+
+    $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/ai_settings.php', 'ai_settings.php', 'Setting AI', 'cog-6-tooth');
+}
 
 if ($canAccessOcrApiStatus) {
     if (!isset($groupedNav['Pengaturan']) || !is_array($groupedNav['Pengaturan'])) {

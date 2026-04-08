@@ -11,6 +11,8 @@ require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../actions/ai_recruitment_service.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $currentUnit = ems_effective_unit($pdo, $user);
@@ -26,6 +28,8 @@ if ($applicantId <= 0) {
     header('Location: candidates.php');
     exit;
 }
+
+$saveStatus = (string)($_GET['status'] ?? '');
 
 function candidateInterviewStatusLabel(?string $status): string
 {
@@ -91,7 +95,7 @@ if ($isLocked === 1) {
 }
 
 $criteriaSql = "
-    SELECT id, label, description
+    SELECT id, code, label, description
     FROM interview_criteria
     WHERE is_active = 1
 ";
@@ -106,6 +110,21 @@ $criteriaSql .= " ORDER BY id ASC";
 $stmt = $pdo->prepare($criteriaSql);
 $stmt->execute($criteriaParams);
 $criteria = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$criteriaById = [];
+$criteriaByCode = [];
+$criteriaLabelMap = [];
+foreach ($criteria as $criterion) {
+    $criterionId = (int)($criterion['id'] ?? 0);
+    $criterionCode = trim((string)($criterion['code'] ?? ''));
+    if ($criterionId > 0) {
+        $criteriaById[$criterionId] = $criterion;
+    }
+    if ($criterionCode !== '') {
+        $criteriaByCode[$criterionCode] = $criterion;
+        $criteriaLabelMap[$criterionCode] = (string)($criterion['label'] ?? $criterionCode);
+    }
+}
 
 $stmt = $pdo->prepare("
     SELECT criteria_id, score, notes
@@ -133,6 +152,40 @@ $stmt->execute([$applicantId]);
 $aiResult = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 $answers = json_decode((string)($aiResult['answers_json'] ?? ''), true) ?? [];
 
+$aiQuestions = ems_recruitment_questions_for_applicant($recruitmentType, $applicantId);
+$aiSettings = ems_ai_get_settings($pdo);
+$generatedInterviewPack = ems_ai_get_or_create_interview_question_pack(
+    $pdo,
+    $aiSettings,
+    $candidate,
+    $aiResult,
+    $answers,
+    $aiQuestions,
+    $applicantId,
+    $hrId,
+    $recruitmentType
+);
+$medicalInterviewQuestions = array_values((array)($generatedInterviewPack['medical_questions'] ?? []));
+$personalInterviewQuestions = array_values((array)($generatedInterviewPack['personal_questions'] ?? []));
+$flattenedInterviewQuestions = ems_ai_flatten_interview_question_pack($generatedInterviewPack);
+ems_ai_ensure_interview_question_responses_table($pdo);
+
+$stmt = $pdo->prepare("
+    SELECT question_key, score
+    FROM applicant_interview_question_responses
+    WHERE applicant_id = ? AND hr_id = ?
+");
+$stmt->execute([$applicantId, $hrId]);
+$questionScoreRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$existingQuestionScores = [];
+foreach ($questionScoreRows as $row) {
+    $questionKey = trim((string)($row['question_key'] ?? ''));
+    if ($questionKey !== '') {
+        $existingQuestionScores[$questionKey] = (int)($row['score'] ?? 0);
+    }
+}
+
 $stmt = $pdo->prepare("
     SELECT document_type, file_path, is_valid, validation_notes
     FROM applicant_documents
@@ -153,21 +206,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo->beginTransaction();
 
     try {
-        $notes = trim($_POST['notes'] ?? '');
-
-        foreach ($criteria as $criterion) {
-            if (!isset($_POST['score'][$criterion['id']])) {
-                throw new Exception('Skor belum lengkap');
-            }
-
-            $score = (int)$_POST['score'][$criterion['id']];
-            if ($score < 1 || $score > 5) {
-                throw new Exception('Nilai tidak valid');
-            }
+        if ($flattenedInterviewQuestions === []) {
+            throw new Exception('Paket pertanyaan interview belum tersedia');
         }
 
-        foreach ($criteria as $criterion) {
-            $score = (int)$_POST['score'][$criterion['id']];
+        $submittedQuestionScores = $_POST['question_score'] ?? [];
+        if (!is_array($submittedQuestionScores)) {
+            throw new Exception('Format nilai pertanyaan tidak valid');
+        }
+        $notes = trim((string)($_POST['notes'] ?? ''));
+
+        $questionInsertStmt = $pdo->prepare("
+            INSERT INTO applicant_interview_question_responses
+            (applicant_id, hr_id, question_key, question_category, criterion_code, question_text, good_answer_guide, bad_answer_guide, score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                question_category = VALUES(question_category),
+                criterion_code = VALUES(criterion_code),
+                question_text = VALUES(question_text),
+                good_answer_guide = VALUES(good_answer_guide),
+                bad_answer_guide = VALUES(bad_answer_guide),
+                score = VALUES(score),
+                updated_at = CURRENT_TIMESTAMP
+        ");
+
+        $stmt = $pdo->prepare("
+            DELETE FROM applicant_interview_question_responses
+            WHERE applicant_id = ? AND hr_id = ?
+        ");
+        $stmt->execute([$applicantId, $hrId]);
+
+        $stmt = $pdo->prepare("
+            DELETE FROM applicant_interview_scores
+            WHERE applicant_id = ? AND hr_id = ?
+        ");
+        $stmt->execute([$applicantId, $hrId]);
+
+        $aggregatedCriteriaScores = [];
+        $normalizedQuestionScores = [];
+
+        foreach ($flattenedInterviewQuestions as $questionRow) {
+            $questionKey = trim((string)($questionRow['question_key'] ?? ''));
+            if ($questionKey === '') {
+                continue;
+            }
+
+            $rawScore = $submittedQuestionScores[$questionKey] ?? '';
+            if ($rawScore === '' || $rawScore === null) {
+                continue;
+            }
+
+            $score = (int)$rawScore;
+            if ($score < 1 || $score > 5) {
+                throw new Exception('Nilai pertanyaan interview harus 1 sampai 5');
+            }
+
+            $normalizedQuestionScores[$questionKey] = $score;
+            $criterionCode = trim((string)($questionRow['criterion_code'] ?? ''));
+            if ($criterionCode !== '' && isset($criteriaByCode[$criterionCode])) {
+                $aggregatedCriteriaScores[$criterionCode][] = $score;
+            }
+
+            $questionInsertStmt->execute([
+                $applicantId,
+                $hrId,
+                $questionKey,
+                (string)($questionRow['category'] ?? ''),
+                $criterionCode !== '' ? $criterionCode : null,
+                (string)($questionRow['text'] ?? ''),
+                (string)($questionRow['good_answer'] ?? ''),
+                (string)($questionRow['bad_answer'] ?? ''),
+                $score,
+            ]);
+        }
+
+        if ($normalizedQuestionScores === []) {
+            throw new Exception('Minimal isi satu nilai interview sebelum disimpan');
+        }
+
+        foreach ($aggregatedCriteriaScores as $criterionCode => $criterionScoreItems) {
+            $criterion = $criteriaByCode[$criterionCode] ?? null;
+            if (!$criterion) {
+                continue;
+            }
+
+            $averagedScore = (int)round(array_sum($criterionScoreItems) / max(1, count($criterionScoreItems)));
+            $averagedScore = max(1, min(5, $averagedScore));
 
             $stmt = $pdo->prepare("
                 INSERT INTO applicant_interview_scores
@@ -182,8 +306,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 $applicantId,
                 $hrId,
-                $criterion['id'],
-                $score,
+                (int)$criterion['id'],
+                $averagedScore,
                 $notes !== '' ? $notes : null,
             ]);
         }
@@ -197,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->commit();
 
-        header('Location: ' . $listPage . '?interview_saved=1');
+        header('Location: candidate_interview_multi.php?id=' . $applicantId . '&status=scores_saved');
         exit;
     } catch (Exception $e) {
         if ($pdo->inTransaction()) {
@@ -227,8 +351,6 @@ $submittedFields = [
     ['label' => 'Motivasi Bergabung', 'value' => $candidate['motivation'] ?? '-'],
     ['label' => 'Prinsip Kerja', 'value' => $candidate['work_principle'] ?? '-'],
 ];
-
-$aiQuestions = ems_recruitment_questions_for_applicant($recruitmentType, $applicantId);
 
 $interviewScriptSections = [
     [
@@ -548,20 +670,23 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                     </div>
 
                     <div class="space-y-4">
-                        <?php foreach ($interviewScriptSections as $section): ?>
-                            <div class="interview-script-section">
-                                <div class="interview-script-title"><?= htmlspecialchars($section['title']) ?></div>
-                                <?php if ($section['type'] === 'copy'): ?>
-                                    <div class="interview-script-copy"><?= htmlspecialchars($section['content']) ?></div>
-                                <?php else: ?>
-                                    <ul class="interview-script-list">
-                                        <?php foreach ($section['items'] as $item): ?>
-                                            <li><?= htmlspecialchars($item) ?></li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                <?php endif; ?>
-                            </div>
-                        <?php endforeach; ?>
+                        <div class="interview-script-section">
+                            <div class="interview-script-title">Script Dasar Interview</div>
+                            <?php foreach ($interviewScriptSections as $section): ?>
+                                <div class="mt-3">
+                                    <div class="font-semibold text-slate-900"><?= htmlspecialchars($section['title']) ?></div>
+                                    <?php if ($section['type'] === 'copy'): ?>
+                                        <div class="interview-script-copy mt-2"><?= htmlspecialchars($section['content']) ?></div>
+                                    <?php else: ?>
+                                        <ul class="interview-script-list mt-2">
+                                            <?php foreach ($section['items'] as $item): ?>
+                                                <li><?= htmlspecialchars($item) ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -576,22 +701,45 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                         <span>Card Penilaian</span>
                     </div>
 
+                    <?php if ($saveStatus === 'scores_saved'): ?>
+                        <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                            Nilai interview berhasil disimpan.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="helper-note mb-4">
-                        Gunakan panel ini untuk menilai apakah jawaban saat interview konsisten dengan formulir awal, jawaban AI, dan dokumen kandidat.
+                        Anda tidak wajib mengisi semua pertanyaan. Nilai parsial tetap disimpan per interviewer, dan catatan interview ditulis manual oleh interviewer masing-masing.
                     </div>
 
                     <div class="interview-criteria-list">
-                        <?php foreach ($criteria as $criterion): ?>
+                        <?php foreach ($flattenedInterviewQuestions as $index => $question): ?>
                             <div class="interview-criteria-item">
                                 <div class="interview-criteria-head">
-                                    <div class="interview-criteria-title"><?= htmlspecialchars($criterion['label']) ?></div>
-                                    <div class="interview-criteria-desc"><?= htmlspecialchars($criterion['description']) ?></div>
+                                    <div class="interview-criteria-title">
+                                        Pertanyaan <?= (int)($index + 1) ?>
+                                        <?php
+                                        $criterionCode = trim((string)($question['criterion_code'] ?? ''));
+                                        $criterionLabel = $criteriaLabelMap[$criterionCode] ?? $criterionCode;
+                                        ?>
+                                        <?php if ($criterionLabel !== ''): ?>
+                                            <span class="text-slate-400">· <?= htmlspecialchars($criterionLabel) ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="interview-criteria-desc"><?= htmlspecialchars((string)($question['text'] ?? '')) ?></div>
+                                    <div class="mt-2 text-sm text-emerald-700">
+                                        <strong>Jawaban bagus:</strong>
+                                        <?= htmlspecialchars((string)($question['good_answer'] ?? '-')) ?>
+                                    </div>
+                                    <div class="mt-1 text-sm text-rose-700">
+                                        <strong>Jawaban buruk:</strong>
+                                        <?= htmlspecialchars((string)($question['bad_answer'] ?? '-')) ?>
+                                    </div>
                                 </div>
 
-                                <select name="score[<?= (int)$criterion['id'] ?>]" class="interview-score-select" required>
+                                <select name="question_score[<?= htmlspecialchars((string)($question['question_key'] ?? '')) ?>]" class="interview-score-select">
                                     <option value="">-- Pilih Nilai --</option>
                                     <?php foreach ($scoreOptions as $scoreValue => $scoreLabel): ?>
-                                        <option value="<?= (int)$scoreValue ?>" <?= (($existingScores[(int)$criterion['id']] ?? null) === $scoreValue) ? 'selected' : '' ?>>
+                                        <option value="<?= (int)$scoreValue ?>" <?= (($existingQuestionScores[(string)($question['question_key'] ?? '')] ?? null) === $scoreValue) ? 'selected' : '' ?>>
                                             <?= (int)$scoreValue ?> - <?= htmlspecialchars($scoreLabel) ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -606,7 +754,10 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                             id="notes"
                             name="notes"
                             rows="6"
-                            placeholder="Tulis poin penting interview, konsistensi jawaban, red flag, atau catatan lain untuk evaluasi pribadi HR."><?= htmlspecialchars($existingNotes) ?></textarea>
+                            placeholder="Tulis kesimpulan singkat, red flag, poin kuat, atau catatan interviewer lainnya."><?= htmlspecialchars($existingNotes) ?></textarea>
+                        <div class="helper-note mt-2">
+                            Catatan ini ditulis manual dan hanya mewakili penilaian interviewer yang sedang login.
+                        </div>
                     </div>
 
                     <div class="form-submit-wrapper">

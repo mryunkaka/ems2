@@ -8,6 +8,9 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Struktur Organisasi';
+$isPdfPreview = isset($_GET['view']) && $_GET['view'] === 'pdf';
+$pdfOrientation = strtoupper((string)($_GET['orientation'] ?? 'L'));
+$pdfOrientation = in_array($pdfOrientation, ['L', 'P'], true) ? $pdfOrientation : 'L';
 
 function orgHasColumn(PDO $pdo, string $column): bool
 {
@@ -87,7 +90,565 @@ function orgIsExcludedUser(?string $name): bool
     $normalized = strtolower(trim((string) $name));
     $normalized = preg_replace('/\s+/', ' ', $normalized) ?: '';
 
-    return in_array($normalized, ['programmer alta', 'programmer roxwood'], true);
+    return in_array($normalized, ['alta', 'programmer alta', 'programmer roxwood'], true);
+}
+
+function orgPdfEscape(?string $value): string
+{
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+function orgRenderPdfPersonCards(array $people): string
+{
+    if ($people === []) {
+        return '<div class="pdf-empty">Belum ada manager aktif.</div>';
+    }
+
+    $html = '<table class="pdf-person-table" cellspacing="0" cellpadding="0">';
+    foreach ($people as $person) {
+        $html .= '
+            <tr>
+                <td class="pdf-person-card">
+                    <div class="pdf-name">' . orgPdfEscape($person['name'] ?? '') . '</div>
+                    <div class="pdf-role-line">' . orgPdfEscape($person['role'] ?? '') . ' | ' . orgPdfEscape($person['division'] ?? '') . '</div>
+                    <div class="pdf-meta">' . orgPdfEscape($person['position'] ?? '-') . '</div>
+                    <div class="pdf-foot">Masa aktif: ' . orgPdfEscape($person['join_duration'] ?? '-') . '</div>
+                </td>
+            </tr>
+        ';
+    }
+
+    $html .= '</table>';
+
+    return $html;
+}
+
+function orgRenderPdfNode(array $node): string
+{
+    $html = '
+        <div class="pdf-node">
+            <div class="pdf-node-head">
+                <div class="pdf-node-title">' . orgPdfEscape($node['division'] ?? '') . '</div>
+                <div class="pdf-node-count">' . count((array)($node['people'] ?? [])) . ' manager aktif</div>
+            </div>
+            <div class="pdf-people-list">' . orgRenderPdfPersonCards((array)($node['people'] ?? [])) . '</div>
+    ';
+
+    $children = (array)($node['children'] ?? []);
+    if ($children !== []) {
+        $html .= '<div class="pdf-child-wrap">';
+        foreach ($children as $child) {
+            $html .= '
+                <div class="pdf-child-node">
+                    <div class="pdf-child-head">' . orgPdfEscape($child['division'] ?? '') . ' · ' . count((array)($child['people'] ?? [])) . ' manager</div>
+                    <div class="pdf-people-list">' . orgRenderPdfPersonCards((array)($child['people'] ?? [])) . '</div>
+                </div>
+            ';
+        }
+        $html .= '</div>';
+    }
+
+    $html .= '</div>';
+
+    return $html;
+}
+
+function orgRenderPdfDocument(array $stats, array $directors, array $viceDirectors, array $orgTree): string
+{
+    $divisionNodes = array_values(array_filter($orgTree, static function (array $node): bool {
+        return ($node['people'] ?? []) !== [] || ($node['children'] ?? []) !== [];
+    }));
+
+    $html = '
+    <style>
+        body { font-family: dejavusans, sans-serif; color: #0f172a; font-size: 9px; }
+        .pdf-page { padding: 2mm; }
+        .pdf-title { font-size: 17px; font-weight: bold; margin-bottom: 1mm; color: #0f172a; }
+        .pdf-subtitle { font-size: 8px; color: #475569; margin-bottom: 4mm; }
+        .pdf-stats { width: 100%; margin-bottom: 4mm; }
+        .pdf-stats td { width: 33.33%; padding-right: 2mm; vertical-align: top; }
+        .pdf-stat-box { border: 0.2mm solid #cbd5e1; background: #f8fafc; padding: 2mm; }
+        .pdf-stat-label { font-size: 6.5px; color: #64748b; text-transform: uppercase; }
+        .pdf-stat-value { font-size: 13px; font-weight: bold; margin-top: 0.4mm; }
+        .pdf-section { margin-bottom: 4mm; }
+        .pdf-section-title { font-size: 10px; font-weight: bold; margin-bottom: 2mm; color: #0f766e; }
+        .pdf-grid { width: 100%; }
+        .pdf-grid td { width: 50%; vertical-align: top; padding-right: 2mm; padding-bottom: 2mm; }
+        .pdf-node { border: 0.2mm solid #dbe7ef; background: #ffffff; padding: 2mm; }
+        .pdf-node-head { margin-bottom: 1.5mm; }
+        .pdf-node-title { font-size: 9px; font-weight: bold; color: #0f172a; }
+        .pdf-node-count { font-size: 7px; color: #64748b; }
+        .pdf-people-list { width: 100%; }
+        .pdf-person-table { width: 100%; }
+        .pdf-person-card { border: 0.2mm solid #e2e8f0; background: #f8fafc; padding: 1.8mm; }
+        .pdf-name { font-size: 8.5px; font-weight: bold; color: #0f172a; margin-bottom: 0.4mm; }
+        .pdf-role-line { font-size: 7px; color: #0f766e; margin-bottom: 0.4mm; }
+        .pdf-meta { font-size: 7px; color: #475569; margin-bottom: 0.4mm; }
+        .pdf-foot { font-size: 6.5px; color: #64748b; }
+        .pdf-child-wrap { margin-top: 1.5mm; }
+        .pdf-child-node { border-top: 0.2mm solid #cbd5e1; padding-top: 1.5mm; margin-top: 1.5mm; }
+        .pdf-child-head { font-size: 7.5px; font-weight: bold; color: #0f766e; margin-bottom: 1mm; }
+        .pdf-empty { font-size: 7px; color: #64748b; }
+    </style>
+    <page backtop="6mm" backbottom="6mm" backleft="6mm" backright="6mm">
+        <div class="pdf-page">
+            <div class="pdf-title">Struktur Organisasi</div>
+            <div class="pdf-subtitle">Bagan manager dari level executive sampai divisi operasional. Role staff dan divisi medis tidak ditampilkan.</div>
+            <table class="pdf-stats" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td><div class="pdf-stat-box"><div class="pdf-stat-label">Executive</div><div class="pdf-stat-value">' . (int)$stats['executive'] . '</div></div></td>
+                    <td><div class="pdf-stat-box"><div class="pdf-stat-label">Divisi Aktif</div><div class="pdf-stat-value">' . (int)$stats['division'] . '</div></div></td>
+                    <td><div class="pdf-stat-box"><div class="pdf-stat-label">Total Manager</div><div class="pdf-stat-value">' . (int)$stats['manager'] . '</div></div></td>
+                </tr>
+            </table>
+
+            <div class="pdf-section">
+                <div class="pdf-section-title">Executive</div>
+                <table class="pdf-grid" cellspacing="0" cellpadding="0">
+                    <tr>
+                        <td>' . orgRenderPdfNode(['division' => 'Director', 'people' => $directors]) . '</td>
+                        <td>' . orgRenderPdfNode(['division' => 'Vice Director', 'people' => $viceDirectors]) . '</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="pdf-section">
+                <div class="pdf-section-title">Divisi Manager</div>
+                <table class="pdf-grid" cellspacing="0" cellpadding="0">
+    ';
+
+    $chunks = array_chunk($divisionNodes, 2);
+    foreach ($chunks as $chunk) {
+        $html .= '<tr>';
+        foreach ($chunk as $node) {
+            $html .= '<td>' . orgRenderPdfNode($node) . '</td>';
+        }
+        if (count($chunk) === 1) {
+            $html .= '<td></td>';
+        }
+        $html .= '</tr>';
+    }
+
+    $html .= '
+                </table>
+            </div>
+        </div>
+    </page>';
+
+    return $html;
+}
+
+function orgPosterFindNode(array $orgTree, string $division): array
+{
+    foreach ($orgTree as $node) {
+        if (($node['division'] ?? '') === $division) {
+            return $node;
+        }
+    }
+
+    return ['division' => $division, 'people' => [], 'children' => []];
+}
+
+function orgPosterBuildBox(string $title, array $people, bool $large = false): string
+{
+    $body = '';
+    foreach ($people as $person) {
+        $body .= '
+            <div class="poster-name">' . orgPdfEscape($person['name'] ?? '-') . '</div>
+            <div class="poster-meta">' . orgPdfEscape($person['position'] ?? '-') . '</div>
+        ';
+    }
+
+    if ($body === '') {
+        $body = '
+            <div class="poster-name">Belum Ada</div>
+            <div class="poster-meta">Manager aktif belum tersedia</div>
+        ';
+    }
+
+    return '
+        <div class="poster-box' . ($large ? ' is-large' : '') . '">
+            <div class="poster-box-title">' . orgPdfEscape(strtoupper($title)) . '</div>
+            <div class="poster-box-body">' . $body . '</div>
+        </div>
+    ';
+}
+
+function orgPosterBuildColumn(array $node): string
+{
+    $html = '
+        <td class="poster-col">
+            <div class="poster-dept">' . orgPdfEscape(strtoupper((string)($node['division'] ?? ''))) . '</div>
+            ' . orgPosterBuildBox((string)($node['division'] ?? ''), (array)($node['people'] ?? [])) . '
+    ';
+
+    foreach ((array)($node['children'] ?? []) as $child) {
+        $html .= orgPosterBuildBox((string)($child['division'] ?? ''), (array)($child['people'] ?? []));
+    }
+
+    $html .= '</td>';
+
+    return $html;
+}
+
+function orgRenderPosterPdfDocument(array $stats, array $directors, array $viceDirectors, array $orgTree): string
+{
+    $ceoPeople = $directors !== [] ? $directors : $viceDirectors;
+    $secretaryNode = orgPosterFindNode($orgTree, 'Secretary');
+    $humanCapitalNode = orgPosterFindNode($orgTree, 'Human Capital');
+    $generalAffairNode = orgPosterFindNode($orgTree, 'General Affair');
+    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Specialist Medical Authority');
+
+    return '
+    <style>
+        body { font-family: dejavusans, sans-serif; color: #111827; font-size: 9px; }
+        .poster-page { padding: 1mm; }
+        .poster-brand { text-align: center; font-size: 20px; font-weight: bold; margin-bottom: 1mm; letter-spacing: 0.4px; }
+        .poster-title { text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 4mm; }
+        .poster-stats { width: 100%; margin-bottom: 3mm; }
+        .poster-stats td { width: 33.33%; padding: 0 1.2mm; }
+        .poster-stat { border: 0.2mm solid #d1d5db; padding: 1.5mm; text-align: center; }
+        .poster-stat-label { font-size: 6.5px; color: #6b7280; text-transform: uppercase; }
+        .poster-stat-value { font-size: 12px; font-weight: bold; margin-top: 0.4mm; }
+        .poster-center { text-align: center; }
+        .poster-box { width: 84%; margin: 0 auto 2mm; background: #d71920; color: #ffffff; padding: 2mm 2.5mm; }
+        .poster-box.is-large { width: 42%; }
+        .poster-box-title { font-size: 8.5px; font-weight: bold; text-transform: uppercase; margin-bottom: 0.8mm; }
+        .poster-box.is-large .poster-box-title { font-size: 11px; }
+        .poster-box-body { line-height: 1.35; }
+        .poster-name { font-size: 8.3px; font-weight: bold; margin-bottom: 0.5mm; }
+        .poster-box.is-large .poster-name { font-size: 10px; }
+        .poster-meta { font-size: 6.8px; margin-bottom: 0.7mm; }
+        .poster-line-v { width: 0.5mm; height: 7mm; background: #111111; margin: 0 auto; }
+        .poster-line-h { height: 0.5mm; background: #111111; margin: 0 8%; }
+        .poster-leads { width: 100%; margin-bottom: 1.5mm; }
+        .poster-leads td { width: 50%; vertical-align: top; }
+        .poster-secretary { width: 30%; margin: 0 auto 2.5mm; }
+        .poster-main { width: 100%; }
+        .poster-col { width: 33.33%; vertical-align: top; padding: 0 1.4mm; }
+        .poster-dept { width: 86%; margin: 0 auto 1.5mm; background: #8f1d1d; color: #ffffff; text-align: center; font-size: 7.6px; font-weight: bold; text-transform: uppercase; padding: 1.2mm 1mm; }
+    </style>
+    <page backtop="6mm" backbottom="6mm" backleft="7mm" backright="7mm">
+        <div class="poster-page">
+            <div class="poster-brand">ROXWOOD HOSPITAL</div>
+            <div class="poster-title">ORGANIZATIONAL STRUCTURE</div>
+
+            <table class="poster-stats" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td><div class="poster-stat"><div class="poster-stat-label">Executive</div><div class="poster-stat-value">' . (int)$stats['executive'] . '</div></div></td>
+                    <td><div class="poster-stat"><div class="poster-stat-label">Divisi Aktif</div><div class="poster-stat-value">' . (int)$stats['division'] . '</div></div></td>
+                    <td><div class="poster-stat"><div class="poster-stat-label">Total Manager</div><div class="poster-stat-value">' . (int)$stats['manager'] . '</div></div></td>
+                </tr>
+            </table>
+
+            <div class="poster-center">' . orgPosterBuildBox('Chief Executive Officer', $ceoPeople, true) . '</div>
+            <div class="poster-center"><div class="poster-line-v"></div></div>
+
+            <table class="poster-leads" cellspacing="0" cellpadding="0">
+                <tr>
+                    <td class="poster-center">' . orgPosterBuildBox('Director', $directors) . '</td>
+                    <td class="poster-center">' . orgPosterBuildBox('Deputy Director', $viceDirectors) . '</td>
+                </tr>
+            </table>
+
+            <div class="poster-center"><div class="poster-line-v" style="height:5mm;"></div></div>
+            <div class="poster-line-h"></div>
+
+            <div class="poster-secretary">' . orgPosterBuildBox('Secretary', (array)($secretaryNode['people'] ?? [])) . '</div>
+
+            <table class="poster-main" cellspacing="0" cellpadding="0">
+                <tr>
+                    ' . orgPosterBuildColumn($humanCapitalNode) . '
+                    ' . orgPosterBuildColumn($generalAffairNode) . '
+                    ' . orgPosterBuildColumn($medicalAuthorityNode) . '
+                </tr>
+            </table>
+        </div>
+    </page>';
+}
+
+function orgPdfBoxHeight(array $people, bool $large = false): float
+{
+    $base = $large ? 10.5 : 8.8;
+    $perPerson = orgPdfEstimatePersonCardHeight($large) + 1.8;
+
+    return $base + (max(1, count($people)) * $perPerson);
+}
+
+function orgPdfPeopleText(array $people): string
+{
+    if ($people === []) {
+        return "Belum Ada\nManager aktif belum tersedia";
+    }
+
+    $lines = [];
+    foreach ($people as $person) {
+        $name = trim((string)($person['name'] ?? '-'));
+        $position = trim((string)($person['position'] ?? '-'));
+        $lines[] = $name;
+        $lines[] = $position;
+    }
+
+    return implode("\n", $lines);
+}
+
+function orgPdfEstimatePersonCardHeight(bool $large = false): float
+{
+    return $large ? 10.4 : 8.2;
+}
+
+function orgPdfEstimatePosterBoxHeight(array $people, bool $large = false): float
+{
+    $titleArea = $large ? 5.0 : 4.2;
+    $cardSpacing = 0.8;
+
+    return $titleArea + (max(1, count($people)) * (orgPdfEstimatePersonCardHeight($large) + $cardSpacing)) + 1.2;
+}
+
+function orgPdfEstimateDepartmentColumnHeight(array $node): float
+{
+    $height = orgPdfEstimatePosterBoxHeight((array)($node['people'] ?? []));
+    $children = array_values((array)($node['children'] ?? []));
+
+    if (count($children) === 2) {
+        $left = orgPdfEstimatePosterBoxHeight((array)($children[0]['people'] ?? []));
+        $right = orgPdfEstimatePosterBoxHeight((array)($children[1]['people'] ?? []));
+        $height += max($left, $right) + 4;
+    } else {
+        foreach ($children as $child) {
+            $height += orgPdfEstimatePosterBoxHeight((array)($child['people'] ?? [])) + 4;
+        }
+    }
+
+    return $height;
+}
+
+function orgPdfDrawPersonCard(TCPDF $pdf, float $x, float $y, float $w, array $person, bool $large = false): void
+{
+    $cardH = orgPdfEstimatePersonCardHeight($large);
+    $avatarSize = $large ? 8.4 : 6.8;
+    $avatarX = $x + 1.0;
+    $avatarY = $y + (($cardH - $avatarSize) / 2);
+
+    $pdf->SetFillColor(255, 255, 255);
+    $pdf->SetDrawColor(17, 17, 17);
+    $pdf->Rect($x, $y, $w, $cardH, 'DF');
+
+    $pdf->SetFillColor(139, 27, 27);
+    $pdf->Rect($avatarX, $avatarY, $avatarSize, $avatarSize, 'F');
+
+    $pdf->SetTextColor(255, 255, 255);
+    $pdf->SetFont('helvetica', 'B', $large ? 6.1 : 5.2);
+    $pdf->SetXY($avatarX, $avatarY + ($large ? 1.9 : 1.4));
+    $pdf->Cell($avatarSize, 2.8, strtoupper((string)($person['initials'] ?? '--')), 0, 1, 'C');
+
+    $textX = $avatarX + $avatarSize + 1.2;
+    $textW = $w - ($textX - $x) - 1.0;
+    $pdf->SetTextColor(17, 24, 39);
+    $pdf->SetFont('helvetica', 'B', $large ? 6.0 : 5.0);
+    $pdf->SetXY($textX, $y + 1.0);
+    $pdf->MultiCell($textW, 2.4, (string)($person['name'] ?? '-'), 0, 'L', false, 1, '', '', true, 0, false, true, 4.8, 'T', false);
+
+    $pdf->SetTextColor(75, 85, 99);
+    $pdf->SetFont('helvetica', '', $large ? 5.2 : 4.6);
+    $pdf->SetXY($textX, $y + ($large ? 5.0 : 4.1));
+    $pdf->MultiCell($textW, 2.2, (string)($person['position'] ?? '-'), 0, 'L', false, 1, '', '', true, 0, false, true, 4.6, 'T', false);
+}
+
+function orgPdfDrawPosterBox(TCPDF $pdf, float $x, float $y, float $w, float $h, string $title, array $people, bool $large = false): void
+{
+    $pdf->SetDrawColor(17, 17, 17);
+    $pdf->SetFillColor(215, 25, 32);
+    $pdf->Rect($x, $y, $w, $h, 'DF');
+
+    $pdf->SetTextColor(255, 255, 255);
+    $pdf->SetFont('helvetica', 'B', $large ? 7.1 : 6.0);
+    $pdf->SetXY($x + 1.2, $y + 0.9);
+    $pdf->MultiCell($w - 2.4, 3.1, strtoupper($title), 0, 'L', false, 1, '', '', true, 0, false, true, 3.5, 'T', false);
+
+    $cardX = $x + 0.9;
+    $cardW = $w - 1.8;
+    $cursorY = $y + ($large ? 4.9 : 4.2);
+    $cards = $people !== [] ? $people : [[
+        'name' => 'Belum Ada',
+        'position' => 'Manager aktif belum tersedia',
+        'initials' => '--',
+    ]];
+
+    foreach ($cards as $person) {
+        orgPdfDrawPersonCard($pdf, $cardX, $cursorY, $cardW, $person, $large);
+        $cursorY += orgPdfEstimatePersonCardHeight($large) + 0.8;
+    }
+}
+
+function orgPdfDrawDepartmentColumn(TCPDF $pdf, float $x, float $y, float $w, array $node): void
+{
+    $cursorY = $y;
+    $mainPeople = (array)($node['people'] ?? []);
+    $mainHeight = orgPdfEstimatePosterBoxHeight($mainPeople);
+    orgPdfDrawPosterBox($pdf, $x, $cursorY, $w, $mainHeight, (string)($node['division'] ?? ''), $mainPeople);
+    $cursorY += $mainHeight + 4;
+
+    $children = array_values((array)($node['children'] ?? []));
+    if (count($children) === 2) {
+        $leftPeople = (array)($children[0]['people'] ?? []);
+        $rightPeople = (array)($children[1]['people'] ?? []);
+        $childGap = 2.2;
+        $childW = ($w - $childGap) / 2;
+        $leftH = orgPdfEstimatePosterBoxHeight($leftPeople);
+        $rightH = orgPdfEstimatePosterBoxHeight($rightPeople);
+        $branchY = $y + $mainHeight + 1.8;
+        $mainCenterX = $x + ($w / 2);
+        $leftCenterX = $x + ($childW / 2);
+        $rightCenterX = $x + $childW + $childGap + ($childW / 2);
+        $pdf->SetDrawColor(17, 17, 17);
+        $pdf->SetLineWidth(0.4);
+        $pdf->Line($mainCenterX, $y + $mainHeight, $mainCenterX, $branchY);
+        $pdf->Line($leftCenterX, $branchY, $rightCenterX, $branchY);
+        $pdf->Line($leftCenterX, $branchY, $leftCenterX, $cursorY);
+        $pdf->Line($rightCenterX, $branchY, $rightCenterX, $cursorY);
+        orgPdfDrawPosterBox($pdf, $x, $cursorY, $childW, $leftH, (string)($children[0]['division'] ?? ''), $leftPeople);
+        orgPdfDrawPosterBox($pdf, $x + $childW + $childGap, $cursorY, $childW, $rightH, (string)($children[1]['division'] ?? ''), $rightPeople);
+        $cursorY += max($leftH, $rightH) + 4;
+    } else {
+        foreach ($children as $child) {
+            $childPeople = (array)($child['people'] ?? []);
+            $childHeight = orgPdfEstimatePosterBoxHeight($childPeople);
+            $branchY = $y + $mainHeight + 1.8;
+            $mainCenterX = $x + ($w / 2);
+            $childCenterX = $x + ($w / 2);
+            $pdf->SetDrawColor(17, 17, 17);
+            $pdf->SetLineWidth(0.4);
+            $pdf->Line($mainCenterX, $y + $mainHeight, $mainCenterX, $branchY);
+            $pdf->Line($childCenterX, $branchY, $childCenterX, $cursorY);
+            orgPdfDrawPosterBox($pdf, $x, $cursorY, $w, $childHeight, (string)($child['division'] ?? ''), $childPeople);
+            $cursorY += $childHeight + 4;
+        }
+    }
+}
+
+function orgRenderPosterPdfDirect(TCPDF $pdf, array $stats, array $directors, array $viceDirectors, array $orgTree, string $orientation = 'L'): void
+{
+    $secretaryNode = orgPosterFindNode($orgTree, 'Secretary');
+    $humanCapitalNode = orgPosterFindNode($orgTree, 'Human Capital');
+    $generalAffairNode = orgPosterFindNode($orgTree, 'General Affair');
+    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Specialist Medical Authority');
+    $ceoPeople = $directors !== [] ? $directors : $viceDirectors;
+
+    $pageWidth = $pdf->getPageWidth();
+    $centerX = $pageWidth / 2;
+    $isPortrait = $orientation === 'P';
+
+    if ($isPortrait) {
+        $pdf->SetTextColor(17, 24, 39);
+        $pdf->SetFont('helvetica', 'B', 13);
+        $pdf->SetXY(0, 4);
+        $pdf->Cell($pageWidth, 5, 'ROXWOOD HOSPITAL', 0, 1, 'C');
+
+        $pdf->SetFont('helvetica', 'B', 15);
+        $pdf->SetXY(0, 9);
+        $pdf->Cell($pageWidth, 6, 'ORGANIZATIONAL STRUCTURE', 0, 1, 'C');
+
+        $ceoW = 92;
+        $ceoH = orgPdfEstimatePosterBoxHeight($ceoPeople, true);
+        $ceoX = $centerX - ($ceoW / 2);
+        $ceoY = 18;
+        orgPdfDrawPosterBox($pdf, $ceoX, $ceoY, $ceoW, $ceoH, 'Chief Executive Officer', $ceoPeople, true);
+
+        $dirW = 72;
+        $dirY = $ceoY + $ceoH + 7;
+        $directorH = orgPdfEstimatePosterBoxHeight($directors);
+        $deputyH = orgPdfEstimatePosterBoxHeight($viceDirectors);
+        orgPdfDrawPosterBox($pdf, $centerX - ($dirW / 2), $dirY, $dirW, $directorH, 'Director', $directors);
+
+        $deputyW = 72;
+        $deputyY = $dirY + $directorH + 7;
+        orgPdfDrawPosterBox($pdf, $centerX - ($deputyW / 2), $deputyY, $deputyW, $deputyH, 'Deputy Director', $viceDirectors);
+
+        $secW = 72;
+        $secretaryH = orgPdfEstimatePosterBoxHeight((array)($secretaryNode['people'] ?? []));
+        $secY = $deputyY + $deputyH + 7;
+        orgPdfDrawPosterBox($pdf, $centerX - ($secW / 2), $secY, $secW, $secretaryH, 'Secretary', (array)($secretaryNode['people'] ?? []));
+
+        $pdf->SetDrawColor(17, 17, 17);
+        $pdf->SetLineWidth(0.4);
+        $pdf->Line($centerX, $ceoY + $ceoH, $centerX, $dirY);
+        $pdf->Line($centerX, $dirY + $directorH, $centerX, $deputyY);
+        $pdf->Line($centerX, $deputyY + $deputyH, $centerX, $secY);
+
+        $colY = $secY + $secretaryH + 8;
+        orgPdfDrawDepartmentColumn($pdf, 12, $colY, $pageWidth - 24, $humanCapitalNode);
+        orgPdfDrawDepartmentColumn($pdf, 12, $colY + 58, $pageWidth - 24, $generalAffairNode);
+        $pdf->AddPage();
+        orgPdfDrawDepartmentColumn($pdf, 12, 12, $pageWidth - 24, $medicalAuthorityNode);
+        return;
+    }
+
+    $pdf->SetTextColor(17, 24, 39);
+    $pdf->SetFont('helvetica', 'B', 13);
+    $pdf->SetXY(0, 4);
+    $pdf->Cell($pageWidth, 5, 'ROXWOOD HOSPITAL', 0, 1, 'C');
+
+    $pdf->SetFont('helvetica', 'B', 15.5);
+    $pdf->SetXY(0, 9);
+    $pdf->Cell($pageWidth, 6, 'ORGANIZATIONAL STRUCTURE', 0, 1, 'C');
+
+    $pdf->SetFont('helvetica', '', 5.9);
+    $pdf->SetTextColor(100, 116, 139);
+    $pdf->SetXY(0, 15);
+    $pdf->Cell($pageWidth, 4, 'Executive: ' . (int)$stats['executive'] . '   |   Divisi Aktif: ' . (int)$stats['division'] . '   |   Total Manager: ' . (int)$stats['manager'], 0, 1, 'C');
+
+    $ceoW = 76;
+    $ceoH = orgPdfEstimatePosterBoxHeight($ceoPeople, true);
+    $ceoX = $centerX - ($ceoW / 2);
+    $ceoY = 16;
+    orgPdfDrawPosterBox($pdf, $ceoX, $ceoY, $ceoW, $ceoH, 'Chief Executive Officer', $ceoPeople, true);
+
+    $leadW = 54;
+    $leadY = $ceoY + $ceoH + 5;
+    $leadHLeft = orgPdfEstimatePosterBoxHeight($directors);
+    $leadHRight = orgPdfEstimatePosterBoxHeight($viceDirectors);
+    $leadX = $centerX - ($leadW / 2);
+    orgPdfDrawPosterBox($pdf, $leadX, $leadY, $leadW, $leadHLeft, 'Director', $directors);
+
+    $deputyW = 54;
+    $deputyY = $leadY + $leadHLeft + 5;
+    $deputyX = $centerX - ($deputyW / 2);
+    orgPdfDrawPosterBox($pdf, $deputyX, $deputyY, $deputyW, $leadHRight, 'Deputy Director', $viceDirectors);
+
+    $pdf->SetDrawColor(17, 17, 17);
+    $pdf->SetLineWidth(0.4);
+    $pdf->Line($centerX, $ceoY + $ceoH, $centerX, $leadY);
+    $pdf->Line($centerX, $leadY + $leadHLeft, $centerX, $deputyY);
+
+    $secretaryPeople = (array)($secretaryNode['people'] ?? []);
+    $secretaryH = orgPdfEstimatePosterBoxHeight($secretaryPeople);
+    $secretaryW = 48;
+    $secretaryX = $centerX - ($secretaryW / 2);
+    $secretaryY = $deputyY + $leadHRight + 5;
+    $pdf->Line($centerX, $deputyY + $leadHRight, $centerX, $secretaryY);
+    orgPdfDrawPosterBox($pdf, $secretaryX, $secretaryY, $secretaryW, $secretaryH, 'Secretary', $secretaryPeople);
+
+    $deptTopY = $secretaryY + $secretaryH + 6;
+    $columnW = 72;
+    $columnGap = 4;
+    $startX = ($pageWidth - (($columnW * 3) + ($columnGap * 2))) / 2;
+    $x1 = $startX;
+    $x2 = $x1 + $columnW + $columnGap;
+    $x3 = $x2 + $columnW + $columnGap;
+
+    orgPdfDrawDepartmentColumn($pdf, $x1, $deptTopY, $columnW, $humanCapitalNode);
+    orgPdfDrawDepartmentColumn($pdf, $x2, $deptTopY, $columnW, $generalAffairNode);
+    orgPdfDrawDepartmentColumn($pdf, $x3, $deptTopY, $columnW, $medicalAuthorityNode);
+
+    $branchDeptY = $deptTopY - 4;
+    $pdf->SetDrawColor(17, 17, 17);
+    $pdf->SetLineWidth(0.5);
+    $pdf->Line($centerX, $secretaryY + $secretaryH, $centerX, $branchDeptY);
+    $pdf->Line($x1 + ($columnW / 2), $branchDeptY, $x3 + ($columnW / 2), $branchDeptY);
+    $pdf->Line($x1 + ($columnW / 2), $branchDeptY, $x1 + ($columnW / 2), $deptTopY);
+    $pdf->Line($x2 + ($columnW / 2), $branchDeptY, $x2 + ($columnW / 2), $deptTopY);
+    $pdf->Line($x3 + ($columnW / 2), $branchDeptY, $x3 + ($columnW / 2), $deptTopY);
 }
 
 $errors = [];
@@ -260,13 +821,44 @@ try {
     $errors[] = 'Gagal memuat struktur organisasi: ' . $e->getMessage();
 }
 
-include __DIR__ . '/../partials/header.php';
-include __DIR__ . '/../partials/sidebar.php';
+if ($isPdfPreview) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+
+    try {
+        $pdf = new TCPDF($pdfOrientation, 'mm', 'A4', true, 'UTF-8', false);
+        $pdf->SetCreator('EMS');
+        $pdf->SetAuthor('EMS');
+        $pdf->SetTitle('Struktur Organisasi');
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(7, 6, 7);
+        $pdf->SetAutoPageBreak(false, 0);
+        $pdf->AddPage();
+        orgRenderPosterPdfDirect($pdf, $stats, $directors, $viceDirectors, $orgTree, $pdfOrientation);
+        $pdf->Output('struktur-organisasi.pdf', 'I');
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo 'Gagal membuat PDF struktur organisasi: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+    }
+    exit;
+}
+
+if (!$isPdfPreview) {
+    include __DIR__ . '/../partials/header.php';
+    include __DIR__ . '/../partials/sidebar.php';
+}
 ?>
 <section class="content">
     <div class="page page-shell org-page">
         <h1 class="page-title">Struktur Organisasi</h1>
         <p class="page-subtitle">Bagan manager dari level executive sampai divisi operasional. Role staff dan divisi medis tidak ditampilkan.</p>
+
+        <div class="org-action-row">
+            <a href="struktur_organisasi.php?view=pdf&orientation=L" target="_blank" rel="noopener" class="btn-primary">
+                <?= ems_icon('printer', 'h-4 w-4') ?>
+                <span>Preview PDF Landscape</span>
+            </a>
+        </div>
 
         <?php foreach ($errors as $error): ?>
             <div class="alert alert-error"><?= htmlspecialchars((string) $error, ENT_QUOTES, 'UTF-8') ?></div>
@@ -490,6 +1082,11 @@ include __DIR__ . '/../partials/sidebar.php';
     .org-page {
         display: grid;
         gap: 1.5rem;
+    }
+
+    .org-action-row {
+        display: flex;
+        justify-content: flex-end;
     }
 
     .org-hero {
@@ -944,8 +1541,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
     @media print {
         @page {
-            size: landscape;
-            margin: 12mm;
+            size: A4 landscape;
+            margin: 10mm;
         }
 
         .topbar,

@@ -381,6 +381,24 @@ function ems_is_director_role(?string $role): bool
     return in_array(ems_normalize_role($role), ['vice director', 'director'], true);
 }
 
+function ems_normalize_person_name(?string $name): string
+{
+    $raw = strtolower(trim((string)$name));
+    return preg_replace('/\s+/', ' ', $raw) ?: '';
+}
+
+function ems_is_programmer_roxwood_name(?string $name): bool
+{
+    return ems_normalize_person_name($name) === 'programmer roxwood';
+}
+
+function ems_current_user_is_programmer_roxwood(): bool
+{
+    $user = $_SESSION['user_rh'] ?? [];
+    $name = (string)($user['full_name'] ?? $user['name'] ?? '');
+    return ems_is_programmer_roxwood_name($name);
+}
+
 function ems_column_exists(PDO $pdo, string $table, string $column): bool
 {
     static $cache = [];

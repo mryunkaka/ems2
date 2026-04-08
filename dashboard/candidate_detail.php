@@ -4,8 +4,10 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/ai_settings.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
+require_once __DIR__ . '/../actions/ai_recruitment_service.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 if (strtolower($user['role'] ?? '') === 'staff') {
@@ -86,6 +88,44 @@ foreach ($questions as $questionId => $questionText) {
 }
 $answerChunkSize = (int)ceil(max(1, count($questionEntries)) / 3);
 $answerChunks = array_chunk($questionEntries, max(1, $answerChunkSize));
+
+$aiSettings = ems_ai_get_settings($pdo);
+$generatedSummaryError = null;
+$featureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $id);
+
+try {
+    $shouldGenerateAiSummary = !empty($aiSettings['is_enabled'])
+        && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
+        && !ems_ai_has_successful_summary_log($pdo, $featureKey);
+
+    if ($shouldGenerateAiSummary) {
+        $generatedSummary = ems_ai_generate_candidate_summary(
+            $pdo,
+            $aiSettings,
+            $candidate,
+            $result,
+            $chartScoreMap,
+            $questionEntries,
+            $durationText,
+            $yesCount,
+            $noCount,
+            (int)($user['id'] ?? 0) ?: null
+        );
+
+        if (is_string($generatedSummary) && trim($generatedSummary) !== '') {
+            $personalityNarrative = $generatedSummary;
+
+            $stmt = $pdo->prepare("
+                UPDATE ai_test_results
+                SET personality_summary = ?
+                WHERE applicant_id = ?
+            ");
+            $stmt->execute([$personalityNarrative, $id]);
+        }
+    }
+} catch (Throwable $e) {
+    $generatedSummaryError = $e->getMessage();
+}
 
 $pageTitle = 'Detail ' . ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate');
 
@@ -278,6 +318,12 @@ function candidateDisplayLabel(?string $value): string
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
                 <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
             </div>
+
+            <?php if ($generatedSummaryError !== null && ems_current_user_is_programmer_roxwood()): ?>
+                <div class="mt-3 text-xs text-rose-600">
+                    Debug AI summary: <?= htmlspecialchars($generatedSummaryError) ?>
+                </div>
+            <?php endif; ?>
 
             <div class="mt-2 text-xs text-slate-500">
                 Catatan: Ringkasan ini dihasilkan otomatis sebagai alat bantu HR dan
