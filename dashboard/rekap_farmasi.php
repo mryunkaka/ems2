@@ -1636,11 +1636,316 @@ $pageTitle = 'Rekap Farmasi EMS';
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
+<style>
+    .farmasi-quiz-card {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgba(14, 165, 233, 0.18);
+        background:
+            radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 36%),
+            radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.12), transparent 28%),
+            #ffffff;
+    }
+
+    .farmasi-quiz-layout {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.95fr);
+    }
+
+    .farmasi-quiz-panel,
+    .farmasi-quiz-side-card {
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.92);
+        padding: 16px;
+    }
+
+    .farmasi-quiz-header-row,
+    .farmasi-quiz-status-row,
+    .farmasi-quiz-action-row,
+    .farmasi-quiz-summary-grid,
+    .farmasi-quiz-ranking-item,
+    .farmasi-quiz-history-item {
+        display: flex;
+        gap: 12px;
+    }
+
+    .farmasi-quiz-header-row,
+    .farmasi-quiz-status-row,
+    .farmasi-quiz-action-row,
+    .farmasi-quiz-ranking-item,
+    .farmasi-quiz-history-item {
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .farmasi-quiz-status-row,
+    .farmasi-quiz-summary-grid,
+    .farmasi-quiz-answer-list,
+    .farmasi-quiz-side-stack {
+        display: grid;
+        gap: 12px;
+    }
+
+    .farmasi-quiz-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(15, 23, 42, 0.05);
+        color: #0f172a;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .farmasi-quiz-badge.quiz-live {
+        background: rgba(14, 165, 233, 0.14);
+        color: #0369a1;
+    }
+
+    .farmasi-quiz-badge.quiz-pass {
+        background: rgba(16, 185, 129, 0.16);
+        color: #047857;
+    }
+
+    .farmasi-quiz-badge.quiz-fail {
+        background: rgba(239, 68, 68, 0.14);
+        color: #b91c1c;
+    }
+
+    .farmasi-quiz-meta {
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.6;
+    }
+
+    .farmasi-quiz-question {
+        margin-top: 12px;
+        margin-bottom: 14px;
+        color: #0f172a;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+
+    .farmasi-quiz-answer-btn {
+        width: 100%;
+        min-height: 88px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 16px;
+        padding: 14px 16px;
+        text-align: left;
+        background: #fff;
+        color: #0f172a;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+    }
+
+    .farmasi-quiz-answer-btn:hover {
+        transform: translateY(-1px);
+        border-color: rgba(14, 165, 233, 0.44);
+        box-shadow: 0 12px 24px rgba(14, 165, 233, 0.08);
+    }
+
+    .farmasi-quiz-answer-btn.is-locked {
+        cursor: default;
+        pointer-events: none;
+    }
+
+    .farmasi-quiz-answer-btn.is-correct {
+        border-color: rgba(22, 163, 74, 0.45);
+        background: rgba(220, 252, 231, 0.92);
+        color: #166534;
+    }
+
+    .farmasi-quiz-answer-btn.is-wrong {
+        border-color: rgba(239, 68, 68, 0.42);
+        background: rgba(254, 226, 226, 0.96);
+        color: #991b1b;
+    }
+
+    .farmasi-quiz-answer-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+        gap: 12px;
+        width: 100%;
+        text-align: left;
+    }
+
+    .farmasi-quiz-answer-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, auto));
+        grid-auto-flow: column;
+    }
+
+    .farmasi-quiz-answer-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.5;
+        text-align: left;
+    }
+
+    .farmasi-quiz-answer-letter {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.08);
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .farmasi-quiz-feedback {
+        margin-top: 14px;
+        border-radius: 16px;
+        padding: 14px 16px;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .farmasi-quiz-feedback.is-correct {
+        background: rgba(220, 252, 231, 0.9);
+        color: #166534;
+    }
+
+    .farmasi-quiz-feedback.is-wrong {
+        background: rgba(254, 226, 226, 0.95);
+        color: #991b1b;
+    }
+
+    .farmasi-quiz-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 16px;
+    }
+
+    .farmasi-quiz-summary-box {
+        border-radius: 18px;
+        padding: 14px;
+        background: rgba(248, 250, 252, 0.95);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+    }
+
+    .farmasi-quiz-summary-box strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 22px;
+        color: #0f172a;
+    }
+
+    .farmasi-quiz-ranking-list,
+    .farmasi-quiz-history-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .farmasi-quiz-ranking-item,
+    .farmasi-quiz-history-item {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(248, 250, 252, 0.95);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .farmasi-quiz-rank-bullet {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(14, 165, 233, 0.12);
+        color: #0369a1;
+        font-weight: 800;
+        flex: 0 0 auto;
+    }
+
+    .farmasi-quiz-empty {
+        border-radius: 16px;
+        padding: 16px;
+        background: rgba(248, 250, 252, 0.9);
+        color: #64748b;
+        font-size: 13px;
+        text-align: center;
+    }
+
+    .farmasi-quiz-fireworks {
+        pointer-events: none;
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+    }
+
+    .farmasi-quiz-fireworks span {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        opacity: 0;
+        animation: quizFirework 1.8s ease-out forwards;
+    }
+
+    @keyframes quizFirework {
+        0% {
+            transform: translate3d(0, 0, 0) scale(0.4);
+            opacity: 0;
+        }
+        14% {
+            opacity: 1;
+        }
+        100% {
+            transform: translate3d(var(--tx), var(--ty), 0) scale(1.2);
+            opacity: 0;
+        }
+    }
+
+    @media (max-width: 1120px) {
+        .farmasi-quiz-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .farmasi-quiz-answer-list {
+            grid-template-columns: 1fr;
+            grid-template-rows: none;
+            grid-auto-flow: row;
+        }
+
+        .farmasi-quiz-card .farmasi-card-header,
+        .farmasi-quiz-header-row,
+        .farmasi-quiz-status-row,
+        .farmasi-quiz-action-row,
+        .farmasi-quiz-ranking-item,
+        .farmasi-quiz-history-item {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .farmasi-quiz-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .farmasi-quiz-question {
+            font-size: 16px;
+        }
+    }
+</style>
 <section class="content">
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-        <h1 class="page-title">Rekap Farmasi EMS 2</h1>
+        <h1 class="page-title">Rekap Farmasi EMS</h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
@@ -1720,8 +2025,49 @@ include __DIR__ . '/../partials/sidebar.php';
         <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
 
         <?php if ($medicName): ?>
+            <div id="farmasiQuizTopAnchor"></div>
+            <div class="card farmasi-card farmasi-quiz-card" id="farmasiQuizCard">
+                <div class="farmasi-card-header">
+                    <div class="farmasi-quiz-header-row">
+                        <div>
+                            <h2 class="farmasi-card-title">Quiz EMS Mingguan</h2>
+                            <p class="farmasi-card-subtitle">10 soal per sesi, rotasi setiap 120 menit, ranking reset mingguan seperti gaji farmasi.</p>
+                        </div>
+                        <div class="farmasi-quiz-badge" id="farmasiQuizWeekLabel">Memuat season...</div>
+                    </div>
+                </div>
+                <div class="farmasi-card-content">
+                    <div class="farmasi-quiz-layout">
+                        <div class="farmasi-quiz-panel">
+                            <div class="farmasi-quiz-status-row">
+                                <div class="farmasi-quiz-badge quiz-live" id="farmasiQuizStatusBadge">Menyiapkan quiz...</div>
+                                <div class="farmasi-quiz-meta" id="farmasiQuizTimerText">Memuat timer quiz...</div>
+                            </div>
+                            <div id="farmasiQuizStage" class="mt-4"></div>
+                        </div>
+                        <div class="farmasi-quiz-side-stack">
+                            <div class="farmasi-quiz-side-card">
+                                <div class="farmasi-quiz-header-row">
+                                    <strong class="text-slate-900">Ranking Mingguan</strong>
+                                    <span class="farmasi-quiz-meta">Visible untuk semua</span>
+                                </div>
+                                <div id="farmasiQuizRanking" class="farmasi-quiz-ranking-list"></div>
+                            </div>
+                            <div class="farmasi-quiz-side-card">
+                                <div class="farmasi-quiz-header-row">
+                                    <strong class="text-slate-900">History Season</strong>
+                                    <span class="farmasi-quiz-meta">Pemenang tersimpan</span>
+                                </div>
+                                <div id="farmasiQuizHistory" class="farmasi-quiz-history-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="farmasiQuizFireworks" class="farmasi-quiz-fireworks" aria-hidden="true"></div>
+                </div>
+            </div>
+
             <!-- Card Input Transaksi -->
-            <div class="card farmasi-card">
+            <div class="card farmasi-card" id="farmasiInputCard">
                 <div class="farmasi-card-header">
                     <h2 class="farmasi-card-title">Input Transaksi</h2>
                     <p class="farmasi-card-subtitle">Form transaksi farmasi aktif.</p>
@@ -2003,6 +2349,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 </form>
 
             </div>
+            <div id="farmasiQuizBottomAnchor"></div>
 
             <!-- Aktivitas + Medis Online (fokus setelah input) -->
             <div class="farmasi-side-grid">
@@ -5075,6 +5422,423 @@ include __DIR__ . '/../partials/sidebar.php';
     })();
 </script>
 
+<script>
+    (function() {
+        const stageEl = document.getElementById('farmasiQuizStage');
+        const rankingEl = document.getElementById('farmasiQuizRanking');
+        const historyEl = document.getElementById('farmasiQuizHistory');
+        const weekLabelEl = document.getElementById('farmasiQuizWeekLabel');
+        const statusBadgeEl = document.getElementById('farmasiQuizStatusBadge');
+        const timerEl = document.getElementById('farmasiQuizTimerText');
+        const fireworksEl = document.getElementById('farmasiQuizFireworks');
+        const quizCardEl = document.getElementById('farmasiQuizCard');
+        const quizTopAnchorEl = document.getElementById('farmasiQuizTopAnchor');
+        const quizBottomAnchorEl = document.getElementById('farmasiQuizBottomAnchor');
+
+        if (!stageEl || !rankingEl || !historyEl || !weekLabelEl || !statusBadgeEl || !timerEl || !fireworksEl) {
+            return;
+        }
+
+        const stateUrl = window.emsUrl('/actions/get_farmasi_quiz_state.php');
+        const submitUrl = window.emsUrl('/actions/submit_farmasi_quiz_answer.php');
+        const winAudio = new Audio(window.emsUrl('/assets/sound/notification.mp3'));
+        const loseAudio = new Audio(window.emsUrl('/assets/sound/activity.mp3'));
+        winAudio.preload = 'auto';
+        loseAudio.preload = 'auto';
+        winAudio.volume = 0.95;
+        loseAudio.volume = 0.7;
+
+        let quizState = null;
+        let countdownTimer = null;
+        let reviewQuestionId = null;
+        let submitBusy = false;
+        let completionFingerprint = '';
+        let stateRefreshPending = false;
+
+        function stopCountdown() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }
+
+        function formatDuration(seconds) {
+            const total = Math.max(0, parseInt(seconds || 0, 10));
+            const hours = Math.floor(total / 3600);
+            const minutes = Math.floor((total % 3600) / 60);
+            const secs = total % 60;
+            return [hours, minutes, secs].map(function(value) {
+                return String(value).padStart(2, '0');
+            }).join(':');
+        }
+
+        function getSecondsUntil(target) {
+            if (!target) return 0;
+            const targetTime = new Date(target).getTime();
+            if (Number.isNaN(targetTime)) return 0;
+            return Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
+        }
+
+        function setStatusBadge(text, variant) {
+            statusBadgeEl.textContent = text;
+            statusBadgeEl.className = 'farmasi-quiz-badge';
+            if (variant) {
+                statusBadgeEl.classList.add(variant);
+            }
+        }
+
+        function syncQuizCardPosition(state) {
+            if (!quizCardEl || !quizTopAnchorEl || !quizBottomAnchorEl) {
+                return;
+            }
+
+            const cooldown = state && state.cooldown ? state.cooldown : null;
+            const summary = cooldown && cooldown.last_summary ? cooldown.last_summary : null;
+            const shouldMoveBelowInput = Boolean(
+                state &&
+                !state.has_active_session &&
+                summary &&
+                summary.completed_at
+            );
+
+            const targetAnchor = shouldMoveBelowInput ? quizBottomAnchorEl : quizTopAnchorEl;
+            if (targetAnchor && quizCardEl.previousElementSibling !== targetAnchor) {
+                targetAnchor.insertAdjacentElement('afterend', quizCardEl);
+            }
+        }
+
+        function renderRanking(items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                rankingEl.innerHTML = '<div class="farmasi-quiz-empty">Belum ada skor minggu ini. Sesi pertama yang selesai akan langsung masuk ranking.</div>';
+                return;
+            }
+
+            rankingEl.innerHTML = items.map(function(item) {
+                return '' +
+                    '<div class="farmasi-quiz-ranking-item">' +
+                    '  <div class="flex items-center gap-3">' +
+                    '    <span class="farmasi-quiz-rank-bullet">#' + item.rank + '</span>' +
+                    '    <div>' +
+                    '      <div class="font-semibold text-slate-900">' + escapeHtml(item.display_name || '-') + '</div>' +
+                    '      <div class="farmasi-quiz-meta">' + (item.correct_answers || 0) + ' benar • ' + (item.wrong_answers || 0) + ' salah</div>' +
+                    '    </div>' +
+                    '  </div>' +
+                    '  <div class="text-right">' +
+                    '    <div class="font-extrabold text-sky-700">' + (item.points || 0) + ' pts</div>' +
+                    '    <div class="farmasi-quiz-meta">' + (item.completed_sessions || 0) + ' sesi</div>' +
+                    '  </div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function renderHistory(items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                historyEl.innerHTML = '<div class="farmasi-quiz-empty">History season akan muncul otomatis setelah minggu berganti.</div>';
+                return;
+            }
+
+            historyEl.innerHTML = items.map(function(item) {
+                return '' +
+                    '<div class="farmasi-quiz-history-item">' +
+                    '  <div>' +
+                    '    <div class="font-semibold text-slate-900">' + escapeHtml(item.season_label || '-') + '</div>' +
+                    '    <div class="farmasi-quiz-meta">Pemenang: ' + escapeHtml(item.winner_name || '-') + '</div>' +
+                    '  </div>' +
+                    '  <div class="text-right">' +
+                    '    <div class="font-extrabold text-emerald-700">' + (item.points || 0) + ' pts</div>' +
+                    '    <div class="farmasi-quiz-meta">' + (item.correct_answers || 0) + ' benar</div>' +
+                    '  </div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function buildSummaryHtml(summary, personal, cooldownText) {
+            const passed = String(summary.pass_status || '') === 'passed';
+            return '' +
+                '<div>' +
+                '  <div class="farmasi-quiz-badge ' + (passed ? 'quiz-pass' : 'quiz-fail') + '">' + (passed ? 'Lulus Quiz' : 'Belum Lulus') + '</div>' +
+                '  <div class="farmasi-quiz-question">' + (passed ? 'Sesi quiz selesai. Anda menjawab minimal 7 soal dengan benar.' : 'Sesi quiz selesai. Nilai belum mencapai batas lulus 7 soal benar.') + '</div>' +
+                '  <div class="farmasi-quiz-meta">' + escapeHtml(cooldownText) + '</div>' +
+                '  <div class="farmasi-quiz-summary-grid">' +
+                '    <div class="farmasi-quiz-summary-box"><span class="farmasi-quiz-meta">Benar sesi ini</span><strong>' + (summary.score_correct || 0) + '</strong></div>' +
+                '    <div class="farmasi-quiz-summary-box"><span class="farmasi-quiz-meta">Salah sesi ini</span><strong>' + (summary.score_wrong || 0) + '</strong></div>' +
+                '    <div class="farmasi-quiz-summary-box"><span class="farmasi-quiz-meta">Point minggu ini</span><strong>' + (personal.points || 0) + '</strong></div>' +
+                '  </div>' +
+                '  <div class="mt-4 farmasi-quiz-meta">Akumulasi pribadi minggu ini: ' + (personal.correct_answers || 0) + ' benar • ' + (personal.wrong_answers || 0) + ' salah • ' + (personal.completed_sessions || 0) + ' sesi selesai.</div>' +
+                '</div>';
+        }
+
+        function renderCooldownView(cooldown, personal) {
+            const nextSeconds = getSecondsUntil(cooldown.next_available_at);
+            const cooldownText = cooldown.active
+                ? ('Sesi berikutnya akan tersedia dalam ' + formatDuration(nextSeconds) + '.')
+                : 'Quiz baru akan otomatis dibuat saat tersedia.';
+
+            if (cooldown.last_summary) {
+                stageEl.innerHTML = buildSummaryHtml(cooldown.last_summary, personal || {}, cooldownText);
+                return;
+            }
+
+            stageEl.innerHTML = '' +
+                '<div class="farmasi-quiz-empty">' +
+                '  <div class="font-semibold text-slate-900 mb-2">Quiz sedang menunggu jadwal sesi berikutnya.</div>' +
+                '  <div>' + escapeHtml(cooldownText) + '</div>' +
+                '</div>';
+        }
+
+        function makeFireworks() {
+            fireworksEl.innerHTML = '';
+            const colors = ['#38bdf8', '#22c55e', '#f97316', '#eab308', '#f43f5e', '#818cf8', '#10b981'];
+            for (let i = 0; i < 36; i++) {
+                const particle = document.createElement('span');
+                const x = Math.round((Math.random() * 220) - 110) + 'px';
+                const y = Math.round((Math.random() * 220) - 150) + 'px';
+                particle.style.left = (35 + Math.random() * 30) + '%';
+                particle.style.top = (18 + Math.random() * 26) + '%';
+                particle.style.background = colors[i % colors.length];
+                particle.style.setProperty('--tx', x);
+                particle.style.setProperty('--ty', y);
+                particle.style.animationDelay = (Math.random() * 0.35) + 's';
+                fireworksEl.appendChild(particle);
+            }
+
+            setTimeout(function() {
+                fireworksEl.innerHTML = '';
+            }, 2400);
+        }
+
+        function maybeCelebrate(cooldown, personal) {
+            if (!cooldown || !cooldown.last_summary) return;
+            const summary = cooldown.last_summary;
+            if (!summary.completed_at) return;
+
+            const fingerprint = [summary.completed_at, summary.score_correct, summary.score_wrong, personal.points].join('|');
+            if (fingerprint === completionFingerprint) {
+                return;
+            }
+
+            completionFingerprint = fingerprint;
+
+            if (String(summary.pass_status) === 'passed') {
+                makeFireworks();
+                winAudio.currentTime = 0;
+                winAudio.play().catch(function() {});
+            } else {
+                loseAudio.currentTime = 0;
+                loseAudio.play().catch(function() {});
+            }
+        }
+
+        function getRenderableQuestion(session) {
+            if (!session || !Array.isArray(session.questions) || session.questions.length === 0) {
+                return null;
+            }
+
+            if (reviewQuestionId) {
+                const reviewed = session.questions.find(function(question) {
+                    return question.session_question_id === reviewQuestionId;
+                });
+                if (reviewed) {
+                    return reviewed;
+                }
+            }
+
+            return session.questions[session.active_index || 0] || session.questions[0];
+        }
+
+        function renderQuestionView(session, personal) {
+            const question = getRenderableQuestion(session);
+            if (!question) {
+                stageEl.innerHTML = '<div class="farmasi-quiz-empty">Belum ada soal pada sesi aktif.</div>';
+                return;
+            }
+
+            const answered = question.selected_option !== null;
+            const answeredCount = session.answered_count || 0;
+            const totalQuestions = session.total_questions || 10;
+
+            const options = ['a', 'b', 'c', 'd', 'e'].map(function(letter) {
+                const text = question['option_' + letter] || '';
+                const classes = ['farmasi-quiz-answer-btn'];
+
+                if (answered) {
+                    classes.push('is-locked');
+                    if (question.correct_option === letter) {
+                        classes.push('is-correct');
+                    } else if (question.selected_option === letter && question.correct_option !== letter) {
+                        classes.push('is-wrong');
+                    }
+                }
+
+                return '' +
+                    '<button type="button" class="' + classes.join(' ') + '" data-option="' + letter + '" data-question-id="' + question.session_question_id + '">' +
+                    '  <span class="farmasi-quiz-answer-head">' +
+                    '    <span class="farmasi-quiz-answer-letter">' + letter.toUpperCase() + '</span>' +
+                    '    <span class="farmasi-quiz-answer-text">' + escapeHtml(text) + '</span>' +
+                    '  </span>' +
+                    '</button>';
+            }).join('');
+
+            let feedbackHtml = '';
+            if (answered) {
+                const feedbackClass = question.is_correct ? 'is-correct' : 'is-wrong';
+                feedbackHtml = '' +
+                    '<div class="farmasi-quiz-feedback ' + feedbackClass + '">' +
+                    '  <strong>' + (question.is_correct ? 'Jawaban benar.' : 'Jawaban Anda salah.') + '</strong><br>' +
+                    '  Jawaban benar: <strong>' + String(question.correct_option || '').toUpperCase() + '</strong>.<br>' +
+                    '  ' + escapeHtml(question.explanation || '') +
+                    '</div>';
+            }
+
+            const nextButtonHtml = answered
+                ? '<button type="button" class="btn-success" id="farmasiQuizNextBtn">' +
+                    (answeredCount >= totalQuestions ? 'Lihat Hasil' : 'Next Soal') +
+                  '</button>'
+                : '<div class="farmasi-quiz-meta">Pilih salah satu jawaban. Sistem akan langsung memberi tahu jawaban benar, lalu tombol next muncul.</div>';
+
+            stageEl.innerHTML = '' +
+                '<div>' +
+                '  <div class="farmasi-quiz-status-row">' +
+                '    <div class="farmasi-quiz-meta">Soal ' + (question.order || 1) + ' dari ' + totalQuestions + '</div>' +
+                '    <div class="farmasi-quiz-meta">Pribadi minggu ini: ' + (personal.correct_answers || 0) + ' benar • ' + (personal.wrong_answers || 0) + ' salah</div>' +
+                '  </div>' +
+                '  <div class="farmasi-quiz-question">' + escapeHtml(question.prompt || '') + '</div>' +
+                '  <div class="farmasi-quiz-answer-list">' + options + '</div>' +
+                     feedbackHtml +
+                '  <div class="farmasi-quiz-action-row mt-4">' +
+                '    <div class="farmasi-quiz-meta">Kategori: ' + escapeHtml(question.category || '-') + '</div>' +
+                     nextButtonHtml +
+                '  </div>' +
+                '</div>';
+
+            stageEl.querySelectorAll('.farmasi-quiz-answer-btn').forEach(function(button) {
+                if (answered) {
+                    return;
+                }
+
+                button.addEventListener('click', function() {
+                    if (submitBusy) return;
+                    submitBusy = true;
+
+                    fetch(submitUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            session_question_id: question.session_question_id,
+                            selected_option: button.dataset.option || ''
+                        })
+                    })
+                        .then(function(response) {
+                            return response.json();
+                        })
+                        .then(function(payload) {
+                            if (!payload || payload.success !== true) {
+                                throw new Error((payload && payload.error) || 'Gagal menyimpan jawaban quiz.');
+                            }
+
+                            reviewQuestionId = question.session_question_id;
+                            quizState = payload.data.state || null;
+                            renderAll();
+                        })
+                        .catch(function(error) {
+                            alert(error.message || 'Gagal menyimpan jawaban quiz.');
+                        })
+                        .finally(function() {
+                            submitBusy = false;
+                        });
+                });
+            });
+
+            const nextButton = document.getElementById('farmasiQuizNextBtn');
+            if (nextButton) {
+                nextButton.addEventListener('click', function() {
+                    reviewQuestionId = null;
+                    renderAll();
+                });
+            }
+        }
+
+        function renderAll() {
+            if (!quizState) {
+                syncQuizCardPosition(null);
+                stageEl.innerHTML = '<div class="farmasi-quiz-empty">Memuat quiz farmasi...</div>';
+                return;
+            }
+
+            const week = quizState.week || {};
+            const cooldown = quizState.cooldown || {
+                active: false,
+                next_available_at: null,
+                last_summary: null
+            };
+            const personal = quizState.personal || {};
+
+            weekLabelEl.textContent = week.label || 'Season Quiz';
+            syncQuizCardPosition(quizState);
+            renderRanking(quizState.ranking || []);
+            renderHistory(quizState.history || []);
+
+            stopCountdown();
+            countdownTimer = setInterval(function() {
+                const nextSeconds = getSecondsUntil(cooldown.next_available_at || (quizState.session && quizState.session.expires_at));
+                if (quizState.has_active_session && quizState.session) {
+                    setStatusBadge('Sesi Quiz Aktif', 'quiz-live');
+                    timerEl.textContent = 'Sesi ini berganti dalam ' + formatDuration(nextSeconds) + '.';
+                } else if (cooldown.active) {
+                    const passed = cooldown.last_summary && String(cooldown.last_summary.pass_status) === 'passed';
+                    setStatusBadge(passed ? 'Sesi Selesai - Lulus' : 'Sesi Selesai - Belum Lulus', passed ? 'quiz-pass' : 'quiz-fail');
+                    timerEl.textContent = 'Quiz baru tersedia dalam ' + formatDuration(nextSeconds) + '.';
+                } else {
+                    setStatusBadge('Menyiapkan Sesi Baru', 'quiz-live');
+                    timerEl.textContent = 'Sesi baru akan dibuat otomatis.';
+                }
+
+                if (nextSeconds <= 0 && !stateRefreshPending && !submitBusy) {
+                    stateRefreshPending = true;
+                    fetchState();
+                }
+            }, 1000);
+
+            if (quizState.has_active_session && quizState.session) {
+                renderQuestionView(quizState.session, personal);
+            } else {
+                renderCooldownView(cooldown, personal);
+                maybeCelebrate(cooldown, personal);
+            }
+        }
+
+        function fetchState() {
+            fetch(stateUrl, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store'
+            })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(payload) {
+                    if (!payload || payload.success !== true) {
+                        throw new Error((payload && payload.error) || 'Gagal memuat state quiz.');
+                    }
+                    quizState = payload.data || null;
+                    stateRefreshPending = false;
+                    if (quizState && quizState.has_active_session) {
+                        completionFingerprint = '';
+                    }
+                    renderAll();
+                })
+                .catch(function(error) {
+                    stateRefreshPending = false;
+                    stageEl.innerHTML = '<div class="farmasi-quiz-empty">' + escapeHtml(error.message || 'Gagal memuat quiz farmasi.') + '</div>';
+                });
+        }
+
+        fetchState();
+    })();
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 <?php
