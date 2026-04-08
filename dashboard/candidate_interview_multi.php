@@ -12,6 +12,7 @@ require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/ai_recruitment_service.php';
 
 $user = $_SESSION['user_rh'] ?? [];
@@ -94,6 +95,49 @@ if ($isLocked === 1) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_questions'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    ems_ai_ensure_interview_question_packs_table($pdo);
+    ems_ai_ensure_interview_question_responses_table($pdo);
+
+    $pdo->beginTransaction();
+
+    try {
+        $stmt = $pdo->prepare("
+            DELETE FROM applicant_interview_question_packs
+            WHERE applicant_id = ? AND hr_id = ?
+        ");
+        $stmt->execute([$applicantId, $hrId]);
+
+        $stmt = $pdo->prepare("
+            DELETE FROM applicant_interview_question_responses
+            WHERE applicant_id = ? AND hr_id = ?
+        ");
+        $stmt->execute([$applicantId, $hrId]);
+
+        $stmt = $pdo->prepare("
+            DELETE FROM applicant_interview_scores
+            WHERE applicant_id = ? AND hr_id = ?
+        ");
+        $stmt->execute([$applicantId, $hrId]);
+
+        $pdo->commit();
+
+        header('Location: candidate_interview_multi.php?id=' . $applicantId . '&status=questions_regenerated');
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        logRecruitmentError('INTERVIEW_REGENERATE_QUESTIONS', $e);
+        exit('Gagal generate ulang pertanyaan: ' . $e->getMessage());
+    }
+}
+
 $criteriaSql = "
     SELECT id, code, label, description
     FROM interview_criteria
@@ -114,6 +158,7 @@ $criteria = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $criteriaById = [];
 $criteriaByCode = [];
 $criteriaLabelMap = [];
+$criteriaDescriptionMap = [];
 foreach ($criteria as $criterion) {
     $criterionId = (int)($criterion['id'] ?? 0);
     $criterionCode = trim((string)($criterion['code'] ?? ''));
@@ -123,6 +168,7 @@ foreach ($criteria as $criterion) {
     if ($criterionCode !== '') {
         $criteriaByCode[$criterionCode] = $criterion;
         $criteriaLabelMap[$criterionCode] = (string)($criterion['label'] ?? $criterionCode);
+        $criteriaDescriptionMap[$criterionCode] = trim((string)($criterion['description'] ?? ''));
     }
 }
 
@@ -150,10 +196,87 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$applicantId]);
 $aiResult = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-$answers = json_decode((string)($aiResult['answers_json'] ?? ''), true) ?? [];
-
 $aiQuestions = ems_recruitment_questions_for_applicant($recruitmentType, $applicantId);
 $aiSettings = ems_ai_get_settings($pdo);
+$answers = json_decode((string)($aiResult['answers_json'] ?? ''), true) ?? [];
+$answers = is_array($answers) ? $answers : [];
+
+$summaryQuestionEntries = [];
+foreach ($aiQuestions as $questionId => $questionText) {
+    $summaryQuestionEntries[] = [
+        'id' => $questionId,
+        'question' => $questionText,
+        'answer' => $answers[$questionId] ?? '-',
+    ];
+}
+
+$summaryYesCount = 0;
+$summaryNoCount = 0;
+foreach ($answers as $answerValue) {
+    if ($answerValue === 'ya') {
+        $summaryYesCount++;
+    } elseif ($answerValue === 'tidak') {
+        $summaryNoCount++;
+    }
+}
+
+$summaryDurationSeconds = (int)($aiResult['duration_seconds'] ?? 0);
+$summaryDurationText = $summaryDurationSeconds > 0
+    ? sprintf(
+        '%02d:%02d:%02d',
+        intdiv($summaryDurationSeconds, 3600),
+        intdiv($summaryDurationSeconds % 3600, 60),
+        $summaryDurationSeconds % 60
+    )
+    : '-';
+
+$summaryQuestionIds = array_map('intval', array_keys($aiQuestions));
+$summaryTraitItems = $recruitmentType === 'assistant_manager'
+    ? ems_assistant_manager_trait_items($summaryQuestionIds)
+    : getTraitItems($recruitmentType);
+$summaryChartScoreMap = [];
+foreach ($summaryTraitItems as $trait => $items) {
+    $summaryChartScoreMap[$trait] = calculateTraitScore($answers, $items);
+}
+
+$interviewSummaryNarrative = trim((string)($aiResult['personality_summary'] ?? ''));
+if ($interviewSummaryNarrative === '' && !empty($aiResult)) {
+    $summaryFeatureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $applicantId);
+    try {
+        $shouldGenerateInterviewSummary = !empty($aiSettings['is_enabled'])
+            && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
+            && !ems_ai_has_successful_summary_log($pdo, $summaryFeatureKey);
+
+        if ($shouldGenerateInterviewSummary) {
+            $generatedInterviewSummary = ems_ai_generate_candidate_summary(
+                $pdo,
+                $aiSettings,
+                $candidate,
+                $aiResult,
+                $summaryChartScoreMap,
+                $summaryQuestionEntries,
+                $summaryDurationText,
+                $summaryYesCount,
+                $summaryNoCount,
+                $hrId > 0 ? $hrId : null
+            );
+
+            if (is_string($generatedInterviewSummary) && trim($generatedInterviewSummary) !== '') {
+                $interviewSummaryNarrative = trim($generatedInterviewSummary);
+
+                $stmt = $pdo->prepare("
+                    UPDATE ai_test_results
+                    SET personality_summary = ?
+                    WHERE applicant_id = ?
+                ");
+                $stmt->execute([$interviewSummaryNarrative, $applicantId]);
+            }
+        }
+    } catch (Throwable $e) {
+        $interviewSummaryNarrative = '';
+    }
+}
+
 $generatedInterviewPack = ems_ai_get_or_create_interview_question_pack(
     $pdo,
     $aiSettings,
@@ -568,6 +691,21 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
 
                 <div class="card">
                     <div class="card-header">
+                        <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+                        <span>Ringkasan <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></span>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
+                        <?= nl2br(htmlspecialchars($interviewSummaryNarrative !== '' ? $interviewSummaryNarrative : 'Ringkasan AI belum tersedia untuk kandidat ini.')) ?>
+                    </div>
+
+                    <div class="mt-2 text-xs text-slate-500">
+                        Ringkasan ini ditampilkan sebagai konteks awal untuk interviewer dan bukan keputusan final.
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
                         <?= ems_icon('identification', 'h-5 w-5') ?>
                         <span>Data Formulir Awal</span>
                     </div>
@@ -707,8 +845,21 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                         </div>
                     <?php endif; ?>
 
+                    <?php if ($saveStatus === 'questions_regenerated'): ?>
+                        <div class="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                            Pertanyaan interview berhasil digenerate ulang untuk interviewer ini.
+                        </div>
+                    <?php endif; ?>
+
                     <div class="helper-note mb-4">
                         Anda tidak wajib mengisi semua pertanyaan. Nilai parsial tetap disimpan per interviewer, dan catatan interview ditulis manual oleh interviewer masing-masing.
+                    </div>
+
+                    <div class="mb-4 flex justify-end">
+                        <button type="submit" name="regenerate_questions" value="1" class="btn-secondary" onclick="return confirm('Generate ulang akan menghapus pertanyaan, panduan jawaban, dan nilai interview Anda saat ini. Lanjutkan?');">
+                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                            <span>Generate Ulang Pertanyaan</span>
+                        </button>
                     </div>
 
                     <div class="interview-criteria-list">
@@ -716,14 +867,17 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                             <div class="interview-criteria-item">
                                 <div class="interview-criteria-head">
                                     <div class="interview-criteria-title">
-                                        Pertanyaan <?= (int)($index + 1) ?>
                                         <?php
                                         $criterionCode = trim((string)($question['criterion_code'] ?? ''));
-                                        $criterionLabel = $criteriaLabelMap[$criterionCode] ?? $criterionCode;
+                                        $focusLabel = trim((string)($question['focus_label'] ?? ''));
+                                        $focusDescription = trim((string)($question['focus_description'] ?? ''));
+                                        $criterionLabel = $focusLabel !== '' ? $focusLabel : ($criteriaLabelMap[$criterionCode] ?? $criterionCode);
+                                        $questionTitleParts = ['Pertanyaan ' . (int)($index + 1)];
+                                        if ($criterionLabel !== '') {
+                                            $questionTitleParts[] = $criterionLabel;
+                                        }
                                         ?>
-                                        <?php if ($criterionLabel !== ''): ?>
-                                            <span class="text-slate-400">· <?= htmlspecialchars($criterionLabel) ?></span>
-                                        <?php endif; ?>
+                                        <?= htmlspecialchars(implode(' - ', $questionTitleParts)) ?>
                                     </div>
                                     <div class="interview-criteria-desc"><?= htmlspecialchars((string)($question['text'] ?? '')) ?></div>
                                     <div class="mt-2 text-sm text-emerald-700">

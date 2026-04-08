@@ -305,7 +305,63 @@ function crossValidateWithForm(array $scores, array $applicant, string $profile 
 }
 
 /* =========================================================
-   6. FINAL DECISION ENGINE (HEXACO INCLUDED)
+   6. COMPOSITE SCORE PENALTY ENGINE
+   ========================================================= */
+function calculateCompositeScore(
+    array $scores,
+    array $biasFlags,
+    array $crossFlags,
+    int $durationSeconds,
+    string $profile = 'medical_candidate'
+): float {
+    $profile = function_exists('ems_normalize_recruitment_type')
+        ? ems_normalize_recruitment_type($profile)
+        : $profile;
+
+    $avg = array_sum(array_column($scores, 'score')) / max(1, count($scores));
+    $penalty = 0.0;
+
+    $biasPenaltyMap = [
+        'acquiescence_bias' => 6,
+        'disacquiescence_bias' => 6,
+        'pattern_answering' => 6,
+        'trap_answering' => 5,
+        'high_risk_trap_answering' => 8,
+    ];
+
+    foreach ($biasFlags as $flag) {
+        $penalty += (float) ($biasPenaltyMap[$flag] ?? 4);
+    }
+
+    if ($profile === 'assistant_manager') {
+        if ($durationSeconds < 180) {
+            $penalty += 14;
+        } elseif ($durationSeconds < 240) {
+            $penalty += 12;
+        } elseif ($durationSeconds < 300) {
+            $penalty += 8;
+        }
+
+        $penalty += min(8, count($crossFlags) * 4);
+        $penalty = min($penalty, 38);
+    } else {
+        if ($durationSeconds < 120) {
+            $penalty += 12;
+        } elseif ($durationSeconds < 180) {
+            $penalty += 8;
+        } elseif ($durationSeconds < 240) {
+            $penalty += 5;
+        }
+
+        $penalty += min(6, count($crossFlags) * 3);
+        $penalty = min($penalty, 30);
+    }
+
+    return round(max(0, min(100, $avg - $penalty)), 2);
+}
+
+/* =========================================================
+   7. FINAL DECISION ENGINE (HEXACO INCLUDED)
    ========================================================= */
 function makeFinalDecision(
     array $scores,
@@ -319,6 +375,7 @@ function makeFinalDecision(
         : $profile;
 
     $avg = array_sum(array_column($scores, 'score')) / count($scores);
+    $compositeScore = calculateCompositeScore($scores, $biasFlags, $crossFlags, $durationSeconds, $profile);
 
     $decision = 'consider';
     $confidence = 'medium';
@@ -384,6 +441,7 @@ function makeFinalDecision(
         'decision'        => $decision,
         'confidence'      => $confidence,
         'average_score'   => round($avg, 2),
+        'composite_score' => $compositeScore,
         'honesty_score'   => $scores['honesty_humility']['score'] ?? null,
         'bias_flags'      => $biasFlags,
         'cross_flags'     => $crossFlags,

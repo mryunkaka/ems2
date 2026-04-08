@@ -153,8 +153,9 @@ $pdo->beginTransaction();
 
 try {
 
-    // Total score dari engine (sudah normalized)
-    $totalScore = round($finalDecision['average_score'], 2);
+    // Total score final memakai composite score agar pola jawab terlalu cepat / bias
+    // ikut menurunkan skor, bukan hanya memengaruhi keputusan.
+    $totalScore = round((float)($finalDecision['composite_score'] ?? $finalDecision['average_score'] ?? 0), 2);
 
     // INSERT HASIL AI TEST
     $stmt = $pdo->prepare("

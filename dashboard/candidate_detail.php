@@ -30,7 +30,6 @@ $candidate = $stmt->fetch(PDO::FETCH_ASSOC);
 $stmt = $pdo->prepare("SELECT * FROM ai_test_results WHERE applicant_id = ?");
 $stmt->execute([$id]);
 $result = $stmt->fetch(PDO::FETCH_ASSOC);
-$personalityNarrative = $result['personality_summary'] ?? '-';
 
 if (!$candidate || !$result) {
     exit('Data kandidat tidak lengkap');
@@ -71,6 +70,17 @@ $chartScores = [
     (int) round((float) ($chartScoreMap['honesty_humility']['score'] ?? 0)),
 ];
 
+$biasFlags = detectResponseBias($answers);
+if ($recruitmentType === 'assistant_manager') {
+    $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
+}
+$crossFlags = crossValidateWithForm($chartScoreMap, $candidate, $recruitmentType);
+$recomputedDecision = makeFinalDecision($chartScoreMap, $biasFlags, $crossFlags, (int)($result['duration_seconds'] ?? 0), $recruitmentType);
+$personalityNarrative = generatePsychologicalNarrative($chartScoreMap, $recomputedDecision, $recruitmentType);
+$displayScoreTotal = (float)($recomputedDecision['composite_score'] ?? $result['score_total'] ?? 0);
+$result['score_total'] = $displayScoreTotal;
+$result['decision'] = (string)($recomputedDecision['decision'] ?? $result['decision'] ?? '');
+
 $durationSeconds = (int)($result['duration_seconds'] ?? 0);
 $durationHours = intdiv($durationSeconds, 3600);
 $durationMinutes = intdiv($durationSeconds % 3600, 60);
@@ -88,10 +98,57 @@ foreach ($questions as $questionId => $questionText) {
 }
 $answerChunkSize = (int)ceil(max(1, count($questionEntries)) / 3);
 $answerChunks = array_chunk($questionEntries, max(1, $answerChunkSize));
+$chartTraitDetails = [
+    ['label' => 'Focus', 'value' => $chartScores[0]],
+    ['label' => 'Consistency', 'value' => $chartScores[1]],
+    ['label' => 'Social', 'value' => $chartScores[2]],
+    ['label' => 'Emotional', 'value' => $chartScores[3]],
+    ['label' => 'Obedience', 'value' => $chartScores[4]],
+    ['label' => 'Honesty', 'value' => $chartScores[5]],
+];
 
 $aiSettings = ems_ai_get_settings($pdo);
 $generatedSummaryError = null;
+$generatedSummarySuccess = isset($_GET['summary_regenerated']) && $_GET['summary_regenerated'] === '1';
 $featureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $id);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_summary'])) {
+    try {
+        if (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === '') {
+            throw new RuntimeException('AI summary belum bisa digenerate ulang karena AI belum aktif atau API key belum diisi.');
+        }
+
+        $generatedSummary = ems_ai_generate_candidate_summary(
+            $pdo,
+            $aiSettings,
+            $candidate,
+            $result,
+            $chartScoreMap,
+            $questionEntries,
+            $durationText,
+            $yesCount,
+            $noCount,
+            (int)($user['id'] ?? 0) ?: null
+        );
+
+        if (!is_string($generatedSummary) || trim($generatedSummary) === '') {
+            throw new RuntimeException('Ringkasan AI kosong.');
+        }
+
+        $personalityNarrative = trim($generatedSummary);
+        $stmt = $pdo->prepare("
+            UPDATE ai_test_results
+            SET personality_summary = ?
+            WHERE applicant_id = ?
+        ");
+        $stmt->execute([$personalityNarrative, $id]);
+
+        header('Location: candidate_detail.php?id=' . $id . '&summary_regenerated=1');
+        exit;
+    } catch (Throwable $e) {
+        $generatedSummaryError = $e->getMessage();
+    }
+}
 
 try {
     $shouldGenerateAiSummary = !empty($aiSettings['is_enabled'])
@@ -122,9 +179,14 @@ try {
             ");
             $stmt->execute([$personalityNarrative, $id]);
         }
+    } elseif (trim((string)($result['personality_summary'] ?? '')) !== '') {
+        $personalityNarrative = trim((string)$result['personality_summary']);
     }
 } catch (Throwable $e) {
     $generatedSummaryError = $e->getMessage();
+    if (trim((string)($result['personality_summary'] ?? '')) !== '') {
+        $personalityNarrative = trim((string)$result['personality_summary']);
+    }
 }
 
 $pageTitle = 'Detail ' . ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate');
@@ -177,7 +239,7 @@ function candidateDisplayLabel(?string $value): string
             <strong><?= htmlspecialchars($candidate['ic_name']) ?></strong>
             <div class="meta-text">
                 Status: <?= htmlspecialchars(candidateDisplayLabel($candidate['status'])) ?> |
-                Skor: <?= $result['score_total'] ?> |
+                Skor: <?= htmlspecialchars((string)round((float)$result['score_total'], 2)) ?> |
                 Keputusan: <?= htmlspecialchars(candidateDisplayLabel($result['decision'])) ?>
             </div>
         </div>
@@ -257,6 +319,14 @@ function candidateDisplayLabel(?string $value): string
                 <div class="h-[260px]">
                     <canvas id="radarChart"></canvas>
                 </div>
+                <div class="mt-4 grid grid-cols-2 gap-2 text-sm text-slate-700">
+                    <?php foreach ($chartTraitDetails as $trait): ?>
+                        <div class="rounded-xl bg-slate-50 px-3 py-2">
+                            <span class="font-semibold"><?= htmlspecialchars((string)$trait['label']) ?>:</span>
+                            <span><?= (int)$trait['value'] ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
                 <div class="mt-2 text-sm text-slate-500">
                     Grafik ini menunjukkan profil kemampuan kerja kandidat berdasarkan hasil AI assessment.
                 </div>
@@ -315,13 +385,25 @@ function candidateDisplayLabel(?string $value): string
         <div class="card mt-4">
             <h3>Ringkasan <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></h3>
 
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+                <form method="POST">
+                    <button type="submit" name="regenerate_ai_summary" value="1" class="btn-secondary" onclick="return confirm('Generate ulang akan membuat ulang Ringkasan AI untuk kandidat ini. Lanjutkan?');">
+                        <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                        <span>Generate Ulang Ringkasan AI</span>
+                    </button>
+                </form>
+                <?php if ($generatedSummarySuccess): ?>
+                    <span class="text-sm text-emerald-700">Ringkasan AI berhasil diperbarui.</span>
+                <?php endif; ?>
+            </div>
+
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
                 <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
             </div>
 
-            <?php if ($generatedSummaryError !== null && ems_current_user_is_programmer_roxwood()): ?>
+            <?php if ($generatedSummaryError !== null): ?>
                 <div class="mt-3 text-xs text-rose-600">
-                    Debug AI summary: <?= htmlspecialchars($generatedSummaryError) ?>
+                    Gagal generate ringkasan AI: <?= htmlspecialchars($generatedSummaryError) ?>
                 </div>
             <?php endif; ?>
 

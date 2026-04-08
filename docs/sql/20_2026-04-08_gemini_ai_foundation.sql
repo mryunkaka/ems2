@@ -136,7 +136,7 @@ SELECT
     'interview_question_pack',
     'Generator Pertanyaan Interview',
     'Anda adalah asisten HR internal EMS. Tugas Anda menyusun pertanyaan interview berbasis assessment kandidat tanpa mengambil keputusan final.',
-    'Buat JSON valid berbahasa Indonesia dengan field medical_questions dan personal_questions. medical_questions harus berisi tepat 10 pertanyaan seputar medis, SOP, disiplin, sopan santun, leadership, dan verifikasi sikap kerja. personal_questions harus berisi tepat 10 pertanyaan non-medis mencakup kepribadian, sisi baik, sisi buruk, jebakan, kondisi mental saat tertekan, dan verifikasi jawaban assessment yang tampak bertentangan. Setiap item idealnya berbentuk object dengan field text dan intent. Gunakan data berikut: {{candidate_payload}}',
+    'Buat JSON valid berbahasa Indonesia dengan field medical_questions dan personal_questions. medical_questions harus berisi tepat 10 pertanyaan seputar medis, SOP, disiplin, sopan santun, leadership, dan verifikasi sikap kerja. personal_questions harus berisi tepat 10 pertanyaan non-medis mencakup kepribadian, sisi baik, sisi buruk, jebakan, kondisi mental saat tertekan, dan verifikasi jawaban assessment yang tampak bertentangan. Setiap item wajib berbentuk object dengan field text, intent, criterion_code, good_answer, bad_answer. Field good_answer dan bad_answer harus spesifik terhadap isi pertanyaan tersebut, bukan template umum, bukan pengulangan, dan harus memberi gambaran jawaban kuat versus jawaban lemah. Gunakan data berikut: {{candidate_payload}}',
     1,
     'v1'
 WHERE NOT EXISTS (

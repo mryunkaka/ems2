@@ -197,6 +197,13 @@ function ems_ai_extract_json_like_field(string $rawText, string $field): string
     return trim($value);
 }
 
+function ems_ai_clean_interview_question_text(string $text): string
+{
+    $text = preg_replace('/\s*\(assessment\s+id[^)]*\)/iu', '', $text);
+    $text = preg_replace('/\s{2,}/u', ' ', (string)$text);
+    return trim((string)$text);
+}
+
 function ems_ai_render_summary_from_raw_text(string $rawText): string
 {
     $summary = ems_ai_extract_json_like_field($rawText, 'summary');
@@ -373,6 +380,372 @@ function ems_ai_interview_answer_guidance(string $intent, string $type, string $
     return $type === 'good'
         ? ($goodGuidance[$intent] ?? $fallbackGood)
         : ($badGuidance[$intent] ?? $fallbackBad);
+}
+
+function ems_ai_question_based_answer_guidance(string $questionText, string $intent, string $type, string $recruitmentType): string
+{
+    $normalized = strtolower(trim($questionText));
+
+    $rules = [
+        [
+            'patterns' => ['kerja tim', 'tim anda', 'anggota tim', 'bekerja dalam tim'],
+            'good' => 'Menunjukkan cara bekerja sama, membagi peran, mendengar masukan, dan menjaga tujuan tim tetap berjalan bersama.',
+            'bad' => 'Terlalu menonjolkan diri, menyalahkan anggota lain, atau tidak menunjukkan cara nyata menjaga kerja sama tim.',
+        ],
+        [
+            'patterns' => ['sop', 'prosedur'],
+            'good' => 'Memberi contoh nyata tetap patuh SOP, menjelaskan batas fleksibilitas, dan memahami risiko jika prosedur dilanggar.',
+            'bad' => 'Mudah membenarkan jalan pintas, tidak paham risiko pelanggaran SOP, atau tidak punya contoh perilaku nyata.',
+        ],
+        [
+            'patterns' => ['kritik', 'masukan', 'ditegur'],
+            'good' => 'Mampu menerima kritik tanpa defensif, menjelaskan proses evaluasi diri, lalu menunjukkan perbaikan yang pernah dilakukan.',
+            'bad' => 'Langsung tersinggung, menyalahkan orang lain, atau tidak bisa menunjukkan contoh perbaikan setelah menerima kritik.',
+        ],
+        [
+            'patterns' => ['prioritas', 'bersamaan', 'mendesak'],
+            'good' => 'Menjelaskan urutan prioritas yang jelas, memakai pertimbangan dampak, dan tetap menjaga pekerjaan paling kritis selesai dulu.',
+            'bad' => 'Jawaban lompat-lompat, tanpa dasar prioritas yang jelas, atau terlalu bergantung pada panik dan insting sesaat.',
+        ],
+        [
+            'patterns' => ['dokumentasi', 'laporan', 'jejak keputusan', 'tertulis'],
+            'good' => 'Memahami bahwa dokumentasi penting untuk akuntabilitas, tindak lanjut, evaluasi, dan mencegah kesalahan berulang.',
+            'bad' => 'Meremehkan pencatatan, menganggap laporan tidak penting, atau tidak bisa menjelaskan fungsi dokumentasi dalam kerja nyata.',
+        ],
+        [
+            'patterns' => ['briefing', 'instruksi', 'dipahami tim'],
+            'good' => 'Menyebut cara memastikan instruksi dipahami, misalnya konfirmasi ulang, repeat back, dan cek hasil eksekusi setelah briefing.',
+            'bad' => 'Menganggap instruksi selesai saat sudah disampaikan, tanpa verifikasi pemahaman atau tindak lanjut ke tim.',
+        ],
+        [
+            'patterns' => ['komplain', 'nada bicara', 'tetap sopan'],
+            'good' => 'Menunjukkan komunikasi yang tenang, sopan, fokus pada solusi, dan tidak terpancing emosi walau lawan bicara keras.',
+            'bad' => 'Mudah terpancing emosi, membalas dengan nada serupa, atau lebih fokus menyerang balik daripada menyelesaikan masalah.',
+        ],
+        [
+            'patterns' => ['ego', 'tersinggung', 'diremehkan'],
+            'good' => 'Mampu mengenali pemicu ego pribadi, menjelaskan kontrol diri yang dipakai, dan tetap menjaga profesionalitas saat tersinggung.',
+            'bad' => 'Tidak sadar pemicu emosinya, membenarkan ledakan ego, atau tidak bisa menjelaskan cara mengendalikan diri.',
+        ],
+        [
+            'patterns' => ['sisi buruk', 'kelemahan', 'kebiasaan buruk'],
+            'good' => 'Jujur menyebut kelemahan atau kebiasaan buruk yang nyata, lalu menjelaskan langkah konkret yang sedang dilakukan untuk memperbaikinya.',
+            'bad' => 'Jawaban terlalu aman, kelemahan dibuat-buat, atau tidak ada proses perbaikan yang jelas dalam perilaku kerja sehari-hari.',
+        ],
+        [
+            'patterns' => ['marah', 'tertekan', 'mood buruk', 'lelah'],
+            'good' => 'Mampu mengenali perubahan perilaku saat emosi naik, lalu menjelaskan langkah konkret untuk menahan dampaknya ke tim dan pekerjaan.',
+            'bad' => 'Menganggap ledakan emosi hal biasa, tidak sadar dampaknya ke kerja tim, atau tidak punya cara mengendalikan diri.',
+        ],
+        [
+            'patterns' => ['keputusan atasan', 'menyampaikan keberatan', 'tidak terlihat melawan'],
+            'good' => 'Bisa menyampaikan perbedaan pendapat dengan sopan, berbasis alasan yang jelas, dan tetap menjaga hormat pada atasan.',
+            'bad' => 'Cenderung melawan frontal, memendam diam-diam, atau tidak bisa menjelaskan cara menyampaikan keberatan secara dewasa.',
+        ],
+        [
+            'patterns' => ['assessment anda menjawab', 'jawaban anda berubah', 'apa adanya', 'paling aman'],
+            'good' => 'Menjelaskan alasan jawabannya secara jujur, konsisten, dan tetap masuk akal saat didalami lebih lanjut.',
+            'bad' => 'Jawaban berubah-ubah, defensif, atau terasa hanya menyesuaikan dengan jawaban yang dianggap aman.',
+        ],
+        [
+            'patterns' => ['waktu', 'jadwal', 'deadline', 'time management'],
+            'good' => 'Menunjukkan cara mengatur waktu, menjaga tenggat, dan membagi fokus kerja tanpa mengorbankan kualitas hasil.',
+            'bad' => 'Tidak punya metode pengaturan waktu, sering mengandalkan kebiasaan spontan, atau tidak bisa memberi contoh menjaga deadline.',
+        ],
+        [
+            'patterns' => ['detail', 'teliti', 'attention to detail'],
+            'good' => 'Menjelaskan kebiasaan mengecek detail, verifikasi ulang, dan mencegah kesalahan kecil sebelum berdampak besar.',
+            'bad' => 'Meremehkan detail, terlalu umum, atau tidak punya cara kerja yang menunjukkan ketelitian nyata.',
+        ],
+        [
+            'patterns' => ['integritas', 'jujur', 'menutupi kesalahan', 'kejujuran'],
+            'good' => 'Menunjukkan kejujuran, transparansi, dan keberanian mengakui kesalahan meski tidak menguntungkan dirinya sendiri.',
+            'bad' => 'Membenarkan menutupi kesalahan, terlalu fokus menjaga citra diri, atau tidak tegas soal batas integritas.',
+        ],
+        [
+            'patterns' => ['inisiatif', 'initiative', 'bergerak duluan'],
+            'good' => 'Menunjukkan inisiatif yang terarah, tahu kapan harus bergerak mandiri, dan tetap menjaga koordinasi dengan tim atau atasan.',
+            'bad' => 'Pasif menunggu arahan, atau justru bergerak sendiri tanpa koordinasi dan tanpa pertimbangan dampak.',
+        ],
+        [
+            'patterns' => ['adaptasi', 'adaptability', 'lingkungan baru', 'perubahan'],
+            'good' => 'Menjelaskan cara cepat menyesuaikan diri, belajar aturan baru, dan tetap stabil saat kondisi kerja berubah.',
+            'bad' => 'Kaku terhadap perubahan, terlalu lama beradaptasi, atau tidak punya contoh nyata menghadapi lingkungan baru.',
+        ],
+        [
+            'patterns' => ['logical', 'logika', 'analisa', 'analisis'],
+            'good' => 'Menunjukkan alur pikir runtut, sebab-akibat yang jelas, dan keputusan yang disusun dari informasi yang relevan.',
+            'bad' => 'Penjelasan meloncat, tidak runtut, atau kesimpulan diambil tanpa dasar logika yang jelas.',
+        ],
+        [
+            'patterns' => ['decision', 'keputusan', 'memutuskan'],
+            'good' => 'Menjelaskan proses mengambil keputusan dengan pertimbangan risiko, prioritas, dan tanggung jawab atas hasilnya.',
+            'bad' => 'Keputusan terasa impulsif, terlalu bergantung pada orang lain, atau tidak menunjukkan pertimbangan risiko yang matang.',
+        ],
+    ];
+
+    foreach ($rules as $rule) {
+        foreach ($rule['patterns'] as $pattern) {
+            if (str_contains($normalized, strtolower($pattern))) {
+                return $type === 'good' ? $rule['good'] : $rule['bad'];
+            }
+        }
+    }
+
+    return ems_ai_interview_answer_guidance($intent, $type, $recruitmentType);
+}
+
+function ems_ai_question_answer_guidance_bundle(string $questionText, string $intent, string $recruitmentType): array
+{
+    return [
+        'good' => ems_ai_question_based_answer_guidance($questionText, $intent, 'good', $recruitmentType),
+        'bad' => ems_ai_question_based_answer_guidance($questionText, $intent, 'bad', $recruitmentType),
+    ];
+}
+
+function ems_ai_interview_guidance_looks_generic(string $text, string $recruitmentType): bool
+{
+    $normalized = strtolower(trim(preg_replace('/\s+/u', ' ', $text)));
+    if ($normalized === '') {
+        return true;
+    }
+
+    $genericPhrases = [
+        'jawaban konkret, konsisten',
+        'menunjukkan tanggung jawab serta kedewasaan kerja',
+        'jawaban normatif, defensif',
+        'tidak menyentuh perilaku kerja nyata',
+        'jawaban konkret, tenang',
+        'menunjukkan etika kerja yang baik',
+        'jawaban mengambang, defensif',
+        'tidak menunjukkan perilaku profesional yang jelas',
+    ];
+
+    foreach ($genericPhrases as $phrase) {
+        if (str_contains($normalized, $phrase)) {
+            return true;
+        }
+    }
+
+    $tokenCount = count(array_values(array_filter(preg_split('/\s+/u', $normalized) ?: [])));
+    return $tokenCount <= 7;
+}
+
+function ems_ai_interview_focus_metadata(string $questionText, string $intent, string $recruitmentType, string $criterionCode = ''): array
+{
+    $normalized = strtolower(trim($questionText));
+
+    $textRules = [
+        [
+            'patterns' => ['sop', 'standard operating procedure', 'prosedur'],
+            'label' => 'Kepatuhan SOP',
+            'description' => 'Kemampuan menjaga prosedur tetap dipatuhi meski dalam tekanan kerja.',
+        ],
+        [
+            'patterns' => ['kerja tim', 'tim anda', 'anggota tim', 'bekerja dalam tim'],
+            'label' => 'Kerja Tim',
+            'description' => 'Kemampuan bekerja dalam tim, membagi peran, dan menjaga kolaborasi.',
+        ],
+        [
+            'patterns' => ['kritik', 'masukan', 'ditegur'],
+            'label' => 'Respons terhadap Kritik',
+            'description' => 'Kematangan menerima kritik dan mengubahnya menjadi perbaikan nyata.',
+        ],
+        [
+            'patterns' => ['detail', 'teliti', 'attention to detail'],
+            'label' => 'Attention to Detail',
+            'description' => 'Ketelitian melihat detail, data, dan potensi kesalahan kecil.',
+        ],
+        [
+            'patterns' => ['integritas', 'jujur', 'menutupi kesalahan', 'kejujuran'],
+            'label' => 'Integrity',
+            'description' => 'Kejujuran, konsistensi nilai, dan keberanian menjaga amanah kerja.',
+        ],
+        [
+            'patterns' => ['inisiatif', 'initiative', 'bergerak duluan'],
+            'label' => 'Initiative',
+            'description' => 'Kemauan mengambil langkah kerja yang tepat tanpa harus selalu menunggu arahan.',
+        ],
+        [
+            'patterns' => ['adaptasi', 'adaptability', 'lingkungan baru', 'perubahan'],
+            'label' => 'Adaptability',
+            'description' => 'Kemampuan menyesuaikan diri dengan perubahan situasi, aturan, dan ritme kerja.',
+        ],
+        [
+            'patterns' => ['waktu', 'jadwal', 'deadline', 'time management'],
+            'label' => 'Time Management',
+            'description' => 'Kemampuan mengatur waktu, prioritas, dan penyelesaian pekerjaan sesuai tenggat.',
+        ],
+        [
+            'patterns' => ['logical', 'logika', 'analisa', 'analisis'],
+            'label' => 'Logical Thinking',
+            'description' => 'Kemampuan berpikir runtut, logis, dan menyusun alasan yang masuk akal.',
+        ],
+        [
+            'patterns' => ['decision', 'keputusan', 'memutuskan'],
+            'label' => 'Decision Making',
+            'description' => 'Kemampuan mengambil keputusan yang tepat dan bertanggung jawab.',
+        ],
+        [
+            'patterns' => ['briefing', 'instruksi'],
+            'label' => 'Koordinasi',
+            'description' => 'Kemampuan memastikan instruksi dipahami dan dijalankan dengan benar.',
+        ],
+        [
+            'patterns' => ['komplain', 'tetap sopan', 'nada bicara'],
+            'label' => 'Komunikasi Profesional',
+            'description' => 'Kemampuan menjaga komunikasi tetap sopan, tenang, dan fokus pada solusi.',
+        ],
+        [
+            'patterns' => ['ego', 'tersinggung', 'diremehkan'],
+            'label' => 'Kontrol Ego',
+            'description' => 'Kemampuan mengenali pemicu ego dan tetap profesional saat emosi terpancing.',
+        ],
+        [
+            'patterns' => ['dokumen', 'dokumentasi', 'laporan'],
+            'label' => 'Akuntabilitas',
+            'description' => 'Kemampuan menjaga dokumentasi, pelaporan, dan pertanggungjawaban kerja.',
+        ],
+    ];
+
+    foreach ($textRules as $rule) {
+        foreach ($rule['patterns'] as $pattern) {
+            if (str_contains($normalized, strtolower($pattern))) {
+                return [
+                    'label' => $rule['label'],
+                    'description' => $rule['description'],
+                ];
+            }
+        }
+    }
+
+    $criterionFallback = [
+        'teamwork' => ['label' => 'Kerja Tim', 'description' => 'Kemampuan bekerja dalam tim.'],
+        'communication' => ['label' => 'Komunikasi', 'description' => 'Kemampuan menyampaikan dan menerima pesan kerja dengan tepat.'],
+        'discipline' => ['label' => 'Disiplin', 'description' => 'Konsistensi menjaga aturan, ritme kerja, dan tanggung jawab.'],
+        'leadership' => ['label' => 'Leadership', 'description' => 'Kemampuan mengarahkan, memengaruhi, dan menjaga tim tetap berjalan.'],
+        'loyalty' => ['label' => 'Loyalitas', 'description' => 'Konsistensi menjaga amanah, integritas, dan kepentingan institusi.'],
+        'stress_control' => ['label' => 'Kontrol Tekanan', 'description' => 'Kemampuan mengelola emosi dan perilaku saat tertekan.'],
+        'responsibility' => ['label' => 'Tanggung Jawab', 'description' => 'Kemampuan menuntaskan tugas dan bertanggung jawab atas hasil kerja.'],
+        'attitude' => ['label' => 'Attitude', 'description' => 'Sikap kerja, etika, dan kedewasaan dalam berinteraksi.'],
+        'sop_compliance' => ['label' => 'Kepatuhan SOP', 'description' => 'Kemampuan menjaga prosedur tetap dipatuhi secara konsisten.'],
+        'ga_coordination' => ['label' => 'Koordinasi General Affair', 'description' => 'Kemampuan koordinasi lintas kebutuhan operasional dan tim.'],
+        'operational_control' => ['label' => 'Kontrol Operasional', 'description' => 'Kemampuan mengontrol prioritas, tindak lanjut, dan stabilitas operasional.'],
+        'logical_thinking' => ['label' => 'Logical Thinking', 'description' => 'Kemampuan berpikir runtut dan logis saat menganalisis situasi kerja.'],
+        'decision_making' => ['label' => 'Decision Making', 'description' => 'Kemampuan mengambil keputusan yang tepat, cepat, dan bertanggung jawab.'],
+        'attention_to_detail' => ['label' => 'Attention to Detail', 'description' => 'Ketelitian dalam melihat detail, data, prosedur, dan potensi kesalahan kecil.'],
+        'integrity' => ['label' => 'Integrity', 'description' => 'Kejujuran, konsistensi nilai, dan kemampuan menjaga amanah dalam bekerja.'],
+        'initiative' => ['label' => 'Initiative', 'description' => 'Kemauan bergerak, mencari solusi, dan mengambil langkah kerja tanpa harus selalu menunggu perintah.'],
+        'adaptability' => ['label' => 'Adaptability', 'description' => 'Kemampuan menyesuaikan diri dengan perubahan situasi, ritme kerja, dan kebutuhan tim.'],
+        'time_management' => ['label' => 'Time Management', 'description' => 'Kemampuan mengatur waktu, prioritas kerja, dan penyelesaian tugas sesuai tenggat.'],
+    ];
+
+    if ($criterionCode !== '' && isset($criterionFallback[$criterionCode])) {
+        return $criterionFallback[$criterionCode];
+    }
+
+    if ($intent === 'assessment_consistency') {
+        return [
+            'label' => 'Konsistensi Jawaban',
+            'description' => 'Kesesuaian jawaban assessment dengan penjelasan kandidat saat interview.',
+        ];
+    }
+
+    return [
+        'label' => $recruitmentType === 'assistant_manager' ? 'Evaluasi Peran Asisten Manager' : 'Evaluasi Kandidat',
+        'description' => 'Pendalaman perilaku kerja, cara berpikir, dan kesiapan menjalankan peran.',
+    ];
+}
+
+function ems_ai_supported_interview_intents(): array
+{
+    return [
+        'discipline_leadership',
+        'sop_under_pressure',
+        'courtesy_correction',
+        'sop_judgement',
+        'operational_priority',
+        'leadership_fatigue',
+        'professional_communication',
+        'fairness_sop',
+        'briefing_validation',
+        'follow_through',
+        'documentation_accountability',
+        'speed_vs_procedure',
+        'results_vs_attitude',
+        'clarify_instruction',
+        'cross_validation_probe',
+        'shadow_under_pressure',
+        'strength_weakness_balance',
+        'respectful_disagreement',
+        'criticism_response',
+        'fatigue_self_control',
+        'failure_learning',
+        'ego_trigger',
+        'self_discipline_risk',
+        'patience_truth',
+        'unfinished_bad_habit',
+        'small_error_coverup',
+        'credit_humility',
+        'core_fear',
+        'anger_pattern',
+        'response_honesty_probe',
+        'assessment_consistency',
+    ];
+}
+
+function ems_ai_infer_interview_intent(string $text, string $category, string $recruitmentType): string
+{
+    $normalized = strtolower(trim($text));
+    if ($normalized === '') {
+        return '';
+    }
+
+    $rules = [
+        'discipline_leadership' => ['disiplin hadir', 'disiplin kerja', 'menegakkan disiplin'],
+        'sop_under_pressure' => ['tetap mematuhi sop', 'tekanan untuk mempercepat', 'situasi darurat', 'tekanan tinggi'],
+        'courtesy_correction' => ['sopan santun', 'menegur', 'membina', 'dijatuhkan'],
+        'sop_judgement' => ['boleh fleksibel', 'tanpa kompromi', 'mengikuti sop'],
+        'operational_priority' => ['prioritas kerja', 'muncul bersamaan', 'pelayanan tidak kacau'],
+        'leadership_fatigue' => ['tim yang sedang lelah', 'menurun disiplin', 'bentuk kepemimpinan'],
+        'professional_communication' => ['komplain keras', 'nada bicara yang tinggi', 'tetap sopan'],
+        'fairness_sop' => ['teman dekat', 'berbeda dibanding', 'anggota lain', 'aturan berlaku sama'],
+        'briefing_validation' => ['briefing', 'instruksi kerja', 'dipahami tim'],
+        'follow_through' => ['menindaklanjuti pekerjaan', 'sampai selesai', 'memberi instruksi di awal'],
+        'documentation_accountability' => ['dokumentasi', 'laporan tertulis', 'jejak keputusan'],
+        'speed_vs_procedure' => ['cepat selesai', 'prosedur rapi', 'aman'],
+        'results_vs_attitude' => ['hasil kerjanya bagus', 'attitude', 'sopan santunnya buruk'],
+        'clarify_instruction' => ['arahan mendadak', 'membingungkan tim', 'eksekusi tetap tertib'],
+        'cross_validation_probe' => ['tidak konsisten antar tahap', 'diverifikasi ulang', 'klarifikasi'],
+        'shadow_under_pressure' => ['saat sedang tertekan', 'sisi buruk anda'],
+        'strength_weakness_balance' => ['sisi baik', 'sisi buruk', 'membantu tim'],
+        'respectful_disagreement' => ['keputusan atasan kurang tepat', 'menyampaikan keberatan'],
+        'criticism_response' => ['jenis kritik', 'sulit anda terima', 'reaksi pertama'],
+        'fatigue_self_control' => ['dalam kondisi lelah', 'mood buruk', 'mengendalikannya'],
+        'failure_learning' => ['kegagalan pribadi', 'merasa malu', 'anda ubah'],
+        'ego_trigger' => ['memancing ego', 'ego anda'],
+        'self_discipline_risk' => ['tidak ada yang mengawasi', 'rawan turun'],
+        'patience_truth' => ['lebih lemah', 'lebih lambat', 'sabar atau cepat kesal'],
+        'unfinished_bad_habit' => ['kebiasaan buruk', 'belum benar-benar selesai'],
+        'small_error_coverup' => ['menutupi kesalahan kecil', 'dampaknya tidak besar'],
+        'credit_humility' => ['kontribusi orang lain', 'dipuji', 'pujian'],
+        'core_fear' => ['lebih anda takutkan', 'tidak kompeten', 'tidak disukai', 'kehilangan kontrol'],
+        'anger_pattern' => ['sedang marah', 'bicara langsung', 'memilih diam'],
+        'response_honesty_probe' => ['jawaban assessment anda terlihat', 'menjawab apa adanya', 'jawaban paling aman'],
+        'assessment_consistency' => ['di assessment anda menjawab', 'situasi apa yang paling mungkin membuat jawaban anda berubah'],
+    ];
+
+    foreach ($rules as $intent => $keywords) {
+        foreach ($keywords as $keyword) {
+            if (str_contains($normalized, strtolower($keyword))) {
+                return $intent;
+            }
+        }
+    }
+
+    return $category === 'medis_sop'
+        ? ($recruitmentType === 'assistant_manager' ? 'sop_under_pressure' : 'discipline_leadership')
+        : 'strength_weakness_balance';
 }
 
 function ems_ai_interview_question_banks(string $recruitmentType, array $candidate, array $result, array $answers, array $aiQuestions): array
@@ -641,7 +1014,7 @@ function ems_ai_parse_question_pack_response(string $rawText): ?array
             if (is_string($item)) {
                 $rows[] = [
                     'category' => $category,
-                    'text' => trim($item),
+                    'text' => ems_ai_clean_interview_question_text(trim($item)),
                     'intent' => '',
                     'criterion_code' => '',
                     'good_answer' => '',
@@ -651,17 +1024,24 @@ function ems_ai_parse_question_pack_response(string $rawText): ?array
             }
 
             if (is_array($item)) {
-                $text = trim((string)($item['text'] ?? ''));
+                $text = ems_ai_clean_interview_question_text(trim((string)($item['text'] ?? '')));
                 if ($text === '') {
                     continue;
                 }
+                $intent = trim((string)($item['intent'] ?? ''));
+                if ($intent === '' || !in_array($intent, ems_ai_supported_interview_intents(), true)) {
+                    $intent = ems_ai_infer_interview_intent($text, $category, 'assistant_manager');
+                }
+                $goodAnswer = trim((string)($item['good_answer'] ?? $item['good_answer_guide'] ?? $item['good'] ?? ''));
+                $badAnswer = trim((string)($item['bad_answer'] ?? $item['bad_answer_guide'] ?? $item['bad'] ?? ''));
+
                 $rows[] = [
                     'category' => $category,
                     'text' => $text,
-                    'intent' => trim((string)($item['intent'] ?? '')),
+                    'intent' => $intent,
                     'criterion_code' => trim((string)($item['criterion_code'] ?? '')),
-                    'good_answer' => trim((string)($item['good_answer'] ?? '')),
-                    'bad_answer' => trim((string)($item['bad_answer'] ?? '')),
+                    'good_answer' => $goodAnswer,
+                    'bad_answer' => $badAnswer,
                 ];
             }
         }
@@ -685,28 +1065,47 @@ function ems_ai_flatten_interview_question_pack(array $pack): array
 {
     $rows = [];
 
-    foreach ((array)($pack['medical_questions'] ?? []) as $index => $question) {
-        $rows[] = [
-            'question_key' => 'medical_' . ($index + 1),
-            'category' => 'medis_sop',
-            'text' => (string)($question['text'] ?? ''),
-            'intent' => (string)($question['intent'] ?? ''),
-            'criterion_code' => (string)($question['criterion_code'] ?? ''),
-            'good_answer' => (string)($question['good_answer'] ?? ''),
-            'bad_answer' => (string)($question['bad_answer'] ?? ''),
+    $normalizeQuestion = static function (array $question, string $questionKey, string $category, string $defaultCriterion): array {
+        $recruitmentType = (string)($question['recruitment_type'] ?? 'assistant_manager');
+        $intent = trim((string)($question['intent'] ?? ''));
+        $cleanText = ems_ai_clean_interview_question_text((string)($question['text'] ?? ''));
+        if ($intent === '' || !in_array($intent, ems_ai_supported_interview_intents(), true)) {
+            $intent = ems_ai_infer_interview_intent($cleanText, $category, $recruitmentType);
+        }
+        $criterionCode = (string)($question['criterion_code'] ?? $defaultCriterion);
+        $guidance = ems_ai_question_answer_guidance_bundle($cleanText, $intent, $recruitmentType);
+        $focusMeta = ems_ai_interview_focus_metadata($cleanText, $intent, $recruitmentType, $criterionCode);
+        $goodAnswer = trim((string)($question['good_answer'] ?? ''));
+        $badAnswer = trim((string)($question['bad_answer'] ?? ''));
+
+        if (ems_ai_interview_guidance_looks_generic($goodAnswer, $recruitmentType)) {
+            $goodAnswer = $guidance['good'];
+        }
+        if (ems_ai_interview_guidance_looks_generic($badAnswer, $recruitmentType)) {
+            $badAnswer = $guidance['bad'];
+        }
+
+        return [
+            'question_key' => $questionKey,
+            'category' => $category,
+            'text' => $cleanText,
+            'intent' => $intent,
+            'criterion_code' => $criterionCode,
+            'focus_label' => (string)($focusMeta['label'] ?? ''),
+            'focus_description' => (string)($focusMeta['description'] ?? ''),
+            'good_answer' => $goodAnswer,
+            'bad_answer' => $badAnswer,
         ];
+    };
+
+    foreach ((array)($pack['medical_questions'] ?? []) as $index => $question) {
+        $question['recruitment_type'] = (string)($pack['recruitment_type'] ?? 'assistant_manager');
+        $rows[] = $normalizeQuestion($question, 'medical_' . ($index + 1), 'medis_sop', 'sop_compliance');
     }
 
     foreach ((array)($pack['personal_questions'] ?? []) as $index => $question) {
-        $rows[] = [
-            'question_key' => 'personal_' . ($index + 1),
-            'category' => 'non_medis_kepribadian',
-            'text' => (string)($question['text'] ?? ''),
-            'intent' => (string)($question['intent'] ?? ''),
-            'criterion_code' => (string)($question['criterion_code'] ?? ''),
-            'good_answer' => (string)($question['good_answer'] ?? ''),
-            'bad_answer' => (string)($question['bad_answer'] ?? ''),
-        ];
+        $question['recruitment_type'] = (string)($pack['recruitment_type'] ?? 'assistant_manager');
+        $rows[] = $normalizeQuestion($question, 'personal_' . ($index + 1), 'non_medis_kepribadian', 'attitude');
     }
 
     return $rows;
@@ -795,8 +1194,58 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
     if (is_string($existingJson) && trim($existingJson) !== '') {
         $decoded = json_decode($existingJson, true);
         if (is_array($decoded)) {
+            $decoded['recruitment_type'] = $recruitmentType;
             $flattenedExisting = ems_ai_flatten_interview_question_pack($decoded);
             if (count($flattenedExisting) === 20) {
+                $hasMissingGuidance = false;
+                foreach ($flattenedExisting as $row) {
+                    if (trim((string)($row['good_answer'] ?? '')) === '' || trim((string)($row['bad_answer'] ?? '')) === '') {
+                        $hasMissingGuidance = true;
+                        break;
+                    }
+                }
+
+                if (!$hasMissingGuidance) {
+                    return $decoded;
+                }
+
+                $medical = [];
+                $personal = [];
+                foreach ($flattenedExisting as $row) {
+                    $normalized = [
+                        'text' => (string)($row['text'] ?? ''),
+                        'intent' => (string)($row['intent'] ?? ''),
+                        'criterion_code' => (string)($row['criterion_code'] ?? ''),
+                        'good_answer' => (string)($row['good_answer'] ?? ''),
+                        'bad_answer' => (string)($row['bad_answer'] ?? ''),
+                    ];
+                    if (($row['category'] ?? '') === 'medis_sop') {
+                        $medical[] = $normalized;
+                    } else {
+                        $personal[] = $normalized;
+                    }
+                }
+
+                $decoded = [
+                    'recruitment_type' => $recruitmentType,
+                    'medical_questions' => $medical,
+                    'personal_questions' => $personal,
+                ];
+                $pack = $decoded;
+                $provider = 'system';
+                $modelName = null;
+
+                $stmt = $pdo->prepare("
+                    UPDATE applicant_interview_question_packs
+                    SET question_pack_json = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE applicant_id = ? AND hr_id = ?
+                ");
+                $stmt->execute([
+                    json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    $applicantId,
+                    $hrId,
+                ]);
+
                 return $decoded;
             }
         }
@@ -820,7 +1269,7 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
                         'role' => 'user',
                         'parts' => [
                             ['text' => trim((string)($template['system_prompt'] ?? ''))],
-                            ['text' => $prompt . "\nTambahan aturan: buat tepat 10 pertanyaan kategori medis_sop dan tepat 10 pertanyaan kategori non_medis_kepribadian. Pastikan ada pertanyaan sisi baik, sisi buruk, jebakan, serta verifikasi jawaban assessment yang tampak berpotensi bertentangan. Jangan halu dan jangan keluar konteks kandidat."],
+                            ['text' => $prompt . "\nTambahan aturan: buat tepat 10 pertanyaan kategori medis_sop dan tepat 10 pertanyaan kategori non_medis_kepribadian. Setiap item WAJIB berbentuk object dengan field text, intent, criterion_code, good_answer, bad_answer. good_answer dan bad_answer harus spesifik menjawab isi pertanyaan itu sendiri, bukan template umum, bukan kalimat generik, dan bukan pengulangan antar pertanyaan. Tulis 1-2 kalimat ringkas yang memberi gambaran jawaban kuat dan jawaban lemah untuk pertanyaan tersebut. Pastikan ada pertanyaan sisi baik, sisi buruk, jebakan, serta verifikasi jawaban assessment yang tampak berpotensi bertentangan. Jangan halu dan jangan keluar konteks kandidat."],
                         ],
                     ]],
                     (string)($settings['interview_question_model'] ?? $settings['default_model'] ?? 'gemini-2.5-flash'),
