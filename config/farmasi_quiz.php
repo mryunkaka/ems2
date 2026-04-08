@@ -5,14 +5,51 @@ function farmasi_quiz_now(): DateTimeImmutable
     return new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
 }
 
+function farmasi_quiz_current_slot(?DateTimeImmutable $now = null): array
+{
+    $now = $now ?: farmasi_quiz_now();
+    $today = $now->setTime(0, 0, 0);
+    $hour = (int)$now->format('G');
+
+    if ($hour >= 18) {
+        $slotCode = 'evening';
+        $slotLabel = 'Sesi Sore';
+        $slotStart = $today->setTime(18, 0, 0);
+        $slotEnd = $today->modify('+1 day')->setTime(6, 0, 0);
+    } elseif ($hour >= 6) {
+        $slotCode = 'morning';
+        $slotLabel = 'Sesi Pagi';
+        $slotStart = $today->setTime(6, 0, 0);
+        $slotEnd = $today->setTime(18, 0, 0);
+    } else {
+        $slotCode = 'evening';
+        $slotLabel = 'Sesi Sore';
+        $slotStart = $today->modify('-1 day')->setTime(18, 0, 0);
+        $slotEnd = $today->setTime(6, 0, 0);
+    }
+
+    return [
+        'code' => $slotCode,
+        'label' => $slotLabel,
+        'slot_start' => $slotStart,
+        'slot_end' => $slotEnd,
+        'expires_at' => $slotEnd->modify('-1 second'),
+        'next_available_at' => $slotEnd,
+        'schedule_text' => 'Slot quiz tersedia setiap hari pada 06:00 dan 18:00 WIB.',
+    ];
+}
+
 function farmasi_quiz_week_bounds(?DateTimeImmutable $now = null): array
 {
     $now = $now ?: farmasi_quiz_now();
-    $weekStart = $now->modify('monday this week')->setTime(0, 0, 0);
+    $slot = farmasi_quiz_current_slot($now);
+    $reference = $slot['slot_start'];
+    $weekStart = $reference->modify('monday this week')->setTime(0, 0, 0);
     $weekEnd = $weekStart->modify('+6 days')->setTime(23, 59, 59);
 
     return [
         'now' => $now,
+        'slot' => $slot,
         'week_start' => $weekStart,
         'week_end' => $weekEnd,
     ];
@@ -238,12 +275,38 @@ function farmasi_quiz_pick_question_ids(PDO $pdo, int $userId, string $weekStart
     return array_slice($allQuestionIds, 0, $limit);
 }
 
+function farmasi_quiz_ensure_session_expiry(PDO $pdo, array $session, DateTimeImmutable $expiresAt): array
+{
+    $sessionId = (int)($session['id'] ?? 0);
+    if ($sessionId <= 0) {
+        return $session;
+    }
+
+    $target = $expiresAt->format('Y-m-d H:i:s');
+    $current = trim((string)($session['expires_at'] ?? ''));
+
+    if ($current === $target) {
+        return $session;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE farmasi_quiz_sessions
+        SET expires_at = ?
+        WHERE id = ?
+    ");
+    $stmt->execute([$target, $sessionId]);
+    $session['expires_at'] = $target;
+
+    return $session;
+}
+
 function farmasi_quiz_create_session(PDO $pdo, int $userId, string $displayName): array
 {
     farmasi_quiz_require_schema($pdo);
     farmasi_quiz_finalize_previous_weeks($pdo);
 
     $bounds = farmasi_quiz_week_bounds();
+    $slot = $bounds['slot'];
     $weekStart = $bounds['week_start']->format('Y-m-d');
     $sessionKey = bin2hex(random_bytes(18));
     $questionIds = farmasi_quiz_pick_question_ids($pdo, $userId, $weekStart, 10);
@@ -254,9 +317,15 @@ function farmasi_quiz_create_session(PDO $pdo, int $userId, string $displayName)
             INSERT INTO farmasi_quiz_sessions
                 (session_key, user_id, display_name, week_start, generated_at, expires_at, total_questions)
             VALUES
-                (?, ?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 120 MINUTE), 10)
+                (?, ?, ?, ?, NOW(), ?, 10)
         ");
-        $stmtSession->execute([$sessionKey, $userId, $displayName, $weekStart]);
+        $stmtSession->execute([
+            $sessionKey,
+            $userId,
+            $displayName,
+            $weekStart,
+            $slot['expires_at']->format('Y-m-d H:i:s'),
+        ]);
         $sessionId = (int)$pdo->lastInsertId();
 
         $questionPlaceholders = implode(',', array_fill(0, count($questionIds), '?'));
@@ -310,9 +379,10 @@ function farmasi_quiz_create_session(PDO $pdo, int $userId, string $displayName)
     return farmasi_quiz_get_session_payload($pdo, $userId, true);
 }
 
-function farmasi_quiz_get_session_record(PDO $pdo, int $userId): ?array
+function farmasi_quiz_get_slot_session_window(PDO $pdo, int $userId): ?array
 {
     $bounds = farmasi_quiz_week_bounds();
+    $slot = $bounds['slot'];
     $weekStart = $bounds['week_start']->format('Y-m-d');
 
     $stmt = $pdo->prepare("
@@ -320,35 +390,38 @@ function farmasi_quiz_get_session_record(PDO $pdo, int $userId): ?array
         FROM farmasi_quiz_sessions
         WHERE user_id = ?
           AND week_start = ?
-          AND completed_at IS NULL
-          AND expires_at > NOW()
+          AND generated_at >= ?
+          AND generated_at < ?
         ORDER BY generated_at DESC, id DESC
         LIMIT 1
     ");
-    $stmt->execute([$userId, $weekStart]);
+    $stmt->execute([
+        $userId,
+        $weekStart,
+        $slot['slot_start']->format('Y-m-d H:i:s'),
+        $slot['slot_end']->format('Y-m-d H:i:s'),
+    ]);
     $session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($session) {
+        $session = farmasi_quiz_ensure_session_expiry($pdo, $session, $slot['expires_at']);
+    }
 
     return $session ?: null;
 }
 
-function farmasi_quiz_get_unexpired_session_window(PDO $pdo, int $userId): ?array
+function farmasi_quiz_get_session_record(PDO $pdo, int $userId): ?array
 {
-    $bounds = farmasi_quiz_week_bounds();
-    $weekStart = $bounds['week_start']->format('Y-m-d');
+    $session = farmasi_quiz_get_slot_session_window($pdo, $userId);
+    if (!$session) {
+        return null;
+    }
 
-    $stmt = $pdo->prepare("
-        SELECT *
-        FROM farmasi_quiz_sessions
-        WHERE user_id = ?
-          AND week_start = ?
-          AND expires_at > NOW()
-        ORDER BY generated_at DESC, id DESC
-        LIMIT 1
-    ");
-    $stmt->execute([$userId, $weekStart]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!empty($session['completed_at'])) {
+        return null;
+    }
 
-    return $row ?: null;
+    return $session;
 }
 
 function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCreate = true): array
@@ -356,7 +429,9 @@ function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCrea
     farmasi_quiz_require_schema($pdo);
     farmasi_quiz_finalize_previous_weeks($pdo);
 
-    $sessionWindow = farmasi_quiz_get_unexpired_session_window($pdo, $userId);
+    $bounds = farmasi_quiz_week_bounds();
+    $slot = $bounds['slot'];
+    $sessionWindow = farmasi_quiz_get_slot_session_window($pdo, $userId);
     $session = ($sessionWindow && empty($sessionWindow['completed_at'])) ? $sessionWindow : null;
 
     if (!$sessionWindow && $allowCreate) {
@@ -364,7 +439,6 @@ function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCrea
         return farmasi_quiz_create_session($pdo, $userId, $displayName !== '' ? $displayName : 'Medis');
     }
 
-    $bounds = farmasi_quiz_week_bounds();
     $weekStart = $bounds['week_start']->format('Y-m-d');
 
     $ranking = farmasi_quiz_fetch_ranking($pdo, $weekStart, 10);
@@ -390,8 +464,16 @@ function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCrea
             'session' => null,
             'cooldown' => [
                 'active' => $sessionWindow !== null,
-                'next_available_at' => $sessionWindow['expires_at'] ?? null,
+                'next_available_at' => $slot['next_available_at']->format(DateTimeInterface::ATOM),
                 'last_summary' => $lastSummary,
+            ],
+            'slot' => [
+                'code' => $slot['code'],
+                'label' => $slot['label'],
+                'start' => $slot['slot_start']->format(DateTimeInterface::ATOM),
+                'expires_at' => $slot['expires_at']->format(DateTimeInterface::ATOM),
+                'next_available_at' => $slot['next_available_at']->format(DateTimeInterface::ATOM),
+                'schedule_text' => $slot['schedule_text'],
             ],
             'ranking' => $ranking,
             'history' => $history,
@@ -454,7 +536,7 @@ function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCrea
             'id' => (int)$session['id'],
             'key' => (string)$session['session_key'],
             'generated_at' => (string)$session['generated_at'],
-            'expires_at' => (string)$session['expires_at'],
+            'expires_at' => $slot['expires_at']->format(DateTimeInterface::ATOM),
             'completed_at' => $session['completed_at'] ?: null,
             'total_questions' => (int)($session['total_questions'] ?? 10),
             'answered_count' => $answeredCount,
@@ -466,8 +548,16 @@ function farmasi_quiz_get_session_payload(PDO $pdo, int $userId, bool $allowCrea
         ],
         'cooldown' => [
             'active' => true,
-            'next_available_at' => $session['expires_at'] ?? null,
+            'next_available_at' => $slot['next_available_at']->format(DateTimeInterface::ATOM),
             'last_summary' => null,
+        ],
+        'slot' => [
+            'code' => $slot['code'],
+            'label' => $slot['label'],
+            'start' => $slot['slot_start']->format(DateTimeInterface::ATOM),
+            'expires_at' => $slot['expires_at']->format(DateTimeInterface::ATOM),
+            'next_available_at' => $slot['next_available_at']->format(DateTimeInterface::ATOM),
+            'schedule_text' => $slot['schedule_text'],
         ],
         'ranking' => $ranking,
         'history' => $history,

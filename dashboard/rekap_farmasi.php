@@ -1847,6 +1847,26 @@ include __DIR__ . '/../partials/sidebar.php';
         display: grid;
         gap: 10px;
         margin-top: 12px;
+        max-height: 440px;
+        overflow-y: auto;
+        padding-right: 6px;
+    }
+
+    .farmasi-quiz-ranking-list::-webkit-scrollbar,
+    .farmasi-quiz-history-list::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .farmasi-quiz-ranking-list::-webkit-scrollbar-thumb,
+    .farmasi-quiz-history-list::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.45);
+        border-radius: 999px;
+    }
+
+    .farmasi-quiz-ranking-list::-webkit-scrollbar-track,
+    .farmasi-quiz-history-list::-webkit-scrollbar-track {
+        background: rgba(226, 232, 240, 0.45);
+        border-radius: 999px;
     }
 
     .farmasi-quiz-ranking-item,
@@ -2033,7 +2053,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="farmasi-quiz-header-row">
                         <div>
                             <h2 class="farmasi-card-title">Quiz EMS Mingguan</h2>
-                            <p class="farmasi-card-subtitle">10 soal per sesi, rotasi setiap 120 menit, ranking reset mingguan seperti gaji farmasi.</p>
+                            <p class="farmasi-card-subtitle">10 soal per sesi, 2 sesi per hari pada jam 06:00 dan 18:00 WIB, ranking reset mingguan seperti gaji farmasi.</p>
                         </div>
                         <div class="farmasi-quiz-badge" id="farmasiQuizWeekLabel">Memuat season...</div>
                     </div>
@@ -5474,6 +5494,19 @@ include __DIR__ . '/../partials/sidebar.php';
             }).join(':');
         }
 
+        function formatAccuracy(correctAnswers, wrongAnswers) {
+            const correct = Math.max(0, parseInt(correctAnswers || 0, 10));
+            const wrong = Math.max(0, parseInt(wrongAnswers || 0, 10));
+            const total = correct + wrong;
+
+            if (total <= 0) {
+                return '0% akurasi';
+            }
+
+            const percent = Math.round((correct / total) * 100);
+            return percent + '% akurasi';
+        }
+
         function getSecondsUntil(target) {
             if (!target) return 0;
             const targetTime = new Date(target).getTime();
@@ -5522,7 +5555,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     '    <span class="farmasi-quiz-rank-bullet">#' + item.rank + '</span>' +
                     '    <div>' +
                     '      <div class="font-semibold text-slate-900">' + escapeHtml(item.display_name || '-') + '</div>' +
-                    '      <div class="farmasi-quiz-meta">' + (item.correct_answers || 0) + ' benar • ' + (item.wrong_answers || 0) + ' salah</div>' +
+                    '      <div class="farmasi-quiz-meta">' + formatAccuracy(item.correct_answers, item.wrong_answers) + '</div>' +
                     '    </div>' +
                     '  </div>' +
                     '  <div class="text-right">' +
@@ -5548,7 +5581,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     '  </div>' +
                     '  <div class="text-right">' +
                     '    <div class="font-extrabold text-emerald-700">' + (item.points || 0) + ' pts</div>' +
-                    '    <div class="farmasi-quiz-meta">' + (item.correct_answers || 0) + ' benar</div>' +
+                    '    <div class="farmasi-quiz-meta">' + formatAccuracy(item.correct_answers, item.wrong_answers) + '</div>' +
                     '  </div>' +
                     '</div>';
             }).join('');
@@ -5571,13 +5604,15 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function renderCooldownView(cooldown, personal) {
+            const slot = quizState && quizState.slot ? quizState.slot : null;
             const nextSeconds = getSecondsUntil(cooldown.next_available_at);
             const cooldownText = cooldown.active ?
                 ('Sesi berikutnya akan tersedia dalam ' + formatDuration(nextSeconds) + '.') :
                 'Quiz baru akan otomatis dibuat saat tersedia.';
+            const scheduleText = slot && slot.schedule_text ? slot.schedule_text : 'Slot quiz tersedia setiap hari pada 06:00 dan 18:00 WIB.';
 
             if (cooldown.last_summary) {
-                stageEl.innerHTML = buildSummaryHtml(cooldown.last_summary, personal || {}, cooldownText);
+                stageEl.innerHTML = buildSummaryHtml(cooldown.last_summary, personal || {}, cooldownText + ' ' + scheduleText);
                 return;
             }
 
@@ -5585,6 +5620,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 '<div class="farmasi-quiz-empty">' +
                 '  <div class="font-semibold text-slate-900 mb-2">Quiz sedang menunggu jadwal sesi berikutnya.</div>' +
                 '  <div>' + escapeHtml(cooldownText) + '</div>' +
+                '  <div class="mt-2">' + escapeHtml(scheduleText) + '</div>' +
                 '</div>';
         }
 
@@ -5776,6 +5812,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 next_available_at: null,
                 last_summary: null
             };
+            const slot = quizState.slot || null;
             const personal = quizState.personal || {};
 
             weekLabelEl.textContent = week.label || 'Season Quiz';
@@ -5788,14 +5825,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 const nextSeconds = getSecondsUntil(cooldown.next_available_at || (quizState.session && quizState.session.expires_at));
                 if (quizState.has_active_session && quizState.session) {
                     setStatusBadge('Sesi Quiz Aktif', 'quiz-live');
-                    timerEl.textContent = 'Sesi ini berganti dalam ' + formatDuration(nextSeconds) + '.';
+                    timerEl.textContent = 'Slot ' + ((slot && slot.label) || 'aktif') + ' berakhir dalam ' + formatDuration(nextSeconds) + '.';
                 } else if (cooldown.active) {
                     const passed = cooldown.last_summary && String(cooldown.last_summary.pass_status) === 'passed';
                     setStatusBadge(passed ? 'Sesi Selesai - Lulus' : 'Sesi Selesai - Belum Lulus', passed ? 'quiz-pass' : 'quiz-fail');
-                    timerEl.textContent = 'Quiz baru tersedia dalam ' + formatDuration(nextSeconds) + '.';
+                    timerEl.textContent = 'Slot berikutnya terbuka dalam ' + formatDuration(nextSeconds) + '.';
                 } else {
                     setStatusBadge('Menyiapkan Sesi Baru', 'quiz-live');
-                    timerEl.textContent = 'Sesi baru akan dibuat otomatis.';
+                    timerEl.textContent = 'Menunggu slot 06:00 atau 18:00 WIB.';
                 }
 
                 if (nextSeconds <= 0 && !stateRefreshPending && !submitBusy) {
