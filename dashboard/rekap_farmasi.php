@@ -1640,7 +1640,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <!-- ===== CONTENT ===== -->
     <div class="page page-shell">
 
-        <h1 class="page-title">Rekap Farmasi EMS </h1>
+        <h1 class="page-title">Rekap Farmasi EMS 2</h1>
 
         <p class="section-intro">
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
