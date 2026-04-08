@@ -5463,6 +5463,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const stateUrl = window.emsUrl('/actions/get_farmasi_quiz_state.php');
         const submitUrl = window.emsUrl('/actions/submit_farmasi_quiz_answer.php');
+        const finishUrl = window.emsUrl('/actions/finish_farmasi_quiz_session.php');
         const winAudio = new Audio(window.emsUrl('/assets/sound/notification.mp3'));
         const loseAudio = new Audio(window.emsUrl('/assets/sound/activity.mp3'));
         winAudio.preload = 'auto';
@@ -5732,7 +5733,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 '<button type="button" class="btn-success" id="farmasiQuizNextBtn">' +
                 (answeredCount >= totalQuestions ? 'Lihat Hasil' : 'Next Soal') +
                 '</button>' :
-                '<div class="farmasi-quiz-meta">Pilih salah satu jawaban. Sistem akan langsung memberi tahu jawaban benar, lalu tombol next muncul.</div>';
+                '<div class="flex flex-wrap items-center justify-between gap-3 w-full">' +
+                '  <div class="farmasi-quiz-meta">Pilih salah satu jawaban. Sistem akan langsung memberi tahu jawaban benar, lalu tombol next muncul.</div>' +
+                '  <button type="button" class="btn-danger" id="farmasiQuizFinishBtn">Akhiri Quiz</button>' +
+                '</div>';
 
             stageEl.innerHTML = '' +
                 '<div>' +
@@ -5795,6 +5799,42 @@ include __DIR__ . '/../partials/sidebar.php';
                 nextButton.addEventListener('click', function() {
                     reviewQuestionId = null;
                     renderAll();
+                });
+            }
+
+            const finishButton = document.getElementById('farmasiQuizFinishBtn');
+            if (finishButton) {
+                finishButton.addEventListener('click', function() {
+                    if (submitBusy) return;
+
+                    const confirmed = window.confirm('Akhiri quiz sekarang? Soal yang belum dijawab akan dihitung selesai dan sesi langsung ditutup.');
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    submitBusy = true;
+                    fetch(finishUrl, {
+                            method: 'POST',
+                            credentials: 'same-origin'
+                        })
+                        .then(function(response) {
+                            return response.json();
+                        })
+                        .then(function(payload) {
+                            if (!payload || payload.success !== true) {
+                                throw new Error((payload && payload.error) || 'Gagal mengakhiri quiz.');
+                            }
+
+                            reviewQuestionId = null;
+                            quizState = payload.data.state || null;
+                            renderAll();
+                        })
+                        .catch(function(error) {
+                            alert(error.message || 'Gagal mengakhiri quiz.');
+                        })
+                        .finally(function() {
+                            submitBusy = false;
+                        });
                 });
             }
         }

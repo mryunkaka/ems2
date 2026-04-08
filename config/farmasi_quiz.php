@@ -746,6 +746,105 @@ function farmasi_quiz_finalize_session(PDO $pdo, array $session): array
     ];
 }
 
+function farmasi_quiz_force_finish_session(PDO $pdo, int $userId): array
+{
+    farmasi_quiz_require_schema($pdo);
+    farmasi_quiz_finalize_previous_weeks($pdo);
+
+    $session = farmasi_quiz_get_session_record($pdo, $userId);
+    if (!$session) {
+        throw new RuntimeException('Sesi quiz tidak aktif. Silakan muat ulang quiz.');
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmtAgg = $pdo->prepare("
+            SELECT
+                COUNT(*) AS total_questions,
+                SUM(CASE WHEN selected_option IS NOT NULL THEN 1 ELSE 0 END) AS answered_count,
+                SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) AS correct_count
+            FROM farmasi_quiz_session_questions
+            WHERE session_id = ?
+            FOR UPDATE
+        ");
+        $stmtAgg->execute([(int)$session['id']]);
+        $agg = $stmtAgg->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $totalQuestions = (int)($agg['total_questions'] ?? 0);
+        $answeredCount = (int)($agg['answered_count'] ?? 0);
+        $correctCount = (int)($agg['correct_count'] ?? 0);
+        $wrongCount = max(0, $totalQuestions - $correctCount);
+        $passStatus = $correctCount >= 7 ? 'passed' : 'failed';
+        $displayName = trim((string)($session['display_name'] ?? 'Medis'));
+        $weekStart = (string)($session['week_start'] ?? '');
+
+        $stmtSessionDone = $pdo->prepare("
+            UPDATE farmasi_quiz_sessions
+            SET completed_at = NOW(),
+                score_correct = ?,
+                score_wrong = ?,
+                points = ?,
+                pass_status = ?
+            WHERE id = ?
+              AND completed_at IS NULL
+        ");
+        $stmtSessionDone->execute([
+            $correctCount,
+            $wrongCount,
+            $correctCount,
+            $passStatus,
+            (int)$session['id'],
+        ]);
+
+        if ($stmtSessionDone->rowCount() > 0) {
+            $stmtScore = $pdo->prepare("
+                INSERT INTO farmasi_quiz_weekly_scores
+                    (week_start, user_id, display_name, points, correct_answers, wrong_answers, completed_sessions, passed_sessions)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, 1, ?)
+                ON DUPLICATE KEY UPDATE
+                    display_name = VALUES(display_name),
+                    points = points + VALUES(points),
+                    correct_answers = correct_answers + VALUES(correct_answers),
+                    wrong_answers = wrong_answers + VALUES(wrong_answers),
+                    completed_sessions = completed_sessions + 1,
+                    passed_sessions = passed_sessions + VALUES(passed_sessions),
+                    updated_at = NOW()
+            ");
+            $stmtScore->execute([
+                $weekStart,
+                (int)$session['user_id'],
+                $displayName !== '' ? $displayName : 'Medis',
+                $correctCount,
+                $correctCount,
+                $wrongCount,
+                $passStatus === 'passed' ? 1 : 0,
+            ]);
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return [
+        'completed' => true,
+        'summary' => [
+            'total_questions' => $totalQuestions,
+            'answered_count' => $answeredCount,
+            'correct_count' => $correctCount,
+            'wrong_count' => $wrongCount,
+            'pass_status' => $passStatus,
+            'did_finalize' => $stmtSessionDone->rowCount() > 0,
+            'ended_early' => $answeredCount < $totalQuestions,
+        ],
+        'state' => farmasi_quiz_get_session_payload($pdo, $userId, false),
+    ];
+}
+
 function farmasi_quiz_submit_answer(PDO $pdo, int $userId, int $sessionQuestionId, string $selectedOption): array
 {
     farmasi_quiz_require_schema($pdo);
