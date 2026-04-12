@@ -72,6 +72,61 @@ function surat_monitoring_table_has_column(PDO $pdo, string $table, string $colu
     return $cache[$key];
 }
 
+function surat_monitoring_table_exists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$table]);
+    $cache[$table] = (bool) $stmt->fetchColumn();
+
+    return $cache[$table];
+}
+
+function surat_monitoring_group_attachments(array $rows, string $foreignKey): array
+{
+    $grouped = [];
+    foreach ($rows as $row) {
+        $key = (int) ($row[$foreignKey] ?? 0);
+        if ($key <= 0) {
+            continue;
+        }
+
+        $grouped[$key][] = $row;
+    }
+
+    return $grouped;
+}
+
+function surat_monitoring_attachment_payload(array $attachments, string $fallbackName): array
+{
+    return array_map(static function (array $attachment) use ($fallbackName): array {
+        $filePath = '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/');
+        $fileName = trim((string) ($attachment['file_name'] ?? ''));
+        $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
+        $extension = strtolower((string) pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));
+        $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+
+        return [
+            'src' => $filePath,
+            'name' => $resolvedName,
+            'extension' => $extension,
+            'is_image' => $isImage,
+            'is_pdf' => $extension === 'pdf',
+        ];
+    }, $attachments);
+}
+
 function surat_monitoring_scope_label(string $division): string
 {
     return $division !== '' ? $division : 'All Divisi';
@@ -125,6 +180,8 @@ $minutesRows = [];
 $coordinationRows = [];
 $timelineItems = [];
 $hasMinutesCodeColumn = false;
+$incomingAttachmentsMap = [];
+$outgoingAttachmentsMap = [];
 
 try {
     $hasIncomingDivisionScope = surat_monitoring_table_has_column($pdo, 'incoming_letters', 'division_scope');
@@ -192,6 +249,32 @@ try {
     ");
     $stmt->execute($hasOutgoingDivisionScope ? ['scope' => $scopeLabel] : []);
     $outgoingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $incomingIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $incomingRows)));
+    if ($incomingIds && surat_monitoring_table_exists($pdo, 'incoming_letter_attachments')) {
+        $placeholders = implode(',', array_fill(0, count($incomingIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM incoming_letter_attachments
+            WHERE incoming_letter_id IN ($placeholders)
+            ORDER BY incoming_letter_id ASC, sort_order ASC, id ASC
+        ");
+        $stmt->execute($incomingIds);
+        $incomingAttachmentsMap = surat_monitoring_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'incoming_letter_id');
+    }
+
+    $outgoingIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $outgoingRows)));
+    if ($outgoingIds && surat_monitoring_table_exists($pdo, 'outgoing_letter_attachments')) {
+        $placeholders = implode(',', array_fill(0, count($outgoingIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM outgoing_letter_attachments
+            WHERE outgoing_letter_id IN ($placeholders)
+            ORDER BY outgoing_letter_id ASC, sort_order ASC, id ASC
+        ");
+        $stmt->execute($outgoingIds);
+        $outgoingAttachmentsMap = surat_monitoring_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'outgoing_letter_id');
+    }
 
     $stmt = $pdo->prepare("
         SELECT
@@ -333,6 +416,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="surat-capsule-list">
                             <?php if ($incomingRows): ?>
                                 <?php foreach ($incomingRows as $row): $statusMeta = surat_monitoring_status_meta((string) ($row['status'] ?? 'unread')); ?>
+                                    <?php $attachments = $incomingAttachmentsMap[(int) ($row['id'] ?? 0)] ?? []; ?>
                                     <article class="surat-capsule surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['institution_name'] ?? '') . ' ' . ($row['meeting_topic'] ?? '') . ' ' . ($row['notes'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                         <div class="surat-capsule-top">
                                             <div>
@@ -343,7 +427,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </div>
                                         <div class="surat-capsule-text"><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['notes'] ?? ''), 120), ENT_QUOTES, 'UTF-8') ?></div>
                                         <div class="surat-capsule-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
-                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Masuk" data-title="<?= htmlspecialchars((string) ($row['meeting_topic'] ?: 'Surat Masuk'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['letter_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['sender_name'] ?: '-') . ' | ' . (string) ($row['sender_phone'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
+                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Masuk" data-title="<?= htmlspecialchars((string) ($row['meeting_topic'] ?: 'Surat Masuk'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['letter_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['sender_name'] ?: '-') . ' | ' . (string) ($row['sender_phone'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-attachments="<?= htmlspecialchars(json_encode(surat_monitoring_attachment_payload($attachments, 'Lampiran ' . (string) ($row['letter_code'] ?: 'surat-masuk')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
                                     </article>
                                 <?php endforeach; ?>
                             <?php else: ?>
@@ -360,6 +444,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="surat-capsule-list">
                             <?php if ($outgoingRows): ?>
                                 <?php foreach ($outgoingRows as $row): ?>
+                                    <?php $attachments = $outgoingAttachmentsMap[(int) ($row['id'] ?? 0)] ?? []; ?>
                                     <article class="surat-capsule surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['institution_name'] ?? '') . ' ' . ($row['subject'] ?? '') . ' ' . ($row['letter_body'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                         <div class="surat-capsule-top">
                                             <div>
@@ -370,7 +455,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </div>
                                         <div class="surat-capsule-text"><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['letter_body'] ?? ''), 120), ENT_QUOTES, 'UTF-8') ?></div>
                                         <div class="surat-capsule-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
-                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Keluar" data-title="<?= htmlspecialchars((string) ($row['subject'] ?: 'Surat Keluar'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['outgoing_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['recipient_name'] ?: '-') . ' | ' . (string) ($row['recipient_contact'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['letter_body'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
+                                        <button type="button" class="btn-secondary btn-open-letter-modal" data-letter-type="Surat Keluar" data-title="<?= htmlspecialchars((string) ($row['subject'] ?: 'Surat Keluar'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['outgoing_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-contact="<?= htmlspecialchars((string) ($row['recipient_name'] ?: '-') . ' | ' . (string) ($row['recipient_contact'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-when="<?= htmlspecialchars(surat_monitoring_when($row['appointment_date'] ?? '', $row['appointment_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-body="<?= htmlspecialchars((string) ($row['letter_body'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-attachments="<?= htmlspecialchars(json_encode(surat_monitoring_attachment_payload($attachments, 'Lampiran ' . (string) ($row['outgoing_code'] ?: 'surat-keluar')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>">Lihat Detail</button>
                                     </article>
                                 <?php endforeach; ?>
                             <?php else: ?>
@@ -458,6 +543,12 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="meta-text-xs mb-2">Isi / Keterangan</div>
                 <div id="letterModalBody" class="whitespace-pre-line text-sm text-slate-700">-</div>
             </div>
+            <div class="card mt-3">
+                <div class="meta-text-xs mb-2">Foto / Lampiran</div>
+                <div id="letterModalAttachments" class="surat-attachment-grid">
+                    <div class="empty-state">Tidak ada lampiran.</div>
+                </div>
+            </div>
         </div>
         <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
     </div>
@@ -490,7 +581,7 @@ include __DIR__ . '/../partials/sidebar.php';
 </div>
 
 <style>
-.surat-monitor-page{padding-bottom:2rem}.surat-monitor-shell{display:grid;gap:1.25rem}.surat-focus-hero{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.9fr);gap:1rem;padding:1.5rem;border-radius:28px;background:linear-gradient(135deg,#eff8ff 0%,#ffffff 52%,#f0fdf4 100%);border:1px solid rgba(148,163,184,.22);box-shadow:0 24px 48px rgba(15,23,42,.08)}.surat-focus-kicker{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.6rem;padding:.35rem .75rem;border-radius:999px;background:#083344;color:#ecfeff;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.surat-scope-card{padding:1.1rem 1.15rem;border-radius:24px;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0}.surat-scope-label{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}.surat-scope-value{margin-top:.35rem;font-size:1.45rem;font-weight:800;color:#fff}.surat-scope-note{margin-top:.55rem;font-size:.92rem;color:#cbd5e1}.surat-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.surat-search-card{padding:1rem 1.15rem}.surat-search-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.surat-search-input{display:flex;align-items:center;gap:.65rem;min-width:min(100%,360px);padding:.8rem 1rem;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#475569}.surat-search-input input{width:100%;border:0;outline:0;background:transparent}.surat-focus-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.95fr);gap:1rem}.surat-focus-grid,.surat-focus-side{display:grid;gap:1rem}.surat-focus-card{border-radius:26px;padding:1.15rem;box-shadow:0 20px 40px rgba(15,23,42,.06)}.surat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}.surat-spotlight-list,.surat-capsule-list,.surat-mini-list{display:grid;gap:.85rem}.surat-spotlight-item,.surat-capsule,.surat-mini-card{border:1px solid #dbeafe;background:#fff;border-radius:22px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.surat-spotlight-item:hover,.surat-capsule:hover,.surat-mini-card:hover{transform:translateY(-2px);box-shadow:0 18px 30px rgba(14,116,144,.08);border-color:#7dd3fc}.surat-spotlight-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:1rem;padding:1rem}.surat-spotlight-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff}.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}.surat-spotlight-body h3,.surat-mini-top h3,.surat-capsule-title{margin:0;font-size:1.05rem;font-weight:800;color:#1e293b}.surat-spotlight-body p,.surat-mini-card p,.surat-capsule-text{margin:.4rem 0 0;color:#64748b;line-height:1.55}.surat-spotlight-meta,.surat-mini-meta,.surat-capsule-meta{margin-top:.6rem;font-size:.82rem;font-weight:700;color:#0f766e}.surat-feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.surat-capsule{padding:1rem 1rem 1.05rem;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)}.surat-capsule-subtitle{margin-top:.25rem;font-size:.88rem;color:#64748b}.surat-capsule .btn-secondary,.surat-mini-card .btn-secondary{margin-top:.8rem}.surat-mini-card{padding:1rem;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%)}.surat-modal-box{max-width:860px}.surat-modal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem}.surat-search-item.is-hidden{display:none!important}.empty-state{padding:1rem 1.1rem;border:1px dashed #cbd5e1;border-radius:18px;background:#f8fafc;color:#64748b}.badge-muted,.badge-counter,.badge-success,.badge-danger{white-space:nowrap}
+.surat-monitor-page{padding-bottom:2rem}.surat-monitor-shell{display:grid;gap:1.25rem}.surat-focus-hero{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.9fr);gap:1rem;padding:1.5rem;border-radius:28px;background:linear-gradient(135deg,#eff8ff 0%,#ffffff 52%,#f0fdf4 100%);border:1px solid rgba(148,163,184,.22);box-shadow:0 24px 48px rgba(15,23,42,.08)}.surat-focus-kicker{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.6rem;padding:.35rem .75rem;border-radius:999px;background:#083344;color:#ecfeff;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.surat-scope-card{padding:1.1rem 1.15rem;border-radius:24px;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0}.surat-scope-label{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}.surat-scope-value{margin-top:.35rem;font-size:1.45rem;font-weight:800;color:#fff}.surat-scope-note{margin-top:.55rem;font-size:.92rem;color:#cbd5e1}.surat-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.surat-search-card{padding:1rem 1.15rem}.surat-search-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.surat-search-input{display:flex;align-items:center;gap:.65rem;min-width:min(100%,360px);padding:.8rem 1rem;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#475569}.surat-search-input input{width:100%;border:0;outline:0;background:transparent}.surat-focus-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.95fr);gap:1rem}.surat-focus-grid,.surat-focus-side{display:grid;gap:1rem}.surat-focus-card{border-radius:26px;padding:1.15rem;box-shadow:0 20px 40px rgba(15,23,42,.06)}.surat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}.surat-spotlight-list,.surat-capsule-list,.surat-mini-list{display:grid;gap:.85rem}.surat-spotlight-item,.surat-capsule,.surat-mini-card{border:1px solid #dbeafe;background:#fff;border-radius:22px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.surat-spotlight-item:hover,.surat-capsule:hover,.surat-mini-card:hover{transform:translateY(-2px);box-shadow:0 18px 30px rgba(14,116,144,.08);border-color:#7dd3fc}.surat-spotlight-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:1rem;padding:1rem}.surat-spotlight-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff}.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}.surat-spotlight-body h3,.surat-mini-top h3,.surat-capsule-title{margin:0;font-size:1.05rem;font-weight:800;color:#1e293b}.surat-spotlight-body p,.surat-mini-card p,.surat-capsule-text{margin:.4rem 0 0;color:#64748b;line-height:1.55}.surat-spotlight-meta,.surat-mini-meta,.surat-capsule-meta{margin-top:.6rem;font-size:.82rem;font-weight:700;color:#0f766e}.surat-feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.surat-capsule{padding:1rem 1rem 1.05rem;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)}.surat-capsule-subtitle{margin-top:.25rem;font-size:.88rem;color:#64748b}.surat-capsule .btn-secondary,.surat-mini-card .btn-secondary{margin-top:.8rem}.surat-mini-card{padding:1rem;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%)}.surat-modal-box{max-width:860px}.surat-modal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem}.surat-search-item.is-hidden{display:none!important}.empty-state{padding:1rem 1.1rem;border:1px dashed #cbd5e1;border-radius:18px;background:#f8fafc;color:#64748b}.badge-muted,.badge-counter,.badge-success,.badge-danger{white-space:nowrap}.surat-attachment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.85rem}.surat-attachment-card{border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(180deg,#fff 0%,#f8fbff 100%);padding:.75rem}.surat-attachment-thumb{display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;border:1px solid #dbeafe;background:#e2e8f0}.surat-attachment-frame{width:100%;height:180px;border:1px solid #dbeafe;border-radius:14px;background:#fff}.surat-attachment-name{margin-top:.65rem;font-size:.85rem;font-weight:700;color:#334155;word-break:break-word}.surat-attachment-link{margin-top:.45rem;display:inline-flex;align-items:center;gap:.45rem;color:#0369a1;font-size:.82rem;font-weight:700}
 @media (max-width:1200px){.surat-stat-grid,.surat-feed-grid,.surat-modal-grid,.surat-focus-layout,.surat-focus-hero{grid-template-columns:1fr}}
 @media (max-width:720px){.surat-search-header,.surat-card-head,.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{flex-direction:column;align-items:flex-start}.surat-focus-card{padding:1rem}.surat-search-input{min-width:100%}}
 </style>
@@ -501,12 +592,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const filterItems = document.querySelectorAll('.surat-search-item');
     const letterModal = document.getElementById('letterDetailModal');
     const minutesModal = document.getElementById('minutesViewModal');
+    const letterAttachmentContainer = document.getElementById('letterModalAttachments');
     function openModal(modal){if(!modal)return;modal.classList.remove('hidden');document.body.classList.add('overflow-hidden')}
     function closeModal(modal){if(!modal)return;modal.classList.add('hidden');document.body.classList.remove('overflow-hidden')}
     document.querySelectorAll('.modal-overlay').forEach(function(modal){modal.addEventListener('click',function(event){if(event.target.closest('.btn-cancel')||event.target.closest('.modal-close-btn')){closeModal(modal)}})});
     document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeModal(letterModal);closeModal(minutesModal)}});
     if(searchInput){searchInput.addEventListener('input',function(){const keyword=searchInput.value.trim().toLowerCase();filterItems.forEach(function(item){const haystack=item.dataset.searchScope||'';item.classList.toggle('is-hidden',keyword!==''&&!haystack.includes(keyword))})})}
-    document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';openModal(letterModal)})});
+    function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,function(match){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[match]})}
+    function renderLetterAttachments(rawAttachments){if(!letterAttachmentContainer)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){letterAttachmentContainer.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}letterAttachmentContainer.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;letterAttachmentContainer.appendChild(card)})}
+    document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';renderLetterAttachments(button.dataset.attachments||'[]');openModal(letterModal)})});
     document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';openModal(minutesModal)})});
 });
 </script>
