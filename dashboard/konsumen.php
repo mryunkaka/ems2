@@ -16,14 +16,21 @@ $pageTitle = 'Data Konsumen';
 
 ems_require_not_trainee_html('Konsumen');
 
-include __DIR__ . '/../partials/header.php';
-include __DIR__ . '/../partials/sidebar.php';
-
 // ===============================
 // ROLE USER
 // ===============================
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
+$canManualFarmasi = in_array($userDivision, ['Executive', 'General Affair'], true);
 $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+$salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
+$packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
+$userRhHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
+
+$flashMessages = $_SESSION['flash_messages'] ?? [];
+$flashErrors = $_SESSION['flash_errors'] ?? [];
+$flashWarnings = $_SESSION['flash_warnings'] ?? [];
+unset($_SESSION['flash_messages'], $_SESSION['flash_errors'], $_SESSION['flash_warnings']);
 
 // ===============================
 // FILTER INPUT
@@ -33,6 +40,351 @@ $startDate = $_GET['start_date'] ?? '';
 $endDate   = $_GET['end_date'] ?? '';
 
 $sales = [];
+$packages = [];
+$paketAB = [];
+$bandagePackages = [];
+$ifaksPackages = [];
+$painkillerPackages = [];
+$packagesById = [];
+$comboPackageModeLabel = 'Paket Combo';
+
+if ($canManualFarmasi) {
+    $stmtPackages = $pdo->prepare("SELECT * FROM packages" . ($packagesHasUnitCode ? " WHERE COALESCE(unit_code, 'roxwood') = :unit_code" : "") . " ORDER BY name ASC");
+    $stmtPackages->execute($packagesHasUnitCode ? [':unit_code' => $effectiveUnit] : []);
+    $packages = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($packages as $p) {
+        $id = (int)($p['id'] ?? 0);
+        $name = strtoupper((string)($p['name'] ?? ''));
+
+        if ($id <= 0) {
+            continue;
+        }
+
+        $packagesById[$id] = [
+            'name' => (string)($p['name'] ?? ''),
+            'price' => (int)($p['price'] ?? 0),
+            'bandage' => (int)($p['bandage_qty'] ?? 0),
+            'ifaks' => (int)($p['ifaks_qty'] ?? 0),
+            'painkiller' => (int)($p['painkiller_qty'] ?? 0),
+        ];
+
+        if (preg_match('/^PAKET\s+[A-Z]+(?:\s|$)/', $name)) {
+            $paketAB[] = $p;
+        } elseif ((int)$p['bandage_qty'] > 0 && (int)$p['ifaks_qty'] === 0 && (int)$p['painkiller_qty'] === 0) {
+            $bandagePackages[] = $p;
+        } elseif ((int)$p['ifaks_qty'] > 0 && (int)$p['bandage_qty'] === 0 && (int)$p['painkiller_qty'] === 0) {
+            $ifaksPackages[] = $p;
+        } elseif ((int)$p['painkiller_qty'] > 0 && (int)$p['bandage_qty'] === 0 && (int)$p['ifaks_qty'] === 0) {
+            $painkillerPackages[] = $p;
+        }
+    }
+
+    $comboNames = array_values(array_unique(array_filter(array_map(static function ($package) {
+        return trim((string)($package['name'] ?? ''));
+    }, $paketAB))));
+
+    if ($comboNames !== []) {
+        $comboPackageModeLabel = count($comboNames) === 1 ? $comboNames[0] : ('Paket ' . implode(' / ', array_map(static function ($name) {
+            if (preg_match('/^paket\s+(.+)$/iu', $name, $matches)) {
+                return trim((string)($matches[1] ?? ''));
+            }
+
+            return trim((string)$name);
+        }, $comboNames)));
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_manual_farmasi') {
+    $redirectQuery = [];
+    if ($q !== '') {
+        $redirectQuery['q'] = $q;
+    }
+    if ($startDate !== '') {
+        $redirectQuery['start_date'] = $startDate;
+    }
+    if ($endDate !== '') {
+        $redirectQuery['end_date'] = $endDate;
+    }
+    if (!empty($_GET['range'])) {
+        $redirectQuery['range'] = (string)$_GET['range'];
+    }
+    $redirectTo = 'konsumen.php' . ($redirectQuery ? ('?' . http_build_query($redirectQuery)) : '');
+
+    if (!$canManualFarmasi) {
+        $_SESSION['flash_errors'][] = 'Akses input manual rekap farmasi hanya untuk division Executive dan General Affair.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $postedToken = trim((string)($_POST['manual_farmasi_token'] ?? ''));
+    $sessionToken = trim((string)($_SESSION['manual_farmasi_token'] ?? ''));
+
+    if ($postedToken === '' || $sessionToken === '' || !hash_equals($sessionToken, $postedToken)) {
+        $_SESSION['flash_errors'][] = 'Permintaan input manual tidak valid atau sudah diproses.';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    unset($_SESSION['manual_farmasi_token']);
+
+    $manualErrors = [];
+    $transactionDate = trim((string)($_POST['transaction_date'] ?? ''));
+    $rawConsumerName = trim((string)($_POST['consumer_name'] ?? ''));
+    $consumerName = ems_normalize_citizen_id($rawConsumerName);
+    $manualMedicUserId = (int)($_POST['manual_medic_user_id'] ?? 0);
+    $manualMedicName = trim((string)($_POST['manual_medic_name'] ?? ''));
+    $manualMedicPosition = trim((string)($_POST['manual_medic_position'] ?? ''));
+    $packageMainRaw = trim((string)($_POST['package_main'] ?? ''));
+    $isCustomPackage = $packageMainRaw === 'custom';
+    $pkgMainId = $isCustomPackage ? 0 : (int)$packageMainRaw;
+    $pkgBandageId = (int)($_POST['package_bandage'] ?? 0);
+    $pkgIfaksId = (int)($_POST['package_ifaks'] ?? 0);
+    $pkgPainId = (int)($_POST['package_painkiller'] ?? 0);
+
+    if ($transactionDate === '') {
+        $manualErrors[] = 'Tanggal transaksi wajib diisi.';
+    } else {
+        $dateObj = DateTime::createFromFormat('Y-m-d', $transactionDate);
+        if (!$dateObj || $dateObj->format('Y-m-d') !== $transactionDate) {
+            $manualErrors[] = 'Format tanggal transaksi tidak valid.';
+        }
+    }
+
+    if ($consumerName === '') {
+        $manualErrors[] = ems_consumer_identifier_label() . ' wajib diisi.';
+    } elseif (!ems_looks_like_citizen_id($rawConsumerName)) {
+        $manualErrors[] = ems_consumer_identifier_label() . ' tidak valid. Gunakan format Citizen ID, bukan nama konsumen.';
+    }
+
+    if ($manualMedicUserId <= 0 || $manualMedicName === '') {
+        $manualErrors[] = 'Nama medis wajib dipilih dari autocomplete.';
+    }
+
+    $selectedIds = [];
+    if ($pkgMainId > 0) {
+        $selectedIds[] = $pkgMainId;
+    }
+    if ($pkgBandageId > 0) {
+        $selectedIds[] = $pkgBandageId;
+    }
+    if ($pkgIfaksId > 0) {
+        $selectedIds[] = $pkgIfaksId;
+    }
+    if ($pkgPainId > 0) {
+        $selectedIds[] = $pkgPainId;
+    }
+
+    if ($selectedIds === []) {
+        $manualErrors[] = 'Pilih minimal satu paket.';
+    }
+
+    $manualMedic = null;
+    if ($manualErrors === []) {
+        $manualMedicSql = "
+            SELECT id, full_name, position
+            FROM user_rh
+            WHERE id = :id
+              AND is_active = 1
+        ";
+        if ($userRhHasUnitCode) {
+            $manualMedicSql .= " AND COALESCE(unit_code, 'roxwood') = :unit_code";
+        }
+        $manualMedicSql .= " LIMIT 1";
+
+        $stmtMedic = $pdo->prepare($manualMedicSql);
+        $manualMedicParams = [':id' => $manualMedicUserId];
+        if ($userRhHasUnitCode) {
+            $manualMedicParams[':unit_code'] = $effectiveUnit;
+        }
+        $stmtMedic->execute($manualMedicParams);
+        $manualMedic = $stmtMedic->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if (!$manualMedic) {
+            $manualErrors[] = 'Data medis tidak ditemukan atau tidak aktif.';
+        } elseif (strcasecmp(trim((string)$manualMedic['full_name']), $manualMedicName) !== 0) {
+            $manualErrors[] = 'Nama medis tidak sesuai dengan data yang dipilih.';
+        }
+    }
+
+    $packagesSelected = [];
+    if ($manualErrors === []) {
+        $selectedIds = array_values(array_unique(array_filter($selectedIds, static fn($id) => (int)$id > 0)));
+        $placeholders = implode(',', array_fill(0, count($selectedIds), '?'));
+        $stmtPackage = $pdo->prepare("SELECT * FROM packages WHERE id IN ($placeholders)" . ($packagesHasUnitCode ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
+        $packageParams = $selectedIds;
+        if ($packagesHasUnitCode) {
+            $packageParams[] = $effectiveUnit;
+        }
+        $stmtPackage->execute($packageParams);
+
+        foreach ($stmtPackage->fetchAll(PDO::FETCH_ASSOC) as $packageRow) {
+            $packagesSelected[(int)$packageRow['id']] = $packageRow;
+        }
+
+        foreach ($selectedIds as $selectedId) {
+            if (!isset($packagesSelected[$selectedId])) {
+                $manualErrors[] = 'Ada paket yang tidak ditemukan di database.';
+                break;
+            }
+        }
+    }
+
+    if ($manualErrors === []) {
+        $stmtCheck = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM sales
+            WHERE DATE(created_at) = :transaction_date
+              AND UPPER(
+                    REPLACE(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(TRIM(consumer_name), ' ', ''),
+                                '-',
+                                ''
+                            ),
+                            '.',
+                            ''
+                        ),
+                        '/',
+                        ''
+                    )
+                ) = :consumer_name
+              " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
+        ");
+        $checkParams = [
+            ':transaction_date' => $transactionDate,
+            ':consumer_name' => $consumerName,
+        ];
+        if ($salesHasUnitCode) {
+            $checkParams[':unit_code'] = $effectiveUnit;
+        }
+        $stmtCheck->execute($checkParams);
+
+        if ((int)$stmtCheck->fetchColumn() > 0) {
+            $manualErrors[] = ems_consumer_identifier_label() . ' ' . $consumerName . ' sudah punya transaksi pada tanggal ' . $transactionDate . '.';
+        }
+    }
+
+    if ($manualErrors !== []) {
+        $_SESSION['flash_errors'] = array_merge($_SESSION['flash_errors'] ?? [], $manualErrors);
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $createdAt = $transactionDate . ' ' . date('H:i:s');
+    $actorName = trim((string)($_SESSION['user_rh']['name'] ?? $_SESSION['user_rh']['full_name'] ?? 'System'));
+    $medicPositionLabel = ems_position_label($manualMedicPosition !== '' ? $manualMedicPosition : ($manualMedic['position'] ?? ''));
+    $note = 'Input manual rekap farmasi dari halaman konsumen oleh ' . ($actorName !== '' ? $actorName : 'System');
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmtInsert = $pdo->prepare("
+            INSERT INTO sales
+            (
+                consumer_name,
+                medic_name,
+                medic_user_id,
+                medic_jabatan,
+                " . ($salesHasUnitCode ? "unit_code," : "") . "
+                package_id,
+                package_name,
+                price,
+                qty_bandage,
+                qty_ifaks,
+                qty_painkiller,
+                keterangan,
+                created_at,
+                tx_hash
+            )
+            VALUES
+            (
+                :consumer_name,
+                :medic_name,
+                :medic_user_id,
+                :medic_jabatan,
+                " . ($salesHasUnitCode ? ":unit_code," : "") . "
+                :package_id,
+                :package_name,
+                :price,
+                :qty_bandage,
+                :qty_ifaks,
+                :qty_painkiller,
+                :keterangan,
+                :created_at,
+                :tx_hash
+            )
+        ");
+
+        if ($isCustomPackage) {
+            $customPrice = 0;
+            $customBandage = 0;
+            $customIfaks = 0;
+            $customPain = 0;
+            $customPackageId = (int)($selectedIds[0] ?? 0);
+
+            foreach ($selectedIds as $selectedId) {
+                $selectedPackage = $packagesSelected[$selectedId];
+                $customPrice += (int)$selectedPackage['price'];
+                $customBandage += (int)$selectedPackage['bandage_qty'];
+                $customIfaks += (int)$selectedPackage['ifaks_qty'];
+                $customPain += (int)$selectedPackage['painkiller_qty'];
+            }
+
+            $stmtInsert->execute([
+                ':consumer_name' => $consumerName,
+                ':medic_name' => (string)$manualMedic['full_name'],
+                ':medic_user_id' => (int)$manualMedic['id'],
+                ':medic_jabatan' => $medicPositionLabel,
+                ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
+                ':package_id' => $customPackageId,
+                ':package_name' => 'Paket Custom',
+                ':price' => $customPrice,
+                ':qty_bandage' => $customBandage,
+                ':qty_ifaks' => $customIfaks,
+                ':qty_painkiller' => $customPain,
+                ':keterangan' => $note,
+                ':created_at' => $createdAt,
+                ':tx_hash' => hash('sha256', $postedToken . '|manual-custom|' . $manualMedic['id']),
+            ]);
+        } else {
+            foreach ($selectedIds as $selectedId) {
+                $selectedPackage = $packagesSelected[$selectedId];
+
+                $stmtInsert->execute([
+                    ':consumer_name' => $consumerName,
+                    ':medic_name' => (string)$manualMedic['full_name'],
+                    ':medic_user_id' => (int)$manualMedic['id'],
+                    ':medic_jabatan' => $medicPositionLabel,
+                    ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
+                    ':package_id' => (int)$selectedPackage['id'],
+                    ':package_name' => (string)$selectedPackage['name'],
+                    ':price' => (int)$selectedPackage['price'],
+                    ':qty_bandage' => (int)$selectedPackage['bandage_qty'],
+                    ':qty_ifaks' => (int)$selectedPackage['ifaks_qty'],
+                    ':qty_painkiller' => (int)$selectedPackage['painkiller_qty'],
+                    ':keterangan' => $note,
+                    ':created_at' => $createdAt,
+                    ':tx_hash' => hash('sha256', $postedToken . '|manual|' . $selectedId . '|' . $manualMedic['id']),
+                ]);
+            }
+        }
+
+        $pdo->commit();
+        $_SESSION['flash_messages'][] = 'Input manual rekap farmasi berhasil disimpan.';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        $_SESSION['flash_errors'][] = 'Gagal menyimpan input manual rekap farmasi.';
+        error_log('[manual_farmasi_konsumen] ' . $e->getMessage());
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}
 
 // ===============================
 // QUERY DATA KONSUMEN (DINAMIS)
@@ -88,6 +440,13 @@ if ($q !== '' || ($startDate && $endDate)) {
     $stmt->execute($params);
     $sales = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+if ($canManualFarmasi && empty($_SESSION['manual_farmasi_token'])) {
+    $_SESSION['manual_farmasi_token'] = bin2hex(random_bytes(32));
+}
+
+include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/sidebar.php';
 ?>
 
 <section class="content">
@@ -97,17 +456,35 @@ if ($q !== '' || ($startDate && $endDate)) {
 
 	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?>. Data lama yang masih tersimpan sebagai nama tetap ditampilkan apa adanya.</p>
 
+        <?php foreach ($flashMessages as $message): ?>
+            <div class="alert alert-success mb-4"><?= htmlspecialchars((string)$message) ?></div>
+        <?php endforeach; ?>
+        <?php foreach ($flashWarnings as $warning): ?>
+            <div class="alert alert-warning mb-4"><?= htmlspecialchars((string)$warning) ?></div>
+        <?php endforeach; ?>
+        <?php foreach ($flashErrors as $error): ?>
+            <div class="alert alert-error mb-4"><?= htmlspecialchars((string)$error) ?></div>
+        <?php endforeach; ?>
+
         <div class="card">
             <div class="card-header-actions card-section">
                 <div class="card-header-actions-title">
                     Daftar Transaksi Konsumen
                 </div>
-                <?php if ($userRole !== 'staff'): ?>
+                <?php if ($userRole !== 'staff' || $canManualFarmasi): ?>
                     <div class="card-header-actions-right">
-                        <button type="button" class="btn btn-success" onclick="openImportModal()">
-                            <?= ems_icon('arrow-up-tray', 'h-4 w-4') ?>
-                            <span>Import Excel</span>
-                        </button>
+                        <?php if ($canManualFarmasi): ?>
+                            <button type="button" class="btn btn-primary" onclick="openManualFarmasiModal()">
+                                <?= ems_icon('plus', 'h-4 w-4') ?>
+                                <span>Input Farmasi Manual</span>
+                            </button>
+                        <?php endif; ?>
+                        <?php if ($userRole !== 'staff'): ?>
+                            <button type="button" class="btn btn-success" onclick="openImportModal()">
+                                <?= ems_icon('arrow-up-tray', 'h-4 w-4') ?>
+                                <span>Import Excel</span>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -263,6 +640,137 @@ if ($q !== '' || ($startDate && $endDate)) {
     </div>
 </div>
 
+<?php if ($canManualFarmasi): ?>
+    <div id="manualFarmasiModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell max-w-2xl">
+            <div class="modal-head">
+                <div class="modal-title">Input Rekap Farmasi Manual</div>
+                <button type="button" class="modal-close-btn" onclick="closeManualFarmasiModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+
+            <form method="post" id="manualFarmasiForm" class="modal-content">
+                <input type="hidden" name="action" value="add_manual_farmasi">
+                <input type="hidden" name="manual_farmasi_token" value="<?= htmlspecialchars((string)($_SESSION['manual_farmasi_token'] ?? '')) ?>">
+                <input type="hidden" name="manual_medic_user_id" id="manualMedicUserId" value="">
+                <input type="hidden" name="manual_medic_position" id="manualMedicPosition" value="">
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div>
+                        <label for="manualTransactionDate">Tanggal Transaksi</label>
+                        <input type="date" name="transaction_date" id="manualTransactionDate" value="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div>
+                        <label for="manualConsumerName"><?= htmlspecialchars(ems_consumer_identifier_label()) ?></label>
+                        <input type="text"
+                            name="consumer_name"
+                            id="manualConsumerName"
+                            placeholder="RH39IQLC"
+                            autocomplete="off"
+                            autocapitalize="characters"
+                            spellcheck="false"
+                            style="text-transform: uppercase;"
+                            required>
+                        <small>Gunakan Citizen ID konsumen, bukan nama.</small>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="manualMedicName">Nama Medis</label>
+                        <div class="relative">
+                            <input type="text"
+                                name="manual_medic_name"
+                                id="manualMedicName"
+                                placeholder="Ketik nama medis..."
+                                autocomplete="off"
+                                required>
+                            <div id="manualMedicSuggestions" class="ems-suggestion-box"></div>
+                        </div>
+                        <small>Pilih nama medis dari hasil autocomplete.</small>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label for="manualPkgMain">Pilihan Paket</label>
+                        <select name="package_main" id="manualPkgMain">
+                            <option value="">-- Tidak Pakai Paket --</option>
+                            <?php foreach ($paketAB as $pkg): ?>
+                                <option value="<?= (int)$pkg['id'] ?>">
+                                    <?= htmlspecialchars((string)$pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                </option>
+                            <?php endforeach; ?>
+                            <option value="custom">Paket Custom</option>
+                        </select>
+                        <small>Pilih paket combo <?= htmlspecialchars($comboPackageModeLabel) ?> atau gunakan Paket Custom untuk memilih item satu per satu.</small>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 mt-4 md:grid-cols-3 hidden" id="manualCustomPackageRow">
+                    <div>
+                        <label for="manualPkgBandage">Paket Bandage</label>
+                        <select name="package_bandage" id="manualPkgBandage">
+                            <option value="">-- Tidak pilih paket Bandage --</option>
+                            <?php foreach ($bandagePackages as $pkg): ?>
+                                <option value="<?= (int)$pkg['id'] ?>">
+                                    <?= htmlspecialchars((string)$pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="manualPkgIfaks">Paket IFAKS</label>
+                        <select name="package_ifaks" id="manualPkgIfaks">
+                            <option value="">-- Tidak pilih paket IFAKS --</option>
+                            <?php foreach ($ifaksPackages as $pkg): ?>
+                                <option value="<?= (int)$pkg['id'] ?>">
+                                    <?= htmlspecialchars((string)$pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="manualPkgPainkiller">Paket Painkiller</label>
+                        <select name="package_painkiller" id="manualPkgPainkiller">
+                            <option value="">-- Tidak pilih paket Painkiller --</option>
+                            <?php foreach ($painkillerPackages as $pkg): ?>
+                                <option value="<?= (int)$pkg['id'] ?>">
+                                    <?= htmlspecialchars((string)$pkg['name']) ?> (<?= (int)$pkg['price'] ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 mt-4">
+                    <div class="text-xs font-bold uppercase tracking-wide text-slate-500">Ringkasan Paket</div>
+                    <div class="grid gap-3 mt-3 md:grid-cols-4">
+                        <div>
+                            <div class="meta-text-xs">Bandage</div>
+                            <div class="font-semibold text-slate-900"><span id="manualTotalBandage">0</span> pcs</div>
+                        </div>
+                        <div>
+                            <div class="meta-text-xs">IFAKS</div>
+                            <div class="font-semibold text-slate-900"><span id="manualTotalIfaks">0</span> pcs</div>
+                        </div>
+                        <div>
+                            <div class="meta-text-xs">Painkiller</div>
+                            <div class="font-semibold text-slate-900"><span id="manualTotalPainkiller">0</span> pcs</div>
+                        </div>
+                        <div>
+                            <div class="meta-text-xs">Total Harga</div>
+                            <div class="font-semibold text-slate-900"><span id="manualTotalPrice">$0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-foot px-0 pb-0">
+                    <div class="modal-actions justify-end">
+                        <button type="button" class="btn-secondary" onclick="closeManualFarmasiModal()">Batal</button>
+                        <button type="submit" class="btn-success">Simpan</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif; ?>
+
 <!-- =========================
 MODAL IMPORT KONSUMEN (EMS)
 ========================= -->
@@ -402,6 +910,188 @@ MODAL IMPORT KONSUMEN (EMS)
         document.getElementById('endDate').value = this.value;
     });
 </script>
+
+<?php if ($canManualFarmasi): ?>
+<script>
+    const MANUAL_PACKAGES = <?= json_encode($packagesById, JSON_UNESCAPED_UNICODE) ?>;
+
+    function openManualFarmasiModal() {
+        const modal = document.getElementById('manualFarmasiModal');
+        if (!modal) return;
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
+        updateManualPackageSummary();
+    }
+
+    function closeManualFarmasiModal() {
+        const modal = document.getElementById('manualFarmasiModal');
+        const form = document.getElementById('manualFarmasiForm');
+        if (!modal || !form) return;
+
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+        form.reset();
+        document.getElementById('manualMedicUserId').value = '';
+        document.getElementById('manualMedicPosition').value = '';
+        document.getElementById('manualMedicSuggestions').style.display = 'none';
+        document.getElementById('manualTransactionDate').value = new Date().toISOString().split('T')[0];
+        toggleManualPackageMode();
+        updateManualPackageSummary();
+    }
+
+    function formatManualDollar(amount) {
+        return '$' + Number(amount || 0).toLocaleString('id-ID');
+    }
+
+    function toggleManualPackageMode() {
+        const mainEl = document.getElementById('manualPkgMain');
+        const customRow = document.getElementById('manualCustomPackageRow');
+        if (!mainEl || !customRow) return;
+
+        const isCustom = mainEl.value === 'custom';
+        customRow.classList.toggle('hidden', !isCustom);
+
+        if (!isCustom) {
+            ['manualPkgBandage', 'manualPkgIfaks', 'manualPkgPainkiller'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.value = '';
+                }
+            });
+        }
+    }
+
+    function getManualSelectedPackageIds() {
+        const mainEl = document.getElementById('manualPkgMain');
+        if (!mainEl) return [];
+
+        if (mainEl.value === 'custom') {
+            return ['manualPkgBandage', 'manualPkgIfaks', 'manualPkgPainkiller']
+                .map(function(id) {
+                    const el = document.getElementById(id);
+                    return el ? parseInt(el.value || '0', 10) : 0;
+                })
+                .filter(Boolean);
+        }
+
+        return [parseInt(mainEl.value || '0', 10)].filter(Boolean);
+    }
+
+    function updateManualPackageSummary() {
+        toggleManualPackageMode();
+
+        let totalBandage = 0;
+        let totalIfaks = 0;
+        let totalPainkiller = 0;
+        let totalPrice = 0;
+
+        getManualSelectedPackageIds().forEach(function(id) {
+            const pkg = MANUAL_PACKAGES[id];
+            if (!pkg) return;
+
+            totalBandage += parseInt(pkg.bandage || 0, 10);
+            totalIfaks += parseInt(pkg.ifaks || 0, 10);
+            totalPainkiller += parseInt(pkg.painkiller || 0, 10);
+            totalPrice += parseInt(pkg.price || 0, 10);
+        });
+
+        document.getElementById('manualTotalBandage').textContent = totalBandage;
+        document.getElementById('manualTotalIfaks').textContent = totalIfaks;
+        document.getElementById('manualTotalPainkiller').textContent = totalPainkiller;
+        document.getElementById('manualTotalPrice').textContent = formatManualDollar(totalPrice);
+    }
+
+    ['manualPkgMain', 'manualPkgBandage', 'manualPkgIfaks', 'manualPkgPainkiller'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', updateManualPackageSummary);
+        }
+    });
+
+    let manualMedicSearchTimeout;
+    const manualMedicInput = document.getElementById('manualMedicName');
+    const manualMedicSuggestions = document.getElementById('manualMedicSuggestions');
+    const manualMedicUserId = document.getElementById('manualMedicUserId');
+    const manualMedicPosition = document.getElementById('manualMedicPosition');
+
+    manualMedicInput.addEventListener('input', function() {
+        clearTimeout(manualMedicSearchTimeout);
+        manualMedicUserId.value = '';
+        manualMedicPosition.value = '';
+
+        const query = this.value.trim();
+        if (query.length < 2) {
+            manualMedicSuggestions.style.display = 'none';
+            return;
+        }
+
+        manualMedicSearchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`/actions/search_medic.php?q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                if (data.success && Array.isArray(data.medics) && data.medics.length > 0) {
+                    manualMedicSuggestions.innerHTML = data.medics.map(function(m) {
+                        const safeName = String(m.full_name || '').replace(/'/g, "\\'");
+                        const safePosition = String(m.position || '').replace(/'/g, "\\'");
+                        return `
+                            <div class="medic-suggestion-item" onclick="selectManualMedic(${parseInt(m.id || 0, 10)}, '${safeName}', '${safePosition}')">
+                                <strong>${String(m.full_name || '')}</strong>
+                                <div class="meta-text-xs">${String(m.position || '-')}</div>
+                            </div>
+                        `;
+                    }).join('');
+                    manualMedicSuggestions.style.display = 'block';
+                } else {
+                    manualMedicSuggestions.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error searching medic:', error);
+                manualMedicSuggestions.style.display = 'none';
+            }
+        }, 250);
+    });
+
+    function selectManualMedic(id, name, position) {
+        manualMedicInput.value = name;
+        manualMedicUserId.value = id;
+        manualMedicPosition.value = position;
+        manualMedicSuggestions.style.display = 'none';
+    }
+
+    document.getElementById('manualFarmasiForm').addEventListener('submit', function(e) {
+        const citizenIdInput = document.getElementById('manualConsumerName');
+        if (citizenIdInput) {
+            citizenIdInput.value = String(citizenIdInput.value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+        }
+
+        if (!manualMedicUserId.value) {
+            e.preventDefault();
+            alert('Pilih nama medis dari autocomplete terlebih dahulu.');
+            return;
+        }
+
+        if (getManualSelectedPackageIds().length === 0) {
+            e.preventDefault();
+            alert('Pilih minimal satu paket.');
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        const manualModal = document.getElementById('manualFarmasiModal');
+        if (manualModal && e.target === manualModal) {
+            closeManualFarmasiModal();
+        }
+
+        if (e.target !== manualMedicInput && !manualMedicSuggestions.contains(e.target)) {
+            manualMedicSuggestions.style.display = 'none';
+        }
+    });
+</script>
+<?php endif; ?>
 
 <script>
     // ================================================
@@ -618,6 +1308,9 @@ MODAL IMPORT KONSUMEN (EMS)
         if (e.key === 'Escape') {
             closeIdentityModal();
             closeImportModal();
+            <?php if ($canManualFarmasi): ?>
+            closeManualFarmasiModal();
+            <?php endif; ?>
         }
     });
 </script>
