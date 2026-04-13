@@ -39,10 +39,54 @@ function medicalRecordValue(mixed $value, string $fallback = '-'): string
     return $value !== '' ? $value : $fallback;
 }
 
-// Get pagination
-$page = max(1, (int)($_GET['page'] ?? 1));
-$perPage = 20;
-$offset = ($page - 1) * $perPage;
+function medicalRecordAssistantNamesMap(PDO $pdo, array $recordIds): array
+{
+    $recordIds = array_values(array_unique(array_filter(array_map('intval', $recordIds), static fn (int $id): bool => $id > 0)));
+    if ($recordIds === []) {
+        return [];
+    }
+
+    $hasAssistantsTable = ems_table_exists($pdo, 'medical_record_assistants');
+    $map = [];
+
+    if ($hasAssistantsTable) {
+        $placeholders = implode(',', array_fill(0, count($recordIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT
+                mra.medical_record_id,
+                GROUP_CONCAT(u.full_name ORDER BY mra.sort_order ASC, u.full_name ASC SEPARATOR ', ') AS assistant_names
+            FROM medical_record_assistants mra
+            INNER JOIN user_rh u ON u.id = mra.assistant_user_id
+            WHERE mra.medical_record_id IN ($placeholders)
+            GROUP BY mra.medical_record_id
+        ");
+        $stmt->execute($recordIds);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $map[(int) ($row['medical_record_id'] ?? 0)] = trim((string) ($row['assistant_names'] ?? ''));
+        }
+    }
+
+    $placeholders = implode(',', array_fill(0, count($recordIds), '?'));
+    $stmt = $pdo->prepare("
+        SELECT
+            r.id AS medical_record_id,
+            COALESCE(a.full_name, '') AS assistant_names
+        FROM medical_records r
+        LEFT JOIN user_rh a ON a.id = r.assistant_id
+        WHERE r.id IN ($placeholders)
+    ");
+    $stmt->execute($recordIds);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+        $recordId = (int) ($row['medical_record_id'] ?? 0);
+        if ($recordId <= 0 || (isset($map[$recordId]) && $map[$recordId] !== '')) {
+            continue;
+        }
+
+        $map[$recordId] = trim((string) ($row['assistant_names'] ?? ''));
+    }
+
+    return $map;
+}
 
 // Get search keyword
 $search = trim($_GET['search'] ?? '');
@@ -85,12 +129,6 @@ if ($search !== '') {
     $whereClause .= ' AND (' . implode(' OR ', $searchParts) . ')';
 }
 
-// Get total records
-$countStmt = $pdo->prepare("SELECT COUNT(*) FROM medical_records r WHERE $whereClause");
-$countStmt->execute($params);
-$totalRecords = $countStmt->fetchColumn();
-$totalPages = ceil($totalRecords / $perPage);
-
 // Get records with joins
 $stmt = $pdo->prepare("
     SELECT 
@@ -106,10 +144,11 @@ $stmt = $pdo->prepare("
     LEFT JOIN user_rh c ON c.id = r.created_by
     WHERE $whereClause
     ORDER BY r.created_at DESC
-    LIMIT $perPage OFFSET $offset
 ");
 $stmt->execute($params);
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$assistantNamesMap = medicalRecordAssistantNamesMap($pdo, array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $records));
+$detailTemplates = [];
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -180,7 +219,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 <?php else: ?>
                     <div class="overflow-x-auto">
-                        <table class="table-custom w-full">
+                        <table id="medicalRecordsTable" class="table-custom w-full" data-auto-datatable="true" data-dt-order='[[0,"desc"]]' data-dt-column-defs='[{"targets":[10],"orderable":false,"searchable":false}]'>
                             <thead>
                                 <tr>
                                     <th class="text-left">Tanggal Dibuat</th>
@@ -190,6 +229,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <th class="text-left">Citizen ID</th>
                                     <th class="text-left">Jenis Kelamin</th>
                                     <th class="text-left">Dokter DPJP</th>
+                                    <th class="text-left">Asisten</th>
+                                    <th class="text-left">Diinput Oleh</th>
                                     <th class="text-left">Jenis Operasi</th>
                                     <th class="text-center">Aksi</th>
                                 </tr>
@@ -200,13 +241,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                     $canEditRecord = ($record['visibility_scope'] ?? 'standard') === 'forensic_private'
                                         ? ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')
                                         : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
+                                    $assistantNames = trim((string) ($assistantNamesMap[(int) ($record['id'] ?? 0)] ?? ($record['assistant_name'] ?? '')));
+                                    $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
                                     ?>
                                     <tr class="hover:bg-gray-50">
-                                        <td>
+                                        <td data-order="<?= strtotime((string) ($record['created_at'] ?? '')) ?: 0 ?>">
                                             <?= date('d/m/Y H:i', strtotime($record['created_at'])) ?>
                                         </td>
                                         <td class="font-semibold">
-                                            <?php $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT))); ?>
                                             <a href="<?= $isForensicPrivate ? 'forensic_medical_records_view.php' : 'rekam_medis_view.php' ?>?id=<?= (int)$record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" class="text-primary hover:underline">
                                                 <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?>
                                             </a>
@@ -230,6 +272,13 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <div class="font-medium"><?= htmlspecialchars($record['doctor_name'] ?? '-') ?></div>
                                                 <div class="text-gray-500 text-xs"><?= htmlspecialchars($record['doctor_position'] ?? '') ?></div>
                                             </div>
+                                        </td>
+                                        <td>
+                                            <?= htmlspecialchars($assistantNames !== '' ? $assistantNames : '-', ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td>
+                                            <div class="font-medium"><?= htmlspecialchars((string) ($record['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                            <div class="text-xs text-gray-500">Input dokumen</div>
                                         </td>
                                         <td>
                                             <span class="badge badge-<?= $record['operasi_type'] === 'major' ? 'error' : 'warning' ?>">
@@ -269,116 +318,119 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </div>
                                         </td>
                                     </tr>
-                                    <template id="medical-record-detail-<?= (int) $record['id'] ?>">
-                                        <div class="forensic-detail-shell">
-                                            <div class="forensic-detail-hero">
-                                                <div class="forensic-detail-panel">
-                                                    <div class="forensic-detail-label">Identitas Pasien</div>
-                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_name']), ENT_QUOTES, 'UTF-8') ?></div>
-                                                    <div class="forensic-detail-meta">
-                                                        No. rekam medis: <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?><br>
-                                                        Citizen ID: <?= htmlspecialchars(medicalRecordValue($record['patient_citizen_id'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
-                                                        Dibuat: <?= htmlspecialchars(medicalRecordValue($record['created_at']), ENT_QUOTES, 'UTF-8') ?>
-                                                    </div>
-                                                </div>
-                                                <div class="forensic-detail-panel">
-                                                    <div class="forensic-detail-label">Tim Medis</div>
-                                                    <div class="forensic-detail-badges">
-                                                        <span class="badge-info"><?= htmlspecialchars(medicalRecordValue($record['patient_gender']), ENT_QUOTES, 'UTF-8') ?></span>
-                                                        <span class="<?= ($record['operasi_type'] ?? '') === 'major' ? 'badge-danger' : 'badge-warning' ?>">
-                                                            <?= htmlspecialchars(($record['operasi_type'] ?? '') === 'major' ? 'MAYOR' : 'MINOR', ENT_QUOTES, 'UTF-8') ?>
-                                                        </span>
-                                                    </div>
-                                                    <div class="forensic-detail-meta">
-                                                        DPJP: <?= htmlspecialchars(medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
-                                                        Asisten: <?= htmlspecialchars(medicalRecordValue($record['assistant_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
-                                                        Dibuat oleh: <?= htmlspecialchars(medicalRecordValue($record['created_by_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
-                                                    </div>
+                                    <?php
+                                    ob_start();
+                                    ?>
+                                    <div class="forensic-detail-shell">
+                                        <div class="forensic-detail-hero">
+                                            <div class="forensic-detail-panel">
+                                                <div class="forensic-detail-label">Identitas Pasien</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_name']), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="forensic-detail-meta">
+                                                    No. rekam medis: <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?><br>
+                                                    Citizen ID: <?= htmlspecialchars(medicalRecordValue($record['patient_citizen_id'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    Dibuat: <?= htmlspecialchars(medicalRecordValue($record['created_at']), ENT_QUOTES, 'UTF-8') ?>
                                                 </div>
                                             </div>
-
-                                            <div class="forensic-detail-grid">
-                                                <div class="forensic-detail-block">
-                                                    <div class="forensic-detail-label">Pekerjaan</div>
-                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_occupation']), ENT_QUOTES, 'UTF-8') ?></div>
+                                            <div class="forensic-detail-panel">
+                                                <div class="forensic-detail-label">Tim Medis</div>
+                                                <div class="forensic-detail-badges">
+                                                    <span class="badge-info"><?= htmlspecialchars(medicalRecordValue($record['patient_gender']), ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <span class="<?= ($record['operasi_type'] ?? '') === 'major' ? 'badge-danger' : 'badge-warning' ?>">
+                                                        <?= htmlspecialchars(($record['operasi_type'] ?? '') === 'major' ? 'MAYOR' : 'MINOR', ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
                                                 </div>
-                                                <div class="forensic-detail-block">
-                                                    <div class="forensic-detail-label">Tanggal Lahir</div>
-                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_dob'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
-                                                </div>
-                                                <div class="forensic-detail-block">
-                                                    <div class="forensic-detail-label">Nomor Telepon</div>
-                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_phone'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
-                                                </div>
-                                                <div class="forensic-detail-block">
-                                                    <div class="forensic-detail-label">Status Pasien</div>
-                                                    <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_status'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
-                                                </div>
-                                            </div>
-
-                                            <div class="forensic-detail-block">
-                                                <div class="forensic-detail-label">Alamat</div>
-                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_address'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
-                                            </div>
-
-                                            <div class="forensic-detail-block is-richtext">
-                                                <div class="forensic-detail-label">Hasil Rekam Medis</div>
-                                                <div class="forensic-detail-richtext">
-                                                    <?= $record['medical_result_html'] ?: '<p class="forensic-detail-value is-muted">Belum ada hasil rekam medis.</p>' ?>
+                                                <div class="forensic-detail-meta">
+                                                    DPJP: <?= htmlspecialchars(medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    Asisten: <?= htmlspecialchars(medicalRecordValue($assistantNames), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    Dibuat oleh: <?= htmlspecialchars(medicalRecordValue($record['created_by_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                                                 </div>
                                             </div>
                                         </div>
-                                    </template>
+
+                                        <div class="forensic-detail-grid">
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Pekerjaan</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_occupation']), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Tanggal Lahir</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_dob'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Nomor Telepon</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_phone'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Status Pasien</div>
+                                                <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_status'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                            </div>
+                                        </div>
+
+                                        <div class="forensic-detail-block">
+                                            <div class="forensic-detail-label">Alamat</div>
+                                            <div class="forensic-detail-value"><?= htmlspecialchars(medicalRecordValue($record['patient_address'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
+                                        </div>
+
+                                        <div class="forensic-detail-block is-richtext">
+                                            <div class="forensic-detail-label">Hasil Rekam Medis</div>
+                                            <div class="forensic-detail-richtext">
+                                                <?= $record['medical_result_html'] ?: '<p class="forensic-detail-value is-muted">Belum ada hasil rekam medis.</p>' ?>
+                                            </div>
+                                        </div>
+
+                                        <div class="forensic-detail-grid">
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Lampiran KTP</div>
+                                                <?php if (!empty($record['ktp_file_path'])): ?>
+                                                    <div class="forensic-detail-value">
+                                                        <a href="<?= htmlspecialchars(ems_asset((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <img src="<?= htmlspecialchars(ems_asset((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div class="forensic-detail-value is-muted">Lampiran KTP belum tersedia.</div>
+                                                <?php endif; ?>
+                                            </div>
+
+                                            <div class="forensic-detail-block">
+                                                <div class="forensic-detail-label">Lampiran MRI</div>
+                                                <?php if (!empty($record['mri_file_path'])): ?>
+                                                    <div class="forensic-detail-value">
+                                                        <a href="<?= htmlspecialchars(ems_asset((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
+                                                    </div>
+                                                    <div class="mt-3">
+                                                        <img src="<?= htmlspecialchars(ems_asset((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div class="forensic-detail-value is-muted">Lampiran MRI belum tersedia.</div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <?php
+                                    $detailTemplates[] = [
+                                        'id' => (int) $record['id'],
+                                        'html' => ob_get_clean(),
+                                    ];
+                                    ?>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
                     </div>
 
-                    <!-- Pagination -->
-                    <?php if ($totalPages > 1): ?>
-                        <div class="flex justify-between items-center mt-4">
-                            <div class="text-sm text-gray-600">
-                                Menampilkan <?= $offset + 1 ?> - <?= min($offset + $perPage, $totalRecords) ?> dari <?= $totalRecords ?> data
-                            </div>
-                            <div class="flex gap-2">
-                                <?php if ($page > 1): ?>
-                                    <a href="?page=<?= $page - 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
-                                       class="btn-secondary btn-sm">
-                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-                                        </svg>
-                                        Sebelumnya
-                                    </a>
-                                <?php endif; ?>
-
-                                <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                                    <?php if ($i == 1 || $i == $totalPages || abs($i - $page) <= 2): ?>
-                                        <a href="?page=<?= $i ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
-                                           class="btn-sm <?= $i == $page ? 'btn-primary' : 'btn-secondary' ?>">
-                                            <?= $i ?>
-                                        </a>
-                                    <?php elseif (abs($i - $page) == 3): ?>
-                                        <span class="px-2">...</span>
-                                    <?php endif; ?>
-                                <?php endfor; ?>
-
-                                <?php if ($page < $totalPages): ?>
-                                    <a href="?page=<?= $page + 1 ?><?= $search ? '&search=' . urlencode($search) : '' ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" 
-                                       class="btn-secondary btn-sm">
-                                        Selanjutnya
-                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-                                        </svg>
-                                    </a>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
     </div>
 </section>
+
+<?php foreach ($detailTemplates as $detailTemplate): ?>
+    <template id="medical-record-detail-<?= (int) $detailTemplate['id'] ?>">
+        <?= $detailTemplate['html'] ?>
+    </template>
+<?php endforeach; ?>
 
 <div id="medicalRecordDetailModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">

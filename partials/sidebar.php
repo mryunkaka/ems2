@@ -122,6 +122,7 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
 
 if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
     $groupedNav['Specialist Medical Authority'] = [
+        sidebarItem('/dashboard/specialist_operation_recap.php', 'specialist_operation_recap.php', 'Rekap Operasi Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/specialist_training_recap.php', 'specialist_training_recap.php', 'Rekap Pelatihan Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/specialist_promotion_assessment.php', 'specialist_promotion_assessment.php', 'Penilaian Layak Naik Jabatan', 'check-circle'),
         sidebarItem('/dashboard/persyaratan_jabatan.php', 'persyaratan_jabatan.php', 'Syarat Jabatan', 'wrench'),

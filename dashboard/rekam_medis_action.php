@@ -48,6 +48,10 @@ try {
     if ($patientName === '') {
         throw new Exception('Nama pasien wajib diisi.');
     }
+
+    if ($patientCitizenId === '') {
+        throw new Exception('Citizen ID pasien wajib diisi.');
+    }
     
     if (empty($patientDob)) {
         throw new Exception('Tanggal lahir pasien wajib diisi.');
@@ -134,6 +138,9 @@ try {
     
     // Handle multiple assistants - get first one for assistant_id (backward compatibility)
     $assistantIds = ems_normalize_assistant_ids((array) ($_POST['assistant_ids'] ?? []));
+    if ($assistantIds === []) {
+        throw new Exception('Asisten operasi wajib diisi minimal 1 orang.');
+    }
     $assistantId = $assistantIds[0] ?? null;
     
     $stmt = $pdo->prepare("
@@ -148,7 +155,7 @@ try {
     $stmt->execute([
         'MR-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2))),
         $patientName,
-        $patientCitizenId !== '' ? $patientCitizenId : null,
+        $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),

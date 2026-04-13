@@ -58,9 +58,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Citizen ID</label>
+                            <label class="form-label">Citizen ID <span class="text-danger">*</span></label>
                             <input type="text" name="patient_citizen_id" class="form-input"
-                                placeholder="Nomor identitas / citizen ID pasien" />
+                                placeholder="Nomor identitas / citizen ID pasien" required />
                         </div>
 
                         <!-- Pekerjaan -->
@@ -207,13 +207,13 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     <!-- Asisten (Multiple) -->
                     <div class="mt-4">
-                        <label class="form-label">Asisten Operasi</label>
+                        <label class="form-label">Asisten Operasi <span class="text-danger">*</span></label>
                         <div id="assistants-container">
                             <!-- Default 2 asisten -->
                             <div class="assistant-row grid grid-cols-12 gap-2 mb-2">
                                 <div class="col-span-11">
-                                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
-                                        <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten 1...">
+                                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant" data-autocomplete-required>
+                                        <input type="text" class="form-input assistant-select" data-user-autocomplete-input placeholder="Ketik nama asisten 1..." required>
                                         <input type="hidden" name="assistant_ids[]" data-user-autocomplete-hidden>
                                         <div class="ems-suggestion-box" data-user-autocomplete-list></div>
                                     </div>
@@ -245,7 +245,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </svg>
                             Tambah Asisten
                         </button>
-                        <p class="text-xs text-gray-500 mt-1">Minimal jabatan: Paramedic ke atas</p>
+                        <p class="text-xs text-gray-500 mt-1">Minimal 1 asisten wajib dipilih. Minimal jabatan: Paramedic ke atas.</p>
                     </div>
                 </div>
             </div>
@@ -518,6 +518,7 @@ include __DIR__ . '/../partials/sidebar.php';
     function saveToLocalStorage() {
         const formData = {
             patient_name: document.querySelector('[name="patient_name"]')?.value || '',
+            patient_citizen_id: document.querySelector('[name="patient_citizen_id"]')?.value || '',
             patient_occupation: document.querySelector('[name="patient_occupation"]')?.value || '',
             patient_dob: document.querySelector('[name="patient_dob"]')?.value || '',
             patient_phone: document.querySelector('[name="patient_phone"]')?.value || '',
@@ -555,6 +556,9 @@ include __DIR__ . '/../partials/sidebar.php';
             // Fill form fields
             if (formData.patient_name && document.querySelector('[name="patient_name"]')) {
                 document.querySelector('[name="patient_name"]').value = formData.patient_name;
+            }
+            if (formData.patient_citizen_id && document.querySelector('[name="patient_citizen_id"]')) {
+                document.querySelector('[name="patient_citizen_id"]').value = formData.patient_citizen_id;
             }
             if (formData.patient_occupation && document.querySelector('[name="patient_occupation"]')) {
                 document.querySelector('[name="patient_occupation"]').value = formData.patient_occupation;
@@ -638,6 +642,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             // Clear form fields manually
             document.querySelector('[name="patient_name"]').value = '';
+            document.querySelector('[name="patient_citizen_id"]').value = '';
             document.querySelector('[name="patient_occupation"]').value = 'Civilian';
             document.querySelector('[name="patient_dob"]').value = '';
             document.querySelector('[name="patient_phone"]').value = '';

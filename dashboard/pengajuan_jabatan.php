@@ -285,7 +285,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="card card-section">
             <div class="card-header">Riwayat Pengajuan (Terakhir 10)</div>
             <div class="table-wrapper-sm">
-                <table class="table-custom">
+                <table id="promotionHistoryTable" class="table-custom" data-auto-datatable="true" data-dt-order='[[0,"desc"]]'>
                     <thead>
                         <tr>
                             <th>Tanggal</th>

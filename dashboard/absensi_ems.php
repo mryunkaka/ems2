@@ -164,7 +164,7 @@ $leaderboard = $stmtLeaderboard->fetchAll(PDO::FETCH_ASSOC);
                 </p>
             <?php else: ?>
                 <div class="table-wrapper-sm">
-                    <table class="table-custom">
+                    <table id="todaySessionsTable" class="table-custom" data-auto-datatable="true" data-dt-order='[[1,"desc"]]' data-dt-page-length="5">
                         <thead>
                             <tr>
                                 <th>#</th>

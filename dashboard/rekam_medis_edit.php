@@ -120,9 +120,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Citizen ID</label>
+                            <label class="form-label">Citizen ID <span class="text-danger">*</span></label>
                             <input type="text" name="patient_citizen_id" class="form-input" 
-                                   value="<?= htmlspecialchars($record['patient_citizen_id'] ?? '') ?>" />
+                                   value="<?= htmlspecialchars($record['patient_citizen_id'] ?? '') ?>" required />
                         </div>
                         
                         <!-- Pekerjaan -->
@@ -299,18 +299,19 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
 
                     <div class="mt-4">
-                        <label class="form-label">Asisten Operasi</label>
+                        <label class="form-label">Asisten Operasi <span class="text-danger">*</span></label>
                         <div id="assistants-container">
                             <?php foreach ($assistants as $index => $assistant): ?>
                                 <div class="assistant-row grid grid-cols-12 gap-2 mb-2">
                                     <div class="col-span-11">
-                                        <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant">
+                                        <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="assistant"<?= $index === 0 ? ' data-autocomplete-required' : '' ?>>
                                             <input
                                                 type="text"
                                                 class="form-input assistant-select"
                                                 data-user-autocomplete-input
                                                 placeholder="Ketik nama asisten <?= $index + 1 ?>..."
-                                                value="<?= htmlspecialchars((string) ($assistant['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                value="<?= htmlspecialchars((string) ($assistant['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                <?= $index === 0 ? 'required' : '' ?>>
                                             <input
                                                 type="hidden"
                                                 name="assistant_ids[]"
@@ -339,7 +340,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </svg>
                             Tambah Asisten
                         </button>
-                        <p class="text-xs text-gray-500 mt-1">Minimal jabatan: Paramedic ke atas</p>
+                        <p class="text-xs text-gray-500 mt-1">Minimal 1 asisten wajib dipilih. Minimal jabatan: Paramedic ke atas.</p>
                     </div>
                 </div>
             </div>

@@ -149,7 +149,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
             </div>
 
             <div class="table-wrapper">
-                <table class="table-custom">
+                <table id="restaurantSettingsTable" class="table-custom" data-auto-datatable="true" data-dt-order='[[1,"asc"]]' data-dt-column-defs='[{"targets":[6],"orderable":false,"searchable":false}]'>
                     <thead>
                         <tr>
                             <th>#</th>
@@ -182,7 +182,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
                                         <span class="badge-status badge-cancelled">NON-AKTIF</span>
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td data-order="<?= strtotime((string) ($r['created_at'] ?? '')) ?: 0 ?>">
                                     <small class="meta-text">
                                         <?= date('d M Y', strtotime($r['created_at'])) ?>
                                     </small>

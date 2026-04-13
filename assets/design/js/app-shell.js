@@ -139,5 +139,51 @@ document.addEventListener("DOMContentLoaded", () => {
 
       return originalDataTable.apply(this, args);
     };
+
+    function isAutoDataTableEligible(table) {
+      if (!table || table.dataset.datatableInitialized === "true") return false;
+      if (!table.tHead || !table.tHead.rows || !table.tHead.rows[0]) return false;
+
+      const headerCount = table.tHead.rows[0].cells.length;
+      if (headerCount <= 0) return false;
+
+      const bodyRows = Array.from((table.tBodies && table.tBodies[0] ? table.tBodies[0].rows : []) || []);
+      if (bodyRows.length === 0) return false;
+
+      return bodyRows.every((row) => row.cells.length === headerCount);
+    }
+
+    function parseDataTableJson(value, fallback) {
+      if (!value) return fallback;
+      try {
+        return JSON.parse(value);
+      } catch (_error) {
+        return fallback;
+      }
+    }
+
+    document.querySelectorAll('table[data-auto-datatable="true"]').forEach((table) => {
+      if (!isAutoDataTableEligible(table)) return;
+
+      const order = parseDataTableJson(table.dataset.dtOrder, [[0, "desc"]]);
+      const columnDefs = parseDataTableJson(table.dataset.dtColumnDefs, []);
+      const pageLength = parseInt(table.dataset.dtPageLength || "10", 10);
+      const searching = table.dataset.dtSearching !== "false";
+      const paging = table.dataset.dtPaging !== "false";
+      const info = table.dataset.dtInfo !== "false";
+      const lengthChange = table.dataset.dtLengthChange !== "false";
+
+      $(table).DataTable({
+        order,
+        columnDefs,
+        pageLength: Number.isNaN(pageLength) ? 10 : pageLength,
+        searching,
+        paging,
+        info,
+        lengthChange,
+      });
+
+      table.dataset.datatableInitialized = "true";
+    });
   }
 });

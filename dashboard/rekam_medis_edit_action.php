@@ -67,6 +67,10 @@ try {
     if ($patientName === '') {
         throw new Exception('Nama pasien wajib diisi.');
     }
+
+    if ($patientCitizenId === '') {
+        throw new Exception('Citizen ID pasien wajib diisi.');
+    }
     
     if (empty($patientDob)) {
         throw new Exception('Tanggal lahir pasien wajib diisi.');
@@ -148,6 +152,9 @@ try {
     $medicalResultHtml = $_POST['medical_result_html'] ?? '';
     $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
     $assistantIds = ems_normalize_assistant_ids((array) ($_POST['assistant_ids'] ?? []));
+    if ($assistantIds === []) {
+        throw new Exception('Asisten operasi wajib diisi minimal 1 orang.');
+    }
     
     // =====================
     // 5. UPDATE DATABASE
@@ -175,7 +182,7 @@ try {
     
     $stmt->execute([
         $patientName,
-        $patientCitizenId !== '' ? $patientCitizenId : null,
+        $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),
