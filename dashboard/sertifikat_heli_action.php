@@ -96,15 +96,14 @@ if ($action === 'register') {
         exit;
     }
 
-    // Check position requirement
+    // Check position requirement (hierarchical check)
     if ($minJabatan !== '') {
         $userStmt = $pdo->prepare("SELECT position FROM user_rh WHERE id = ?");
         $userStmt->execute([$userId]);
         $user = $userStmt->fetch(PDO::FETCH_ASSOC);
         $userPosition = $user['position'] ?? '';
 
-        $allowedPositions = array_map('trim', explode(',', $minJabatan));
-        if (!in_array($userPosition, $allowedPositions, true)) {
+        if (!ems_position_meets_minimum($userPosition, $minJabatan)) {
             $_SESSION['flash_errors'][] = 'Jabatan Anda tidak memenuhi syarat untuk mendaftar.';
             header('Location: ' . $redirectTo);
             exit;

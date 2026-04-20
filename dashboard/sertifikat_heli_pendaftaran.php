@@ -60,11 +60,10 @@ if ($settings) {
         $userAlreadyRegistered = (bool)$checkStmt->fetch();
     }
 
-    // Check if user meets minimum position requirement
+    // Check if user meets minimum position requirement (hierarchical check)
     $meetsPositionRequirement = true;
     if ($minJabatan !== '') {
-        $allowedPositions = array_map('trim', explode(',', $minJabatan));
-        $meetsPositionRequirement = in_array($currentUserPosition, $allowedPositions, true);
+        $meetsPositionRequirement = ems_position_meets_minimum($currentUserPosition, $minJabatan);
     }
 
     // User can register if:

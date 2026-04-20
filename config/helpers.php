@@ -551,6 +551,32 @@ function ems_is_medical_position(?string $position): bool
     );
 }
 
+function ems_position_meets_minimum(?string $userPosition, string $minPosition): bool
+{
+    $userPosition = ems_normalize_position($userPosition);
+    $minPosition = ems_normalize_position($minPosition);
+
+    // Define position hierarchy (lowest to highest)
+    $hierarchy = [
+        'trainee',
+        'paramedic',
+        'co_asst',
+        'general_practitioner',
+        'specialist',
+    ];
+
+    $userIndex = array_search($userPosition, $hierarchy, true);
+    $minIndex = array_search($minPosition, $hierarchy, true);
+
+    // If either position is not in hierarchy, use exact match as fallback
+    if ($userIndex === false || $minIndex === false) {
+        return $userPosition === $minPosition;
+    }
+
+    // User meets minimum if their position is at or above the minimum
+    return $userIndex >= $minIndex;
+}
+
 function ems_get_user_unit_scope(PDO $pdo, array $sessionUser): array
 {
     static $cache = [];
