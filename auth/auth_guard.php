@@ -73,11 +73,14 @@ if (isset($_SESSION['user_rh'])) {
     $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
     $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
     if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
-        ems_enforce_dashboard_page_access(
-            $_SESSION['user_rh']['division'] ?? '',
-            $currentScript,
-            '/dashboard/index.php'
-        );
+        // Exception: sertifikat_heli_pendaftaran.php allows all logged-in users
+        if ($currentScript !== 'sertifikat_heli_pendaftaran.php') {
+            ems_enforce_dashboard_page_access(
+                $_SESSION['user_rh']['division'] ?? '',
+                $currentScript,
+                '/dashboard/index.php'
+            );
+        }
     }
 
     return;
