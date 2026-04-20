@@ -43,6 +43,7 @@ $groupedNav = [
         sidebarItem('/dashboard/rekam_medis_list.php', 'rekam_medis_list.php', 'Rekam Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/operasi_plastik.php', 'operasi_plastik.php', 'Operasi Plastik', 'building-office-2'),
         sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
+        sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
     ],
     'Farmasi' => [
         sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
@@ -162,6 +163,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
             ],
             'Medis' => [
                 sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
+                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
             ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
@@ -179,6 +181,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
             ],
             'Medis' => [
                 sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
+                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
             ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),

@@ -2048,7 +2048,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if ($medicName): ?>
             <div id="farmasiQuizTopAnchor"></div>
-            <div class="card farmasi-card farmasi-quiz-card" id="farmasiQuizCard">
+            <div class="card farmasi-card farmasi-quiz-card" id="farmasiQuizCard" style="display: none;">
                 <div class="farmasi-card-header">
                     <div class="farmasi-quiz-header-row">
                         <div>
