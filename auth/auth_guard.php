@@ -73,8 +73,8 @@ if (isset($_SESSION['user_rh'])) {
     $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
     $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
     if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
-        // Exception: sertifikat_heli_pendaftaran.php allows all logged-in users
-        if ($currentScript !== 'sertifikat_heli_pendaftaran.php') {
+        // Exception: sertifikat_heli pages allow all logged-in users
+        if ($currentScript !== 'sertifikat_heli_pendaftaran.php' && $currentScript !== 'sertifikat_heli_action.php') {
             ems_enforce_dashboard_page_access(
                 $_SESSION['user_rh']['division'] ?? '',
                 $currentScript,

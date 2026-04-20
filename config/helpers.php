@@ -814,8 +814,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
-    // Exception: sertifikat_heli_pendaftaran.php allows all logged-in users regardless of division
-    if ($scriptName === 'sertifikat_heli_pendaftaran.php') {
+    // Exception: sertifikat_heli pages allow all logged-in users regardless of division
+    if ($scriptName === 'sertifikat_heli_pendaftaran.php' || $scriptName === 'sertifikat_heli_action.php') {
         return;
     }
 
