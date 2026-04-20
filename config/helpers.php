@@ -814,6 +814,11 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
+    // Exception: sertifikat_heli_pendaftaran.php allows all logged-in users regardless of division
+    if ($scriptName === 'sertifikat_heli_pendaftaran.php') {
+        return;
+    }
+
     $sessionUser = $_SESSION['user_rh'] ?? [];
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
