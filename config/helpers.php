@@ -766,6 +766,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'emt_doj_action.php',
             'setting_akun.php',
             'setting_akun_action.php',
+            'sertifikat_heli_pendaftaran.php',
         ];
     }
 
@@ -807,6 +808,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'setting_akun_action.php',
         'input_dokumen_medis.php',
         'input_dokumen_medis_action.php',
+        'sertifikat_heli_pendaftaran.php',
     ];
 }
 
