@@ -7,7 +7,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../auth/csrf.php';
 
-$redirectTo = ems_url('/dashboard/sertifikat_heli.php');
+$redirectTo = ems_url('/dashboard/sertifikat_heli_pendaftaran.php');
 $action = trim((string)($_POST['action'] ?? ''));
 $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
 $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
