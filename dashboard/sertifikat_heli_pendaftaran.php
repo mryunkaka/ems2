@@ -14,6 +14,11 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
+// Filter out division access error to allow all logged-in users
+$errors = array_values(array_filter($errors, static function ($error) {
+    return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
+}));
+
 $currentUser = $_SESSION['user_rh'] ?? null;
 $currentUserId = (int)($currentUser['id'] ?? 0);
 $currentUserPosition = $currentUser['position'] ?? '';
