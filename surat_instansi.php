@@ -15,25 +15,23 @@ $code = trim((string)($_GET['code'] ?? ''));
 $recipients = [];
 try {
     $stmt = $pdo->query("
-        SELECT id, full_name, role
+        SELECT id, full_name, role, division
         FROM user_rh
         WHERE is_active = 1
+          AND LOWER(TRIM(role)) IN ('director', 'vice director', 'lead manager', 'head manager')
+          AND (unit_code IS NULL OR LOWER(TRIM(unit_code)) != 'alta')
+          AND LOWER(TRIM(full_name)) NOT LIKE '%programmer%'
         ORDER BY
             CASE LOWER(TRIM(role))
                 WHEN 'director' THEN 1
                 WHEN 'vice director' THEN 2
-                WHEN 'manager' THEN 3
-                WHEN 'staff manager' THEN 4
+                WHEN 'lead manager' THEN 3
+                WHEN 'head manager' THEN 4
                 ELSE 99
             END,
             full_name ASC
     ");
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-        if (!ems_is_letter_receiver_role($row['role'] ?? '')) {
-            continue;
-        }
-        $recipients[] = $row;
-    }
+    $recipients = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
     $error = 'Daftar tujuan pertemuan belum tersedia.';
 }
@@ -111,7 +109,7 @@ try {
                                     <option value="">-- Pilih Tujuan --</option>
                                     <?php foreach ($recipients as $recipient): ?>
                                         <option value="<?= (int)$recipient['id'] ?>">
-                                            <?= htmlspecialchars($recipient['full_name']) ?> — <?= htmlspecialchars(ems_role_label($recipient['role'] ?? '')) ?>
+                                            <?= htmlspecialchars($recipient['full_name']) ?> — <?= htmlspecialchars(ems_role_label($recipient['role'] ?? '')) ?> — <?= htmlspecialchars($recipient['division'] ?? '') ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
