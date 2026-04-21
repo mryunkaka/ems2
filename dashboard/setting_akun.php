@@ -127,6 +127,11 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
 
+// Hapus flash error division yang mungkin tersisa dari redirect halaman lain
+$errors = array_values(array_filter($errors, static function ($error) {
+    return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
+}));
+
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
 
 $promotionDateConfigs = [

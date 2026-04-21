@@ -913,6 +913,11 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Exception: regulasi_roxwood_hospital.php accessible by all divisions, roles, and positions
+    if ($scriptName === 'regulasi_roxwood_hospital.php') {
+        return;
+    }
+
     $sessionUser = $_SESSION['user_rh'] ?? [];
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);

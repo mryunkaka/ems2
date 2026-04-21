@@ -3,13 +3,9 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
-require_once __DIR__ . '/../auth/position_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
-
-require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
-ems_require_not_trainee_html('Regulasi Roxwood Hospital');
 
 $pageTitle = 'Regulasi Roxwood Hospital';
 $currentUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
