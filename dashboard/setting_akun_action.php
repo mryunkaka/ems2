@@ -24,6 +24,7 @@ $user = $_SESSION['user_rh'] ?? [];
 $userId        = $user['id'] ?? 0;
 $currentName   = $user['full_name'] ?? '';
 $currentPos    = $user['position'] ?? '';
+$currentRole   = $user['role'] ?? '';
 $currentBatch = $user['batch'] ?? null;
 
 // ===============================
@@ -106,7 +107,7 @@ if ($citizenId === $fullNameClean) {
 $oldPin     = $_POST['old_pin'] ?? '';
 $newPin     = $_POST['new_pin'] ?? '';
 $confirmPin = $_POST['confirm_pin'] ?? '';
-$batch = intval($_POST['batch'] ?? 0);
+$batch = $batchFromDb > 0 ? $batchFromDb : intval($_POST['batch'] ?? 0);
 $tanggalMasuk = $_POST['tanggal_masuk'] ?? null;
 
 if (empty($tanggalMasuk)) {
@@ -226,21 +227,60 @@ if ($willChangePin) {
     }
 }
 
+$settingAkunExtraDocFields = [
+    'sertifikat_operasi_plastik',
+    'sertifikat_operasi_kecil',
+    'sertifikat_operasi_besar',
+    'sertifikat_class_co_asst',
+    'sertifikat_class_paramedic',
+];
+$settingAkunDateFields = [
+    'tanggal_naik_paramedic',
+    'tanggal_naik_co_asst',
+    'tanggal_naik_dokter',
+    'tanggal_naik_dokter_spesialis',
+    'tanggal_join_manager',
+];
+$settingAkunSelectColumns = [
+    'file_ktp',
+    'file_sim',
+    'file_kta',
+    'file_skb',
+    'sertifikat_heli',
+    'sertifikat_operasi',
+    'dokumen_lainnya',
+];
+foreach (array_merge($settingAkunExtraDocFields, $settingAkunDateFields) as $optionalColumn) {
+    if (ems_column_exists($pdo, 'user_rh', $optionalColumn)) {
+        $settingAkunSelectColumns[] = $optionalColumn;
+    }
+}
 $stmt = $pdo->prepare("
-    SELECT 
-        file_ktp,
-        file_sim,
-        file_kta,
-        file_skb,
-        sertifikat_heli,
-        sertifikat_operasi,
-        dokumen_lainnya
+    SELECT
+        " . implode(",\n        ", $settingAkunSelectColumns) . "
     FROM user_rh
     WHERE id = ?
     LIMIT 1
 ");
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$requiredDocFields = [
+    'file_ktp' => 'Upload KTP wajib diunggah.',
+    'file_skb' => 'Upload SKB wajib diunggah.',
+    'file_kta' => 'Upload KTA wajib diunggah.',
+];
+
+foreach ($requiredDocFields as $field => $message) {
+    $hasExistingFile = !empty($userDb[$field]);
+    $hasNewUpload = !empty($_FILES[$field]['tmp_name']) && (int)($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;
+
+    if (!$hasExistingFile && !$hasNewUpload) {
+        $_SESSION['flash_errors'][] = $message;
+        header('Location: setting_akun.php');
+        exit;
+    }
+}
 
 $stmt = $pdo->prepare("
     SELECT kode_nomor_induk_rs 
@@ -318,6 +358,11 @@ $docFields = [
     'sertifikat_heli',
     'sertifikat_operasi',
 ];
+foreach ($settingAkunExtraDocFields as $extraDocField) {
+    if (array_key_exists($extraDocField, $userDb)) {
+        $docFields[] = $extraDocField;
+    }
+}
 
 $uploadedPaths = [];
 
@@ -497,6 +542,53 @@ if ($academyJson === false) {
 
 ensureUserDokumenLainnyaColumnSupportsJson($pdo);
 
+$currentPositionNormalized = ems_normalize_position($currentPos);
+$currentRoleNormalized = ems_normalize_role($currentRole);
+
+$visibleDateFields = [];
+if ($currentPositionNormalized === 'paramedic' && array_key_exists('tanggal_naik_paramedic', $userDb)) {
+    $visibleDateFields[] = 'tanggal_naik_paramedic';
+}
+if ($currentPositionNormalized === 'co_asst' && array_key_exists('tanggal_naik_co_asst', $userDb)) {
+    $visibleDateFields[] = 'tanggal_naik_co_asst';
+}
+if ($currentPositionNormalized === 'general_practitioner' && array_key_exists('tanggal_naik_dokter', $userDb)) {
+    $visibleDateFields[] = 'tanggal_naik_dokter';
+}
+if ($currentPositionNormalized === 'specialist' && array_key_exists('tanggal_naik_dokter_spesialis', $userDb)) {
+    $visibleDateFields[] = 'tanggal_naik_dokter_spesialis';
+}
+if (ems_is_manager_plus_role($currentRoleNormalized) && array_key_exists('tanggal_join_manager', $userDb)) {
+    $visibleDateFields[] = 'tanggal_join_manager';
+}
+
+$dateFieldValues = [];
+foreach ($settingAkunDateFields as $dateField) {
+    if (!array_key_exists($dateField, $userDb)) {
+        continue;
+    }
+
+    if (in_array($dateField, $visibleDateFields, true)) {
+        $postedValue = trim((string)($_POST[$dateField] ?? ''));
+        if ($postedValue === '') {
+            $_SESSION['flash_errors'][] = 'Tanggal kenaikan yang sesuai jabatan wajib diisi.';
+            header('Location: setting_akun.php');
+            exit;
+        }
+
+        if ($postedValue !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $postedValue)) {
+            $_SESSION['flash_errors'][] = 'Format tanggal tidak valid.';
+            header('Location: setting_akun.php');
+            exit;
+        }
+
+        $dateFieldValues[$dateField] = $postedValue !== '' ? $postedValue : null;
+        continue;
+    }
+
+    $dateFieldValues[$dateField] = $userDb[$dateField] ?? null;
+}
+
 /*
 |--------------------------------------------------------------------------
 | UPDATE DATA USER
@@ -530,6 +622,11 @@ if ($batchFromDb === 0) {
 foreach ($uploadedPaths as $col => $path) {
     $sql      .= ", {$col} = ?";
     $params[]  = $path;
+}
+
+foreach ($dateFieldValues as $col => $value) {
+    $sql .= ", {$col} = ?";
+    $params[] = $value;
 }
 
 if ($kodeNomorInduk !== null) {

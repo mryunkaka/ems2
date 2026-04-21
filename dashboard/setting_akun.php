@@ -19,24 +19,49 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 */
 $userSession = $_SESSION['user_rh'] ?? [];
 $userId = (int)($userSession['id'] ?? 0);
+$currentRole = $userSession['role'] ?? '';
+
+$baseSelectColumns = [
+    'full_name',
+    'position',
+    'batch',
+    'kode_nomor_induk_rs',
+    'tanggal_masuk',
+    'citizen_id',
+    'no_hp_ic',
+    'jenis_kelamin',
+    'file_ktp',
+    'file_sim',
+    'file_kta',
+    'file_skb',
+    'sertifikat_heli',
+    'sertifikat_operasi',
+    'dokumen_lainnya',
+];
+
+$optionalSettingAkunColumns = [
+    'sertifikat_operasi_plastik',
+    'sertifikat_operasi_kecil',
+    'sertifikat_operasi_besar',
+    'sertifikat_class_co_asst',
+    'sertifikat_class_paramedic',
+    'tanggal_naik_paramedic',
+    'tanggal_naik_co_asst',
+    'tanggal_naik_dokter',
+    'tanggal_naik_dokter_spesialis',
+    'tanggal_join_manager',
+];
+
+$selectColumns = $baseSelectColumns;
+foreach ($optionalSettingAkunColumns as $optionalColumn) {
+    if (ems_column_exists($pdo, 'user_rh', $optionalColumn)) {
+        $selectColumns[] = $optionalColumn;
+    }
+}
 
 $stmt = $pdo->prepare("
     SELECT 
-        full_name,
-        position,
-        batch,
-        kode_nomor_induk_rs,
-        tanggal_masuk,
-        citizen_id,
-        no_hp_ic,
-        jenis_kelamin,
-        file_ktp,
-        file_sim,
-        file_kta,
-        file_skb,
-        sertifikat_heli,
-        sertifikat_operasi,
-        dokumen_lainnya
+        " . implode(",\n        ", $selectColumns) . "
     FROM user_rh
     WHERE id = ?
     LIMIT 1
@@ -78,6 +103,8 @@ $noHpIc = $userDb['no_hp_ic'] ?? '';
 
 $medicName  = $userDb['full_name'] ?? '';
 $medicPos   = $userDb['position'] ?? '';
+$medicPosNormalized = ems_normalize_position($medicPos);
+$currentRoleNormalized = ems_normalize_role($currentRole);
 $medicBatch = $userDb['batch'] ?? '';
 $nomorInduk = $userDb['kode_nomor_induk_rs'] ?? '';
 $tanggalMasuk = $userDb['tanggal_masuk'] ?? '';
@@ -101,6 +128,31 @@ $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
 
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
+
+$promotionDateConfigs = [
+    'tanggal_naik_paramedic' => 'Tanggal Naik ke Paramedic',
+    'tanggal_naik_co_asst' => 'Tanggal Naik ke Co. Asst',
+    'tanggal_naik_dokter' => 'Tanggal Naik ke Dokter',
+    'tanggal_naik_dokter_spesialis' => 'Tanggal Naik ke Dokter Spesialis',
+    'tanggal_join_manager' => 'Tanggal Join Manager',
+];
+
+$visiblePromotionDateFields = [];
+if ($medicPosNormalized === 'paramedic' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_paramedic')) {
+    $visiblePromotionDateFields[] = 'tanggal_naik_paramedic';
+}
+if ($medicPosNormalized === 'co_asst' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_co_asst')) {
+    $visiblePromotionDateFields[] = 'tanggal_naik_co_asst';
+}
+if ($medicPosNormalized === 'general_practitioner' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_dokter')) {
+    $visiblePromotionDateFields[] = 'tanggal_naik_dokter';
+}
+if ($medicPosNormalized === 'specialist' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_dokter_spesialis')) {
+    $visiblePromotionDateFields[] = 'tanggal_naik_dokter_spesialis';
+}
+if (ems_is_manager_plus_role($currentRoleNormalized) && ems_column_exists($pdo, 'user_rh', 'tanggal_join_manager')) {
+    $visiblePromotionDateFields[] = 'tanggal_join_manager';
+}
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
@@ -232,12 +284,17 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
 DOKUMEN PENDUKUNG
 =============================== -->
                 <?php
-                function renderDocInput($label, $name, $path = null)
+                function renderDocInput($label, $name, $path = null, $required = false)
                 {
                 ?>
                     <div class="doc-upload-wrapper">
                         <div class="doc-upload-header">
-                            <label class="doc-label"><?= htmlspecialchars($label) ?></label>
+                            <label class="doc-label">
+                                <?= htmlspecialchars($label) ?>
+                                <?php if ($required): ?>
+                                    <span class="required">*</span>
+                                <?php endif; ?>
+                            </label>
 
                             <?php if (!empty($path)): ?>
                                 <div class="doc-status-badge">
@@ -266,13 +323,34 @@ DOKUMEN PENDUKUNG
                                 id="<?= htmlspecialchars($name) ?>"
                                 name="<?= htmlspecialchars($name) ?>"
                                 accept="image/png,image/jpeg"
+                                <?= $required && empty($path) ? 'required' : '' ?>
                                 class="hidden">
                             <div class="file-selected-name" data-for="<?= htmlspecialchars($name) ?>"></div>
                         </div>
 
                         <?php if (!empty($path)): ?>
                             <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
+                        <?php elseif ($required): ?>
+                            <small class="doc-hint">Dokumen ini wajib diunggah.</small>
                         <?php endif; ?>
+                    </div>
+                <?php
+                }
+
+                function renderPromotionDateInput(string $label, string $name, ?string $value = null, bool $required = false): void
+                {
+                ?>
+                    <div>
+                        <label>
+                            <?= htmlspecialchars($label) ?>
+                            <?php if ($required): ?>
+                                <span class="required">*</span>
+                            <?php endif; ?>
+                        </label>
+                        <input type="date"
+                            name="<?= htmlspecialchars($name) ?>"
+                            value="<?= htmlspecialchars((string)$value) ?>"
+                            <?= $required ? 'required' : '' ?>>
                     </div>
                 <?php
                 }
@@ -283,13 +361,40 @@ DOKUMEN PENDUKUNG
                 <p class="text-muted">Unggah dokumen pendukung (PNG / JPG)</p>
 
                 <?php
-                renderDocInput('Upload KTP', 'file_ktp', $userDb['file_ktp']);
-                renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb']);
+                renderDocInput('Upload KTP', 'file_ktp', $userDb['file_ktp'], true);
+                renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb'], true);
                 renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
-                renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta']);
+                renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
                 renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli']);
                 renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi']);
+                if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
+                    renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik']);
+                }
+                if (array_key_exists('sertifikat_operasi_kecil', $userDb)) {
+                    renderDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', $userDb['sertifikat_operasi_kecil']);
+                }
+                if (array_key_exists('sertifikat_operasi_besar', $userDb)) {
+                    renderDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', $userDb['sertifikat_operasi_besar']);
+                }
+                if (array_key_exists('sertifikat_class_co_asst', $userDb)) {
+                    renderDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', $userDb['sertifikat_class_co_asst']);
+                }
+                if (array_key_exists('sertifikat_class_paramedic', $userDb)) {
+                    renderDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', $userDb['sertifikat_class_paramedic']);
+                }
                 ?>
+
+                <?php if (!empty($visiblePromotionDateFields)): ?>
+                    <hr class="section-divider">
+                    <h3 class="section-form-title">Riwayat Kenaikan</h3>
+                    <p class="text-muted">Kolom tanggal naik hanya tampil sesuai jabatan aktif dan role manager.</p>
+
+                    <div class="row-form-2">
+                        <?php foreach ($visiblePromotionDateFields as $promotionField): ?>
+                            <?php renderPromotionDateInput($promotionDateConfigs[$promotionField] ?? $promotionField, $promotionField, $userDb[$promotionField] ?? '', true); ?>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
 
                 <div class="doc-upload-wrapper doc-upload-dashed">
                     <div class="doc-upload-header doc-upload-header-stack">

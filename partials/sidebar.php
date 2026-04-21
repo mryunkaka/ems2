@@ -134,6 +134,7 @@ if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
 
 if (ems_can_access_division_menu($division, 'Forensic')) {
     $groupedNav['Forensic'] = [
+        sidebarItem('/dashboard/forensic_medics.php', 'forensic_medics.php', 'List Medis', 'table-cells'),
         sidebarItem('/dashboard/forensic_medical_records_list.php', 'forensic_medical_records_list.php', 'Rekam Medis Private', 'clipboard-document-list'),
         sidebarItem('/dashboard/forensic_private_patients.php', 'forensic_private_patients.php', 'Data Pasien Private', 'lock-closed'),
         sidebarItem('/dashboard/forensic_visum_results.php', 'forensic_visum_results.php', 'Hasil Visum', 'document-text'),
