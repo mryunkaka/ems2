@@ -687,6 +687,27 @@ function ems_division_options(): array
     ];
 }
 
+function ems_all_division_scope_value(): string
+{
+    return 'All Divisi';
+}
+
+function ems_management_division_scope_value(): string
+{
+    return 'All Divisi Manajemen';
+}
+
+function ems_division_scope_options(): array
+{
+    return array_merge(
+        [
+            ['value' => ems_all_division_scope_value(), 'label' => 'All Divisi (termasuk Medis)'],
+            ['value' => ems_management_division_scope_value(), 'label' => 'All Divisi Manajemen (tanpa Medis)'],
+        ],
+        ems_division_options()
+    );
+}
+
 function ems_normalize_division(?string $division): string
 {
     $raw = strtolower(trim((string)$division));
@@ -729,6 +750,49 @@ function ems_is_valid_division(?string $division): bool
         array_column(ems_division_options(), 'value'),
         true
     );
+}
+
+function ems_normalize_division_scope(?string $value): string
+{
+    $raw = trim((string)$value);
+    $normalizedRaw = strtolower(preg_replace('/\s+/', ' ', $raw) ?: '');
+
+    if ($normalizedRaw === '' || in_array($normalizedRaw, ['all', 'all division', 'all divisi', 'semua', 'semua divisi'], true)) {
+        return ems_all_division_scope_value();
+    }
+
+    if (in_array($normalizedRaw, ['all divisi manajemen', 'all division management', 'semua divisi manajemen'], true)) {
+        return ems_management_division_scope_value();
+    }
+
+    $division = ems_normalize_division($raw);
+    if (!ems_is_valid_division($division)) {
+        return '';
+    }
+
+    return $division;
+}
+
+function ems_is_management_division(?string $division): bool
+{
+    $division = ems_normalize_division($division);
+    return $division !== '' && $division !== 'Medis';
+}
+
+function ems_division_scope_matches_division(?string $scope, ?string $division): bool
+{
+    $scope = ems_normalize_division_scope($scope);
+    $division = ems_normalize_division($division);
+
+    if ($scope === ems_all_division_scope_value()) {
+        return true;
+    }
+
+    if ($scope === ems_management_division_scope_value()) {
+        return ems_is_management_division($division);
+    }
+
+    return $scope !== '' && $scope === $division;
 }
 
 function ems_can_access_division_menu(?string $userDivision, ?string $targetDivision): bool

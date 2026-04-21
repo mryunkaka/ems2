@@ -18,8 +18,9 @@ $avatarInitials = initialsFromName($medicName);
 $avatarColor = avatarColorFromName($medicName);
 $canAcknowledge = ems_is_letter_receiver_role($userRole);
 $canManageRecords = ems_is_letter_receiver_role($userRole);
-$divisionOptions = ems_division_options();
-$allDivisionValue = 'All Divisi';
+$divisionScopeOptions = ems_division_scope_options();
+$allDivisionValue = ems_all_division_scope_value();
+$globalHospitalMinutesTitle = 'Notulen Rapat Internal/External 10-1 Rumah Sakit';
 
 function surat_excerpt(?string $text, int $limit = 120): string
 {
@@ -72,6 +73,61 @@ function surat_revision_badge(?string $label): string
     return $label !== '' ? $label : 'draft-awal';
 }
 
+function surat_attachment_payload(array $attachments, string $fallbackName): array
+{
+    return array_map(static function (array $attachment) use ($fallbackName): array {
+        $filePath = '/' . ltrim((string)($attachment['file_path'] ?? ''), '/');
+        $fileName = trim((string)($attachment['file_name'] ?? ''));
+        $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
+        $extension = strtolower((string)pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));
+        $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
+
+        return [
+            'src' => $filePath,
+            'name' => $resolvedName,
+            'extension' => $extension,
+            'is_image' => $isImage,
+            'is_pdf' => $extension === 'pdf',
+        ];
+    }, $attachments);
+}
+
+function surat_sort_timestamp(?string $date, ?string $time = null, ?string $fallback = null): int
+{
+    $parts = [];
+    if (trim((string)$date) !== '') {
+        $parts[] = trim((string)$date);
+    }
+    if (trim((string)$time) !== '') {
+        $parts[] = trim((string)$time);
+    }
+
+    $raw = trim(implode(' ', $parts));
+    $timestamp = $raw !== '' ? strtotime($raw) : false;
+    if ($timestamp !== false) {
+        return $timestamp;
+    }
+
+    $fallbackTime = trim((string)$fallback);
+    if ($fallbackTime !== '') {
+        $timestamp = strtotime($fallbackTime);
+        if ($timestamp !== false) {
+            return $timestamp;
+        }
+    }
+
+    return 0;
+}
+
+function surat_is_global_hospital_minutes_title(?string $meetingTitle, string $globalTitle): bool
+{
+    $normalize = static function (?string $value): string {
+        return strtolower(preg_replace('/\s+/', ' ', trim((string)$value)) ?: '');
+    };
+
+    return $normalize($meetingTitle) === $normalize($globalTitle);
+}
+
 if (!$canAcknowledge) {
     http_response_code(403);
     exit('Akses ditolak');
@@ -91,6 +147,8 @@ $summary = [
 $incomingRows = [];
 $outgoingRows = [];
 $minutesRows = [];
+$institutionMinutesRows = [];
+$globalMinutesRows = [];
 $linkableIncoming = [];
 $linkableOutgoing = [];
 $incomingAttachmentsMap = [];
@@ -129,7 +187,8 @@ try {
         FROM incoming_letters l
         LEFT JOIN user_rh rb ON rb.id = l.read_by
         ORDER BY
-            CASE l.status WHEN 'unread' THEN 0 ELSE 1 END,
+            COALESCE(l.appointment_date, DATE(l.submitted_at)) DESC,
+            COALESCE(l.appointment_time, TIME(l.submitted_at)) DESC,
             l.submitted_at DESC
         LIMIT 100
     ");
@@ -143,7 +202,10 @@ try {
             " . ($hasOutgoingRevisionColumns ? "o.revision_count, o.revision_label, o.updated_at" : "0 AS revision_count, NULL AS revision_label, NULL AS updated_at") . "
         FROM outgoing_letters o
         LEFT JOIN user_rh u ON u.id = o.created_by
-        ORDER BY o.created_at DESC
+        ORDER BY
+            COALESCE(o.appointment_date, DATE(o.created_at)) DESC,
+            COALESCE(o.appointment_time, TIME(o.created_at)) DESC,
+            o.created_at DESC
         LIMIT 100
     ");
     $outgoingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -161,6 +223,14 @@ try {
         LIMIT 100
     ");
     $minutesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($minutesRows as $minutesRow) {
+        if (surat_is_global_hospital_minutes_title($minutesRow['meeting_title'] ?? '', $globalHospitalMinutesTitle)) {
+            $globalMinutesRows[] = $minutesRow;
+            continue;
+        }
+
+        $institutionMinutesRows[] = $minutesRow;
+    }
 
     $stmt = $pdo->query("
         SELECT id, letter_code, institution_name, meeting_topic
@@ -258,8 +328,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <div class="card card-section">
             <div class="card-header">Surat Masuk</div>
-            <div class="table-wrapper table-wrapper-sm">
-                <table id="incomingLettersTable" class="table-custom">
+                <div class="table-wrapper table-wrapper-sm surat-table-wrap">
+                    <table id="incomingLettersTable" class="table-custom surat-table-compact surat-table-wide">
                     <thead>
                         <tr>
                             <th>Kode</th>
@@ -281,9 +351,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php
                                 $rowUnread = ($row['status'] ?? '') === 'unread';
                                 $canReadThis = $rowUnread && ($canAcknowledge || (int)($row['target_user_id'] ?? 0) === $userId);
+                                $incomingAttachments = $incomingAttachmentsMap[(int)$row['id']] ?? [];
+                                $incomingSortKey = surat_sort_timestamp((string)($row['appointment_date'] ?? ''), (string)($row['appointment_time'] ?? ''), (string)($row['submitted_at'] ?? ''));
                                 ?>
                                 <tr>
-                                    <td>
+                                    <td data-order="<?= $incomingSortKey ?>">
                                         <strong><?= htmlspecialchars((string)$row['letter_code']) ?></strong>
                                         <div class="meta-text-xs"><?= htmlspecialchars((string)$row['submitted_at']) ?></div>
                                     </td>
@@ -319,10 +391,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php $attachments = $incomingAttachmentsMap[(int)$row['id']] ?? []; ?>
-                                        <?php if (!empty($attachments)): ?>
+                                        <?php if (!empty($incomingAttachments)): ?>
                                             <div class="flex flex-wrap gap-2">
-                                                <?php foreach ($attachments as $attachment): ?>
+                                                <?php foreach ($incomingAttachments as $attachment): ?>
                                                     <a href="#"
                                                         class="doc-badge btn-preview-doc"
                                                         data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
@@ -338,6 +409,22 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td>
                                         <div class="action-row-nowrap">
+                                            <button
+                                                type="button"
+                                                class="btn-secondary action-icon-btn btn-open-letter-modal"
+                                                data-letter-type="Surat Masuk"
+                                                data-title="<?= htmlspecialchars((string)($row['meeting_topic'] ?: 'Surat Masuk'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-code="<?= htmlspecialchars((string)($row['letter_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-party="<?= htmlspecialchars((string)($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-contact="<?= htmlspecialchars(trim((string)($row['sender_name'] ?: '-')) . ' | ' . trim((string)($row['sender_phone'] ?: '-')), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-when="<?= htmlspecialchars(trim((string)($row['appointment_date'] ?: '-')) . ' ' . ($row['appointment_time'] ? substr((string)$row['appointment_time'], 0, 5) . ' WIB' : '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-body="<?= htmlspecialchars((string)($row['notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-attachments="<?= htmlspecialchars(json_encode(surat_attachment_payload($incomingAttachments, 'Lampiran ' . (string)($row['letter_code'] ?: 'surat-masuk')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>"
+                                                title="Lihat detail surat masuk"
+                                                aria-label="Lihat detail surat masuk">
+                                                <?= ems_icon('eye', 'h-4 w-4') ?>
+                                            </button>
                                             <?php if ($canReadThis): ?>
                                                 <form method="POST" action="surat_menyurat_action.php" class="inline">
                                                     <?= csrfField(); ?>
@@ -358,10 +445,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <?= ems_icon('trash', 'h-4 w-4') ?>
                                                     </button>
                                                 </form>
-                                            <?php endif; ?>
-
-                                            <?php if (!$canReadThis && !$canManageRecords): ?>
-                                                <span class="meta-text-xs">-</span>
                                             <?php endif; ?>
                                         </div>
                                     </td>
@@ -432,8 +515,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     <label>Divisi Tujuan</label>
                     <select name="division_scope" required>
-                        <option value="<?= htmlspecialchars($allDivisionValue) ?>"><?= htmlspecialchars($allDivisionValue) ?></option>
-                        <?php foreach ($divisionOptions as $division): ?>
+                        <?php foreach ($divisionScopeOptions as $division): ?>
                             <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -505,15 +587,17 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
 
                     <label>Judul Pertemuan</label>
-                    <input type="text" name="meeting_title" maxlength="255" required>
+                    <input type="text" name="meeting_title" id="addMinutesTitle" list="minutesTitleOptions" maxlength="255" required>
+                    <div class="meta-text-xs mt-1">Gunakan `<?= htmlspecialchars($globalHospitalMinutesTitle) ?>` untuk notulen rumah sakit seluruh divisi.</div>
 
-                    <label>Divisi Tujuan</label>
-                    <select name="division_scope" required>
-                        <option value="<?= htmlspecialchars($allDivisionValue) ?>"><?= htmlspecialchars($allDivisionValue) ?></option>
-                        <?php foreach ($divisionOptions as $division): ?>
-                            <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div id="addMinutesDivisionScopeField">
+                        <label>Divisi Tujuan</label>
+                        <select name="division_scope" id="addMinutesDivisionScope" required>
+                            <?php foreach ($divisionScopeOptions as $division): ?>
+                                <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
 
                     <div class="row-form-2">
                         <div class="col">
@@ -545,11 +629,11 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+        <div class="grid grid-cols-1 gap-4 mt-4">
             <div class="card card-section">
                 <div class="card-header">Riwayat Surat Keluar</div>
-                <div class="table-wrapper table-wrapper-sm">
-                    <table id="outgoingLettersTable" class="table-custom">
+                <div class="table-wrapper table-wrapper-sm surat-table-wrap">
+                    <table id="outgoingLettersTable" class="table-custom surat-table-compact surat-table-wide">
                         <thead>
                             <tr>
                                 <th>Kode</th>
@@ -567,7 +651,11 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php if ($outgoingRows): ?>
                                 <?php foreach ($outgoingRows as $row): ?>
                                     <tr>
-                                        <td>
+                                        <?php
+                                        $outgoingAttachments = $outgoingAttachmentsMap[(int)$row['id']] ?? [];
+                                        $outgoingSortKey = surat_sort_timestamp((string)($row['appointment_date'] ?? ''), (string)($row['appointment_time'] ?? ''), (string)($row['created_at'] ?? ''));
+                                        ?>
+                                        <td data-order="<?= $outgoingSortKey ?>">
                                             <strong><?= htmlspecialchars((string)$row['outgoing_code']) ?></strong>
                                             <div class="meta-text-xs"><?= htmlspecialchars((string)$row['created_at']) ?></div>
                                         </td>
@@ -586,10 +674,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td><?= htmlspecialchars((string)($row['created_by_name'] ?? '-')) ?></td>
                                         <td>
-                                            <?php $attachments = $outgoingAttachmentsMap[(int)$row['id']] ?? []; ?>
-                                            <?php if (!empty($attachments)): ?>
+                                            <?php if (!empty($outgoingAttachments)): ?>
                                                 <div class="flex flex-wrap gap-2">
-                                                    <?php foreach ($attachments as $attachment): ?>
+                                                    <?php foreach ($outgoingAttachments as $attachment): ?>
                                                         <a href="#"
                                                             class="doc-badge btn-preview-doc"
                                                             data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
@@ -604,8 +691,24 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php endif; ?>
                                         </td>
                                         <td>
+                                            <div class="action-row-nowrap">
+                                                <button
+                                                    type="button"
+                                                    class="btn-secondary action-icon-btn btn-open-letter-modal"
+                                                    data-letter-type="Surat Keluar"
+                                                    data-title="<?= htmlspecialchars((string)($row['subject'] ?: 'Surat Keluar'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-code="<?= htmlspecialchars((string)($row['outgoing_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-party="<?= htmlspecialchars((string)($row['institution_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-contact="<?= htmlspecialchars(trim((string)($row['recipient_name'] ?: '-')) . ' | ' . trim((string)($row['recipient_contact'] ?: '-')), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-when="<?= htmlspecialchars(trim((string)($row['appointment_date'] ?: '-')) . ' ' . ($row['appointment_time'] ? substr((string)$row['appointment_time'], 0, 5) . ' WIB' : '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-body="<?= htmlspecialchars((string)($row['letter_body'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-attachments="<?= htmlspecialchars(json_encode(surat_attachment_payload($outgoingAttachments, 'Lampiran ' . (string)($row['outgoing_code'] ?: 'surat-keluar')), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>"
+                                                    title="Lihat detail surat keluar"
+                                                    aria-label="Lihat detail surat keluar">
+                                                    <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                </button>
                                             <?php if ($canManageRecords): ?>
-                                                <div class="action-row-nowrap">
                                                     <?php if ($hasOutgoingRevisionColumns): ?>
                                                         <button
                                                             type="button"
@@ -637,10 +740,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
-                                                </div>
-                                            <?php else: ?>
-                                                <span class="meta-text-xs">-</span>
                                             <?php endif; ?>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -651,9 +752,9 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <div class="card card-section">
-                <div class="card-header">Riwayat Notulen</div>
-                <div class="table-wrapper table-wrapper-sm">
-                    <table id="meetingMinutesTable" class="table-custom">
+                <div class="card-header">Riwayat Notulen Instansi</div>
+                <div class="table-wrapper table-wrapper-sm surat-table-wrap">
+                    <table id="institutionMinutesTable" class="table-custom surat-table-compact surat-table-wide">
                         <thead>
                             <tr>
                                 <th>Kode / Pertemuan</th>
@@ -666,15 +767,122 @@ include __DIR__ . '/../partials/sidebar.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if ($minutesRows): ?>
-                                <?php foreach ($minutesRows as $row): ?>
+                            <?php if ($institutionMinutesRows): ?>
+                                <?php foreach ($institutionMinutesRows as $row): ?>
                                     <tr>
+                                        <?php $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? '')); ?>
                                         <td>
                                             <strong><?= htmlspecialchars((string)($row['minutes_code'] ?: '-')) ?></strong>
                                             <div class="text-sm font-semibold text-slate-800 mt-1"><?= htmlspecialchars((string)$row['meeting_title']) ?></div>
                                             <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['created_by_name'] ?? '-')) ?></div>
                                         </td>
+                                        <td data-order="<?= $minutesSortKey ?>">
+                                            <?= htmlspecialchars((string)$row['meeting_date']) ?><br>
+                                            <span class="meta-text-xs"><?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5)) ?> WIB</span>
+                                        </td>
+                                        <td><?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue)) ?></td>
                                         <td>
+                                            <strong><?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null)) ?></strong>
+                                            <?php if (!empty($row['updated_at'])): ?>
+                                                <div class="meta-text-xs">Edit <?= htmlspecialchars((string)$row['updated_at']) ?></div>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['participants'], 90)) ?></div>
+                                        </td>
+                                        <td>
+                                            <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['summary'], 110)) ?></div>
+                                        </td>
+                                        <td>
+                                            <div class="action-row-nowrap">
+                                                <button
+                                                    type="button"
+                                                    class="btn-secondary action-icon-btn btn-view-minutes"
+                                                    data-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-date="<?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-time="<?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-created-by="<?= htmlspecialchars((string)($row['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-participants="<?= htmlspecialchars((string)$row['participants'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-summary="<?= htmlspecialchars((string)$row['summary'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-decisions="<?= htmlspecialchars((string)($row['decisions'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                    title="Lihat detail notulen"
+                                                    aria-label="Lihat detail notulen">
+                                                    <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                </button>
+                                                <?php if ($canManageRecords): ?>
+                                                    <?php if ($hasMinutesRevisionColumns): ?>
+                                                        <button
+                                                            type="button"
+                                                            class="btn-secondary action-icon-btn btn-edit-minutes"
+                                                            data-id="<?= (int)$row['id'] ?>"
+                                                            data-minutes-code="<?= htmlspecialchars((string)($row['minutes_code'] ?: ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-incoming-letter-id="<?= (int)($row['incoming_letter_id'] ?? 0) ?>"
+                                                            data-outgoing-letter-id="<?= (int)($row['outgoing_letter_id'] ?? 0) ?>"
+                                                            data-meeting-title="<?= htmlspecialchars((string)$row['meeting_title'], ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-meeting-date="<?= htmlspecialchars((string)$row['meeting_date'], ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-meeting-time="<?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-participants="<?= htmlspecialchars((string)$row['participants'], ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-summary="<?= htmlspecialchars((string)$row['summary'], ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-decisions="<?= htmlspecialchars((string)($row['decisions'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                            title="Edit notulen"
+                                                            aria-label="Edit notulen">
+                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <span class="meta-text-xs">Edit butuh SQL revisi</span>
+                                                    <?php endif; ?>
+                                                    <form method="POST" action="surat_menyurat_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus notulen ini?">
+                                                        <?= csrfField(); ?>
+                                                        <input type="hidden" name="action" value="delete_meeting_minutes">
+                                                        <input type="hidden" name="minutes_id" value="<?= (int)$row['id'] ?>">
+                                                        <button type="submit" class="btn-danger action-icon-btn" title="Hapus notulen" aria-label="Hapus notulen">
+                                                            <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                        </button>
+                                                    </form>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card card-section">
+                <div class="card-header">Riwayat Notulen Rapat Internal/External 10-1 Rumah Sakit</div>
+                <div class="table-wrapper table-wrapper-sm surat-table-wrap">
+                    <table id="globalMinutesTable" class="table-custom surat-table-compact surat-table-wide">
+                        <thead>
+                            <tr>
+                                <th>Kode / Pertemuan</th>
+                                <th>Tanggal</th>
+                                <th>Divisi</th>
+                                <th>Revisi</th>
+                                <th>Peserta</th>
+                                <th>Hasil</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($globalMinutesRows): ?>
+                                <?php foreach ($globalMinutesRows as $row): ?>
+                                    <tr>
+                                        <?php $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? '')); ?>
+                                        <td>
+                                            <strong><?= htmlspecialchars((string)($row['minutes_code'] ?: '-')) ?></strong>
+                                            <div class="text-sm font-semibold text-slate-800 mt-1"><?= htmlspecialchars((string)$row['meeting_title']) ?></div>
+                                            <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['created_by_name'] ?? '-')) ?></div>
+                                        </td>
+                                        <td data-order="<?= $minutesSortKey ?>">
                                             <?= htmlspecialchars((string)$row['meeting_date']) ?><br>
                                             <span class="meta-text-xs"><?= htmlspecialchars(substr((string)$row['meeting_time'], 0, 5)) ?> WIB</span>
                                         </td>
@@ -757,6 +965,49 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<datalist id="minutesTitleOptions">
+    <option value="<?= htmlspecialchars($globalHospitalMinutesTitle) ?>"></option>
+</datalist>
+
+<div id="letterDetailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg surat-modal-box">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('document-text', 'h-5 w-5 text-primary') ?>
+                <span id="letterModalType">Detail Surat</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div class="modal-content">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div class="card"><div class="meta-text-xs">Judul</div><div id="letterModalTitle" class="text-sm font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Kode</div><div id="letterModalCode" class="text-sm font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Divisi</div><div id="letterModalScope" class="text-sm font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Instansi</div><div id="letterModalParty" class="text-sm font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Kontak</div><div id="letterModalContact" class="text-sm font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Jadwal</div><div id="letterModalWhen" class="text-sm font-semibold text-slate-800">-</div></div>
+            </div>
+            <div class="card mt-4">
+                <div class="meta-text-xs mb-2">Isi / Keterangan</div>
+                <div id="letterModalBody" class="whitespace-pre-line text-sm text-slate-700">-</div>
+            </div>
+            <div class="card mt-3">
+                <div class="meta-text-xs mb-2">Foto / Lampiran</div>
+                <div id="letterModalAttachments" class="surat-attachment-grid">
+                    <div class="empty-state">Tidak ada lampiran.</div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div id="minutesViewModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-lg">
@@ -898,8 +1149,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 <label>Divisi Tujuan</label>
                 <select name="division_scope" id="editOutgoingDivisionScope" required>
-                    <option value="<?= htmlspecialchars($allDivisionValue) ?>"><?= htmlspecialchars($allDivisionValue) ?></option>
-                    <?php foreach ($divisionOptions as $division): ?>
+                    <?php foreach ($divisionScopeOptions as $division): ?>
                         <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
                     <?php endforeach; ?>
                 </select>
@@ -970,15 +1220,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
 
                 <label>Judul Pertemuan</label>
-                <input type="text" name="meeting_title" id="editMinutesTitle" maxlength="255" required>
+                <input type="text" name="meeting_title" id="editMinutesTitle" list="minutesTitleOptions" maxlength="255" required>
 
-                <label>Divisi Tujuan</label>
-                <select name="division_scope" id="editMinutesDivisionScope" required>
-                    <option value="<?= htmlspecialchars($allDivisionValue) ?>"><?= htmlspecialchars($allDivisionValue) ?></option>
-                    <?php foreach ($divisionOptions as $division): ?>
-                        <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
-                    <?php endforeach; ?>
-                </select>
+                <div id="editMinutesDivisionScopeField">
+                    <label>Divisi Tujuan</label>
+                    <select name="division_scope" id="editMinutesDivisionScope" required>
+                        <?php foreach ($divisionScopeOptions as $division): ?>
+                            <option value="<?= htmlspecialchars((string)$division['value']) ?>"><?= htmlspecialchars((string)$division['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
 
                 <div class="row-form-2">
                     <div class="col">
@@ -1012,10 +1263,48 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
+<style>
+    .surat-modal-box { max-width: 860px; }
+    .card.card-section:has(.surat-table-wrap) { padding: 12px 14px; }
+    .card.card-section:has(.surat-table-wrap) .card-header { margin-bottom: 8px; font-size: 22px; }
+    .surat-table-wrap { overflow-x: auto; }
+    .surat-table-wrap .dataTables_wrapper { margin-top: 0; }
+    .surat-table-wrap .dataTables_length,
+    .surat-table-wrap .dataTables_filter { margin-bottom: 6px; }
+    .surat-table-wrap .dataTables_info,
+    .surat-table-wrap .dataTables_paginate,
+    .surat-table-wrap .dataTables_length label,
+    .surat-table-wrap .dataTables_filter label { font-size: 11px; }
+    .surat-table-wrap .dataTables_length select,
+    .surat-table-wrap .dataTables_filter input { min-height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: 11px; }
+    .surat-table-compact { width: 100%; min-width: 1460px; table-layout: auto; }
+    .surat-table-compact thead th { font-size: 10px; padding: 6px 8px; white-space: nowrap; }
+    .surat-table-compact tbody td { font-size: 10px; line-height: 1.35; padding: 6px 8px; vertical-align: top; }
+    .surat-table-compact strong { font-size: 10px; }
+    .surat-table-compact .meta-text-xs { font-size: 9px; line-height: 1.25; }
+    .surat-table-compact .text-sm { font-size: 10px !important; line-height: 1.35; }
+    .surat-table-compact .doc-badge { font-size: 9px; padding: 3px 6px; }
+    .surat-table-compact .badge-counter,
+    .surat-table-compact .badge-success { font-size: 9px; padding: 3px 8px; }
+    .surat-table-compact .action-row-nowrap { flex-wrap: nowrap; gap: 4px; }
+    .surat-table-compact .action-icon-btn { width: 28px; height: 28px; min-height: 28px; padding: 0; }
+    .surat-attachment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .85rem; }
+    .surat-attachment-card { border: 1px solid #dbeafe; border-radius: 18px; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); padding: .75rem; }
+    .surat-attachment-thumb { display: block; width: 100%; height: 180px; object-fit: cover; border-radius: 14px; border: 1px solid #dbeafe; background: #e2e8f0; }
+    .surat-attachment-frame { width: 100%; height: 180px; border: 1px solid #dbeafe; border-radius: 14px; background: #fff; }
+    .surat-attachment-name { margin-top: .65rem; font-size: .85rem; font-weight: 700; color: #334155; word-break: break-word; }
+    .surat-attachment-link { margin-top: .45rem; display: inline-flex; align-items: center; gap: .45rem; color: #0369a1; font-size: .82rem; font-weight: 700; }
+    @media (max-width: 768px) {
+        .surat-table-compact { min-width: 1180px; }
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const datatableLanguageUrl = '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>';
         const generateCodeUrl = '<?= htmlspecialchars(ems_url('/ajax/generate_surat_code.php'), ENT_QUOTES, 'UTF-8') ?>';
+        const allDivisionValue = '<?= htmlspecialchars($allDivisionValue, ENT_QUOTES, 'UTF-8') ?>';
+        const globalHospitalMinutesTitle = '<?= htmlspecialchars($globalHospitalMinutesTitle, ENT_QUOTES, 'UTF-8') ?>';
 
         function debounce(fn, delay) {
             let timer = null;
@@ -1129,40 +1418,46 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         if (window.jQuery && jQuery.fn.DataTable) {
-            jQuery('#incomingLettersTable').DataTable({
-                pageLength: 10,
+            const commonTableOptions = {
+                pageLength: 4,
+                lengthMenu: [
+                    [4, 6, 10, 25],
+                    [4, 6, 10, 25]
+                ],
                 scrollX: true,
                 autoWidth: false,
-                order: [
-                    [8, 'desc']
-                ],
                 language: {
-                    url: datatableLanguageUrl
+                    url: datatableLanguageUrl,
+                    emptyTable: 'Belum ada data.'
                 }
+            };
+
+            jQuery('#incomingLettersTable').DataTable({
+                ...commonTableOptions,
+                order: [
+                    [0, 'desc']
+                ]
             });
 
             jQuery('#outgoingLettersTable').DataTable({
-                pageLength: 10,
-                scrollX: true,
-                autoWidth: false,
+                ...commonTableOptions,
                 order: [
                     [0, 'desc']
-                ],
-                language: {
-                    url: datatableLanguageUrl
-                }
+                ]
             });
 
-            jQuery('#meetingMinutesTable').DataTable({
-                pageLength: 10,
-                scrollX: true,
-                autoWidth: false,
+            jQuery('#institutionMinutesTable').DataTable({
+                ...commonTableOptions,
                 order: [
                     [1, 'desc']
-                ],
-                language: {
-                    url: datatableLanguageUrl
-                }
+                ]
+            });
+
+            jQuery('#globalMinutesTable').DataTable({
+                ...commonTableOptions,
+                order: [
+                    [1, 'desc']
+                ]
             });
         }
 
@@ -1225,6 +1520,37 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         }
 
+        function normalizeTitle(value) {
+            return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        }
+
+        function isGlobalHospitalMinutesTitle(value) {
+            return normalizeTitle(value) === normalizeTitle(globalHospitalMinutesTitle);
+        }
+
+        function syncMinutesDivisionField(titleInputId, fieldWrapperId, selectId) {
+            const titleInput = document.getElementById(titleInputId);
+            const fieldWrapper = document.getElementById(fieldWrapperId);
+            const select = document.getElementById(selectId);
+            if (!titleInput || !fieldWrapper || !select) {
+                return function() {};
+            }
+
+            function applyState() {
+                const forceAllDivision = isGlobalHospitalMinutesTitle(titleInput.value);
+                fieldWrapper.style.display = forceAllDivision ? 'none' : '';
+                select.value = forceAllDivision ? allDivisionValue : (select.value || allDivisionValue);
+            }
+
+            if (titleInput.dataset.scopeSyncReady !== 'true') {
+                titleInput.addEventListener('input', applyState);
+                titleInput.addEventListener('change', applyState);
+                titleInput.dataset.scopeSyncReady = 'true';
+            }
+            applyState();
+            return applyState;
+        }
+
         setupMultiImagePreview('outgoingAttachments', 'outgoingAttachmentsPreview');
         setupAutoCode({
             type: 'outgoing',
@@ -1244,6 +1570,7 @@ include __DIR__ . '/../partials/sidebar.php';
             requiredInputIds: ['addMinutesDate'],
             watchedInputIds: ['addMinutesDate', 'addMinutesIncomingLetterId', 'addMinutesOutgoingLetterId']
         });
+        syncMinutesDivisionField('addMinutesTitle', 'addMinutesDivisionScopeField', 'addMinutesDivisionScope');
 
         function openModal(modal) {
             if (!modal) {
@@ -1279,8 +1606,10 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         const minutesViewModal = document.getElementById('minutesViewModal');
+        const letterDetailModal = document.getElementById('letterDetailModal');
         const outgoingEditModal = document.getElementById('outgoingEditModal');
         const minutesEditModal = document.getElementById('minutesEditModal');
+        const letterAttachmentContainer = document.getElementById('letterModalAttachments');
         const editOutgoingCodeControl = setupAutoCode({
             type: 'outgoing',
             codeInputId: 'editOutgoingCode',
@@ -1300,9 +1629,79 @@ include __DIR__ . '/../partials/sidebar.php';
             watchedInputIds: ['editMinutesDate', 'editMinutesIncomingLetterId', 'editMinutesOutgoingLetterId']
         });
 
+        attachModalClose(letterDetailModal);
         attachModalClose(minutesViewModal);
         attachModalClose(outgoingEditModal);
         attachModalClose(minutesEditModal);
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>\"']/g, function(match) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[match];
+            });
+        }
+
+        function renderLetterAttachments(rawAttachments) {
+            if (!letterAttachmentContainer) {
+                return;
+            }
+
+            let attachments = [];
+            try {
+                attachments = JSON.parse(rawAttachments || '[]');
+            } catch (_) {
+                attachments = [];
+            }
+
+            if (!Array.isArray(attachments) || !attachments.length) {
+                letterAttachmentContainer.innerHTML = '<div class="empty-state">Tidak ada lampiran.</div>';
+                return;
+            }
+
+            letterAttachmentContainer.innerHTML = '';
+            attachments.forEach(function(attachment) {
+                const src = attachment && attachment.src ? String(attachment.src) : '';
+                const name = attachment && attachment.name ? String(attachment.name) : 'Lampiran';
+                const isImage = Boolean(attachment && attachment.is_image);
+                const isPdf = Boolean(attachment && attachment.is_pdf);
+                const card = document.createElement('div');
+                card.className = 'surat-attachment-card';
+
+                let previewHtml = '';
+                if (src !== '' && isImage) {
+                    previewHtml = `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`;
+                } else if (src !== '' && isPdf) {
+                    previewHtml = `<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`;
+                } else {
+                    previewHtml = '<div class="empty-state">Preview tidak tersedia untuk file ini.</div>';
+                }
+
+                card.innerHTML = `${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src !== '' ? `<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>` : ''}`;
+                letterAttachmentContainer.appendChild(card);
+            });
+        }
+
+        if (letterDetailModal) {
+            document.querySelectorAll('.btn-open-letter-modal').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    document.getElementById('letterModalType').textContent = button.dataset.letterType || 'Detail Surat';
+                    document.getElementById('letterModalTitle').textContent = button.dataset.title || '-';
+                    document.getElementById('letterModalCode').textContent = button.dataset.code || '-';
+                    document.getElementById('letterModalScope').textContent = button.dataset.scope || allDivisionValue;
+                    document.getElementById('letterModalParty').textContent = button.dataset.party || '-';
+                    document.getElementById('letterModalContact').textContent = button.dataset.contact || '-';
+                    document.getElementById('letterModalWhen').textContent = button.dataset.when || '-';
+                    document.getElementById('letterModalBody').textContent = button.dataset.body || '-';
+                    renderLetterAttachments(button.dataset.attachments || '[]');
+                    openModal(letterDetailModal);
+                });
+            });
+        }
 
         if (minutesViewModal) {
             const modalTitle = document.getElementById('minutesModalTitle');
@@ -1321,7 +1720,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 modalTitle.textContent = button.dataset.title || 'Detail Notulen';
                 modalCode.textContent = button.dataset.code || '-';
                 modalDate.textContent = button.dataset.date || '-';
-                modalTime.textContent = (button.dataset.time || '-') + ' WIB';
+                modalTime.textContent = button.dataset.time ? button.dataset.time + ' WIB' : '-';
                 modalCreatedBy.textContent = button.dataset.createdBy || '-';
                 modalDivision.textContent = button.dataset.divisionScope || 'All Divisi';
                 modalRevision.textContent = button.dataset.revisionLabel || 'draft-awal';
@@ -1384,17 +1783,20 @@ include __DIR__ . '/../partials/sidebar.php';
                     document.getElementById('minutesEditRevisionLabel').textContent = button.dataset.revisionLabel || 'draft-awal';
 
                     openModal(minutesEditModal);
+                    syncEditMinutesDivisionField();
                     editMinutesCodeControl.refresh(false);
                 });
             });
         }
+
+        const syncEditMinutesDivisionField = syncMinutesDivisionField('editMinutesTitle', 'editMinutesDivisionScopeField', 'editMinutesDivisionScope');
 
         document.addEventListener('keydown', function(event) {
             if (event.key !== 'Escape') {
                 return;
             }
 
-            [minutesViewModal, outgoingEditModal, minutesEditModal].forEach(function(modal) {
+            [letterDetailModal, minutesViewModal, outgoingEditModal, minutesEditModal].forEach(function(modal) {
                 if (modal && !modal.classList.contains('hidden')) {
                     closeModal(modal);
                 }

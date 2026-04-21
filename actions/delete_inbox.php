@@ -77,12 +77,16 @@ if ($bulkAction === 'delete_all') {
         $hasIncomingDivisionScope = inboxTableHasColumn($pdo, 'incoming_letters', 'division_scope');
         $hasMinutesDivisionScope = inboxTableHasColumn($pdo, 'meeting_minutes', 'division_scope');
 
-        $incomingWhere = $hasIncomingDivisionScope
-            ? "((l.division_scope = 'All Divisi') OR l.division_scope = ?)"
-            : "l.target_user_id = ?";
-        $incomingParam = $hasIncomingDivisionScope
-            ? ($userDivision !== '' ? $userDivision : 'All Divisi')
-            : $userId;
+        $incomingWhere = "l.target_user_id = ?";
+        $incomingParams = [$userId];
+        if ($hasIncomingDivisionScope) {
+            if (ems_is_management_division($userDivision)) {
+                $incomingWhere = "((l.division_scope = 'All Divisi') OR (l.division_scope = 'All Divisi Manajemen') OR l.division_scope = ?)";
+            } else {
+                $incomingWhere = "((l.division_scope = 'All Divisi') OR l.division_scope = ?)";
+            }
+            $incomingParams = [$userDivision !== '' ? $userDivision : 'All Divisi'];
+        }
 
         $stmt = $pdo->prepare("
             INSERT INTO user_inbox_state (user_id, item_type, item_id, is_read, is_deleted, read_at, deleted_at)
@@ -95,14 +99,17 @@ if ($bulkAction === 'delete_all') {
                 read_at = COALESCE(read_at, NOW()),
                 deleted_at = NOW()
         ");
-        $stmt->execute([$userId, $incomingParam]);
+        $stmt->execute(array_merge([$userId], $incomingParams));
 
         if ($hasMinutesDivisionScope) {
+            $minutesWhere = ems_is_management_division($userDivision)
+                ? "(m.division_scope = 'All Divisi' OR m.division_scope = 'All Divisi Manajemen' OR m.division_scope = ?)"
+                : "(m.division_scope = 'All Divisi' OR m.division_scope = ?)";
             $stmt = $pdo->prepare("
                 INSERT INTO user_inbox_state (user_id, item_type, item_id, is_read, is_deleted, read_at, deleted_at)
                 SELECT ?, 'meeting_minutes', m.id, 1, 1, NOW(), NOW()
                 FROM meeting_minutes m
-                WHERE (m.division_scope = 'All Divisi' OR m.division_scope = ?)
+                WHERE {$minutesWhere}
                 ON DUPLICATE KEY UPDATE
                     is_read = 1,
                     is_deleted = 1,

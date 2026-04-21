@@ -76,19 +76,20 @@ function surat_table_has_column(PDO $pdo, string $table, string $column): bool
 
 function surat_normalize_division_scope(?string $value): string
 {
-    $raw = trim((string)$value);
-    $normalizedRaw = strtolower(preg_replace('/\s+/', ' ', $raw) ?: '');
-
-    if ($normalizedRaw === '' || in_array($normalizedRaw, ['all', 'all division', 'all divisi', 'semua', 'semua divisi'], true)) {
-        return 'All Divisi';
-    }
-
-    $division = ems_normalize_division($raw);
-    if (!ems_is_valid_division($division)) {
+    $scope = ems_normalize_division_scope($value);
+    if ($scope === '') {
         throw new Exception('Divisi surat tidak valid.');
     }
 
-    return $division;
+    return $scope;
+}
+
+function surat_is_global_hospital_minutes_title(?string $meetingTitle): bool
+{
+    $value = strtolower(trim((string)$meetingTitle));
+    $value = preg_replace('/\s+/', ' ', $value) ?: '';
+
+    return $value === 'notulen rapat internal/external 10-1 rumah sakit';
 }
 
 function surat_revision_label(int $count): ?string
@@ -443,7 +444,9 @@ try {
         $summary = trim((string)($_POST['summary'] ?? ''));
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
-        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
+            ? ems_all_division_scope_value()
+            : surat_normalize_division_scope($_POST['division_scope'] ?? '');
 
         if (
             $meetingTitle === '' ||
@@ -525,7 +528,9 @@ try {
         $summary = trim((string)($_POST['summary'] ?? ''));
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
-        $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
+            ? ems_all_division_scope_value()
+            : surat_normalize_division_scope($_POST['division_scope'] ?? '');
 
         if (
             $minutesId <= 0 ||

@@ -176,10 +176,16 @@ $hasIncomingDivisionScope = inboxTableHasColumn($pdo, 'incoming_letters', 'divis
 $hasMinutesDivisionScope = inboxTableHasColumn($pdo, 'meeting_minutes', 'division_scope');
 
 if ($hasInboxState) {
-    $incomingWhere = $hasIncomingDivisionScope
-        ? "((l.division_scope = 'All Divisi') OR l.division_scope = ?)"
-        : "l.target_user_id = ?";
-    $incomingParam = $hasIncomingDivisionScope ? ($userDivision !== '' ? $userDivision : 'All Divisi') : $userId;
+    $incomingWhere = "l.target_user_id = ?";
+    $incomingParams = [$userId];
+    if ($hasIncomingDivisionScope) {
+        if (ems_is_management_division($userDivision)) {
+            $incomingWhere = "((l.division_scope = 'All Divisi') OR (l.division_scope = 'All Divisi Manajemen') OR l.division_scope = ?)";
+        } else {
+            $incomingWhere = "((l.division_scope = 'All Divisi') OR l.division_scope = ?)";
+        }
+        $incomingParams = [$userDivision !== '' ? $userDivision : 'All Divisi'];
+    }
 
     $stmt = $pdo->prepare("
         SELECT
@@ -207,7 +213,7 @@ if ($hasInboxState) {
         ORDER BY l.submitted_at DESC
         LIMIT 20
     ");
-    $stmt->execute([$userId, $incomingParam]);
+    $stmt->execute(array_merge([$userId], $incomingParams));
 
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $items[] = [
@@ -224,9 +230,16 @@ if ($hasInboxState) {
         ];
     }
 
-    $minutesWhere = $hasMinutesDivisionScope
-        ? "((m.division_scope = 'All Divisi') OR m.division_scope = ?)"
-        : '1 = 0';
+    $minutesWhere = '1 = 0';
+    $minutesParams = [];
+    if ($hasMinutesDivisionScope) {
+        if (ems_is_management_division($userDivision)) {
+            $minutesWhere = "((m.division_scope = 'All Divisi') OR (m.division_scope = 'All Divisi Manajemen') OR m.division_scope = ?)";
+        } else {
+            $minutesWhere = "((m.division_scope = 'All Divisi') OR m.division_scope = ?)";
+        }
+        $minutesParams = [$userDivision !== '' ? $userDivision : 'All Divisi'];
+    }
 
     if ($minutesWhere !== '1 = 0') {
         $stmt = $pdo->prepare("
@@ -252,7 +265,7 @@ if ($hasInboxState) {
             ORDER BY m.created_at DESC
             LIMIT 20
         ");
-        $stmt->execute([$userId, $userDivision !== '' ? $userDivision : 'All Divisi']);
+        $stmt->execute(array_merge([$userId], $minutesParams));
 
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
             $items[] = [

@@ -189,9 +189,10 @@ try {
     $hasMinutesDivisionScope = surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'division_scope');
     $hasMinutesCodeColumn = surat_monitoring_table_has_column($pdo, 'meeting_minutes', 'minutes_code');
 
-    $incomingFilter = $hasIncomingDivisionScope ? "WHERE (l.division_scope = 'All Divisi' OR l.division_scope = :scope)" : '';
-    $outgoingFilter = $hasOutgoingDivisionScope ? "WHERE (o.division_scope = 'All Divisi' OR o.division_scope = :scope)" : '';
-    $minutesFilter = $hasMinutesDivisionScope ? "WHERE (m.division_scope = 'All Divisi' OR m.division_scope = :scope)" : '';
+    $managementScopeSql = ems_is_management_division($scopeLabel) ? " OR %s = 'All Divisi Manajemen'" : '';
+    $incomingFilter = $hasIncomingDivisionScope ? "WHERE (l.division_scope = 'All Divisi'" . sprintf($managementScopeSql, 'l.division_scope') . " OR l.division_scope = :scope)" : '';
+    $outgoingFilter = $hasOutgoingDivisionScope ? "WHERE (o.division_scope = 'All Divisi'" . sprintf($managementScopeSql, 'o.division_scope') . " OR o.division_scope = :scope)" : '';
+    $minutesFilter = $hasMinutesDivisionScope ? "WHERE (m.division_scope = 'All Divisi'" . sprintf($managementScopeSql, 'm.division_scope') . " OR m.division_scope = :scope)" : '';
 
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM incoming_letters l {$incomingFilter}");
     $stmt->execute($hasIncomingDivisionScope ? ['scope' => $scopeLabel] : []);
@@ -302,7 +303,9 @@ try {
         $stmt = $pdo->prepare("
             SELECT id, title, division_scope, coordination_date, start_time, status, summary_notes, follow_up_notes
             FROM secretary_internal_coordinations
-            WHERE division_scope = 'All Divisi' OR division_scope = ?
+            WHERE division_scope = 'All Divisi'
+               " . (ems_is_management_division($scopeLabel) ? "OR division_scope = 'All Divisi Manajemen'" : "") . "
+               OR division_scope = ?
             ORDER BY coordination_date DESC, start_time DESC, id DESC
             LIMIT 6
         ");
@@ -346,7 +349,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="surat-scope-card">
                 <div class="surat-scope-label">Scope Aktif</div>
                 <div class="surat-scope-value"><?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></div>
-                <div class="surat-scope-note">Data `All Divisi` tetap tampil untuk semua divisi.</div>
+                <div class="surat-scope-note">Data `All Divisi` tampil ke semua divisi, sedangkan `All Divisi Manajemen` tampil ke semua divisi selain Medis.</div>
             </div>
         </div>
 
