@@ -46,6 +46,47 @@ function manageUsersHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function manageUsersEnsureUpdateHistoryTable(PDO $pdo): void
+{
+    static $initialized = false;
+
+    if ($initialized) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS account_update_logs (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            target_user_id INT NOT NULL,
+            target_name VARCHAR(100) NOT NULL,
+            editor_user_id INT DEFAULT NULL,
+            editor_name VARCHAR(100) DEFAULT NULL,
+            editor_role VARCHAR(100) DEFAULT NULL,
+            action_type VARCHAR(50) NOT NULL DEFAULT 'edit',
+            summary VARCHAR(255) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_account_update_logs_target (target_user_id),
+            KEY idx_account_update_logs_created_at (created_at),
+            KEY idx_account_update_logs_editor (editor_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $initialized = true;
+}
+
+function formatManageUsersHistoryDate(?string $value): string
+{
+    if (empty($value)) {
+        return '-';
+    }
+
+    try {
+        return (new DateTime((string)$value))->format('d M Y H:i');
+    } catch (Throwable $e) {
+        return (string)$value;
+    }
+}
+
 function manageUsersNormalizeDocName(?string $name): string
 {
     $value = strtolower(trim((string)$name));
@@ -97,6 +138,7 @@ foreach ($editOptionalColumns as $optionalColumn) {
 }
 $optionalSelectSql = $optionalSelectParts ? implode(",\n        ", $optionalSelectParts) . "," : '';
 $unitWhere = $hasUnitCodeColumn ? "WHERE COALESCE(u.unit_code, 'roxwood') = :unit_code" : "";
+manageUsersEnsureUpdateHistoryTable($pdo);
 
 // AMBIL SEMUA USER (SESUAI DATABASE)
 $stmtUsers = $pdo->prepare("
@@ -182,6 +224,29 @@ foreach ($dynamicOtherDocFilters as $normalizedDocName => $docName) {
         'normalized' => $normalizedDocName,
     ];
 }
+
+$historyWhere = $hasUnitCodeColumn
+    ? "WHERE COALESCE(target.unit_code, 'roxwood') = :unit_code"
+    : "";
+$stmtHistory = $pdo->prepare("
+    SELECT
+        l.id,
+        l.target_user_id,
+        l.target_name,
+        l.editor_user_id,
+        l.editor_name,
+        l.editor_role,
+        l.action_type,
+        l.summary,
+        l.created_at
+    FROM account_update_logs l
+    LEFT JOIN user_rh target ON target.id = l.target_user_id
+    {$historyWhere}
+    ORDER BY l.created_at DESC, l.id DESC
+    LIMIT 12
+");
+$stmtHistory->execute($hasUnitCodeColumn ? [':unit_code' => $effectiveUnit] : []);
+$accountUpdateHistory = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
 
 // ===============================
 // KELOMPOKKAN USER BERDASARKAN BATCH
@@ -304,6 +369,64 @@ uksort($usersByBatch, function ($a, $b) {
         margin: 0;
     }
 
+    .account-update-history-card {
+        margin-bottom: 1rem;
+    }
+
+    .account-update-history-list {
+        display: grid;
+        gap: 0.75rem;
+        max-height: 23rem;
+        overflow-y: auto;
+        padding-right: 0.35rem;
+        scrollbar-gutter: stable;
+    }
+
+    .account-update-history-list::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .account-update-history-list::-webkit-scrollbar-track {
+        background: rgba(226, 232, 240, 0.7);
+        border-radius: 999px;
+    }
+
+    .account-update-history-list::-webkit-scrollbar-thumb {
+        background: rgba(100, 116, 139, 0.55);
+        border-radius: 999px;
+    }
+
+    .account-update-history-list::-webkit-scrollbar-thumb:hover {
+        background: rgba(71, 85, 105, 0.7);
+    }
+
+    .account-update-history-item {
+        display: grid;
+        gap: 0.25rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px;
+        background: rgba(248, 250, 252, 0.86);
+    }
+
+    .account-update-history-text {
+        color: #0f172a;
+        line-height: 1.5;
+    }
+
+    .account-update-history-meta {
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+
+    .account-update-history-empty {
+        padding: 1rem;
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 16px;
+        color: #64748b;
+        background: rgba(248, 250, 252, 0.55);
+    }
+
     @media (min-width: 1024px) {
         .edit-user-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -325,6 +448,51 @@ uksort($usersByBatch, function ($a, $b) {
         <?php foreach ($errors as $e): ?>
             <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
         <?php endforeach; ?>
+
+        <div class="card account-update-history-card">
+            <div class="card-header">History Update Akun User</div>
+            <div class="account-update-history-list">
+                <?php if (empty($accountUpdateHistory)): ?>
+                    <div class="account-update-history-empty">
+                        Belum ada riwayat update akun user.
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($accountUpdateHistory as $historyRow): ?>
+                        <?php
+                        $editorName = trim((string)($historyRow['editor_name'] ?? 'Sistem'));
+                        $editorRole = trim((string)($historyRow['editor_role'] ?? ''));
+                        $editorLabel = $editorRole !== ''
+                            ? ems_role_label($editorRole) . ' ' . $editorName
+                            : $editorName;
+                        $targetName = trim((string)($historyRow['target_name'] ?? 'User'));
+                        $summary = trim((string)($historyRow['summary'] ?? ''));
+                        $actionType = strtolower(trim((string)($historyRow['action_type'] ?? 'edit')));
+                        $actionTextMap = [
+                            'edit' => 'telah melakukan perubahan pada medis',
+                            'add_user' => 'telah menambahkan akun medis',
+                            'delete' => 'telah menghapus akun medis',
+                            'resign' => 'telah menonaktifkan akun medis',
+                            'reactivate' => 'telah mengaktifkan kembali akun medis',
+                        ];
+                        $actionText = $actionTextMap[$actionType] ?? 'telah memperbarui akun medis';
+                        ?>
+                        <div class="account-update-history-item">
+                            <div class="account-update-history-text">
+                                <strong><?= htmlspecialchars($editorLabel) ?></strong>
+                                <?= htmlspecialchars($actionText) ?>
+                                <strong><?= htmlspecialchars($targetName) ?></strong>.
+                                <?php if ($summary !== ''): ?>
+                                    <span><?= htmlspecialchars($summary) ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="account-update-history-meta">
+                                <?= htmlspecialchars(formatManageUsersHistoryDate($historyRow['created_at'] ?? null)) ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
 
         <div class="card manage-users-card">
             <div class="card-header card-toolbar">

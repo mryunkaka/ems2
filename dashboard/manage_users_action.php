@@ -33,6 +33,62 @@ function manageUsersActionHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function manageUsersActionEnsureUpdateHistoryTable(PDO $pdo): void
+{
+    static $initialized = false;
+
+    if ($initialized) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS account_update_logs (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            target_user_id INT NOT NULL,
+            target_name VARCHAR(100) NOT NULL,
+            editor_user_id INT DEFAULT NULL,
+            editor_name VARCHAR(100) DEFAULT NULL,
+            editor_role VARCHAR(100) DEFAULT NULL,
+            action_type VARCHAR(50) NOT NULL DEFAULT 'edit',
+            summary VARCHAR(255) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_account_update_logs_target (target_user_id),
+            KEY idx_account_update_logs_created_at (created_at),
+            KEY idx_account_update_logs_editor (editor_user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $initialized = true;
+}
+
+function manageUsersActionWriteHistory(
+    PDO $pdo,
+    array $sessionUser,
+    int $targetUserId,
+    string $targetName,
+    string $actionType,
+    ?string $summary = null
+): void {
+    manageUsersActionEnsureUpdateHistoryTable($pdo);
+
+    $stmt = $pdo->prepare("
+        INSERT INTO account_update_logs
+            (target_user_id, target_name, editor_user_id, editor_name, editor_role, action_type, summary, created_at)
+        VALUES
+            (?, ?, ?, ?, ?, ?, ?, NOW())
+    ");
+
+    $stmt->execute([
+        $targetUserId,
+        $targetName,
+        (int)($sessionUser['id'] ?? 0) ?: null,
+        trim((string)($sessionUser['full_name'] ?? '')) ?: 'Sistem',
+        ems_normalize_role($sessionUser['role'] ?? ''),
+        $actionType,
+        $summary !== null && trim($summary) !== '' ? trim($summary) : null,
+    ]);
+}
+
 $hasDivisionColumn = manageUsersActionHasColumn($pdo, 'division');
 $hasUnitCodeColumn = manageUsersActionHasColumn($pdo, 'unit_code');
 $hasCanViewAllUnitsColumn = manageUsersActionHasColumn($pdo, 'can_view_all_units');
@@ -242,6 +298,15 @@ if ($action === 'add_user') {
         }
     }
 
+    manageUsersActionWriteHistory(
+        $pdo,
+        $sessionUser,
+        $newUserId,
+        $name,
+        'add_user',
+        'Akun baru dibuat.'
+    );
+
     $_SESSION['flash_messages'][] =
         'User baru berhasil ditambahkan. PIN awal: 0000';
 
@@ -405,6 +470,15 @@ if ($action === 'resign') {
     }
     $stmt->execute($params);
 
+    manageUsersActionWriteHistory(
+        $pdo,
+        $sessionUser,
+        $userId,
+        $targetUser['full_name'] ?? 'User',
+        'resign',
+        'Akun dinonaktifkan.'
+    );
+
     $_SESSION['flash_messages'][] = 'User berhasil dinonaktifkan.';
     header('Location: manage_users.php');
     exit;
@@ -449,6 +523,15 @@ if ($action === 'reactivate') {
         $params[] = $effectiveUnit;
     }
     $stmt->execute($params);
+
+    manageUsersActionWriteHistory(
+        $pdo,
+        $sessionUser,
+        $userId,
+        $targetUser['full_name'] ?? 'User',
+        'reactivate',
+        $note !== '' ? 'Akun diaktifkan kembali. Catatan: ' . $note : 'Akun diaktifkan kembali.'
+    );
 
     $_SESSION['flash_messages'][] = 'User berhasil diaktifkan kembali.';
     header('Location: manage_users.php');
@@ -507,6 +590,15 @@ if ($action === 'delete') {
         $params[] = $effectiveUnit;
     }
     $stmt->execute($params);
+
+    manageUsersActionWriteHistory(
+        $pdo,
+        $sessionUser,
+        $userId,
+        $targetUser['full_name'] ?? 'User',
+        'delete',
+        'Akun dihapus permanen.'
+    );
 
     $_SESSION['flash_messages'][] = 'User berhasil dihapus permanen.';
     header('Location: manage_users.php');
@@ -633,15 +725,21 @@ foreach ($promotionDates as $promotionColumn => $promotionDateValue) {
 }
 
 /* ===============================
-   Ambil kode medis lama
+   Ambil data lama user
    =============================== */
-$stmt = $pdo->prepare("SELECT kode_nomor_induk_rs FROM user_rh WHERE id = ?" . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : ""));
+$stmt = $pdo->prepare("
+    SELECT *
+    FROM user_rh
+    WHERE id = ?" . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
+    LIMIT 1
+");
 $selectParams = [$userId];
 if ($hasUnitCodeColumn) {
     $selectParams[] = $effectiveUnit;
 }
 $stmt->execute($selectParams);
-$currentKode = $stmt->fetchColumn();
+$currentUserData = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$currentKode = $currentUserData['kode_nomor_induk_rs'] ?? null;
 
 /* ===============================
    Bangun SQL dasar DULU
@@ -735,6 +833,46 @@ if ($hasUnitCodeColumn) {
 }
 
 $pdo->prepare($sql)->execute($params);
+
+$summaryParts = [];
+if (($currentUserData['full_name'] ?? '') !== $name) {
+    $summaryParts[] = 'nama diubah';
+}
+if (ems_normalize_position($currentUserData['position'] ?? '') !== $position) {
+    $summaryParts[] = 'jabatan diubah';
+}
+if (($currentUserData['role'] ?? '') !== $newRole) {
+    $summaryParts[] = 'role diubah';
+}
+if ($hasDivisionColumn && (($currentUserData['division'] ?? null) !== $division)) {
+    $summaryParts[] = 'division diubah';
+}
+if ($hasUnitCodeColumn && ems_normalize_unit_code($currentUserData['unit_code'] ?? 'roxwood') !== $unitCode) {
+    $summaryParts[] = 'unit diubah';
+}
+if ($hasTanggalMasukColumn && (($currentUserData['tanggal_masuk'] ?? null) !== $tanggalMasuk)) {
+    $summaryParts[] = 'tanggal masuk diubah';
+}
+foreach ($availablePromotionDateColumns as $promotionColumn) {
+    if (($currentUserData[$promotionColumn] ?? null) !== $promotionDates[$promotionColumn]) {
+        $summaryParts[] = str_replace('_', ' ', $promotionColumn) . ' diubah';
+    }
+}
+if ($newPin !== '') {
+    $summaryParts[] = 'PIN diperbarui';
+}
+if ($batch > 0 ? (int)$batch !== (int)($currentUserData['batch'] ?? 0) : !empty($currentUserData['batch'])) {
+    $summaryParts[] = 'batch diubah';
+}
+
+manageUsersActionWriteHistory(
+    $pdo,
+    $sessionUser,
+    $userId,
+    $name,
+    'edit',
+    !empty($summaryParts) ? implode(', ', $summaryParts) . '.' : 'Data akun diperbarui.'
+);
 
 /* ===============================
    FLASH & REDIRECT
