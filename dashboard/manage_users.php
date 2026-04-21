@@ -22,6 +22,14 @@ $pageTitle = 'Manajemen User';
 $roleOptions = ems_role_options();
 $divisionOptions = ems_division_options();
 $unitOptions = ems_unit_options();
+$editPromotionDateConfigs = [
+    'tanggal_naik_paramedic' => 'Tanggal Naik ke Paramedic',
+    'tanggal_naik_co_asst' => 'Tanggal Naik ke Co. Asst',
+    'tanggal_naik_dokter' => 'Tanggal Naik ke Dokter',
+    'tanggal_naik_dokter_spesialis' => 'Tanggal Naik ke Dokter Spesialis',
+    'tanggal_join_manager' => 'Tanggal Join Manager',
+];
+$editOptionalColumns = array_keys($editPromotionDateConfigs);
 
 function manageUsersHasColumn(PDO $pdo, string $column): bool
 {
@@ -72,9 +80,22 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
 $hasDivisionColumn = manageUsersHasColumn($pdo, 'division');
 $hasUnitCodeColumn = manageUsersHasColumn($pdo, 'unit_code');
 $hasCanViewAllUnitsColumn = manageUsersHasColumn($pdo, 'can_view_all_units');
+$hasCitizenIdColumn = manageUsersHasColumn($pdo, 'citizen_id');
+$hasNoHpIcColumn = manageUsersHasColumn($pdo, 'no_hp_ic');
+$hasJenisKelaminColumn = manageUsersHasColumn($pdo, 'jenis_kelamin');
 $divisionSelect = $hasDivisionColumn ? "u.division," : "NULL AS division,";
 $unitSelect = $hasUnitCodeColumn ? "u.unit_code," : "'roxwood' AS unit_code,";
 $allUnitsSelect = $hasCanViewAllUnitsColumn ? "u.can_view_all_units," : "NULL AS can_view_all_units,";
+$citizenIdSelect = $hasCitizenIdColumn ? "u.citizen_id," : "NULL AS citizen_id,";
+$noHpIcSelect = $hasNoHpIcColumn ? "u.no_hp_ic," : "NULL AS no_hp_ic,";
+$jenisKelaminSelect = $hasJenisKelaminColumn ? "u.jenis_kelamin," : "NULL AS jenis_kelamin,";
+$optionalSelectParts = [];
+foreach ($editOptionalColumns as $optionalColumn) {
+    $optionalSelectParts[] = manageUsersHasColumn($pdo, $optionalColumn)
+        ? "u.{$optionalColumn}"
+        : "NULL AS {$optionalColumn}";
+}
+$optionalSelectSql = $optionalSelectParts ? implode(",\n        ", $optionalSelectParts) . "," : '';
 $unitWhere = $hasUnitCodeColumn ? "WHERE COALESCE(u.unit_code, 'roxwood') = :unit_code" : "";
 
 // AMBIL SEMUA USER (SESUAI DATABASE)
@@ -87,8 +108,12 @@ $stmtUsers = $pdo->prepare("
         {$divisionSelect}
         {$unitSelect}
         {$allUnitsSelect}
+        {$citizenIdSelect}
+        {$noHpIcSelect}
+        {$jenisKelaminSelect}
         u.is_active,
         u.tanggal_masuk,
+        {$optionalSelectSql}
 
         u.batch,
         u.kode_nomor_induk_rs,
@@ -212,8 +237,83 @@ uksort($usersByBatch, function ($a, $b) {
 <?php include __DIR__ . '/../partials/header.php'; ?>
 <?php include __DIR__ . '/../partials/sidebar.php'; ?>
 
+<style>
+    .manage-users-page {
+        max-width: 92rem;
+    }
+
+    .manage-users-card {
+        overflow: hidden;
+    }
+
+    .manage-users-card > .table-wrapper {
+        overflow-x: auto;
+    }
+
+    .edit-user-modal {
+        max-width: 980px;
+    }
+
+    .edit-user-modal .modal-content {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .edit-user-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .edit-user-section {
+        display: grid;
+        gap: 0.875rem;
+        padding: 1rem;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 18px;
+        background: rgba(248, 250, 252, 0.78);
+    }
+
+    .edit-user-section-title {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .edit-user-help {
+        margin-top: -0.375rem;
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+
+    .edit-user-checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.625rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #334155;
+    }
+
+    .edit-user-checkbox input {
+        width: 1rem;
+        height: 1rem;
+    }
+
+    .edit-user-grid .row-form-2 {
+        margin: 0;
+    }
+
+    @media (min-width: 1024px) {
+        .edit-user-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+        }
+    }
+</style>
+
 <section class="content">
-    <div class="page page-shell-md">
+    <div class="page page-shell-md manage-users-page">
 
         <h1 class="page-title">Manajemen User</h1>
         <p class="page-subtitle">Kelola akun, jabatan, role, dan PIN pengguna</p>
@@ -226,7 +326,7 @@ uksort($usersByBatch, function ($a, $b) {
             <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
         <?php endforeach; ?>
 
-        <div class="card">
+        <div class="card manage-users-card">
             <div class="card-header card-toolbar">
                 <span>Daftar User</span>
 	                <div class="toolbar-group">
@@ -464,6 +564,15 @@ uksort($usersByBatch, function ($a, $b) {
                                                             data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
                                                             data-batch="<?= (int)($u['batch'] ?? 0) ?>"
                                                             data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>"
+                                                            data-citizen-id="<?= htmlspecialchars((string)($u['citizen_id'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-no-hp-ic="<?= htmlspecialchars((string)($u['no_hp_ic'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-jenis-kelamin="<?= htmlspecialchars((string)($u['jenis_kelamin'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-masuk="<?= htmlspecialchars((string)($u['tanggal_masuk'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-paramedic="<?= htmlspecialchars((string)($u['tanggal_naik_paramedic'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-co-asst="<?= htmlspecialchars((string)($u['tanggal_naik_co_asst'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-dokter="<?= htmlspecialchars((string)($u['tanggal_naik_dokter'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-dokter-spesialis="<?= htmlspecialchars((string)($u['tanggal_naik_dokter_spesialis'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-join-manager="<?= htmlspecialchars((string)($u['tanggal_join_manager'] ?? ''), ENT_QUOTES) ?>"
                                                             title="Edit user"
                                                             aria-label="Edit user">
                                                             <?= ems_icon('pencil-square', 'h-4 w-4') ?>
@@ -594,7 +703,7 @@ uksort($usersByBatch, function ($a, $b) {
 </div>
 
 <div id="editModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-md">
+    <div class="modal-box modal-shell modal-frame-lg edit-user-modal">
         <div class="modal-head">
             <div class="modal-title">Edit User</div>
             <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
@@ -604,94 +713,187 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
-            <input type="hidden" name="user_id" id="editUserId">
+                <input type="hidden" name="user_id" id="editUserId">
 
-	            <label for="editBatch">Batch</label>
-		            <input type="number"
-		                name="batch"
-		                id="editBatch"
-		                autocomplete="off"
-		                min="1"
-		                max="26"
-		                placeholder="Contoh: 3">
+                <div class="edit-user-grid">
+                    <div class="edit-user-section">
+                        <h3 class="edit-user-section-title">Identitas Medis</h3>
 
-		            <div class="hidden" aria-hidden="true">
-		                <label for="editKodeMedis">Kode Medis / Nomor Induk RS</label>
+                        <div class="row-form-2">
+                            <div>
+                                <label for="editBatch">Batch</label>
+                                <input type="number"
+                                    name="batch"
+                                    id="editBatch"
+                                    autocomplete="off"
+                                    min="1"
+                                    max="26"
+                                    placeholder="Contoh: 3">
+                            </div>
 
-		                <div class="ems-kode-medis">
-		                    <input type="text"
-		                        id="editKodeMedis"
-		                        readonly>
+                            <div>
+                                <label for="editTanggalMasuk">Tanggal Masuk Trainee</label>
+                                <input type="date" name="tanggal_masuk" id="editTanggalMasuk">
+                            </div>
+                        </div>
 
-		                    <button type="button"
-		                        id="btnDeleteKodeMedis"
-		                        title="Hapus kode medis">
-		                        <?= ems_icon('trash', 'h-4 w-4') ?>
-		                    </button>
-		                </div>
+                        <div class="hidden" aria-hidden="true">
+                            <label for="editKodeMedis">Kode Medis / Nomor Induk RS</label>
 
-		                <small class="danger-note-sm" id="kodeMedisWarning">
-		                    Menghapus kode medis akan mengizinkan sistem membuat ulang kode baru.
-		                </small>
-		            </div>
+                            <div class="ems-kode-medis">
+                                <input type="text"
+                                    id="editKodeMedis"
+                                    readonly>
 
-		            <label for="editName">Nama</label>
-		            <input type="text" name="full_name" id="editName" autocomplete="username" required>
+                                <button type="button"
+                                    id="btnDeleteKodeMedis"
+                                    title="Hapus kode medis">
+                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                </button>
+                            </div>
 
-		            <label for="editPosition">Jabatan</label>
-		            <select name="position" id="editPosition" autocomplete="organization-title" required>
-	                    <?php foreach (ems_position_options() as $opt): ?>
-	                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
-	                            <?= htmlspecialchars($opt['label']) ?>
-	                        </option>
-	                    <?php endforeach; ?>
-	            </select>
+                            <small class="danger-note-sm" id="kodeMedisWarning">
+                                Menghapus kode medis akan mengizinkan sistem membuat ulang kode baru.
+                            </small>
+                        </div>
 
-	            <label for="editRole">Role</label>
-	            <select name="role" id="editRole" autocomplete="off" required>
-                <?php foreach ($roleOptions as $opt): ?>
-                    <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
-                        <?= htmlspecialchars($opt['label']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
+                        <label for="editName">Nama</label>
+                        <input type="text" name="full_name" id="editName" autocomplete="username" required>
 
-                <label for="editDivision">Division</label>
-                <select name="division" id="editDivision" autocomplete="organization" required>
-                    <?php foreach ($divisionOptions as $opt): ?>
-                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
-                            <?= htmlspecialchars($opt['label']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                        <?php if ($hasCitizenIdColumn): ?>
+                            <label for="editCitizenId">Citizen ID</label>
+                            <input type="text"
+                                id="editCitizenId"
+                                name="citizen_id"
+                                placeholder="RH39IQLC"
+                                pattern="[A-Z0-9]+"
+                                title="Hanya huruf besar dan angka, tanpa spasi"
+                                class="uppercase">
+                            <small class="edit-user-help">Gunakan huruf besar atau kombinasi huruf besar dan angka tanpa spasi.</small>
+                        <?php endif; ?>
 
-                <?php if ($hasUnitCodeColumn): ?>
-                    <label for="editUnitCode">Unit</label>
-                    <select name="unit_code" id="editUnitCode" autocomplete="organization" required>
-                        <?php foreach ($unitOptions as $opt): ?>
-                            <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
-                                <?= htmlspecialchars($opt['label']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                <?php endif; ?>
+                        <div class="row-form-2">
+                            <?php if ($hasJenisKelaminColumn): ?>
+                                <div>
+                                    <label for="editJenisKelamin">Jenis Kelamin</label>
+                                    <select name="jenis_kelamin" id="editJenisKelamin">
+                                        <option value="">-- Pilih --</option>
+                                        <option value="Laki-laki">Laki-laki</option>
+                                        <option value="Perempuan">Perempuan</option>
+                                    </select>
+                                </div>
+                            <?php endif; ?>
 
-                <?php if ($hasCanViewAllUnitsColumn && ems_is_director_role($role)): ?>
-                    <label class="inline-flex items-center gap-2 mt-2">
-                        <input type="checkbox" name="can_view_all_units" id="editCanViewAllUnits" value="1">
-                        <span>Akses semua unit (khusus owner)</span>
-                    </label>
-                <?php endif; ?>
+                            <?php if ($hasNoHpIcColumn): ?>
+                                <div>
+                                    <label for="editNoHpIc">No HP IC</label>
+                                    <input type="number"
+                                        id="editNoHpIc"
+                                        name="no_hp_ic"
+                                        inputmode="numeric"
+                                        placeholder="Contoh: 544322">
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
 
-		            <label for="editNewPin">PIN Baru <small>(4 digit, kosongkan jika tidak ganti)</small></label>
-		            <input type="password"
-		                id="editNewPin"
-		                name="new_pin"
-		                autocomplete="new-password"
-		                inputmode="numeric"
-		                pattern="[0-9]{4}"
-		                maxlength="4">
+                    <div class="edit-user-section">
+                        <h3 class="edit-user-section-title">Akses dan Jabatan</h3>
 
+                        <div class="row-form-2">
+                            <div>
+                                <label for="editPosition">Jabatan</label>
+                                <select name="position" id="editPosition" autocomplete="organization-title" required>
+                                    <?php foreach (ems_position_options() as $opt): ?>
+                                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                            <?= htmlspecialchars($opt['label']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label for="editRole">Role</label>
+                                <select name="role" id="editRole" autocomplete="off" required>
+                                    <?php foreach ($roleOptions as $opt): ?>
+                                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                            <?= htmlspecialchars($opt['label']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row-form-2">
+                            <div>
+                                <label for="editDivision">Division</label>
+                                <select name="division" id="editDivision" autocomplete="organization" required>
+                                    <?php foreach ($divisionOptions as $opt): ?>
+                                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                            <?= htmlspecialchars($opt['label']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <?php if ($hasUnitCodeColumn): ?>
+                                <div>
+                                    <label for="editUnitCode">Unit</label>
+                                    <select name="unit_code" id="editUnitCode" autocomplete="organization" required>
+                                        <?php foreach ($unitOptions as $opt): ?>
+                                            <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>">
+                                                <?= htmlspecialchars($opt['label']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ($hasCanViewAllUnitsColumn && ems_is_director_role($role)): ?>
+                            <label class="edit-user-checkbox">
+                                <input type="checkbox" name="can_view_all_units" id="editCanViewAllUnits" value="1">
+                                <span>Akses semua unit (khusus owner)</span>
+                            </label>
+                        <?php endif; ?>
+
+                        <label for="editNewPin">PIN Baru <small>(4 digit, kosongkan jika tidak ganti)</small></label>
+                        <input type="password"
+                            id="editNewPin"
+                            name="new_pin"
+                            autocomplete="new-password"
+                            inputmode="numeric"
+                            pattern="[0-9]{4}"
+                            maxlength="4">
+                    </div>
+
+                    <?php
+                    $availablePromotionFields = array_values(array_filter(
+                        $editOptionalColumns,
+                        static fn($column) => manageUsersHasColumn($pdo, $column)
+                    ));
+                    ?>
+                    <?php if (!empty($availablePromotionFields)): ?>
+                        <div class="edit-user-section" style="grid-column: 1 / -1;">
+                            <h3 class="edit-user-section-title">Riwayat Tanggal Kenaikan</h3>
+                            <p class="edit-user-help">Tanpa upload dokumen. Isi hanya tanggal yang memang sudah aktif untuk user tersebut.</p>
+
+                            <div class="row-form-2">
+                                <?php foreach ($availablePromotionFields as $promotionField): ?>
+                                    <div>
+                                        <label for="edit_<?= htmlspecialchars($promotionField) ?>">
+                                            <?= htmlspecialchars($editPromotionDateConfigs[$promotionField] ?? $promotionField) ?>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            id="edit_<?= htmlspecialchars($promotionField) ?>"
+                                            name="<?= htmlspecialchars($promotionField) ?>">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <div class="modal-foot">
@@ -861,6 +1063,13 @@ uksort($usersByBatch, function ($a, $b) {
     document.addEventListener('DOMContentLoaded', function() {
 
         const modal = document.getElementById('editModal');
+        const promotionFieldIds = [
+            'tanggal_naik_paramedic',
+            'tanggal_naik_co_asst',
+            'tanggal_naik_dokter',
+            'tanggal_naik_dokter_spesialis',
+            'tanggal_join_manager'
+        ];
 
         const roleMap = {
             'staff': 'Staff',
@@ -879,19 +1088,50 @@ uksort($usersByBatch, function ($a, $b) {
             document.getElementById('editUserId').value = btn.dataset.id;
             document.getElementById('editName').value = btn.dataset.name;
             document.getElementById('editPosition').value = btn.dataset.position;
-		            document.getElementById('editRole').value = roleMap[btn.dataset.role] || 'Staff';
-		            document.getElementById('editDivision').value = btn.dataset.division || 'Executive';
-                    const editUnitEl = document.getElementById('editUnitCode');
-                    if (editUnitEl) {
-                        editUnitEl.value = btn.dataset.unit || 'roxwood';
-                    }
-                    const editCanViewAllUnitsEl = document.getElementById('editCanViewAllUnits');
-                    if (editCanViewAllUnitsEl) {
-                        editCanViewAllUnitsEl.checked = btn.dataset.canViewAllUnits === '1';
-                    }
+            document.getElementById('editRole').value = roleMap[btn.dataset.role] || 'Staff';
+            document.getElementById('editDivision').value = btn.dataset.division || 'Executive';
+            const editUnitEl = document.getElementById('editUnitCode');
+            if (editUnitEl) {
+                editUnitEl.value = btn.dataset.unit || 'roxwood';
+            }
+            const editCanViewAllUnitsEl = document.getElementById('editCanViewAllUnits');
+            if (editCanViewAllUnitsEl) {
+                editCanViewAllUnitsEl.checked = btn.dataset.canViewAllUnits === '1';
+            }
+
+            const editCitizenIdEl = document.getElementById('editCitizenId');
+            if (editCitizenIdEl) {
+                editCitizenIdEl.value = btn.dataset.citizenId || '';
+            }
+
+            const editJenisKelaminEl = document.getElementById('editJenisKelamin');
+            if (editJenisKelaminEl) {
+                editJenisKelaminEl.value = btn.dataset.jenisKelamin || '';
+            }
+
+            const editNoHpIcEl = document.getElementById('editNoHpIc');
+            if (editNoHpIcEl) {
+                editNoHpIcEl.value = btn.dataset.noHpIc || '';
+            }
 
             document.getElementById('editBatch').value = btn.dataset.batch || '';
+            const editTanggalMasukEl = document.getElementById('editTanggalMasuk');
+            if (editTanggalMasukEl) {
+                editTanggalMasukEl.value = btn.dataset.tanggalMasuk || '';
+            }
             document.getElementById('editKodeMedis').value = btn.dataset.kode || '';
+            document.getElementById('editNewPin').value = '';
+
+            promotionFieldIds.forEach(function(fieldName) {
+                const input = document.getElementById('edit_' + fieldName);
+                if (!input) return;
+
+                const dataKey = fieldName
+                    .replace(/_([a-z])/g, function(_, chr) {
+                        return chr.toUpperCase();
+                    });
+                input.value = btn.dataset[dataKey] || '';
+            });
 
             document.getElementById('kodeMedisWarning').style.display =
                 btn.dataset.kode ? 'block' : 'none';
@@ -1382,6 +1622,20 @@ uksort($usersByBatch, function ($a, $b) {
                 downloadText(`tanpa_batch_${exportTimestamp()}.txt`, 'Tanpa Batch\n' + lines.join('\n') + '\n');
             }
         });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const editCitizenIdInput = document.getElementById('editCitizenId');
+
+        if (editCitizenIdInput) {
+            editCitizenIdInput.addEventListener('input', function(e) {
+                let value = e.target.value || '';
+                value = value.replace(/[^A-Z0-9]/gi, '');
+                e.target.value = value.toUpperCase();
+            });
+        }
     });
 </script>
 

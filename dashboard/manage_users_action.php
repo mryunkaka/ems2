@@ -36,6 +36,36 @@ function manageUsersActionHasColumn(PDO $pdo, string $column): bool
 $hasDivisionColumn = manageUsersActionHasColumn($pdo, 'division');
 $hasUnitCodeColumn = manageUsersActionHasColumn($pdo, 'unit_code');
 $hasCanViewAllUnitsColumn = manageUsersActionHasColumn($pdo, 'can_view_all_units');
+$hasCitizenIdColumn = manageUsersActionHasColumn($pdo, 'citizen_id');
+$hasNoHpIcColumn = manageUsersActionHasColumn($pdo, 'no_hp_ic');
+$hasJenisKelaminColumn = manageUsersActionHasColumn($pdo, 'jenis_kelamin');
+$hasTanggalMasukColumn = manageUsersActionHasColumn($pdo, 'tanggal_masuk');
+$promotionDateColumns = [
+    'tanggal_naik_paramedic',
+    'tanggal_naik_co_asst',
+    'tanggal_naik_dokter',
+    'tanggal_naik_dokter_spesialis',
+    'tanggal_join_manager',
+];
+$availablePromotionDateColumns = array_values(array_filter(
+    $promotionDateColumns,
+    static fn(string $column): bool => manageUsersActionHasColumn($pdo, $column)
+));
+
+function manageUsersActionNormalizeDate(?string $value): ?string
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return null;
+    }
+
+    $dt = DateTime::createFromFormat('Y-m-d', $value);
+    if (!$dt || $dt->format('Y-m-d') !== $value) {
+        return null;
+    }
+
+    return $value;
+}
 
 function manageUsersActionTargetExists(PDO $pdo, int $userId, bool $hasUnitCodeColumn, string $effectiveUnit): bool
 {
@@ -495,6 +525,15 @@ $unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
 $canViewAllUnits = !empty($_POST['can_view_all_units']) && ems_is_director_role($sessionRole) ? 1 : null;
 $newPin   = $_POST['new_pin'] ?? '';
 $batch    = (int)($_POST['batch'] ?? 0);
+$citizenId = strtoupper(trim((string)($_POST['citizen_id'] ?? '')));
+$noHpIc = trim((string)($_POST['no_hp_ic'] ?? ''));
+$jenisKelamin = trim((string)($_POST['jenis_kelamin'] ?? ''));
+$tanggalMasukRaw = $_POST['tanggal_masuk'] ?? '';
+$tanggalMasuk = manageUsersActionNormalizeDate($tanggalMasukRaw);
+$promotionDates = [];
+foreach ($availablePromotionDateColumns as $promotionColumn) {
+    $promotionDates[$promotionColumn] = manageUsersActionNormalizeDate($_POST[$promotionColumn] ?? '');
+}
 
 if (!ems_is_valid_role($newRole)) {
     $_SESSION['flash_errors'][] = 'Role tidak valid.';
@@ -546,6 +585,53 @@ if (!ems_is_valid_division($division)) {
     exit;
 }
 
+if ($hasCitizenIdColumn && $citizenId !== '') {
+    if (!preg_match('/^[A-Z0-9]+$/', $citizenId)) {
+        $_SESSION['flash_errors'][] = 'Citizen ID hanya boleh huruf besar dan angka tanpa spasi.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!preg_match('/[A-Z]/', $citizenId)) {
+        $_SESSION['flash_errors'][] = 'Citizen ID harus mengandung minimal 1 huruf.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (strlen($citizenId) < 6) {
+        $_SESSION['flash_errors'][] = 'Citizen ID minimal 6 karakter.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $cleanedName = strtoupper(preg_replace('/\s+/', '', $name));
+    if ($cleanedName !== '' && $citizenId === $cleanedName) {
+        $_SESSION['flash_errors'][] = 'Citizen ID tidak boleh sama dengan nama medis.';
+        header('Location: manage_users.php');
+        exit;
+    }
+}
+
+if ($hasJenisKelaminColumn && $jenisKelamin !== '' && !in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
+    $_SESSION['flash_errors'][] = 'Jenis kelamin tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+if ($hasTanggalMasukColumn && $tanggalMasukRaw !== '' && $tanggalMasuk === null) {
+    $_SESSION['flash_errors'][] = 'Tanggal masuk tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+foreach ($promotionDates as $promotionColumn => $promotionDateValue) {
+    if (trim((string)($_POST[$promotionColumn] ?? '')) !== '' && $promotionDateValue === null) {
+        $_SESSION['flash_errors'][] = 'Format tanggal kenaikan tidak valid.';
+        header('Location: manage_users.php');
+        exit;
+    }
+}
+
 /* ===============================
    Ambil kode medis lama
    =============================== */
@@ -576,6 +662,31 @@ if ($hasUnitCodeColumn) {
 if ($hasCanViewAllUnitsColumn) {
     $sql .= ", can_view_all_units = ?";
     $params[] = $canViewAllUnits;
+}
+
+if ($hasCitizenIdColumn) {
+    $sql .= ", citizen_id = ?";
+    $params[] = $citizenId !== '' ? $citizenId : null;
+}
+
+if ($hasNoHpIcColumn) {
+    $sql .= ", no_hp_ic = ?";
+    $params[] = $noHpIc !== '' ? $noHpIc : null;
+}
+
+if ($hasJenisKelaminColumn) {
+    $sql .= ", jenis_kelamin = ?";
+    $params[] = $jenisKelamin !== '' ? $jenisKelamin : null;
+}
+
+if ($hasTanggalMasukColumn) {
+    $sql .= ", tanggal_masuk = ?";
+    $params[] = $tanggalMasuk;
+}
+
+foreach ($availablePromotionDateColumns as $promotionColumn) {
+    $sql .= ", {$promotionColumn} = ?";
+    $params[] = $promotionDates[$promotionColumn];
 }
 
 /* ===============================
