@@ -118,6 +118,12 @@ $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
 
+// View mode: per_batch atau all
+$viewMode = trim($_GET['view'] ?? '');
+if (!in_array($viewMode, ['per_batch', 'all'], true)) {
+    $viewMode = 'per_batch';
+}
+
 $hasDivisionColumn = manageUsersHasColumn($pdo, 'division');
 $hasUnitCodeColumn = manageUsersHasColumn($pdo, 'unit_code');
 $hasCanViewAllUnitsColumn = manageUsersHasColumn($pdo, 'can_view_all_units');
@@ -433,6 +439,72 @@ uksort($usersByBatch, function ($a, $b) {
             align-items: start;
         }
     }
+
+    /* Tabs styling like forensic_medics.php */
+    .forensic-medics-tabs {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .forensic-medics-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.4rem;
+        padding: 0.55rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(186, 230, 253, 0.95);
+        background: rgba(240, 249, 255, 0.9);
+        color: #075985;
+        font-weight: 700;
+    }
+
+    .forensic-medics-tab:hover {
+        color: #0c4a6e;
+        background: rgba(224, 242, 254, 0.98);
+    }
+
+    .forensic-medics-tab.is-active {
+        border-color: #0ea5e9;
+        background: linear-gradient(135deg, #0ea5e9, #0369a1);
+        color: #ffffff;
+    }
+
+    /* Horizontal action buttons for all-users view */
+    .manage-user-action-horizontal {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: nowrap;
+    }
+
+    /* Prevent text wrapping and enable horizontal scroll for table */
+    .table-wrapper {
+        overflow-x: auto;
+        max-width: 100%;
+    }
+
+    .table-custom th,
+    .table-custom td {
+        white-space: nowrap;
+        min-width: fit-content;
+    }
+
+    .table-custom td {
+        vertical-align: middle;
+    }
+
+    /* Ensure action column has minimum width */
+    .table-custom th:last-child,
+    .table-custom td:last-child {
+        min-width: 140px;
+    }
+
+    /* Batch column min width */
+    .table-custom th:nth-child(3),
+    .table-custom td:nth-child(3) {
+        min-width: 80px;
+    }
 </style>
 
 <section class="content">
@@ -494,9 +566,55 @@ uksort($usersByBatch, function ($a, $b) {
             </div>
         </div>
 
+        <!-- Statistics Summary Card -->
+        <div class="card mb-4">
+            <div class="card-header">Ringkasan Total</div>
+            <div class="card-body">
+                <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                    <div class="stat-card" style="padding: 1rem; border-radius: 1rem; background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white;">
+                        <div style="font-size: 0.875rem; opacity: 0.9;">Total User</div>
+                        <div style="font-size: 1.75rem; font-weight: 800;"><?= count($users) ?></div>
+                    </div>
+                    <div class="stat-card" style="padding: 1rem; border-radius: 1rem; background: linear-gradient(135deg, #10b981, #059669); color: white;">
+                        <div style="font-size: 0.875rem; opacity: 0.9;">Aktif</div>
+                        <div style="font-size: 1.75rem; font-weight: 800;">
+                            <?= count(array_filter($users, fn($u) => (int)($u['is_active'] ?? 0) === 1)) ?>
+                        </div>
+                    </div>
+                    <div class="stat-card" style="padding: 1rem; border-radius: 1rem; background: linear-gradient(135deg, #f59e0b, #d97706); color: white;">
+                        <div style="font-size: 0.875rem; opacity: 0.9;">Non-Aktif/Resign</div>
+                        <div style="font-size: 1.75rem; font-weight: 800;">
+                            <?= count(array_filter($users, fn($u) => (int)($u['is_active'] ?? 0) === 0)) ?>
+                        </div>
+                    </div>
+                    <div class="stat-card" style="padding: 1rem; border-radius: 1rem; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white;">
+                        <div style="font-size: 0.875rem; opacity: 0.9;">Jumlah Batch</div>
+                        <div style="font-size: 1.75rem; font-weight: 800;"><?= count($usersByBatch) ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- View Mode Tabs -->
+        <div class="card card-section mb-4">
+            <div class="card-header">Tampilan Daftar</div>
+            <div class="card-body">
+                <div class="forensic-medics-tabs" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <a href="<?= htmlspecialchars(ems_url('/dashboard/manage_users.php?view=per_batch'), ENT_QUOTES, 'UTF-8') ?>"
+                       class="forensic-medics-tab<?= $viewMode === 'per_batch' ? ' is-active' : '' ?>">
+                        Per Batch
+                    </a>
+                    <a href="<?= htmlspecialchars(ems_url('/dashboard/manage_users.php?view=all'), ENT_QUOTES, 'UTF-8') ?>"
+                       class="forensic-medics-tab<?= $viewMode === 'all' ? ' is-active' : '' ?>">
+                        Semua
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="card manage-users-card">
             <div class="card-header card-toolbar">
-                <span>Daftar User</span>
+                <span>Daftar User <?= $viewMode === 'all' ? '(Semua)' : '(Per Batch)' ?></span>
 	                <div class="toolbar-group">
 	                    <select id="docStatusFilter" class="toolbar-select">
 	                        <option value="all" selected>Semua Dokumen</option>
@@ -541,7 +659,8 @@ uksort($usersByBatch, function ($a, $b) {
             </div>
 
 	            <div class="table-wrapper">
-	                <?php foreach ($usersByBatch as $batchName => $batchUsers): ?>
+                <?php if ($viewMode === 'per_batch'): ?>
+                    <?php foreach ($usersByBatch as $batchName => $batchUsers): ?>
 	                    <div class="card batch-card">
 	                        <div class="card-header batch-card-header">
 	                            <div>
@@ -796,6 +915,268 @@ uksort($usersByBatch, function ($a, $b) {
                         </div>
                     </div>
                 <?php endforeach; ?>
+                <?php endif; ?>
+
+                <?php if ($viewMode === 'all'): ?>
+                    <!-- All Users View (Single Table) -->
+                    <div class="card batch-card">
+                        <div class="card-header batch-card-header">
+                            <div>
+                                Semua User
+                                <span class="batch-count">
+                                    (<?= count($users) ?> user)
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="table-wrapper">
+                            <table class="table-custom user-batch-table" id="allUsersTable">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Nama</th>
+                                        <th>Batch</th>
+                                        <th>Jabatan</th>
+                                        <th>Role</th>
+                                        <th>Division</th>
+                                        <th>Unit</th>
+                                        <th>Tanggal Join</th>
+                                        <th>Dokumen</th>
+                                        <th>Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($users as $i => $u): ?>
+                                        <?php
+                                        $docs = [
+                                            'KTP' => $u['file_ktp'] ?? null,
+                                            'SIM' => $u['file_sim'] ?? null,
+                                            'KTA' => $u['file_kta'] ?? null,
+                                            'SKB' => $u['file_skb'] ?? null,
+                                            'SERTIFIKAT HELI' => $u['sertifikat_heli'] ?? null,
+                                            'SERTIFIKAT OPERASI' => $u['sertifikat_operasi'] ?? null,
+                                        ];
+
+                                        $academyDocs = $u['_other_docs'] ?? [];
+                                        foreach ($academyDocs as $ad) {
+                                            $label = trim((string)($ad['name'] ?? 'File Lainnya'));
+                                            $docs[$label] = $ad['path'] ?? null;
+                                        }
+
+                                        $docSearchTokens = [];
+                                        foreach ($docs as $label => $path) {
+                                            if (empty($path)) continue;
+                                            $docSearchTokens[] = strtolower($label);
+                                            $docSearchTokens[] = strtolower(basename((string)$path));
+                                        }
+                                        $docSearch = trim(implode(' ', $docSearchTokens));
+
+                                        $posSearch = strtolower(trim((string)($u['position'] ?? '')));
+                                        $roleSearch = strtolower(trim((string)($u['role'] ?? '')));
+                                        $divisionSearch = strtolower(trim((string)ems_normalize_division($u['division'] ?? '')));
+                                        $unitSearch = strtolower(trim((string)ems_normalize_unit_code($u['unit_code'] ?? 'roxwood')));
+                                        $batchSearch = !empty($u['batch']) ? 'batch ' . (int)$u['batch'] : 'tanpa batch';
+                                        $joinSearch = '';
+                                        if (!empty($u['tanggal_masuk'])) {
+                                            try {
+                                                $dtJoin = new DateTime((string)$u['tanggal_masuk']);
+                                                $joinSearch = strtolower($dtJoin->format('d M Y')) . ' ' . strtolower($dtJoin->format('Y-m-d'));
+                                            } catch (Throwable $e) {
+                                                $joinSearch = strtolower((string)$u['tanggal_masuk']);
+                                            }
+                                        }
+
+                                        $allSearch = trim(implode(' ', array_filter([
+                                            strtolower((string)$u['full_name']),
+                                            $posSearch,
+                                            $roleSearch,
+                                            $divisionSearch,
+                                            $unitSearch,
+                                            $batchSearch,
+                                            $joinSearch,
+                                            $docSearch,
+                                        ])));
+                                        $hasKtp = !empty($u['file_ktp']);
+                                        $hasSim = !empty($u['file_sim']);
+                                        $hasKta = !empty($u['file_kta']);
+                                        $hasSkb = !empty($u['file_skb']);
+                                        $hasSertifikatHeli = !empty($u['sertifikat_heli']);
+                                        $hasSertifikatOperasi = !empty($u['sertifikat_operasi']);
+                                        $otherDocNames = $u['_other_doc_names'] ?? [];
+                                        $hasAnyDoc = false;
+                                        foreach ($docs as $path) {
+                                            if (!empty($path)) {
+                                                $hasAnyDoc = true;
+                                                break;
+                                            }
+                                        }
+                                        $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
+                                        $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
+                                        ?>
+                                        <tr
+                                            data-search-name="<?= htmlspecialchars(strtolower($u['full_name'])) ?>"
+                                            data-search-position="<?= htmlspecialchars($posSearch) ?>"
+                                            data-search-role="<?= htmlspecialchars($roleSearch) ?>"
+                                            data-search-division="<?= htmlspecialchars($divisionSearch) ?>"
+                                            data-search-unit="<?= htmlspecialchars($unitSearch) ?>"
+                                            data-search-batch="<?= htmlspecialchars($batchSearch) ?>"
+                                            data-search-join="<?= htmlspecialchars($joinSearch) ?>"
+                                            data-search-docs="<?= htmlspecialchars($docSearch) ?>"
+                                            data-search-all="<?= htmlspecialchars($allSearch) ?>"
+                                            data-has-ktp="<?= $hasKtp ? '1' : '0' ?>"
+                                            data-has-sim="<?= $hasSim ? '1' : '0' ?>"
+                                            data-has-kta="<?= $hasKta ? '1' : '0' ?>"
+                                            data-has-skb="<?= $hasSkb ? '1' : '0' ?>"
+                                            data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
+                                            data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
+                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>">
+                                            <td><?= $i + 1 ?></td>
+                                            <td>
+                                                <strong><?= htmlspecialchars($u['full_name']) ?></strong>
+
+                                                <?php if ($isProtectedUser && !$canManageProtectedUser): ?>
+                                                    <div class="status-note-muted">
+                                                        Akun dilindungi: hanya pemilik akun yang bisa edit, resign, atau hapus.
+                                                    </div>
+                                                <?php endif; ?>
+
+                                                <?php if (!empty($u['reactivated_at'])): ?>
+                                                    <div class="status-note-success">
+                                                        Aktif kembali:
+                                                        <?= (new DateTime($u['reactivated_at']))->format('d M Y') ?>
+                                                    </div>
+                                                <?php endif; ?>
+
+                                                <?php if ((int)$u['is_active'] === 0 && !empty($u['resigned_at'])): ?>
+                                                    <div class="status-note-muted">
+                                                        Resign: <?= (new DateTime($u['resigned_at']))->format('d M Y') ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if (!empty($u['batch'])): ?>
+                                                    <span class="badge badge-primary">Batch <?= (int)$u['batch'] ?></span>
+                                                <?php else: ?>
+                                                    <span class="badge badge-secondary">Tanpa Batch</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
+                                            <td><?= htmlspecialchars(ems_role_label($u['role'])) ?></td>
+                                            <td><?= htmlspecialchars(ems_normalize_division($u['division'] ?? '') ?: '-') ?></td>
+                                            <td><?= htmlspecialchars(ems_unit_label($u['unit_code'] ?? 'roxwood')) ?></td>
+                                            <td>
+                                                <?php if (!empty($u['tanggal_masuk'])): ?>
+                                                    <div>
+                                                        <?= (new DateTime($u['tanggal_masuk']))->format('d M Y') ?>
+                                                    </div>
+                                                    <small class="meta-text">
+                                                        <?= formatDurasiMedis($u['tanggal_masuk']) ?>
+                                                    </small>
+                                                <?php else: ?>
+                                                    <span class="muted-placeholder">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php
+                                                foreach ($docs as $label => $path):
+                                                    if (!empty($path)):
+                                                ?>
+                                                        <a href="#"
+                                                            class="doc-badge btn-preview-doc"
+                                                            data-src="/<?= htmlspecialchars($path) ?>"
+                                                            data-title="<?= htmlspecialchars($label) ?>"
+                                                            title="Lihat <?= htmlspecialchars($label) ?>">
+                                                            <?= $label ?>
+                                                        </a>
+                                                <?php
+                                                    endif;
+                                                endforeach;
+
+                                                if (!$hasAnyDoc):
+                                                ?>
+                                                        <span class="muted-placeholder">-</span>
+                                                <?php
+                                                endif;
+                                                ?>
+                                            </td>
+                                            <td>
+                                                <div class="manage-user-action-horizontal">
+                                                    <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
+                                                        <button
+                                                            class="btn-secondary btn-sm candidate-action-btn action-icon-btn btn-edit-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            data-position="<?= htmlspecialchars(ems_normalize_position($u['position']), ENT_QUOTES) ?>"
+                                                            data-role="<?= strtolower(trim($u['role'])) ?>"
+                                                            data-division="<?= htmlspecialchars(ems_normalize_division($u['division'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-unit="<?= htmlspecialchars(ems_normalize_unit_code($u['unit_code'] ?? 'roxwood'), ENT_QUOTES) ?>"
+                                                            data-can-view-all-units="<?= !empty($u['can_view_all_units']) ? '1' : '0' ?>"
+                                                            data-batch="<?= (int)($u['batch'] ?? 0) ?>"
+                                                            data-kode="<?= htmlspecialchars($u['kode_nomor_induk_rs'] ?? '', ENT_QUOTES) ?>"
+                                                            data-citizen-id="<?= htmlspecialchars((string)($u['citizen_id'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-no-hp-ic="<?= htmlspecialchars((string)($u['no_hp_ic'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-jenis-kelamin="<?= htmlspecialchars((string)($u['jenis_kelamin'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-masuk="<?= htmlspecialchars((string)($u['tanggal_masuk'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-paramedic="<?= htmlspecialchars((string)($u['tanggal_naik_paramedic'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-co-asst="<?= htmlspecialchars((string)($u['tanggal_naik_co_asst'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-dokter="<?= htmlspecialchars((string)($u['tanggal_naik_dokter'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-naik-dokter-spesialis="<?= htmlspecialchars((string)($u['tanggal_naik_dokter_spesialis'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-join-manager="<?= htmlspecialchars((string)($u['tanggal_join_manager'] ?? ''), ENT_QUOTES) ?>"
+                                                            title="Edit user"
+                                                            aria-label="Edit user">
+                                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini" aria-label="Akun dilindungi">
+                                                            <?= ems_icon('shield-check', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($u['is_active']): ?>
+                                                        <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
+                                                            <button class="btn-resign btn-sm candidate-action-btn action-icon-btn btn-resign-user"
+                                                                data-id="<?= (int)$u['id'] ?>"
+                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                                title="Resign user"
+                                                                aria-label="Resign user">
+                                                                <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa resign akun ini" aria-label="Akun dilindungi">
+                                                                <?= ems_icon('shield-check', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    <?php else: ?>
+                                                        <button class="btn-success btn-sm candidate-action-btn action-icon-btn btn-reactivate-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            title="Aktifkan kembali user"
+                                                            aria-label="Aktifkan kembali user">
+                                                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                    <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
+                                                        <button class="btn-danger btn-sm candidate-action-btn action-icon-btn btn-delete-user"
+                                                            data-id="<?= (int)$u['id'] ?>"
+                                                            data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                            title="Hapus user"
+                                                            aria-label="Hapus user">
+                                                            <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php else: ?>
+                                                        <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Akun ini dilindungi dan tidak bisa dihapus" aria-label="Akun dilindungi">
+                                                            <?= ems_icon('shield-check', 'h-4 w-4') ?>
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
             </div>
         </div>
@@ -1807,6 +2188,25 @@ uksort($usersByBatch, function ($a, $b) {
     });
 </script>
 
+<!-- DataTables for All Users View -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.jQuery && $.fn.DataTable && document.getElementById('allUsersTable')) {
+        $('#allUsersTable').DataTable({
+            language: {
+                url: '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>'
+            },
+            pageLength: 25,
+            scrollX: true,
+            autoWidth: false,
+            order: [[0, 'asc']],
+            columnDefs: [
+                { orderable: false, targets: -1 }
+            ]
+        });
+    }
+});
+</script>
 
 	<?php include __DIR__ . '/../partials/footer.php'; ?>
 
