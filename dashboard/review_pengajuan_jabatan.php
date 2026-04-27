@@ -21,11 +21,18 @@ if (!in_array($status, ['pending', 'approved', 'rejected'], true)) {
     $status = 'pending';
 }
 
+$positionFilter = strtolower(trim($_GET['position'] ?? ''));
+$allowedPositions = ['trainee', 'paramedic', 'co_asst', 'general_practitioner', 'specialist'];
+if ($positionFilter !== '' && !in_array($positionFilter, $allowedPositions, true)) {
+    $positionFilter = '';
+}
+
 $requestId = (int)($_GET['id'] ?? 0);
 
 $detail = null;
-$detailOps = [];
 $detailUser = null;
+$detailOps = [];
+$detailTemplates = [];
 
 if ($requestId > 0) {
     $stmt = $pdo->prepare("
@@ -51,7 +58,7 @@ if ($requestId > 0) {
         $detailUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 
         $stmt = $pdo->prepare("
-            SELECT sort_order, patient_name, procedure_name, dpjp, operation_role, operation_level
+            SELECT sort_order, patient_name, procedure_name, dpjp, operation_role, operation_level, medical_record_id
             FROM position_promotion_request_operations
             WHERE request_id = ?
             ORDER BY sort_order ASC, id ASC
@@ -79,10 +86,15 @@ $stmt = $pdo->prepare("
     JOIN user_rh u ON u.id = r.user_id
     LEFT JOIN user_rh rb ON rb.id = r.reviewed_by
     WHERE r.status = ?
+    " . ($positionFilter !== '' ? "AND u.position = ?" : "") . "
     ORDER BY r.submitted_at DESC
     LIMIT 200
 ");
-$stmt->execute([$status]);
+$params = [$status];
+if ($positionFilter !== '') {
+    $params[] = $positionFilter;
+}
+$stmt->execute($params);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -114,6 +126,18 @@ include __DIR__ . '/../partials/sidebar.php';
                 <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=pending">Pending</a>
                 <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=approved">Approved</a>
                 <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=rejected">Rejected</a>
+            </div>
+        </div>
+
+        <div class="card card-section">
+            <div class="card-header">Filter Posisi</div>
+            <div class="flex gap-2 flex-wrap">
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>">Semua</a>
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&position=trainee">Trainee</a>
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&position=paramedic">Paramedic</a>
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&position=co_asst">Co-Asst</a>
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&position=general_practitioner">Dokter Umum</a>
+                <a class="btn-secondary" href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&position=specialist">Spesialis</a>
             </div>
         </div>
 
@@ -157,36 +181,210 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 <?php endif; ?>
 
+                <?php
+                // Fetch medical record details for each operation
+                $medicalRecordDetails = [];
+                $detailTemplates = [];
+                foreach ($detailOps as $op) {
+                    $mrId = (int)($op['medical_record_id'] ?? 0);
+                    if ($mrId > 0 && !isset($medicalRecordDetails[$mrId])) {
+                        $stmt = $pdo->prepare("
+                            SELECT
+                                r.id,
+                                r.record_code,
+                                r.patient_name,
+                                r.patient_citizen_id,
+                                r.patient_occupation,
+                                r.patient_dob,
+                                r.patient_phone,
+                                r.patient_gender,
+                                r.patient_address,
+                                r.patient_status,
+                                r.operasi_type,
+                                r.ktp_file_path,
+                                r.mri_file_path,
+                                r.medical_result_html,
+                                r.created_at,
+                                u.full_name AS dpjp_name,
+                                u.position AS dpjp_position
+                            FROM medical_records r
+                            LEFT JOIN user_rh u ON u.id = r.doctor_id
+                            WHERE r.id = ?
+                            LIMIT 1
+                        ");
+                        $stmt->execute([$mrId]);
+                        $mr = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($mr) {
+                            $medicalRecordDetails[$mrId] = $mr;
+
+                            // Generate detail template for modal
+                            ob_start();
+                            ?>
+                            <div class="forensic-detail-shell">
+                                <div class="forensic-detail-hero">
+                                    <div class="forensic-detail-panel">
+                                        <div class="forensic-detail-label">Identitas Pasien</div>
+                                        <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_name'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="forensic-detail-meta">
+                                            No. rekam medis: <?= htmlspecialchars($mr['record_code'] ?? '', ENT_QUOTES, 'UTF-8') ?><br>
+                                            Citizen ID: <?= htmlspecialchars($mr['patient_citizen_id'] ?? '', ENT_QUOTES, 'UTF-8') ?><br>
+                                            Dibuat: <?= htmlspecialchars($mr['created_at'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                        </div>
+                                    </div>
+                                    <div class="forensic-detail-panel">
+                                        <div class="forensic-detail-label">Tim Medis</div>
+                                        <div class="forensic-detail-badges">
+                                            <span class="badge-info"><?= htmlspecialchars($mr['patient_gender'] ?? '', ENT_QUOTES, 'UTF-8') ?></span>
+                                            <span class="<?= ($mr['operasi_type'] ?? '') === 'major' ? 'badge-danger' : 'badge-warning' ?>">
+                                                <?= htmlspecialchars(($mr['operasi_type'] ?? '') === 'major' ? 'MAYOR' : 'MINOR', ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+                                        </div>
+                                        <div class="forensic-detail-meta">
+                                            DPJP: <?= htmlspecialchars($mr['dpjp_name'] ?? '', ENT_QUOTES, 'UTF-8') ?><br>
+                                            Dibuat oleh: <?= htmlspecialchars($detailUser['full_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="forensic-detail-grid">
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Pekerjaan</div>
+                                        <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_occupation'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Tanggal Lahir</div>
+                                        <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_dob'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Nomor Telepon</div>
+                                        <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_phone'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Status Pasien</div>
+                                        <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_status'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                </div>
+
+                                <div class="forensic-detail-block">
+                                    <div class="forensic-detail-label">Alamat</div>
+                                    <div class="forensic-detail-value"><?= htmlspecialchars($mr['patient_address'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+
+                                <div class="forensic-detail-block is-richtext">
+                                    <div class="forensic-detail-label">Hasil Rekam Medis</div>
+                                    <div class="forensic-detail-richtext">
+                                        <?= $mr['medical_result_html'] ?? '<p class="is-muted">Belum ada hasil rekam medis.</p>' ?>
+                                    </div>
+                                </div>
+
+                                <div class="forensic-detail-grid">
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Lampiran KTP</div>
+                                        <div class="forensic-detail-value">
+                                            <?php if (!empty($mr['ktp_file_path'])): ?>
+                                                <a href="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
+                                            <?php else: ?>
+                                                <div class="is-muted">Lampiran KTP belum tersedia.</div>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if (!empty($mr['ktp_file_path'])): ?>
+                                        <div class="mt-3">
+                                            <img src="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                        </div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <div class="forensic-detail-block">
+                                        <div class="forensic-detail-label">Lampiran MRI</div>
+                                        <div class="forensic-detail-value">
+                                            <?php if (!empty($mr['mri_file_path'])): ?>
+                                                <a href="/<?= htmlspecialchars($mr['mri_file_path']) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
+                                            <?php else: ?>
+                                                <div class="is-muted">Lampiran MRI belum tersedia.</div>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if (!empty($mr['mri_file_path'])): ?>
+                                        <div class="mt-3">
+                                            <img src="/<?= htmlspecialchars($mr['mri_file_path']) ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                        </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php
+                            $detailTemplates[$mrId] = ob_get_clean();
+                        }
+                    }
+                }
+                ?>
+
                 <?php if (!empty($detailOps)): ?>
                     <hr class="section-divider">
-                    <h3 class="section-form-title">Riwayat Operasi (diinput saat pengajuan)</h3>
+                    <h3 class="section-form-title">Riwayat Operasi</h3>
 	                    <div class="table-wrapper-sm">
 	                        <table class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Nama Pasien</th>
-                                    <th>Tindakan</th>
-                                    <th>DPJP</th>
-                                    <th>Peran</th>
-                                    <th>Tingkat</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($detailOps as $op): ?>
-                                    <tr>
-                                        <td><?= (int)$op['sort_order'] ?></td>
-                                        <td><?= htmlspecialchars($op['patient_name']) ?></td>
-                                        <td><?= htmlspecialchars($op['procedure_name']) ?></td>
-                                        <td><?= htmlspecialchars($op['dpjp']) ?></td>
-                                        <td><?= htmlspecialchars($op['operation_role'] ?: '-') ?></td>
-                                        <td><?= htmlspecialchars($op['operation_level'] ?: '-') ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+	                            <thead>
+	                                <tr>
+	                                    <th>#</th>
+	                                    <th>Nama Pasien</th>
+	                                    <th>Tindakan</th>
+	                                    <th>DPJP</th>
+	                                    <th>Peran</th>
+	                                    <th>Tingkat</th>
+	                                    <th>Dokumen</th>
+	                                </tr>
+	                            </thead>
+	                            <tbody>
+	                                <?php foreach ($detailOps as $op): ?>
+	                                    <tr>
+	                                        <td><?= (int)$op['sort_order'] ?></td>
+	                                        <td><?= htmlspecialchars($op['patient_name']) ?></td>
+	                                        <td><?= htmlspecialchars($op['procedure_name']) ?></td>
+	                                        <td><?= htmlspecialchars($op['dpjp']) ?></td>
+	                                        <td><?= htmlspecialchars($op['operation_role'] ?: '-') ?></td>
+	                                        <td>
+	                                            <span class="badge" style="background:<?= ($op['operation_level'] ?? '') === 'major' ? '#dc2626' : '#059669' ?>; color:white;">
+	                                                <?= htmlspecialchars(ucfirst($op['operation_level'] ?? '')) ?>
+	                                            </span>
+	                                        </td>
+	                                        <td>
+	                                            <?php
+	                                            $mrId = (int)($op['medical_record_id'] ?? 0);
+	                                            $mr = $medicalRecordDetails[$mrId] ?? null;
+	                                            if ($mr): ?>
+	                                                <div class="flex justify-center gap-2">
+	                                                    <button
+	                                                        type="button"
+	                                                        class="btn-secondary btn-sm btn-medical-record-detail"
+	                                                        data-modal-title="<?= htmlspecialchars('Detail Rekam Medis ' . ($mr['record_code'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+	                                                        data-modal-subtitle="<?= htmlspecialchars('Review keseluruhan rekam medis pasien.', ENT_QUOTES, 'UTF-8') ?>"
+	                                                        data-template-id="medical-record-detail-<?= $mrId ?>"
+	                                                        title="Detail"
+	                                                        aria-label="Lihat detail rekam medis">
+	                                                        <?= ems_icon('eye', 'h-4 w-4') ?>
+	                                                    </button>
+	                                                    <?php if (!empty($mr['ktp_file_path'])): ?>
+	                                                        <a href="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat KTP">
+	                                                            <?= ems_icon('document', 'h-4 w-4') ?> KTP
+	                                                        </a>
+	                                                    <?php endif; ?>
+	                                                    <?php if (!empty($mr['mri_file_path'])): ?>
+	                                                        <a href="/<?= htmlspecialchars($mr['mri_file_path']) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat MRI">
+	                                                            <?= ems_icon('document', 'h-4 w-4') ?> MRI
+	                                                        </a>
+	                                                    <?php endif; ?>
+	                                                </div>
+	                                            <?php else: ?>
+	                                                <span class="muted-placeholder">-</span>
+	                                            <?php endif; ?>
+	                                        </td>
+	                                    </tr>
+	                                <?php endforeach; ?>
+	                            </tbody>
+	                        </table>
+	                    </div>
                 <?php endif; ?>
+
 
                 <?php if (!empty($detail['case_title']) || !empty($detail['case_subject'])): ?>
                     <hr class="section-divider">
@@ -238,56 +436,128 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="card card-section">
             <div class="card-header">Daftar Pengajuan (<?= strtoupper($status) ?>)</div>
 	            <div class="table-wrapper-sm">
-	                <table class="table-custom">
-                    <thead>
-                        <tr>
-                            <th>Tanggal</th>
-                            <th>Nama</th>
-                            <th>Jabatan (DB)</th>
-                            <th>Pengajuan</th>
-                            <th>Batch</th>
-                            <th>Join</th>
-                            <th>Diproses</th>
-                            <th>Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (!$rows): ?>
-                            <tr><td colspan="8" class="muted-placeholder">Tidak ada data.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($rows as $r): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($r['submitted_at'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($r['full_name'] ?? '-') ?></td>
-                                    <td><?= htmlspecialchars(ems_position_label($r['current_position'] ?? '')) ?></td>
-                                    <td><?= htmlspecialchars(ems_position_label($r['from_position'] ?? '')) ?> → <?= htmlspecialchars(ems_position_label($r['to_position'] ?? '')) ?></td>
-                                    <td><?= htmlspecialchars((string)($r['batch_snapshot'] ?? '-')) ?></td>
-                                    <td><?= htmlspecialchars((string)($r['join_date_snapshot'] ?? '-')) ?></td>
-                                    <td>
-                                        <?php if (!empty($r['reviewed_at'])): ?>
-                                            <div><strong><?= htmlspecialchars((string)($r['reviewed_by_name'] ?? '-')) ?></strong></div>
-                                            <small class="meta-text"><?= htmlspecialchars((string)$r['reviewed_at']) ?></small>
-                                        <?php else: ?>
-                                            <span class="muted-placeholder">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <a class="btn-secondary action-icon-btn"
-                                            href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&id=<?= (int)$r['id'] ?>"
-                                            title="Lihat detail pengajuan"
-                                            aria-label="Lihat detail pengajuan">
-                                            <?= ems_icon('eye', 'h-4 w-4') ?>
-                                        </a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
+	                <table class="table-custom" data-auto-datatable="true" data-dt-order='[[0,"desc"]]' data-dt-column-defs='[{"targets":[7],"orderable":false,"searchable":false}]'>
+	                    <thead>
+	                        <tr>
+	                            <th>Tanggal</th>
+	                            <th>Nama</th>
+	                            <th>Jabatan (DB)</th>
+	                            <th>Pengajuan</th>
+	                            <th>Batch</th>
+	                            <th>Join</th>
+	                            <th>Diproses</th>
+	                            <th>Aksi</th>
+	                        </tr>
+	                    </thead>
+	                    <tbody>
+	                        <?php if (!$rows): ?>
+	                            <tr><td colspan="8" class="muted-placeholder">Tidak ada data.</td></tr>
+	                        <?php else: ?>
+	                            <?php foreach ($rows as $r): ?>
+	                                <tr>
+	                                    <td><?= htmlspecialchars($r['submitted_at'] ?? '') ?></td>
+	                                    <td><?= htmlspecialchars($r['full_name'] ?? '-') ?></td>
+	                                    <td><?= htmlspecialchars(ems_position_label($r['current_position'] ?? '')) ?></td>
+	                                    <td><?= htmlspecialchars(ems_position_label($r['from_position'] ?? '')) ?> → <?= htmlspecialchars(ems_position_label($r['to_position'] ?? '')) ?></td>
+	                                    <td><?= htmlspecialchars((string)($r['batch_snapshot'] ?? '-')) ?></td>
+	                                    <td><?= htmlspecialchars((string)($r['join_date_snapshot'] ?? '-')) ?></td>
+	                                    <td>
+	                                        <?php if (!empty($r['reviewed_at'])): ?>
+	                                            <div><strong><?= htmlspecialchars((string)($r['reviewed_by_name'] ?? '-')) ?></strong></div>
+	                                            <small class="meta-text"><?= htmlspecialchars((string)$r['reviewed_at']) ?></small>
+	                                        <?php else: ?>
+	                                            <span class="muted-placeholder">-</span>
+	                                        <?php endif; ?>
+	                                    </td>
+	                                    <td>
+	                                        <a class="btn-secondary action-icon-btn"
+	                                            href="review_pengajuan_jabatan.php?status=<?= htmlspecialchars($status, ENT_QUOTES) ?>&id=<?= (int)$r['id'] ?>"
+	                                            title="Lihat detail pengajuan"
+	                                            aria-label="Lihat detail pengajuan">
+	                                            <?= ems_icon('eye', 'h-4 w-4') ?>
+	                                        </a>
+	                                    </td>
+	                                </tr>
+	                            <?php endforeach; ?>
+	                        <?php endif; ?>
+	                    </tbody>
+	                </table>
+	            </div>
+	        </div>
 
     </div>
 </section>
+
+<?php foreach ($detailTemplates as $mrId => $templateHtml): ?>
+    <template id="medical-record-detail-<?= (int) $mrId ?>">
+        <?= $templateHtml ?>
+    </template>
+<?php endforeach; ?>
+
+<div id="medicalRecordDetailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
+        <div class="forensic-detail-head">
+            <div class="min-w-0">
+                <div id="medicalRecordDetailTitle" class="forensic-detail-title">Detail Rekam Medis</div>
+                <div id="medicalRecordDetailSubtitle" class="forensic-detail-subtitle"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-medical-record-close" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div id="medicalRecordDetailBody" class="forensic-detail-content"></div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-medical-record-close">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('medicalRecordDetailModal');
+    const title = document.getElementById('medicalRecordDetailTitle');
+    const subtitle = document.getElementById('medicalRecordDetailSubtitle');
+    const body = document.getElementById('medicalRecordDetailBody');
+
+    if (!modal || !title || !subtitle || !body) {
+        return;
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        body.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    }
+
+    document.body.addEventListener('click', function (event) {
+        const trigger = event.target.closest('.btn-medical-record-detail');
+        if (trigger) {
+            const template = document.getElementById(trigger.getAttribute('data-template-id') || '');
+            if (!template) {
+                return;
+            }
+
+            title.textContent = trigger.getAttribute('data-modal-title') || 'Detail Rekam Medis';
+            subtitle.textContent = trigger.getAttribute('data-modal-subtitle') || '';
+            body.innerHTML = template.innerHTML;
+            modal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return;
+        }
+
+        if (event.target.closest('.btn-medical-record-close')) {
+            closeModal();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
+});
+</script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

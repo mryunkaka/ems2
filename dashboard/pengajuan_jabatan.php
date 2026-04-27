@@ -58,7 +58,7 @@ if ($expectedTo !== '') {
 $req = null;
 if ($toPosition !== '') {
     $stmt = $pdo->prepare("
-        SELECT from_position, to_position, min_days_since_join, min_operations, notes
+        SELECT from_position, to_position, min_days_since_join, min_operations, min_operations_minor, min_operations_major, dpjp_minor, dpjp_major, notes, required_documents, operation_type, operation_role
         FROM position_promotion_requirements
         WHERE from_position = ?
           AND to_position = ?
@@ -72,7 +72,22 @@ if ($toPosition !== '') {
 $reqMissing = ($toPosition !== '' && !$req);
 $minDays = isset($req['min_days_since_join']) ? (int)$req['min_days_since_join'] : null;
 $minOps = isset($req['min_operations']) ? (int)$req['min_operations'] : null;
+$minOpsMinor = isset($req['min_operations_minor']) ? (int)$req['min_operations_minor'] : null;
+$minOpsMajor = isset($req['min_operations_major']) ? (int)$req['min_operations_major'] : null;
+$dpjpMinor = isset($req['dpjp_minor']) ? (int)$req['dpjp_minor'] : 0;
+$dpjpMajor = isset($req['dpjp_major']) ? (int)$req['dpjp_major'] : 0;
+$operationType = isset($req['operation_type']) ? trim((string)$req['operation_type']) : '';
+$operationRole = isset($req['operation_role']) ? trim((string)$req['operation_role']) : '';
+$requiredDocuments = isset($req['required_documents']) ? trim((string)$req['required_documents']) : '';
+$requiredDocumentsArray = $requiredDocuments ? explode(',', $requiredDocuments) : [];
 $notes = (string)($req['notes'] ?? '');
+
+// Make notes dynamic by replacing min_days value if present
+if ($minDays !== null && $notes !== '') {
+    // Replace patterns like "minimal 7 hari" with actual minDays value
+    $notes = preg_replace('/minimal\s+\d+\s+hari/i', "minimal {$minDays} hari", $notes);
+}
+
 if ($reqMissing) {
     $notes = 'Syarat untuk jalur ini belum diatur oleh manager. Silakan hubungi manager.';
 }
@@ -124,9 +139,399 @@ if ($minDays !== null) {
     }
 }
 
+// Fetch medical records where user is assistant (for paramedic/co_asst auto-fill)
+$medicalRecordsAsAssistant = [];
+$hasSertifikatParamedic = false;
+$hasRequiredOps = false;
+$minorOpsCount = 0;
+$majorOpsCount = 0;
+$certificateStatus = [];
+
+if (in_array($position, ['paramedic', 'co_asst'], true)) {
+    // Check for required certificates
+    $stmt = $pdo->prepare("SELECT sertifikat_class_paramedic, sertifikat_class_co_asst, sertifikat_operasi_kecil, sertifikat_operasi_plastik FROM user_rh WHERE id = ? LIMIT 1");
+    $stmt->execute([$userId]);
+    $userCert = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Map certificate requirements to database columns (dynamic based on position)
+    $certMapping = [
+        'sertifikat_medical_class' => $position === 'co_asst' ? 'sertifikat_class_co_asst' : 'sertifikat_class_paramedic',
+        'sertifikat_operasi_minor' => 'sertifikat_operasi_kecil',
+        'sertifikat_operasi_plastik_basic' => 'sertifikat_operasi_plastik',
+    ];
+    
+    foreach ($requiredDocumentsArray as $reqDoc) {
+        $dbColumn = $certMapping[$reqDoc] ?? null;
+        if ($dbColumn) {
+            $certificateStatus[$reqDoc] = !empty($userCert[$dbColumn]);
+        }
+    }
+    
+    $hasSertifikatParamedic = !empty($userCert['sertifikat_class_paramedic']);
+
+    // Fetch medical records where user is assistant, excluding those already used in approved requests
+    $hasAssistantsTable = ems_table_exists($pdo, 'medical_record_assistants');
+    
+    // For co_asst -> general_practitioner, we need both:
+    // - Records where user is assistant (for major operations)
+    // - Records where user is DPJP (for minor operations)
+    $medicalRecordsAsAssistant = [];
+    
+    if ($position === 'co_asst' && $toPosition === 'general_practitioner') {
+        // Get records where user is assistant (for major operations)
+        if ($hasAssistantsTable) {
+            $stmt = $pdo->prepare("
+                SELECT
+                    r.id AS medical_record_id,
+                    r.patient_name,
+                    r.operasi_type,
+                    r.ktp_file_path,
+                    r.mri_file_path,
+                    u.full_name AS dpjp_name,
+                    u.position AS dpjp_position,
+                    'assistant' AS user_role
+                FROM medical_records r
+                INNER JOIN medical_record_assistants mra ON mra.medical_record_id = r.id
+                LEFT JOIN user_rh u ON u.id = r.doctor_id
+                WHERE mra.assistant_user_id = ?
+                    AND r.operasi_type = 'major'
+                    AND r.id NOT IN (
+                        SELECT pro.medical_record_id
+                        FROM position_promotion_request_operations pro
+                        INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                        WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+                    )
+                    AND r.id NOT IN (
+                        SELECT r2.id
+                        FROM medical_records r2
+                        INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                            AND pro.operation_role = 'assistant'
+                            AND pro.operation_level = 'major'
+                        INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                        WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                        AND r2.id = r.id
+                    )
+                ORDER BY r.created_at DESC
+            ");
+            $stmt->execute([$userId, $userId, $userId]);
+            $assistantRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $assistantRecords);
+        }
+        
+        // Get records where user is DPJP (for minor operations)
+        $stmt = $pdo->prepare("
+            SELECT
+                r.id AS medical_record_id,
+                r.patient_name,
+                r.operasi_type,
+                r.ktp_file_path,
+                r.mri_file_path,
+                u.full_name AS dpjp_name,
+                u.position AS dpjp_position,
+                'dpjp' AS user_role
+            FROM medical_records r
+            LEFT JOIN user_rh u ON u.id = r.doctor_id
+            WHERE r.doctor_id = ?
+                AND r.operasi_type = 'minor'
+                AND r.id NOT IN (
+                    SELECT pro.medical_record_id
+                    FROM position_promotion_request_operations pro
+                    INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+                )
+                AND r.id NOT IN (
+                    SELECT r2.id
+                    FROM medical_records r2
+                    INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                        AND pro.operation_role = 'dpjp'
+                        AND pro.operation_level = 'minor'
+                    INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                    AND r2.id = r.id
+                )
+            ORDER BY r.created_at DESC
+        ");
+        $stmt->execute([$userId, $userId, $userId]);
+        $dpjpRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $dpjpRecords);
+
+        // Also get DPJP major records for display (even though not required for this promotion)
+        $stmt = $pdo->prepare("
+            SELECT
+                r.id AS medical_record_id,
+                r.patient_name,
+                r.operasi_type,
+                r.ktp_file_path,
+                r.mri_file_path,
+                u.full_name AS dpjp_name,
+                u.position AS dpjp_position,
+                'dpjp' AS user_role
+            FROM medical_records r
+            LEFT JOIN user_rh u ON u.id = r.doctor_id
+            WHERE r.doctor_id = ?
+                AND r.operasi_type = 'major'
+                AND r.id NOT IN (
+                    SELECT pro.medical_record_id
+                    FROM position_promotion_request_operations pro
+                    INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+                )
+                AND r.id NOT IN (
+                    SELECT r2.id
+                    FROM medical_records r2
+                    INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                        AND pro.operation_role = 'dpjp'
+                        AND pro.operation_level = 'major'
+                    INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                    AND r2.id = r.id
+                )
+            ORDER BY r.created_at DESC
+        ");
+        $stmt->execute([$userId, $userId, $userId]);
+        $dpjpMajorRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $dpjpMajorRecords);
+
+        // Sort by created_at descending
+        usort($medicalRecordsAsAssistant, function($a, $b) {
+            return strtotime($b['created_at'] ?? '0') - strtotime($a['created_at'] ?? '0');
+        });
+    } else {
+        // For other transitions, use original logic
+        // Build WHERE clause based on operation_type and operation_role requirements
+        $whereConditions = ["mra.assistant_user_id = ?"];
+        $params = [$userId];
+        
+        // Only filter by operation_type if specifically set to single type
+        // For mixed requirements (both minor and major), show all records
+        if ($operationType === 'minor' && $minOpsMajor === null) {
+            $whereConditions[] = "r.operasi_type = 'minor'";
+        } elseif ($operationType === 'major' && $minOpsMinor === null) {
+            $whereConditions[] = "r.operasi_type = 'major'";
+        }
+        
+        $whereClause = implode(' AND ', $whereConditions);
+        
+        if ($hasAssistantsTable) {
+            $whereConditions[] = "r.id NOT IN (
+                SELECT pro.medical_record_id
+                FROM position_promotion_request_operations pro
+                INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+                AND pr.from_position = ? AND pr.to_position = ?
+            )";
+            $params[] = $userId;
+            $params[] = $position;
+            $params[] = $toPosition;
+
+            // Fallback exclusion for old data without medical_record_id
+            $whereConditions[] = "r.id NOT IN (
+                SELECT r2.id
+                FROM medical_records r2
+                INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                    AND pro.operation_role = 'assistant'
+                INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                AND pr.from_position = ? AND pr.to_position = ?
+                AND r2.id = r.id
+            )";
+            $params[] = $userId;
+            $params[] = $position;
+            $params[] = $toPosition;
+
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $stmt = $pdo->prepare("
+                SELECT
+                    r.id AS medical_record_id,
+                    r.patient_name,
+                    r.operasi_type,
+                    r.ktp_file_path,
+                    r.mri_file_path,
+                    u.full_name AS dpjp_name,
+                    u.position AS dpjp_position
+                FROM medical_records r
+                INNER JOIN medical_record_assistants mra ON mra.medical_record_id = r.id
+                LEFT JOIN user_rh u ON u.id = r.doctor_id
+                WHERE {$whereClause}
+                ORDER BY r.created_at DESC
+            ");
+            $stmt->execute($params);
+            $medicalRecordsAsAssistant = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            // Fallback for old schema using assistant_id
+            $whereConditions = ["r.assistant_id = ?"];
+            $params = [$userId];
+
+            if ($operationType === 'minor') {
+                $whereConditions[] = "r.operasi_type = 'minor'";
+            } elseif ($operationType === 'major') {
+                $whereConditions[] = "r.operasi_type = 'major'";
+            }
+
+            $whereConditions[] = "r.id NOT IN (
+                SELECT pro.medical_record_id
+                FROM position_promotion_request_operations pro
+                INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+                AND pr.from_position = ? AND pr.to_position = ?
+            )";
+            $params[] = $userId;
+            $params[] = $position;
+            $params[] = $toPosition;
+
+            // Fallback exclusion for old data without medical_record_id
+            $whereConditions[] = "r.id NOT IN (
+                SELECT r2.id
+                FROM medical_records r2
+                INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                    AND pro.operation_role = 'assistant'
+                INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                AND pr.from_position = ? AND pr.to_position = ?
+                AND r2.id = r.id
+            )";
+            $params[] = $userId;
+            $params[] = $position;
+            $params[] = $toPosition;
+
+            $whereClause = implode(' AND ', $whereConditions);
+
+            $stmt = $pdo->prepare("
+                SELECT
+                    r.id AS medical_record_id,
+                    r.patient_name,
+                    r.operasi_type,
+                    r.ktp_file_path,
+                    r.mri_file_path,
+                    u.full_name AS dpjp_name,
+                    u.position AS dpjp_position
+                FROM medical_records r
+                LEFT JOIN user_rh u ON u.id = r.doctor_id
+                WHERE {$whereClause}
+                ORDER BY r.created_at DESC
+            ");
+            $stmt->execute($params);
+            $medicalRecordsAsAssistant = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+
+    // Count minor and major operations
+    $minorDpjpCount = 0;
+    $majorDpjpCount = 0;
+    $minorOpsCount = 0;
+    $majorOpsCount = 0;
+    $minorAssistantCount = 0;
+    $majorAssistantCount = 0;
+    
+    // Count operations where user is assistant (already fetched)
+    foreach ($medicalRecordsAsAssistant as $record) {
+        if ($record['operasi_type'] === 'minor') {
+            $minorAssistantCount++;
+        } elseif ($record['operasi_type'] === 'major') {
+            $majorAssistantCount++;
+        }
+    }
+    
+    // Also count operations where user is DPJP (doctor_id = user_id)
+    if ($dpjpMinor || $dpjpMajor) {
+        // Build WHERE clause for DPJP operations
+        $dpjpWhereConditions = ["r.doctor_id = ?"];
+        $dpjpParams = [$userId];
+
+        // Only filter by operation_type if specifically required
+        if ($dpjpMinor && !$dpjpMajor) {
+            $dpjpWhereConditions[] = "r.operasi_type = 'minor'";
+        } elseif ($dpjpMajor && !$dpjpMinor) {
+            $dpjpWhereConditions[] = "r.operasi_type = 'major'";
+        }
+
+        $dpjpWhereConditions[] = "r.id NOT IN (
+            SELECT pro.medical_record_id
+            FROM position_promotion_request_operations pro
+            INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+            WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
+        )";
+        $dpjpParams[] = $userId;
+
+        $dpjpWhereConditions[] = "r.id NOT IN (
+            SELECT r2.id
+            FROM medical_records r2
+            INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
+                AND pro.operation_role = 'dpjp'
+            INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
+            WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+            AND r2.id = r.id
+        )";
+        $dpjpParams[] = $userId;
+
+        $dpjpWhereClause = implode(' AND ', $dpjpWhereConditions);
+
+        $stmt = $pdo->prepare("
+            SELECT r.operasi_type
+            FROM medical_records r
+            WHERE {$dpjpWhereClause}
+            ORDER BY r.created_at DESC
+        ");
+        $stmt->execute($dpjpParams);
+        $dpjpRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($dpjpRecords as $record) {
+            if ($record['operasi_type'] === 'minor') {
+                $minorDpjpCount++;
+            } elseif ($record['operasi_type'] === 'major') {
+                $majorDpjpCount++;
+            }
+        }
+    }
+    
+    // Total counts
+    $minorOpsCount = $minorAssistantCount + $minorDpjpCount;
+    $majorOpsCount = $majorAssistantCount + $majorDpjpCount;
+
+    // Check if has required operations based on new logic
+    $hasRequiredOps = true;
+    if ($minOpsMinor !== null) {
+        if ($dpjpMinor) {
+            // Must be DPJP
+            if ($minorDpjpCount < $minOpsMinor) {
+                $hasRequiredOps = false;
+            }
+        } else {
+            // Any role (assistant or DPJP)
+            if ($minorOpsCount < $minOpsMinor) {
+                $hasRequiredOps = false;
+            }
+        }
+    }
+    if ($minOpsMajor !== null) {
+        if ($dpjpMajor) {
+            // Must be DPJP
+            if ($majorDpjpCount < $minOpsMajor) {
+                $hasRequiredOps = false;
+            }
+        } else {
+            // Any role (assistant or DPJP)
+            if ($majorOpsCount < $minOpsMajor) {
+                $hasRequiredOps = false;
+            }
+        }
+    }
+    // Fallback to old logic if new fields are not set
+    if ($minOpsMinor === null && $minOpsMajor === null && $minOps !== null) {
+        $hasRequiredOps = count($medicalRecordsAsAssistant) >= $minOps;
+    }
+}
+
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
+
+// Hapus flash error division yang mungkin tersisa dari redirect halaman lain
+$errors = array_values(array_filter($errors, static function ($error) {
+    return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
+}));
+
 unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
 
 include __DIR__ . '/../partials/header.php';
@@ -199,6 +604,10 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="alert alert-warning" style="margin-bottom:12px;">
                         <strong>Catatan / Syarat</strong><br>
                         <?= nl2br(htmlspecialchars($notes)) ?>
+                        <?php if ($joinDate && $position === 'trainee' && $toPosition === 'paramedic'): ?>
+                            <br><br>
+                            <strong>Total Join di Roxwood Hospital:</strong> <?= (int)$daysSinceJoin ?> hari
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -213,6 +622,75 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 <?php endif; ?>
 
+                <?php if (in_array($position, ['paramedic', 'co_asst'], true)): ?>
+                    <div class="card card-section" style="margin-bottom:12px;">
+                        <div class="card-header">Status Syarat</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <?php if (!empty($certificateStatus)): ?>
+                                <?php foreach ($certificateStatus as $certKey => $hasCert): ?>
+                                    <div>
+                                        <strong>
+                                            <?php
+                                            $certLabels = [
+                                                'sertifikat_medical_class' => 'Sertifikat Medical Class ' . ems_position_label($position),
+                                                'sertifikat_operasi_minor' => 'Sertifikat Operasi Minor',
+                                                'sertifikat_operasi_plastik_basic' => 'Sertifikat Operasi Plastik (Basic)',
+                                            ];
+                                            echo htmlspecialchars($certLabels[$certKey] ?? $certKey);
+                                            ?>
+                                        </strong>
+                                        <div>
+                                            <?php if ($hasCert): ?>
+                                                <span class="badge badge-success">✓ Sudah Upload</span>
+                                            <?php else: ?>
+                                                <span class="badge" style="background:#ef4444; color:white;">✗ Belum Upload</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <div>
+                                    <strong>Sertifikat Class <?= ems_position_label($position) ?></strong>
+                                    <div>
+                                        <?php if ($hasSertifikatParamedic): ?>
+                                            <span class="badge badge-success">✓ Sudah Upload</span>
+                                        <?php else: ?>
+                                            <span class="badge" style="background:#ef4444; color:white;">✗ Belum Upload</span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                            <div>
+                                <strong>Operasi Mayor/Minor</strong>
+                                <div>
+                                    <?php if ($minOpsMinor !== null || $minOpsMajor !== null): ?>
+                                        <?php if ($minOpsMinor !== null): ?>
+                                            Minor: <?= $dpjpMinor ? $minorDpjpCount : $minorOpsCount ?> / <?= (int)$minOpsMinor ?>
+                                            <?php if ($dpjpMinor): ?>
+                                                (DPJP)
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                        <?php if ($minOpsMajor !== null): ?>
+                                            <?php if ($minOpsMinor !== null): ?>, <?php endif; ?>
+                                            Mayor: <?= $dpjpMajor ? $majorDpjpCount : $majorOpsCount ?> / <?= (int)$minOpsMajor ?>
+                                            <?php if ($dpjpMajor): ?>
+                                                (DPJP)
+                                            <?php endif; ?>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <?= count($medicalRecordsAsAssistant) ?> / <?= (int)($minOps ?? 0) ?> operasi
+                                    <?php endif; ?>
+                                    <?php if ($hasRequiredOps): ?>
+                                        <span class="badge badge-success">✓ Terpenuhi</span>
+                                    <?php else: ?>
+                                        <span class="badge" style="background:#ef4444; color:white;">✗ Belum Terpenuhi</span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <form method="POST" action="pengajuan_jabatan_action.php" class="form" id="promoForm">
                     <?= csrfField(); ?>
                     <input type="hidden" name="to_position" value="<?= htmlspecialchars($toPosition, ENT_QUOTES) ?>">
@@ -220,17 +698,31 @@ include __DIR__ . '/../partials/sidebar.php';
                     <?php if (in_array($position, ['paramedic', 'co_asst'], true)): ?>
                         <h3 class="section-form-title">Riwayat Operasi yang Pernah Dilakukan</h3>
                         <p class="page-subtitle">
-                            Minimal: <strong><?= (int)($minOps ?? 0) ?></strong> entri. Klik tambah jika lebih.
+                            <?php if ($minOpsMinor !== null || $minOpsMajor !== null): ?>
+                                <?php if ($minOpsMinor !== null): ?>
+                                    Minimal: <strong><?= (int)$minOpsMinor ?></strong> operasi minor
+                                    <?php if ($dpjpMinor): ?>
+                                        sebagai <strong>DPJP</strong>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                <?php if ($minOpsMajor !== null): ?>
+                                    <?php if ($minOpsMinor !== null): ?>, <?php endif; ?>
+                                    <strong><?= (int)$minOpsMajor ?></strong> operasi mayor
+                                    <?php if ($dpjpMajor): ?>
+                                        sebagai <strong>DPJP</strong>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                Minimal: <strong><?= (int)($minOps ?? 0) ?></strong> entri.
+                            <?php endif; ?>
                         </p>
+
+                        <div class="alert alert-warning" style="margin-bottom:12px;">
+                            <strong>Catatan:</strong> Kasus operasi yang sudah digunakan untuk pengajuan kenaikan jabatan sebelumnya (misalnya: Paramedic → Co. Asst) tidak dapat digunakan kembali untuk pengajuan ini.
+                        </div>
 
                         <datalist id="dpjpDatalist"></datalist>
                         <div id="opsList" class="space-y-3"></div>
-
-                        <div style="margin-top:12px;">
-                            <button type="button" class="btn-secondary" id="btnAddOp">
-                                <?= ems_icon('plus', 'h-4 w-4') ?> <span>Tambah Riwayat Operasi</span>
-                            </button>
-                        </div>
                     <?php endif; ?>
 
                     <?php if ($position === 'co_asst'): ?>
@@ -259,10 +751,65 @@ include __DIR__ . '/../partials/sidebar.php';
                             $blockedMsg = "Belum bisa ajukan. Tanggal masuk belum terdata.";
                         }
                     }
+
+                    // Additional validation for paramedic/co_asst
+                    $certBlocked = false;
+                    $opsBlocked = false;
+                    if (in_array($position, ['paramedic', 'co_asst'], true)) {
+                        // Check all required certificates
+                        if (!empty($certificateStatus)) {
+                            $missingCerts = [];
+                            foreach ($certificateStatus as $certKey => $hasCert) {
+                                if (!$hasCert) {
+                                    $certLabels = [
+                                        'sertifikat_medical_class' => 'Sertifikat Medical Class',
+                                        'sertifikat_operasi_minor' => 'Sertifikat Operasi Minor',
+                                        'sertifikat_operasi_plastik_basic' => 'Sertifikat Operasi Plastik (Basic)',
+                                    ];
+                                    $missingCerts[] = $certLabels[$certKey] ?? $certKey;
+                                }
+                            }
+                            if (!empty($missingCerts)) {
+                                $certBlocked = true;
+                                $submitBlocked = true;
+                                if ($blockedMsg) {
+                                    $blockedMsg .= ' ';
+                                }
+                                $blockedMsg .= 'Belum upload sertifikat yang wajib: ' . implode(', ', $missingCerts) . '.';
+                            }
+                        } elseif (!$hasSertifikatParamedic) {
+                            // Fallback for old logic
+                            $certBlocked = true;
+                            $submitBlocked = true;
+                            if ($blockedMsg) {
+                                $blockedMsg .= ' ';
+                            }
+                            $blockedMsg .= 'Belum upload Sertifikat Class Paramedic.';
+                        }
+                        
+                        if (!$hasRequiredOps) {
+                            $opsBlocked = true;
+                            $submitBlocked = true;
+                            if ($blockedMsg) {
+                                $blockedMsg .= ' ';
+                            }
+                            if ($minOpsMinor !== null || $minOpsMajor !== null) {
+                                $msgParts = [];
+                                if ($minOpsMinor !== null) {
+                                    $msgParts[] = "minimal {$minOpsMinor} operasi minor (saat ini {$minorOpsCount})";
+                                }
+                                if ($minOpsMajor !== null) {
+                                    $msgParts[] = "minimal {$minOpsMajor} operasi mayor (saat ini {$majorOpsCount})";
+                                }
+                                $blockedMsg .= 'Belum memenuhi syarat: ' . implode(', ', $msgParts) . '.';
+                            } else {
+                                $blockedMsg .= "Belum memenuhi syarat minimal {$minOps} operasi.";
+                            }
+                        }
+                    }
                     ?>
 
 	                    <?php if ($submitBlocked): ?>
-	                        <div id="promoBlockedAlert" class="alert alert-error hidden" style="margin-bottom:10px;"></div>
 	                        <button type="button"
 	                            class="btn-success opacity-60 cursor-not-allowed"
 	                            data-toast-type="error"
@@ -329,43 +876,73 @@ include __DIR__ . '/../partials/sidebar.php';
     (function() {
         const fromPos = <?= json_encode($position) ?>;
         const minOps = <?= json_encode($minOps) ?>;
+        const minOpsMinor = <?= json_encode($minOpsMinor) ?>;
+        const minOpsMajor = <?= json_encode($minOpsMajor) ?>;
+        const dpjpMinor = <?= json_encode($dpjpMinor) ?>;
+        const dpjpMajor = <?= json_encode($dpjpMajor) ?>;
+        const medicalRecords = <?= json_encode($medicalRecordsAsAssistant) ?>;
         const list = document.getElementById('opsList');
-        const btn = document.getElementById('btnAddOp');
 
-        if (!list || !btn) return;
+        if (!list) return;
 
-        function makeRow(i) {
+        function makeRow(i, data = null) {
             const wrap = document.createElement('div');
             wrap.className = 'card card-section';
+
+            const patientName = data ? (data.patient_name || '') : '';
+            const dpjpName = data ? (data.dpjp_name || '') : '';
+            const dpjpPosition = data ? (data.dpjp_position || '') : '';
+            const operasiType = data ? (data.operasi_type || 'minor') : 'minor';
+
+            // Determine role dynamically based on requirement flags and operation type
+            let userRole = 'assistant';
+            if (operasiType === 'minor' && dpjpMinor) {
+                userRole = 'dpjp';
+            } else if (operasiType === 'major' && dpjpMajor) {
+                userRole = 'dpjp';
+            } else {
+                userRole = 'assistant';
+            }
+
+            const medicalRecordId = data ? (data.medical_record_id || '') : '';
+            const hasKtp = data ? (data.ktp_file_path || '') : '';
+            const hasMri = data ? (data.mri_file_path || '') : '';
+
             wrap.innerHTML = `
                 <div class="card-header">Operasi #${i}</div>
+                <input type="hidden" name="ops_medical_record_id[]" value="${medicalRecordId}">
                 <label>Nama Pasien <span class="required">*</span></label>
-                <input type="text" name="ops_patient_name[]" required>
+                <input type="text" name="ops_patient_name[]" required readonly value="${patientName ? patientName.replace(/"/g, '&quot;') : ''}">
 
                 <label>Tindakan Operasi <span class="required">*</span></label>
-                <input type="text" name="ops_procedure_name[]" required>
+                <input type="text" name="ops_procedure_name[]" required readonly value="${data ? 'Operasi ' + (operasiType === 'major' ? 'Mayor' : 'Minor') : ''}">
 
                 <label>DPJP <span class="required">*</span></label>
-                <input type="text" name="ops_dpjp[]" list="dpjpDatalist" required placeholder="Ketik nama DPJP...">
+                <input type="text" name="ops_dpjp[]" list="dpjpDatalist" required readonly placeholder="Ketik nama DPJP..." value="${dpjpName ? dpjpName.replace(/"/g, '&quot;') : ''}">
 
                 <div class="row-form-2" style="margin-top:10px;">
                     <div>
                         <label>Peran <span class="required">*</span></label>
                         <select name="ops_role[]" required>
                             <option value="">-- Pilih --</option>
-                            <option value="assistant">Asisten</option>
-                            <option value="dpjp">DPJP</option>
+                            <option value="assistant" ${userRole === 'assistant' ? 'selected' : ''}>Asisten</option>
+                            <option value="dpjp" ${userRole === 'dpjp' ? 'selected' : ''}>DPJP</option>
                         </select>
                     </div>
                     <div>
                         <label>Tingkat <span class="required">*</span></label>
                         <select name="ops_level[]" required>
                             <option value="">-- Pilih --</option>
-                            <option value="minor">Minor</option>
-                            <option value="major">Mayor</option>
+                            <option value="minor" ${operasiType === 'minor' ? 'selected' : ''}>Minor</option>
+                            <option value="major" ${operasiType === 'major' ? 'selected' : ''}>Mayor</option>
                         </select>
                     </div>
                 </div>
+                ${data ? `
+                <div style="margin-top:10px; font-size:0.85rem; color:#64748b;">
+                    <div>Dokumen: ${hasKtp ? '✓ KTP' : '✗ KTP'} ${hasMri ? '✓ MRI' : '✗ MRI'}</div>
+                </div>
+                ` : ''}
             `;
             return wrap;
         }
@@ -381,14 +958,30 @@ include __DIR__ . '/../partials/sidebar.php';
             }
         }
 
-        btn.addEventListener('click', () => {
-            list.appendChild(makeRow(countRows() + 1));
-        });
+        function autoFillFromMedicalRecords() {
+            // Clear existing rows
+            list.innerHTML = '';
+
+            if (!medicalRecords || medicalRecords.length === 0) {
+                // Show empty rows up to minOps
+                const need = Math.max(0, Number(minOps || 0));
+                for (let i = 0; i < need; i++) {
+                    list.appendChild(makeRow(i + 1, null));
+                }
+                return;
+            }
+
+            // Add ALL rows from medical records
+            for (let i = 0; i < medicalRecords.length; i++) {
+                list.appendChild(makeRow(i + 1, medicalRecords[i]));
+            }
+        }
 
         if (fromPos === 'paramedic' || fromPos === 'co_asst') {
-            ensureMin();
+            autoFillFromMedicalRecords();
         }
     })();
+    // v2 - force cache bust
 </script>
 
 <script>
@@ -423,6 +1016,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 setOptions(Array.isArray(data) ? data : []);
             } catch (e) {
                 // ignore
+                console.error('Search error:', e);
             }
         }
 
@@ -432,7 +1026,13 @@ include __DIR__ . '/../partials/sidebar.php';
             if (el.name !== 'ops_dpjp[]') return;
             const q = (el.value || '').trim();
             clearTimeout(timer);
-            timer = setTimeout(() => search(q), 200);
+            timer = setTimeout(() => {
+                try {
+                    search(q);
+                } catch (e) {
+                    console.error('Search error:', e);
+                }
+            }, 200);
         });
     })();
 </script>
@@ -472,27 +1072,7 @@ include __DIR__ . '/../partials/sidebar.php';
 	            try {
 	                showToast(msg, type);
 	            } catch (e) {}
-
-	            const alertBox = document.getElementById('promoBlockedAlert');
-	            if (alertBox) {
-	                alertBox.textContent = msg || 'Aksi tidak tersedia.';
-	                alertBox.classList.remove('hidden');
-	                alertBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-	                return;
-	            }
-
-	            window.alert(msg || 'Aksi tidak tersedia.');
 	        };
-
-	        document.addEventListener('click', function(e) {
-	            const btn = e.target.closest('[data-toast-message]');
-	            if (!btn) return;
-	            e.preventDefault();
-	            window.emsShowToast(
-	                btn.getAttribute('data-toast-message') || 'Aksi tidak tersedia.',
-	                btn.getAttribute('data-toast-type') || 'info'
-	            );
-	        });
 	    })();
 	</script>
 

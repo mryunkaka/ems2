@@ -44,11 +44,19 @@ try {
     }
 
     $recordScope = $record['visibility_scope'] ?? 'standard';
-    if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
-        throw new Exception('Hanya pembuat rekam medis yang dapat mengedit data ini.');
-    }
-    if ($recordScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
-        throw new Exception('Akses rekam medis private ditolak.');
+    $userName = strtolower(trim($user['full_name'] ?? ''));
+    $userDivisionLower = strtolower(trim($user['division'] ?? ''));
+    $isProgrammerRoxwood = (strpos($userName, 'programmer') !== false && strpos($userName, 'roxwood') !== false);
+    $isExecutive = (strpos($userDivisionLower, 'executive') !== false);
+
+    // Programmer Roxwood and Executive division can edit all records - skip all checks
+    if (!$isProgrammerRoxwood && !$isExecutive) {
+        if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
+            throw new Exception('Hanya pembuat rekam medis yang dapat mengedit data ini.');
+        }
+        if ($recordScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
+            throw new Exception('Akses rekam medis private ditolak.');
+        }
     }
     
     // =====================

@@ -37,21 +37,30 @@ if (!$record) {
 }
 
 $recordScope = $record['visibility_scope'] ?? 'standard';
-if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== (int) ($user['id'] ?? 0)) {
-    $_SESSION['flash_errors'][] = 'Hanya pembuat rekam medis yang dapat mengedit data ini.';
-    header('Location: rekam_medis_view.php?id=' . $id);
-    exit;
-}
-if ($isForensicPrivate && $recordScope !== 'forensic_private') {
-    $_SESSION['flash_errors'][] = 'Rekam medis private tidak ditemukan.';
-    header('Location: forensic_medical_records_list.php');
-    exit;
-}
+$userName = strtolower(trim($user['full_name'] ?? ''));
+$userDivision = strtolower(trim($user['division'] ?? ''));
+$isProgrammerRoxwood = (strpos($userName, 'programmer') !== false && strpos($userName, 'roxwood') !== false);
+$isExecutive = (strpos($userDivision, 'executive') !== false);
 
-if (!$isForensicPrivate && $recordScope === 'forensic_private') {
-    $_SESSION['flash_errors'][] = 'Akses rekam medis private ditolak.';
-    header('Location: rekam_medis_list.php');
-    exit;
+// Programmer Roxwood and Executive division can edit all records - skip all checks
+if ($isProgrammerRoxwood || $isExecutive) {
+    // Allow access, skip all other checks
+} else {
+    if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== (int) ($user['id'] ?? 0)) {
+        $_SESSION['flash_errors'][] = 'Hanya pembuat rekam medis yang dapat mengedit data ini.';
+        header('Location: rekam_medis_view.php?id=' . $id);
+        exit;
+    }
+    if ($isForensicPrivate && $recordScope !== 'forensic_private') {
+        $_SESSION['flash_errors'][] = 'Rekam medis private tidak ditemukan.';
+        header('Location: forensic_medical_records_list.php');
+        exit;
+    }
+    if (!$isForensicPrivate && $recordScope === 'forensic_private') {
+        $_SESSION['flash_errors'][] = 'Akses rekam medis private ditolak.';
+        header('Location: rekam_medis_list.php');
+        exit;
+    }
 }
 
 $doctorName = '';
@@ -71,6 +80,12 @@ if ($assistants === []) {
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
+
+// Filter out stale creator-only error for programmer/executive
+$errors = array_values(array_filter($errors, static function ($error) {
+    return trim((string)$error) !== 'Hanya pembuat rekam medis yang dapat mengedit data ini.';
+}));
+
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 include __DIR__ . '/../partials/header.php';

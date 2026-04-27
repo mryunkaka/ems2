@@ -816,7 +816,7 @@ function ems_can_access_division_menu(?string $userDivision, ?string $targetDivi
         return true;
     }
 
-    if ($userDivision === 'Specialist Medical Authority' && $targetDivision === 'Forensic') {
+    if ($userDivision === 'Forensic' && $targetDivision === 'Specialist Medical Authority') {
         return true;
     }
 
@@ -915,6 +915,11 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
 
     // Exception: regulasi_roxwood_hospital.php accessible by all divisions, roles, and positions
     if ($scriptName === 'regulasi_roxwood_hospital.php') {
+        return;
+    }
+
+    // Exception: pengajuan_jabatan.php accessible by all logged-in users
+    if ($scriptName === 'pengajuan_jabatan.php') {
         return;
     }
 

@@ -238,9 +238,20 @@ include __DIR__ . '/../partials/sidebar.php';
                             <tbody>
                                 <?php foreach ($records as $record): ?>
                                     <?php
+                                    $userName = strtolower(trim($user['full_name'] ?? ''));
+                                    $userDivision = strtolower(trim($user['division'] ?? ''));
+                                    $isProgrammerRoxwood = (strpos($userName, 'programmer') !== false && strpos($userName, 'roxwood') !== false);
+                                    $isExecutive = (strpos($userDivision, 'executive') !== false);
+
                                     $canEditRecord = ($record['visibility_scope'] ?? 'standard') === 'forensic_private'
                                         ? ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')
                                         : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
+
+                                    // Programmer Roxwood and Executive division can edit all records
+                                    if ($isProgrammerRoxwood || $isExecutive) {
+                                        $canEditRecord = true;
+                                    }
+
                                     $assistantNames = trim((string) ($assistantNamesMap[(int) ($record['id'] ?? 0)] ?? ($record['assistant_name'] ?? '')));
                                     $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
                                     ?>

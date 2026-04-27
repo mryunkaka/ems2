@@ -25,7 +25,7 @@ $transitions = [
 
 $reqMap = [];
 $rows = $pdo->query("
-    SELECT from_position, to_position, min_days_since_join, min_operations, notes
+    SELECT from_position, to_position, min_days_since_join, min_operations, notes, required_documents, operation_type, operation_role, min_operations_minor, min_operations_major, dpjp_minor, dpjp_major
     FROM position_promotion_requirements
     WHERE is_active = 1
 ")->fetchAll(PDO::FETCH_ASSOC);
@@ -74,7 +74,19 @@ include __DIR__ . '/../partials/sidebar.php';
                     $r = $reqMap[$key] ?? [];
                     $minDays = $r['min_days_since_join'] ?? null;
                     $minOps  = $r['min_operations'] ?? null;
+                    $minOpsMinor = $r['min_operations_minor'] ?? null;
+                    $minOpsMajor = $r['min_operations_major'] ?? null;
+                    $dpjpMinor = $r['dpjp_minor'] ?? 0;
+                    $dpjpMajor = $r['dpjp_major'] ?? 0;
                     $notes   = $r['notes'] ?? '';
+                    $requiredDocs = $r['required_documents'] ?? '';
+                    $requiredDocsArray = $requiredDocs ? explode(',', $requiredDocs) : [];
+                    $operationType = $r['operation_type'] ?? '';
+                    $operationRole = $r['operation_role'] ?? '';
+                    
+                    // Debug: log checkbox presence to file
+                    $debugLog = "DEBUG FORM: " . date('Y-m-d H:i:s') . " key=$key, dpjp_minor_db=" . var_export($dpjpMinor, true) . ", dpjp_major_db=" . var_export($dpjpMajor, true) . "\n";
+                    file_put_contents(__DIR__ . '/../logs/debug_persyaratan_form.log', $debugLog, FILE_APPEND);
                 ?>
                     <div class="card card-section" style="margin-bottom:12px;">
                         <div class="card-header">
@@ -90,14 +102,76 @@ include __DIR__ . '/../partials/sidebar.php';
                                     min="0"
                                     placeholder="(kosongkan jika tidak dipakai)">
                             </div>
+                        </div>
+
+                        <div class="row-form-2">
                             <div>
-                                <label>Minimal Jumlah Riwayat Operasi</label>
-                                <input type="number"
-                                    name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][min_operations]"
-                                    value="<?= htmlspecialchars((string)$minOps) ?>"
-                                    min="0"
-                                    placeholder="(kosongkan jika tidak dipakai)">
+                                <label>Minimal Operasi Minor</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number"
+                                        name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][min_operations_minor]"
+                                        value="<?= htmlspecialchars((string)$minOpsMinor) ?>"
+                                        min="0"
+                                        placeholder="(kosongkan jika tidak dipakai)"
+                                        class="flex-1">
+                                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][dpjp_minor]"
+                                            value="1"
+                                            <?= (int)$dpjpMinor === 1 ? 'checked' : '' ?>
+                                            class="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                        />
+                                        <span>DPJP</span>
+                                    </label>
+                                </div>
                             </div>
+                            <div>
+                                <label>Minimal Operasi Mayor</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number"
+                                        name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][min_operations_major]"
+                                        value="<?= htmlspecialchars((string)$minOpsMajor) ?>"
+                                        min="0"
+                                        placeholder="(kosongkan jika tidak dipakai)"
+                                        class="flex-1">
+                                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][dpjp_major]"
+                                            value="1"
+                                            <?= (int)$dpjpMajor === 1 ? 'checked' : '' ?>
+                                            class="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                                        />
+                                        <span>DPJP</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <label>Sertifikat yang Wajib Diupload</label>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:normal;">
+                                <input type="checkbox"
+                                    name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][required_documents][]"
+                                    value="sertifikat_medical_class"
+                                    <?= in_array('sertifikat_medical_class', $requiredDocsArray) ? 'checked' : '' ?>>
+                                Sertifikat Medical Class
+                            </label>
+                            <label style="font-weight:normal; margin-left:15px;">
+                                <input type="checkbox"
+                                    name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][required_documents][]"
+                                    value="sertifikat_operasi_minor"
+                                    <?= in_array('sertifikat_operasi_minor', $requiredDocsArray) ? 'checked' : '' ?>>
+                                Sertifikat Operasi Minor
+                            </label>
+                            <label style="font-weight:normal; margin-left:15px;">
+                                <input type="checkbox"
+                                    name="req[<?= htmlspecialchars($key, ENT_QUOTES) ?>][required_documents][]"
+                                    value="sertifikat_operasi_plastik_basic"
+                                    <?= in_array('sertifikat_operasi_plastik_basic', $requiredDocsArray) ? 'checked' : '' ?>>
+                                Sertifikat Operasi Plastik (Basic)
+                            </label>
                         </div>
 
                         <label>Catatan / Syarat</label>

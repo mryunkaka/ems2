@@ -38,17 +38,25 @@ try {
     }
     
     $recordScope = $record['visibility_scope'] ?? 'standard';
-    if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
-        throw new Exception('Hanya pembuat rekam medis yang dapat menghapus data ini.');
-    }
-    if ($recordScope === 'forensic_private' && !ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')) {
-        throw new Exception('Akses rekam medis private ditolak.');
-    }
-    if ($isForensicPrivate && $recordScope !== 'forensic_private') {
-        throw new Exception('Rekam medis private tidak ditemukan.');
-    }
-    if (!$isForensicPrivate && $recordScope === 'forensic_private') {
-        throw new Exception('Akses rekam medis private ditolak.');
+    $userName = strtolower(trim($user['full_name'] ?? ''));
+    $userDivision = strtolower(trim($user['division'] ?? ''));
+    $isProgrammerRoxwood = (strpos($userName, 'programmer') !== false && strpos($userName, 'roxwood') !== false);
+    $isExecutive = (strpos($userDivision, 'executive') !== false);
+
+    // Programmer Roxwood and Executive division can delete all records - skip all checks
+    if (!$isProgrammerRoxwood && !$isExecutive) {
+        if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
+            throw new Exception('Hanya pembuat rekam medis yang dapat menghapus data ini.');
+        }
+        if ($recordScope === 'forensic_private' && !ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')) {
+            throw new Exception('Akses rekam medis private ditolak.');
+        }
+        if ($isForensicPrivate && $recordScope !== 'forensic_private') {
+            throw new Exception('Rekam medis private tidak ditemukan.');
+        }
+        if (!$isForensicPrivate && $recordScope === 'forensic_private') {
+            throw new Exception('Akses rekam medis private ditolak.');
+        }
     }
     
     // Delete files
