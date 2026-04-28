@@ -35,36 +35,63 @@ $detailOps = [];
 $detailTemplates = [];
 
 if ($requestId > 0) {
-    $stmt = $pdo->prepare("
-        SELECT
-            r.*,
-            rb.full_name AS reviewed_by_name
-        FROM position_promotion_requests r
-        LEFT JOIN user_rh rb ON rb.id = r.reviewed_by
-        WHERE r.id = ?
-        LIMIT 1
-    ");
-    $stmt->execute([$requestId]);
-    $detail = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-    if ($detail) {
+    try {
         $stmt = $pdo->prepare("
-            SELECT id, full_name, position, batch, tanggal_masuk
-            FROM user_rh
-            WHERE id = ?
+            SELECT
+                r.*,
+                rb.full_name AS reviewed_by_name
+            FROM position_promotion_requests r
+            LEFT JOIN user_rh rb ON rb.id = r.reviewed_by
+            WHERE r.id = ?
             LIMIT 1
         ");
-        $stmt->execute([(int)$detail['user_id']]);
-        $detailUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
-
-        $stmt = $pdo->prepare("
-            SELECT sort_order, patient_name, procedure_name, dpjp, operation_role, operation_level, medical_record_id
-            FROM position_promotion_request_operations
-            WHERE request_id = ?
-            ORDER BY sort_order ASC, id ASC
-        ");
         $stmt->execute([$requestId]);
-        $detailOps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $detail = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($detail) {
+            $stmt = $pdo->prepare("
+                SELECT id, full_name, position, batch, tanggal_masuk
+                FROM user_rh
+                WHERE id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([(int)$detail['user_id']]);
+            $detailUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            if (!$detailUser) {
+                $errors[] = 'User yang mengajukan tidak ditemukan. Pengajuan #' . $requestId . ' telah dihapus karena data korup.';
+                $detail = null;
+
+                // Delete corrupted request
+                try {
+                    $pdo->beginTransaction();
+                    $stmt = $pdo->prepare("DELETE FROM position_promotion_request_operations WHERE request_id = ?");
+                    $stmt->execute([$requestId]);
+                    $stmt = $pdo->prepare("DELETE FROM position_promotion_requests WHERE id = ?");
+                    $stmt->execute([$requestId]);
+                    $pdo->commit();
+                } catch (Throwable $deleteError) {
+                    $pdo->rollBack();
+                    $errors[] = 'Gagal menghapus pengajuan korup: ' . $deleteError->getMessage();
+                }
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT sort_order, patient_name, procedure_name, dpjp, operation_role, operation_level, medical_record_id
+                    FROM position_promotion_request_operations
+                    WHERE request_id = ?
+                    ORDER BY sort_order ASC, id ASC
+                ");
+                $stmt->execute([$requestId]);
+                $detailOps = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        } else {
+            $errors[] = 'Pengajuan #' . $requestId . ' tidak ditemukan.';
+        }
+    } catch (Throwable $e) {
+        $errors[] = 'Gagal memuat detail pengajuan #' . $requestId . ': ' . $e->getMessage();
+        $detail = null;
+        $detailUser = null;
+        $detailOps = [];
     }
 }
 
