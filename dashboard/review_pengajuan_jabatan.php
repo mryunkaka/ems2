@@ -9,10 +9,13 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 if ($userRole === 'staff') {
     http_response_code(403);
     exit('Akses ditolak');
 }
+
+$canDeleteRequest = ($userDivision === 'Specialist Medical Authority');
 
 $pageTitle = 'Review Pengajuan Jabatan';
 
@@ -443,6 +446,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                 onclick="return confirm('Reject pengajuan ini?')">
                                 <?= ems_icon('x-mark', 'h-4 w-4') ?>
                             </button>
+                            <?php if ($canDeleteRequest): ?>
+                                <button type="submit" name="action" value="delete" class="btn-secondary action-icon-btn"
+                                    title="Hapus permanen pengajuan"
+                                    aria-label="Hapus permanen pengajuan"
+                                    onclick="return confirm('Hapus permanen pengajuan ini? User harus mengajukan ulang.')">
+                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                </button>
+                            <?php endif; ?>
                         </div>
                     </form>
                 <?php else: ?>
@@ -455,6 +466,18 @@ include __DIR__ . '/../partials/sidebar.php';
                             <strong>Catatan Reviewer</strong><br>
                             <?= nl2br(htmlspecialchars($detail['reviewer_note'])) ?>
                         </div>
+                    <?php endif; ?>
+                    <?php if ($canDeleteRequest): ?>
+                        <form method="POST" action="review_pengajuan_jabatan_action.php" class="form" style="margin-top:12px;">
+                            <?= csrfField(); ?>
+                            <input type="hidden" name="request_id" value="<?= (int)$detail['id'] ?>">
+                            <button type="submit" name="action" value="delete" class="btn-danger action-icon-btn"
+                                title="Hapus permanen pengajuan"
+                                aria-label="Hapus permanen pengajuan"
+                                onclick="return confirm('Hapus permanen pengajuan ini? User harus mengajukan ulang.')">
+                                <?= ems_icon('trash', 'h-4 w-4') ?> Hapus Permanen
+                            </button>
+                        </form>
                     <?php endif; ?>
                 <?php endif; ?>
             </div>

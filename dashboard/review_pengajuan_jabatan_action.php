@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+$userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 if ($userRole === 'staff') {
     http_response_code(403);
     exit('Akses ditolak');
@@ -29,10 +30,47 @@ $action = strtolower(trim($_POST['action'] ?? ''));
 $note = trim((string)($_POST['reviewer_note'] ?? ''));
 if ($note === '') $note = null;
 
-if ($requestId <= 0 || !in_array($action, ['approve', 'reject'], true)) {
+if ($requestId <= 0 || !in_array($action, ['approve', 'reject', 'delete'], true)) {
     $_SESSION['flash_errors'][] = 'Data tidak valid.';
     header('Location: review_pengajuan_jabatan.php');
     exit;
+}
+
+// Delete action - only for Specialist Medical Authority
+if ($action === 'delete') {
+    if ($userDivision !== 'Specialist Medical Authority') {
+        $_SESSION['flash_errors'][] = 'Hanya divisi Specialist Medical Authority yang dapat menghapus pengajuan.';
+        header('Location: review_pengajuan_jabatan.php?status=pending&id=' . $requestId);
+        exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("SELECT id FROM position_promotion_requests WHERE id = ?");
+        $stmt->execute([$requestId]);
+        if (!$stmt->fetch()) {
+            throw new Exception('Pengajuan tidak ditemukan.');
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM position_promotion_request_operations WHERE request_id = ?");
+        $stmt->execute([$requestId]);
+
+        $stmt = $pdo->prepare("DELETE FROM position_promotion_requests WHERE id = ?");
+        $stmt->execute([$requestId]);
+
+        $pdo->commit();
+        $_SESSION['flash_messages'][] = 'Pengajuan berhasil dihapus permanen. User dapat mengajukan ulang.';
+        header('Location: review_pengajuan_jabatan.php?status=pending');
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['flash_errors'][] = 'Gagal menghapus pengajuan: ' . $e->getMessage();
+        header('Location: review_pengajuan_jabatan.php?status=pending&id=' . $requestId);
+        exit;
+    }
 }
 
 $nextMap = [
