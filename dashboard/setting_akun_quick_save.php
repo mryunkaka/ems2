@@ -2,7 +2,6 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
-require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/session_helper.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
@@ -94,6 +93,8 @@ $batchFromDb = (int)($currentBatch ?? 0);
 if ($userId <= 0) {
     quickSaveRespond(false, 'Session tidak valid. Silakan login ulang.', [], 401);
 }
+
+session_write_close();
 
 $fullName = trim((string)($_POST['full_name'] ?? ''));
 $citizenId = strtoupper(str_replace(' ', '', trim((string)($_POST['citizen_id'] ?? ''))));
@@ -258,9 +259,6 @@ if ($academyJson === false) {
 }
 quickSaveMark('prepare_docs');
 
-ensureUserDokumenLainnyaColumnSupportsJson($pdo);
-quickSaveMark('ensure_json_column');
-
 $currentPositionNormalized = ems_normalize_position($currentPos);
 $currentRoleNormalized = ems_normalize_role($currentRole);
 
@@ -290,7 +288,8 @@ foreach ($dateFields as $dateField) {
     if (in_array($dateField, $visibleDateFields, true)) {
         $postedValue = trim((string)($_POST[$dateField] ?? ''));
         if ($postedValue === '') {
-            quickSaveRespond(false, 'Tanggal kenaikan yang sesuai jabatan wajib diisi.', [], 422);
+            $dateFieldValues[$dateField] = $userDb[$dateField] ?? null;
+            continue;
         }
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $postedValue)) {
             quickSaveRespond(false, 'Format tanggal tidak valid.', [], 422);
@@ -375,6 +374,7 @@ try {
 }
 quickSaveMark('update_user');
 
+session_start();
 $_SESSION['user_rh']['full_name'] = $fullName;
 $_SESSION['user_rh']['name'] = $fullName;
 $_SESSION['user_rh']['batch'] = $batchFromDb > 0 ? $batchFromDb : $batch;
@@ -385,6 +385,7 @@ $_SESSION['user_rh']['jenis_kelamin'] = $jenisKelamin;
 if ($kodeNomorInduk !== null) {
     $_SESSION['user_rh']['kode_nomor_induk_rs'] = $kodeNomorInduk;
 }
+session_write_close();
 quickSaveMark('update_session');
 
 $perf = null;

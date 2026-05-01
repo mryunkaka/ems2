@@ -176,6 +176,49 @@ document.addEventListener("DOMContentLoaded", () => {
       return result;
     };
 
+    const validateQuickSaveFields = () => {
+      const requiredFields = [
+        {
+          selector: 'input[name="full_name"]',
+          message: "Nama Medis wajib diisi.",
+        },
+        {
+          selector: 'input[name="citizen_id"]',
+          message: "Citizen ID wajib diisi.",
+        },
+        {
+          selector: 'input[name="tanggal_masuk"]',
+          message: "Tanggal Masuk wajib diisi.",
+        },
+        {
+          selector: 'select[name="jenis_kelamin"]',
+          message: "Jenis Kelamin wajib dipilih.",
+        },
+        {
+          selector: 'input[name="no_hp_ic"]',
+          message: "No HP IC wajib diisi.",
+        },
+      ];
+
+      for (const fieldRule of requiredFields) {
+        const field = form.querySelector(fieldRule.selector);
+        if (!field) {
+          continue;
+        }
+
+        if (!String(field.value || "").trim()) {
+          try {
+            field.focus({ preventScroll: false });
+          } catch (e) {}
+
+          showInlineAlert("error", fieldRule.message);
+          return false;
+        }
+      }
+
+      return true;
+    };
+
     const showInlineAlert = (type, message, details = "") => {
       const pageShell = document.querySelector(".page.page-shell-sm");
       if (!pageShell) return;
@@ -219,6 +262,35 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     };
 
+    const buildQuickSavePayload = () => {
+      const params = new URLSearchParams();
+
+      Array.from(form.elements).forEach((field) => {
+        if (!field || !field.name || field.disabled) {
+          return;
+        }
+
+        if (field.type === "file") {
+          return;
+        }
+
+        if ((field.type === "checkbox" || field.type === "radio") && !field.checked) {
+          return;
+        }
+
+        if (field.tagName === "SELECT" && field.multiple) {
+          Array.from(field.selectedOptions).forEach((option) => {
+            params.append(field.name, option.value);
+          });
+          return;
+        }
+
+        params.append(field.name, field.value ?? "");
+      });
+
+      return params;
+    };
+
     form.addEventListener(
       "submit",
       async (event) => {
@@ -226,14 +298,9 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        const valid = withIgnoredFileRequired(() => form.checkValidity());
-        if (!valid) {
+        if (!validateQuickSaveFields()) {
           event.preventDefault();
           event.stopImmediatePropagation();
-          withIgnoredFileRequired(() => {
-            form.reportValidity();
-            return true;
-          });
           return;
         }
 
@@ -244,21 +311,23 @@ document.addEventListener("DOMContentLoaded", () => {
         const startedAt = Date.now();
 
         try {
+          const payload = buildQuickSavePayload();
           const response = await fetch("setting_akun_quick_save.php", {
             method: "POST",
-            body: new FormData(form),
+            body: payload.toString(),
             credentials: "same-origin",
             headers: {
               "X-Requested-With": "XMLHttpRequest",
               Accept: "application/json",
+              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             },
           });
 
-          const payload = await response.json();
+          const payloadJson = await response.json();
           stopQuickSaveState();
 
-          if (!response.ok || !payload.ok) {
-            showInlineAlert("error", payload.message || "Gagal menyimpan perubahan akun.");
+          if (!response.ok || !payloadJson.ok) {
+            showInlineAlert("error", payloadJson.message || "Gagal menyimpan perubahan akun.");
             return;
           }
 
@@ -281,15 +350,15 @@ document.addEventListener("DOMContentLoaded", () => {
           let details =
             "Quick save selesai dalam " + (elapsedMs / 1000).toFixed(2) + " detik tanpa reload halaman.";
 
-          if (payload.perf && Array.isArray(payload.perf.marks) && payload.perf.marks.length > 0) {
+          if (payloadJson.perf && Array.isArray(payloadJson.perf.marks) && payloadJson.perf.marks.length > 0) {
             details +=
               " Server: " +
-              payload.perf.marks
+              payloadJson.perf.marks
                 .map((mark) => mark.label + " " + (mark.delta_ms / 1000).toFixed(2) + " dtk")
                 .join(" | ");
           }
 
-          showInlineAlert("info", payload.message || "Akun berhasil diperbarui.", details);
+          showInlineAlert("info", payloadJson.message || "Akun berhasil diperbarui.", details);
         } catch (error) {
           stopQuickSaveState();
           showInlineAlert(
