@@ -693,6 +693,89 @@ DOKUMEN PENDUKUNG
     </script>
 </section>
 
+<div id="settingAkunLoadingOverlay" class="setting-akun-loading-overlay hidden" aria-hidden="true">
+    <div class="setting-akun-loading-card">
+        <div class="setting-akun-loading-spinner" aria-hidden="true"></div>
+        <div class="setting-akun-loading-title">Menyimpan perubahan akun...</div>
+        <div id="settingAkunLoadingMessage" class="setting-akun-loading-message">Menyiapkan data form...</div>
+        <div id="settingAkunLoadingTimer" class="setting-akun-loading-timer">0 detik</div>
+        <div class="setting-akun-loading-note">Jika Anda mengunggah file, proses bisa lebih lama karena gambar dikompres sebelum disimpan.</div>
+    </div>
+</div>
+
+<style>
+    .setting-akun-loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.58);
+        backdrop-filter: blur(6px);
+    }
+
+    .setting-akun-loading-overlay.hidden {
+        display: none;
+    }
+
+    .setting-akun-loading-card {
+        width: min(100%, 420px);
+        border-radius: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        background: #ffffff;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+        padding: 28px 24px;
+        text-align: center;
+    }
+
+    .setting-akun-loading-spinner {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 18px;
+        border-radius: 999px;
+        border: 4px solid rgba(14, 116, 144, 0.16);
+        border-top-color: #0f766e;
+        animation: settingAkunSpin 0.9s linear infinite;
+    }
+
+    .setting-akun-loading-title {
+        color: #0f172a;
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
+    .setting-akun-loading-message {
+        margin-top: 10px;
+        color: #0f766e;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+
+    .setting-akun-loading-timer {
+        margin-top: 8px;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .setting-akun-loading-note {
+        margin-top: 14px;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+
+    @keyframes settingAkunSpin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
@@ -795,8 +878,76 @@ DOKUMEN PENDUKUNG
         const oldPinInput = document.getElementById('oldPinInput');
         const newPinInput = document.getElementById('newPinInput');
         const confirmPinInput = document.getElementById('confirmPinInput');
+        const submitButton = document.querySelector('.btn-submit');
+        const loadingOverlay = document.getElementById('settingAkunLoadingOverlay');
+        const loadingMessage = document.getElementById('settingAkunLoadingMessage');
+        const loadingTimer = document.getElementById('settingAkunLoadingTimer');
 
         if (form && oldPinInput && newPinInput && confirmPinInput) {
+            let loadingTimerId = null;
+            let loadingMessageId = null;
+            let submitting = false;
+
+            function buildLoadingSteps() {
+                const hasUploads = form.querySelectorAll('input[type="file"]').length > 0 &&
+                    Array.from(form.querySelectorAll('input[type="file"]')).some(function(input) {
+                        return input.files && input.files.length > 0;
+                    });
+                const hasPinChange = oldPinInput.value.trim() !== '' || newPinInput.value.trim() !== '' || confirmPinInput.value.trim() !== '';
+                const hasExtraDocs = Array.from(form.querySelectorAll('input[name="academy_doc_name[]"]')).some(function(input) {
+                    return input.value.trim() !== '';
+                });
+
+                const steps = ['Memeriksa kelengkapan data akun...'];
+
+                if (hasPinChange) {
+                    steps.push('Memvalidasi perubahan PIN...');
+                }
+
+                if (hasUploads) {
+                    steps.push('Mengunggah dan mengompres file gambar...');
+                }
+
+                if (hasExtraDocs) {
+                    steps.push('Menyinkronkan file lainnya...');
+                }
+
+                steps.push('Menyimpan perubahan ke database...');
+                steps.push('Memuat ulang halaman Setting Akun...');
+                return steps;
+            }
+
+            function startLoadingOverlay() {
+                if (!loadingOverlay || !loadingMessage || !loadingTimer || submitting) {
+                    return;
+                }
+
+                submitting = true;
+                const steps = buildLoadingSteps();
+                let stepIndex = 0;
+                let elapsed = 0;
+
+                loadingOverlay.classList.remove('hidden');
+                loadingOverlay.setAttribute('aria-hidden', 'false');
+                loadingMessage.textContent = steps[0];
+                loadingTimer.textContent = '0 detik';
+
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.setAttribute('aria-disabled', 'true');
+                }
+
+                loadingTimerId = window.setInterval(function() {
+                    elapsed += 1;
+                    loadingTimer.textContent = elapsed + ' detik';
+                }, 1000);
+
+                loadingMessageId = window.setInterval(function() {
+                    stepIndex = Math.min(stepIndex + 1, steps.length - 1);
+                    loadingMessage.textContent = steps[stepIndex];
+                }, 1800);
+            }
+
             form.addEventListener('submit', function(e) {
                 const oldPin = oldPinInput.value.trim();
                 const newPin = newPinInput.value.trim();
@@ -859,6 +1010,12 @@ DOKUMEN PENDUKUNG
                         return false;
                     }
                 }
+
+                if (!form.checkValidity()) {
+                    return;
+                }
+
+                startLoadingOverlay();
             });
         }
     });
