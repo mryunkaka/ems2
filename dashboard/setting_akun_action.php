@@ -13,6 +13,53 @@ require_once __DIR__ . '/../helpers/session_helper.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+$settingAkunPerfStartedAt = microtime(true);
+$settingAkunPerfMarks = [];
+
+function settingAkunPerfMark(string $label): void
+{
+    global $settingAkunPerfStartedAt, $settingAkunPerfMarks;
+    $now = microtime(true);
+    $lastTime = $settingAkunPerfStartedAt;
+
+    if (!empty($settingAkunPerfMarks)) {
+        $lastEntry = end($settingAkunPerfMarks);
+        if (is_array($lastEntry) && isset($lastEntry['at'])) {
+            $lastTime = (float)$lastEntry['at'];
+        }
+    }
+
+    $settingAkunPerfMarks[] = [
+        'label' => $label,
+        'at' => $now,
+        'delta_ms' => (int)round(($now - $lastTime) * 1000),
+        'elapsed_ms' => (int)round(($now - $settingAkunPerfStartedAt) * 1000),
+    ];
+}
+
+function settingAkunPerfStoreSummary(): void
+{
+    global $settingAkunPerfStartedAt, $settingAkunPerfMarks;
+
+    if (!function_exists('ems_current_user_is_programmer_roxwood') || !ems_current_user_is_programmer_roxwood()) {
+        return;
+    }
+
+    $_SESSION['setting_akun_perf'] = [
+        'total_ms' => (int)round((microtime(true) - $settingAkunPerfStartedAt) * 1000),
+        'marks' => array_map(static function (array $mark): array {
+            return [
+                'label' => $mark['label'],
+                'delta_ms' => $mark['delta_ms'],
+                'elapsed_ms' => $mark['elapsed_ms'],
+            ];
+        }, $settingAkunPerfMarks),
+        'captured_at' => date('Y-m-d H:i:s'),
+    ];
+}
+
+settingAkunPerfMark('bootstrap');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -287,6 +334,7 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+settingAkunPerfMark('load_user_files');
 
 $requiredDocFields = [
     'file_ktp' => 'Upload KTP wajib diunggah.',
@@ -304,6 +352,7 @@ foreach ($requiredDocFields as $field => $message) {
         exit;
     }
 }
+settingAkunPerfMark('validate_required_docs');
 
 $currentKodeInduk = $userDb['kode_nomor_induk_rs'] ?? null;
 
@@ -418,6 +467,7 @@ foreach ($docFields as $field) {
     $uploadedPaths[$field] =
         'storage/user_docs/' . $folderName . '/' . $field . '.' . $ext;
 }
+settingAkunPerfMark('process_primary_uploads');
 
 // ===============================
 // FILE LAINNYA (MULTI)
@@ -555,8 +605,10 @@ if ($academyJson === false) {
     header('Location: setting_akun.php');
     exit;
 }
+settingAkunPerfMark('process_other_docs');
 
 ensureUserDokumenLainnyaColumnSupportsJson($pdo);
+settingAkunPerfMark('ensure_json_column');
 
 $currentPositionNormalized = ems_normalize_position($currentPos);
 $currentRoleNormalized = ems_normalize_role($currentRole);
@@ -604,6 +656,7 @@ foreach ($settingAkunDateFields as $dateField) {
 
     $dateFieldValues[$dateField] = $userDb[$dateField] ?? null;
 }
+settingAkunPerfMark('prepare_date_fields');
 
 /*
 |--------------------------------------------------------------------------
@@ -701,6 +754,7 @@ try {
     header('Location: setting_akun.php');
     exit;
 }
+settingAkunPerfMark('update_user');
 
 /*
 |--------------------------------------------------------------------------
@@ -709,6 +763,8 @@ try {
 */
 // 🔐 FORCE RELOAD SESSION SETELAH PERUBAHAN KRITIS
 forceReloadUserSession($pdo, $userId);
+settingAkunPerfMark('reload_session');
+settingAkunPerfStoreSummary();
 
 /*
 |--------------------------------------------------------------------------

@@ -186,13 +186,14 @@ $kodeBatch = $nomorInduk; // tampilkan PERSIS seperti di database
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
 $errors   = $_SESSION['flash_errors']   ?? [];
+$settingAkunPerf = $_SESSION['setting_akun_perf'] ?? null;
 
 // Hapus flash error division yang mungkin tersisa dari redirect halaman lain
 $errors = array_values(array_filter($errors, static function ($error) {
     return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
 }));
 
-unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors']);
+unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash_errors'], $_SESSION['setting_akun_perf']);
 
 $promotionDateConfigs = [
     'tanggal_naik_paramedic' => 'Tanggal Naik ke Paramedic',
@@ -242,6 +243,27 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
         <?php foreach ($errors as $e): ?>
             <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
         <?php endforeach; ?>
+
+        <?php if (ems_current_user_is_programmer_roxwood() && is_array($settingAkunPerf)): ?>
+            <div class="alert alert-info">
+                Debug simpan server: total <?= htmlspecialchars(number_format(((int)($settingAkunPerf['total_ms'] ?? 0)) / 1000, 2)) ?> detik
+                <?php if (!empty($settingAkunPerf['captured_at'])): ?>
+                    pada <?= htmlspecialchars((string)$settingAkunPerf['captured_at']) ?>
+                <?php endif; ?>
+                <?php if (!empty($settingAkunPerf['marks']) && is_array($settingAkunPerf['marks'])): ?>
+                    <div style="margin-top:8px;font-size:13px;line-height:1.6">
+                        <?php foreach ($settingAkunPerf['marks'] as $perfMark): ?>
+                            <?php
+                            $perfLabel = (string)($perfMark['label'] ?? '');
+                            $perfDelta = ((int)($perfMark['delta_ms'] ?? 0)) / 1000;
+                            $perfElapsed = ((int)($perfMark['elapsed_ms'] ?? 0)) / 1000;
+                            ?>
+                            <div><?= htmlspecialchars($perfLabel) ?>: <?= htmlspecialchars(number_format($perfDelta, 2)) ?> dtk, total <?= htmlspecialchars(number_format($perfElapsed, 2)) ?> dtk</div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
         <div class="card">
             <div class="card-header">Informasi Akun</div>
@@ -882,10 +904,10 @@ DOKUMEN PENDUKUNG
         const loadingOverlay = document.getElementById('settingAkunLoadingOverlay');
         const loadingMessage = document.getElementById('settingAkunLoadingMessage');
         const loadingTimer = document.getElementById('settingAkunLoadingTimer');
+        const isProgrammerRoxwood = <?= ems_current_user_is_programmer_roxwood() ? 'true' : 'false' ?>;
 
         if (form && oldPinInput && newPinInput && confirmPinInput) {
             let loadingTimerId = null;
-            let loadingMessageId = null;
             let submitting = false;
 
             function buildLoadingSteps() {
@@ -917,6 +939,15 @@ DOKUMEN PENDUKUNG
                 return steps;
             }
 
+            function loadingMessageForElapsed(elapsed, steps) {
+                if (elapsed < 2) return steps[0] || 'Memeriksa kelengkapan data akun...';
+                if (elapsed < 6) return steps[1] || 'Mengirim data form ke server...';
+                if (elapsed < 12) return steps[2] || 'Server sedang memvalidasi data dan file...';
+                if (elapsed < 20) return 'Server sedang mengompres file, memperbarui database, dan memuat ulang session...';
+                if (elapsed < 35) return 'Menunggu redirect balik dari server. Jika lama di tahap ini, biasanya render ulang halaman Setting Akun yang berat.';
+                return 'Proses masih berjalan. Kemungkinan bottleneck ada di render ulang halaman atau pemrosesan file di server.';
+            }
+
             function startLoadingOverlay() {
                 if (!loadingOverlay || !loadingMessage || !loadingTimer || submitting) {
                     return;
@@ -924,13 +955,16 @@ DOKUMEN PENDUKUNG
 
                 submitting = true;
                 const steps = buildLoadingSteps();
-                let stepIndex = 0;
                 let elapsed = 0;
 
                 loadingOverlay.classList.remove('hidden');
                 loadingOverlay.setAttribute('aria-hidden', 'false');
-                loadingMessage.textContent = steps[0];
+                loadingMessage.textContent = loadingMessageForElapsed(0, steps);
                 loadingTimer.textContent = '0 detik';
+
+                try {
+                    sessionStorage.setItem('settingAkunSubmitStartedAt', String(Date.now()));
+                } catch (e) {}
 
                 if (submitButton) {
                     submitButton.disabled = true;
@@ -940,12 +974,26 @@ DOKUMEN PENDUKUNG
                 loadingTimerId = window.setInterval(function() {
                     elapsed += 1;
                     loadingTimer.textContent = elapsed + ' detik';
+                    loadingMessage.textContent = loadingMessageForElapsed(elapsed, steps);
                 }, 1000);
+            }
 
-                loadingMessageId = window.setInterval(function() {
-                    stepIndex = Math.min(stepIndex + 1, steps.length - 1);
-                    loadingMessage.textContent = steps[stepIndex];
-                }, 1800);
+            if (isProgrammerRoxwood) {
+                try {
+                    const submittedAt = parseInt(sessionStorage.getItem('settingAkunSubmitStartedAt') || '', 10);
+                    if (submittedAt > 0) {
+                        const totalMs = Date.now() - submittedAt;
+                        sessionStorage.removeItem('settingAkunSubmitStartedAt');
+
+                        const debugNote = document.createElement('div');
+                        debugNote.className = 'alert alert-info';
+                        debugNote.textContent = 'Debug simpan client: total perjalanan submit sampai halaman ini termuat kembali sekitar ' + (totalMs / 1000).toFixed(2) + ' detik.';
+                        const pageShell = document.querySelector('.page.page-shell-sm');
+                        if (pageShell) {
+                            pageShell.insertBefore(debugNote, pageShell.firstChild.nextSibling);
+                        }
+                    }
+                } catch (e) {}
             }
 
             form.addEventListener('submit', function(e) {
