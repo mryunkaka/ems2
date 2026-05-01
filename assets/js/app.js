@@ -138,6 +138,172 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* =========================
+     SETTING AKUN QUICK SAVE
+     ========================= */
+  (function initSettingAkunQuickSave() {
+    if (window.__settingAkunQuickSaveBound) return;
+    if (!/\/dashboard\/setting_akun\.php(?:$|\?)/.test(window.location.pathname + window.location.search)) {
+      return;
+    }
+
+    const form = document.querySelector('form[action="setting_akun_action.php"]');
+    const submitButton = document.querySelector(".btn-submit");
+    if (!form || !submitButton) return;
+
+    window.__settingAkunQuickSaveBound = true;
+
+    const hasAnySelectedFiles = () =>
+      Array.from(form.querySelectorAll('input[type="file"]')).some(
+        (input) => input.files && input.files.length > 0
+      );
+
+    const withIgnoredFileRequired = (checker) => {
+      const toggled = [];
+
+      if (!hasAnySelectedFiles()) {
+        form.querySelectorAll('input[type="file"][required]').forEach((input) => {
+          toggled.push(input);
+          input.required = false;
+        });
+      }
+
+      const result = checker();
+
+      toggled.forEach((input) => {
+        input.required = true;
+      });
+
+      return result;
+    };
+
+    const showInlineAlert = (type, message, details = "") => {
+      const pageShell = document.querySelector(".page.page-shell-sm");
+      if (!pageShell) return;
+
+      pageShell
+        .querySelectorAll("[data-setting-akun-runtime-alert]")
+        .forEach((node) => node.remove());
+
+      const alert = document.createElement("div");
+      alert.className = type === "error" ? "alert alert-error" : "alert alert-info";
+      alert.setAttribute("data-setting-akun-runtime-alert", "1");
+      alert.textContent = message;
+
+      if (details) {
+        const meta = document.createElement("div");
+        meta.style.marginTop = "8px";
+        meta.style.fontSize = "13px";
+        meta.style.lineHeight = "1.6";
+        meta.textContent = details;
+        alert.appendChild(meta);
+      }
+
+      const firstCard = pageShell.querySelector(".card");
+      pageShell.insertBefore(alert, firstCard || pageShell.firstChild);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const startQuickSaveState = () => {
+      submitButton.disabled = true;
+      submitButton.setAttribute("aria-disabled", "true");
+      submitButton.dataset.originalText =
+        submitButton.dataset.originalText || submitButton.textContent.trim();
+      submitButton.textContent = "Menyimpan...";
+    };
+
+    const stopQuickSaveState = () => {
+      submitButton.disabled = false;
+      submitButton.removeAttribute("aria-disabled");
+      if (submitButton.dataset.originalText) {
+        submitButton.textContent = submitButton.dataset.originalText;
+      }
+    };
+
+    form.addEventListener(
+      "submit",
+      async (event) => {
+        if (hasAnySelectedFiles()) {
+          return;
+        }
+
+        const valid = withIgnoredFileRequired(() => form.checkValidity());
+        if (!valid) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          withIgnoredFileRequired(() => {
+            form.reportValidity();
+            return true;
+          });
+          return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        startQuickSaveState();
+        const startedAt = Date.now();
+
+        try {
+          const response = await fetch("setting_akun_quick_save.php", {
+            method: "POST",
+            body: new FormData(form),
+            credentials: "same-origin",
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+              Accept: "application/json",
+            },
+          });
+
+          const payload = await response.json();
+          stopQuickSaveState();
+
+          if (!response.ok || !payload.ok) {
+            showInlineAlert("error", payload.message || "Gagal menyimpan perubahan akun.");
+            return;
+          }
+
+          Array.from(form.elements).forEach((field) => {
+            if (!field || !field.name) return;
+            if (field.type === "checkbox" || field.type === "radio") {
+              field.defaultChecked = field.checked;
+              return;
+            }
+            if (
+              field.tagName === "SELECT" ||
+              field.tagName === "TEXTAREA" ||
+              field.tagName === "INPUT"
+            ) {
+              field.defaultValue = field.value;
+            }
+          });
+
+          const elapsedMs = Date.now() - startedAt;
+          let details =
+            "Quick save selesai dalam " + (elapsedMs / 1000).toFixed(2) + " detik tanpa reload halaman.";
+
+          if (payload.perf && Array.isArray(payload.perf.marks) && payload.perf.marks.length > 0) {
+            details +=
+              " Server: " +
+              payload.perf.marks
+                .map((mark) => mark.label + " " + (mark.delta_ms / 1000).toFixed(2) + " dtk")
+                .join(" | ");
+          }
+
+          showInlineAlert("info", payload.message || "Akun berhasil diperbarui.", details);
+        } catch (error) {
+          stopQuickSaveState();
+          showInlineAlert(
+            "error",
+            "Gagal menyimpan perubahan akun.",
+            error && error.message ? error.message : ""
+          );
+        }
+      },
+      true
+    );
+  })();
+
+  /* =========================
      USER AUTOCOMPLETE
      ========================= */
   window.emsInitUserAutocomplete =
