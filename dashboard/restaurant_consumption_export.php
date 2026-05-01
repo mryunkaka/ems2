@@ -11,7 +11,6 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Font;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 require_once __DIR__ . '/../config/date_range.php';
@@ -45,7 +44,7 @@ if ($range !== 'custom') {
     $params[':end_date']   = $endDate;
 }
 
-$sql .= " ORDER BY rc.delivery_date DESC, rc.created_at DESC";
+$sql .= " ORDER BY rc.delivery_date ASC, rc.created_at ASC";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -95,7 +94,7 @@ if ($range === 'custom' && $startDate && $endDate) {
 }
 
 $sheet->setCellValue('A1', 'LAPORAN KONSUMSI RESTORAN');
-$sheet->mergeCells('A1:M1');
+$sheet->mergeCells('A1:N1');
 $sheet->getStyle('A1')->applyFromArray([
     'font' => [
         'bold' => true,
@@ -109,7 +108,7 @@ $sheet->getStyle('A1')->applyFromArray([
 ]);
 
 $sheet->setCellValue('A2', 'Periode: ' . $dateRangeLabel);
-$sheet->mergeCells('A2:M2');
+$sheet->mergeCells('A2:N2');
 $sheet->getStyle('A2')->applyFromArray([
     'font' => [
         'size' => 11,
@@ -128,6 +127,7 @@ $sheet->getRowDimension(3)->setRowHeight(8);
 $headers = [
     'No',
     'Kode',
+    'Hari',
     'Tanggal',
     'Jam',
     'Restoran',
@@ -143,7 +143,7 @@ $headers = [
 
 $sheet->fromArray($headers, null, 'A4');
 
-$headerRange = 'A4:M4';
+$headerRange = 'A4:N4';
 $sheet->getStyle($headerRange)->applyFromArray([
     'font' => [
         'bold' => true,
@@ -186,7 +186,8 @@ foreach ($rows as $index => $r) {
     $sheet->fromArray([
         $index + 1,
         $r['consumption_code'] ?? '',
-        $dayIndo . ', ' . $dateFormatted,
+        $dayIndo,
+        $dateFormatted,
         date('H:i', strtotime($r['delivery_time'] ?? '00:00')),
         $r['restaurant_name'] ?? '',
         $r['recipient_name'] ?? '',
@@ -199,7 +200,7 @@ foreach ($rows as $index => $r) {
         strtoupper($r['status'] ?? 'PENDING'),
     ], null, 'A' . $currentRow);
 
-    $rowRange = 'A' . $currentRow . ':M' . $currentRow;
+    $rowRange = 'A' . $currentRow . ':N' . $currentRow;
     $sheet->getStyle($rowRange)->applyFromArray([
         'borders' => [
             'allBorders' => [
@@ -238,14 +239,14 @@ foreach ($rows as $index => $r) {
 
     $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
-    $sheet->getStyle('C' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+    $sheet->getStyle('C' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     $sheet->getStyle('D' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     $sheet->getStyle('E' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
     $sheet->getStyle('F' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
     $sheet->getStyle('G' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-    $sheet->getStyle('H' . $currentRow . ':L' . $currentRow)->getNumberFormat()->setFormatCode('#,##0');
-    $sheet->getStyle('H' . $currentRow . ':L' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-    $sheet->getStyle('M' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+    $sheet->getStyle('I' . $currentRow . ':M' . $currentRow)->getNumberFormat()->setFormatCode('#,##0');
+    $sheet->getStyle('I' . $currentRow . ':M' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+    $sheet->getStyle('N' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
     $currentRow++;
 }
@@ -312,17 +313,18 @@ $sheet->getStyle('C' . ($summaryStartRow + 1) . ':C' . ($summaryStartRow + 5))->
 
 $sheet->getColumnDimension('A')->setWidth(6);
 $sheet->getColumnDimension('B')->setWidth(18);
-$sheet->getColumnDimension('C')->setWidth(22);
-$sheet->getColumnDimension('D')->setWidth(8);
-$sheet->getColumnDimension('E')->setWidth(20);
+$sheet->getColumnDimension('C')->setWidth(10);
+$sheet->getColumnDimension('D')->setWidth(14);
+$sheet->getColumnDimension('E')->setWidth(8);
 $sheet->getColumnDimension('F')->setWidth(20);
-$sheet->getColumnDimension('G')->setWidth(10);
-$sheet->getColumnDimension('H')->setWidth(14);
+$sheet->getColumnDimension('G')->setWidth(20);
+$sheet->getColumnDimension('H')->setWidth(10);
 $sheet->getColumnDimension('I')->setWidth(14);
-$sheet->getColumnDimension('J')->setWidth(12);
-$sheet->getColumnDimension('K')->setWidth(14);
+$sheet->getColumnDimension('J')->setWidth(14);
+$sheet->getColumnDimension('K')->setWidth(12);
 $sheet->getColumnDimension('L')->setWidth(14);
-$sheet->getColumnDimension('M')->setWidth(12);
+$sheet->getColumnDimension('M')->setWidth(14);
+$sheet->getColumnDimension('N')->setWidth(12);
 
 $filename = 'konsumsi_restoran_' . date('Y-m-d_H-i-s') . '.xlsx';
 

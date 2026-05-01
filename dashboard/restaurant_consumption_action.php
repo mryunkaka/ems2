@@ -277,7 +277,7 @@ if ($action === 'paid') {
             SET status = 'paid',
                 paid_by = ?,
                 paid_at = NOW()
-            WHERE id = ? AND status = 'approved'
+            WHERE id = ? AND (status = 'pending' OR status = 'approved')
         ");
         $stmt->execute([$userId, $id]);
 

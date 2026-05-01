@@ -644,6 +644,15 @@ uksort($usersByBatch, function ($a, $b) {
                         placeholder="Cari nama..."
                         class="toolbar-input">
 
+                    <?php
+                    $exportParams = ['view' => $viewMode];
+                    $exportQuery = http_build_query($exportParams);
+                    $exportUrl = ems_url('/dashboard/manage_users_export.php?' . $exportQuery);
+                    ?>
+                    <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                        <?= ems_icon('document-arrow-down', 'h-4 w-4') ?> Export Excel
+                    </a>
+
                     <button id="btnExportText" class="btn-secondary" type="button">
                         <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
                     </button>

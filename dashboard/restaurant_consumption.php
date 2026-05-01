@@ -104,7 +104,7 @@ if ($range !== 'custom') {
     $params[':end_date']   = $endDate;
 }
 
-$sql .= " ORDER BY rc.delivery_date DESC, rc.created_at DESC";
+$sql .= " ORDER BY rc.delivery_date ASC, rc.created_at ASC";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
@@ -266,10 +266,39 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 </div>
             </div>
 
+            <?php if ($canManage || $isDirector): ?>
+            <div class="card-body" style="padding-bottom: 0;">
+                <div class="bulk-actions-bar" style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                    <label class="checkbox-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-weight: 600;">
+                        <input type="checkbox" id="selectAllCheckbox" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                        Pilih Semua
+                    </label>
+                    <span id="selectedCount" style="color: #64748b; font-size: 0.875rem;"></span>
+                    <div class="bulk-buttons" id="bulkButtons" style="display: none; gap: 0.5rem;">
+                        <?php if ($canManage): ?>
+                            <button type="button" id="btnBulkPaid" class="btn-primary btn-compact">
+                                <?= ems_icon('banknotes', 'h-4 w-4') ?> Tandai Sudah Bayar
+                            </button>
+                        <?php endif; ?>
+                        <?php if ($isDirector): ?>
+                            <button type="button" id="btnBulkDelete" class="btn-danger btn-compact">
+                                <?= ems_icon('trash', 'h-4 w-4') ?> Hapus Terpilih
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <div class="table-wrapper">
                 <table id="consumptionTable" class="table-custom">
                     <thead>
                         <tr>
+                            <?php if ($canManage || $isDirector): ?>
+                                <th style="width: 40px; text-align: center;">
+                                    <input type="checkbox" id="selectAllHeader" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                                </th>
+                            <?php endif; ?>
                             <th>#</th>
                             <th>Kode</th>
                             <th>Tanggal & Jam</th>
@@ -288,7 +317,12 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 
                     <tbody>
                         <?php foreach ($rows as $i => $r): ?>
-                            <tr>
+                            <tr data-id="<?= $r['id'] ?>" data-status="<?= htmlspecialchars($r['status']) ?>">
+                                <?php if ($canManage || $isDirector): ?>
+                                    <td style="text-align: center;">
+                                        <input type="checkbox" class="row-checkbox" value="<?= $r['id'] ?>" style="width: 1.25rem; height: 1.25rem; cursor: pointer;">
+                                    </td>
+                                <?php endif; ?>
                                 <!-- # -->
                                 <td><?= $i + 1 ?></td>
 
@@ -302,7 +336,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 // DataTables sort: gunakan timestamp numeric agar urut walau format tanggal teks Indonesia.
                                 $deliveryOrderTs = strtotime(($r['delivery_date'] ?? '') . ' ' . ($r['delivery_time'] ?? '00:00:00'));
                                 ?>
-                                <td data-order="<?= (int)$deliveryOrderTs ?>">
+                                <td data-order="<?= (int)$deliveryOrderTs ?>" style="white-space: nowrap;">
                                     <?php
                                     $daysIndonesian = [
                                         'Monday' => 'Senin',
@@ -370,31 +404,10 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
 
                                 <!-- STATUS -->
                                 <td>
-                                    <div class="meta-stack">
+                                    <div class="meta-stack" style="white-space: nowrap;">
                                         <span class="badge-status badge-<?= htmlspecialchars($r['status']) ?>">
                                             <?= strtoupper(htmlspecialchars($r['status'])) ?>
                                         </span>
-
-                                        <?php if (!empty($r['approved_by_name']) && !empty($r['approved_at'])): ?>
-                                            <?php
-                                            $daysIndonesian = [
-                                                'Monday' => 'Senin',
-                                                'Tuesday' => 'Selasa',
-                                                'Wednesday' => 'Rabu',
-                                                'Thursday' => 'Kamis',
-                                                'Friday' => 'Jumat',
-                                                'Saturday' => 'Sabtu',
-                                                'Sunday' => 'Minggu'
-                                            ];
-                                            $approvedDayEnglish = date('l', strtotime($r['approved_at']));
-                                            $approvedDayIndo = $daysIndonesian[$approvedDayEnglish] ?? $approvedDayEnglish;
-                                            $approvedDateFormatted = date('d M Y H:i', strtotime($r['approved_at']));
-                                            ?>
-                                            <small class="meta-note-green">
-                                                Approved by: <strong><?= htmlspecialchars($r['approved_by_name']) ?></strong><br>
-                                                <span class="meta-text"><?= $approvedDayIndo ?>, <?= $approvedDateFormatted ?></span>
-                                            </small>
-                                        <?php endif; ?>
 
                                         <?php if (!empty($r['paid_by_name']) && !empty($r['paid_at'])): ?>
                                             <?php
@@ -422,16 +435,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 <!-- AKSI -->
                                 <td class="action-cell min-w-[200px]">
                                     <div class="action-row-nowrap">
-                                        <?php if ($canManage && $r['status'] === 'pending'): ?>
-                                            <button class="btn-success btn-compact action-icon-btn"
-                                                onclick="approveConsumption(<?= $r['id'] ?>)"
-                                                title="Approve konsumsi"
-                                                aria-label="Approve konsumsi">
-                                                <?= ems_icon('check-circle', 'h-4 w-4') ?>
-                                            </button>
-                                        <?php endif; ?>
-
-                                        <?php if ($canManage && $r['status'] === 'approved'): ?>
+                                        <?php if ($canManage && ($r['status'] === 'pending' || $r['status'] === 'approved')): ?>
                                             <button class="btn-primary btn-compact action-icon-btn"
                                                 onclick="markPaid(<?= $r['id'] ?>)"
                                                 title="Tandai sudah dibayar"
@@ -555,6 +559,137 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 alert('Terjadi kesalahan: ' + err.message);
             });
     }
+
+    /* ===============================
+       BULK ACTIONS
+    =============================== */
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const selectAllHeader = document.getElementById('selectAllHeader');
+        const bulkButtons = document.getElementById('bulkButtons');
+        const selectedCount = document.getElementById('selectedCount');
+        const btnBulkPaid = document.getElementById('btnBulkPaid');
+        const btnBulkDelete = document.getElementById('btnBulkDelete');
+
+        // Store selected IDs persistently
+        let selectedIds = new Set();
+
+        function updateSelectedCount() {
+            const count = selectedIds.size;
+            if (selectedCount) {
+                selectedCount.textContent = count > 0 ? count + ' item terpilih' : '';
+            }
+            if (bulkButtons) {
+                bulkButtons.style.display = count > 0 ? 'flex' : 'none';
+            }
+            // Update checkboxes visibility
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                cb.checked = selectedIds.has(cb.value);
+            });
+        }
+
+        function getSelectedIds() {
+            return Array.from(selectedIds);
+        }
+
+        // Event delegation for checkboxes (works with DataTables sorting)
+        document.addEventListener('change', function(e) {
+            if (e.target.classList.contains('row-checkbox')) {
+                if (e.target.checked) {
+                    selectedIds.add(e.target.value);
+                } else {
+                    selectedIds.delete(e.target.value);
+                }
+                updateSelectedCount();
+            }
+        });
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                const isChecked = this.checked;
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = isChecked;
+                    if (isChecked) {
+                        selectedIds.add(cb.value);
+                    } else {
+                        selectedIds.delete(cb.value);
+                    }
+                });
+                if (selectAllHeader) selectAllHeader.checked = isChecked;
+                updateSelectedCount();
+            });
+        }
+
+        if (selectAllHeader) {
+            selectAllHeader.addEventListener('change', function() {
+                const isChecked = this.checked;
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = isChecked;
+                    if (isChecked) {
+                        selectedIds.add(cb.value);
+                    } else {
+                        selectedIds.delete(cb.value);
+                    }
+                });
+                if (selectAllCheckbox) selectAllCheckbox.checked = isChecked;
+                updateSelectedCount();
+            });
+        }
+
+        if (btnBulkPaid) {
+            btnBulkPaid.addEventListener('click', function() {
+                const ids = getSelectedIds();
+                if (ids.length === 0) return;
+                if (!confirm('Tandai ' + ids.length + ' konsumsi sebagai DIBAYAR?')) return;
+
+                let successCount = 0;
+                let failCount = 0;
+
+                Promise.all(ids.map(id =>
+                    fetch('restaurant_consumption_action.php?action=paid', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'id=' + encodeURIComponent(id)
+                    }).then(parseActionJson).then(result => {
+                        if (result.success) successCount++;
+                        else failCount++;
+                    }).catch(() => {
+                        failCount++;
+                    })
+                )).then(() => {
+                    alert(successCount + ' dari ' + ids.length + ' konsumsi berhasil ditandai lunas!');
+                    if (successCount > 0) location.reload();
+                });
+            });
+        }
+
+        if (btnBulkDelete) {
+            btnBulkDelete.addEventListener('click', function() {
+                const ids = getSelectedIds();
+                if (ids.length === 0) return;
+                if (!confirm('Yakin hapus ' + ids.length + ' data konsumsi? Data akan hilang permanen!')) return;
+
+                let successCount = 0;
+                let failCount = 0;
+
+                Promise.all(ids.map(id =>
+                    fetch('restaurant_consumption_action.php?action=delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'id=' + encodeURIComponent(id)
+                    }).then(parseActionJson).then(result => {
+                        if (result.success) successCount++;
+                        else failCount++;
+                    }).catch(() => {
+                        failCount++;
+                    })
+                )).then(() => {
+                    alert(successCount + ' dari ' + ids.length + ' data berhasil dihapus!');
+                    if (successCount > 0) location.reload();
+                });
+            });
+        }
+    });
 </script>
 
 <!-- =================================================
@@ -745,7 +880,10 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             jQuery('#consumptionTable').DataTable({
                 pageLength: 10,
                 order: [
-                    [2, 'desc']
+                    [3, 'asc']
+                ],
+                columnDefs: [
+                    { orderable: false, targets: 0 }
                 ],
                 language: {
                     url: '/assets/design/js/datatables-id.json'
