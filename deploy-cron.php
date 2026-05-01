@@ -22,39 +22,59 @@ function respond(string $message, string $logFile, bool $writeLog = true, int $e
     exit($exitCode);
 }
 
+function gitCmd(string $git, string $repo, string $args): string
+{
+    return trim((string) shell_exec($git . ' -C ' . escapeshellarg($repo) . ' ' . $args . ' 2>&1'));
+}
+
 if (!is_dir($repo . '/.git')) {
     respond('ERROR: folder .git tidak ditemukan di ' . $repo, $log, true, 1);
 }
 
-chdir($repo);
-
-$old = trim((string) shell_exec($git . ' rev-parse HEAD 2>&1'));
+$old = gitCmd($git, $repo, 'rev-parse HEAD');
 if ($old === '' || preg_match('/fatal:|not found|unable to/i', $old)) {
     respond('ERROR: gagal membaca HEAD. output=' . $old, $log, true, 1);
 }
 
-$pullOutput = trim((string) shell_exec($git . ' pull origin main 2>&1'));
-$new = trim((string) shell_exec($git . ' rev-parse HEAD 2>&1'));
+$fetchOutput = gitCmd($git, $repo, 'fetch origin main');
+$remote = gitCmd($git, $repo, 'rev-parse origin/main');
 
-if (
-    $new === '' ||
-    preg_match('/fatal:|not found|unable to/i', $new)
-) {
-    respond('ERROR: git pull / rev-parse gagal. pull=' . $pullOutput . ' | head=' . $new, $log, true, 1);
+if ($remote === '' || preg_match('/fatal:|not found|unable to/i', $remote)) {
+    respond('ERROR: git fetch / remote HEAD gagal. fetch=' . $fetchOutput . ' | remote=' . $remote, $log, true, 1);
 }
 
-if ($old === $new) {
+if ($old === $remote) {
     respond('OK: already up to date', $log, false, 0);
 }
 
-$commits = trim((string) shell_exec(
-    $git . ' log ' . escapeshellarg($old . '..' . $new) . " --pretty=format:'%h | %an | %s' 2>&1"
-));
+$checkoutOutput = gitCmd($git, $repo, 'checkout -B main origin/main');
+$new = gitCmd($git, $repo, 'rev-parse HEAD');
+
+if ($new === '' || preg_match('/fatal:|not found|unable to/i', $new)) {
+    respond('ERROR: checkout branch gagal. checkout=' . $checkoutOutput . ' | head=' . $new, $log, true, 1);
+}
+
+if ($new !== $remote) {
+    $resetOutput = gitCmd($git, $repo, 'reset --hard origin/main');
+    $new = gitCmd($git, $repo, 'rev-parse HEAD');
+
+    if ($new === '' || preg_match('/fatal:|not found|unable to/i', $new) || $new !== $remote) {
+        respond('ERROR: reset ke origin/main gagal. reset=' . $resetOutput . ' | head=' . $new . ' | remote=' . $remote, $log, true, 1);
+    }
+}
+
+$commits = gitCmd(
+    $git,
+    $repo,
+    'log ' . escapeshellarg($old . '..' . $new) . " --pretty=format:'%h | %an | %s'"
+);
 
 if ($commits === '' || preg_match('/fatal:|not found|unable to/i', $commits)) {
-    $singleCommit = trim((string) shell_exec(
-        $git . " log -1 --pretty=format:'%h | %an | %s' " . escapeshellarg($new) . ' 2>&1'
-    ));
+    $singleCommit = gitCmd(
+        $git,
+        $repo,
+        "log -1 --pretty=format:'%h | %an | %s' " . escapeshellarg($new)
+    );
 
     if ($singleCommit === '' || preg_match('/fatal:|not found|unable to/i', $singleCommit)) {
         respond('OK: deploy berhasil, tapi detail commit tidak terbaca', $log, false, 0);
