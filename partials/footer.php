@@ -17,11 +17,41 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe-lightbox.umd.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/design/js/photoswipe-init.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jquery/jquery.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.jQuery) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jquery/jquery.min.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.dataTable) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.min.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jszip/jszip.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.JSZip) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/jszip/jszip.min.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.buttons.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.dataTable || !window.jQuery.fn.dataTable.Buttons) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/dataTables.buttons.min.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.html5.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.dataTable || !window.jQuery.fn.dataTable.ext || !window.jQuery.fn.dataTable.ext.buttons) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/datatables/buttons.html5.min.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/chartjs/chart.umd.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<script>
+if (!window.Chart) {
+    document.write('<script src="<?= htmlspecialchars(ems_asset('/assets/vendor/chartjs/chart.umd.js?refresh=20260501'), ENT_QUOTES, 'UTF-8') ?>"><\/script>');
+}
+</script>
 
 <!-- Sidebar Toggle Script -->
 <script>

@@ -329,7 +329,7 @@ DOKUMEN PENDUKUNG
                                 name="<?= htmlspecialchars($name) ?>"
                                 accept="image/png,image/jpeg"
                                 <?= $required && empty($path) ? 'required' : '' ?>
-                                class="hidden">
+                                class="sr-only">
                             <div class="file-selected-name" data-for="<?= htmlspecialchars($name) ?>"></div>
                         </div>
 
@@ -442,7 +442,7 @@ DOKUMEN PENDUKUNG
                                                 id="academy_file_new_0"
                                                 name="academy_doc_file[]"
                                                 accept="image/png,image/jpeg"
-                                                class="hidden">
+                                                class="sr-only">
                                             <div class="file-selected-name" data-for="academy_file_new_0"></div>
                                         </div>
                                     </div>
@@ -487,7 +487,7 @@ DOKUMEN PENDUKUNG
                                                     id="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"
                                                     name="academy_doc_file[]"
                                                     accept="image/png,image/jpeg"
-                                                    class="hidden">
+                                                    class="sr-only">
                                                 <div class="file-selected-name" data-for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"></div>
                                             </div>
                                             <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
@@ -620,7 +620,7 @@ DOKUMEN PENDUKUNG
 	                                        <small>PNG atau JPG</small>
 	                                    </span>
 	                                </label>
-	                                <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" class="hidden">
+                                <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" class="sr-only">
 	                                <div class="file-selected-name" data-for="${id}"></div>
 	                            </div>
 	                        </div>
