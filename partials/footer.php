@@ -8,7 +8,6 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
 }
 ?>
 </main>
-tess
 </div>
 
 <script src="<?= htmlspecialchars(ems_asset('/assets/js/app.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
