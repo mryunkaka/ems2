@@ -948,6 +948,62 @@ DOKUMEN PENDUKUNG
                 return 'Proses masih berjalan. Kemungkinan bottleneck ada di render ulang halaman atau pemrosesan file di server.';
             }
 
+            function hasAnySelectedFiles() {
+                return Array.from(form.querySelectorAll('input[type="file"]')).some(function(input) {
+                    return input.files && input.files.length > 0;
+                });
+            }
+
+            function withIgnoredFileRequired(checker) {
+                const toggled = [];
+                if (!hasAnySelectedFiles()) {
+                    form.querySelectorAll('input[type="file"][required]').forEach(function(input) {
+                        toggled.push(input);
+                        input.required = false;
+                    });
+                }
+
+                const result = checker();
+
+                toggled.forEach(function(input) {
+                    input.required = true;
+                });
+
+                return result;
+            }
+
+            function showInlineAlert(type, message, details) {
+                const pageShell = document.querySelector('.page.page-shell-sm');
+                if (!pageShell) {
+                    return;
+                }
+
+                pageShell.querySelectorAll('[data-setting-akun-runtime-alert]').forEach(function(node) {
+                    node.remove();
+                });
+
+                const alert = document.createElement('div');
+                alert.className = type === 'error' ? 'alert alert-error' : 'alert alert-info';
+                alert.setAttribute('data-setting-akun-runtime-alert', '1');
+                alert.textContent = message;
+
+                if (details) {
+                    const meta = document.createElement('div');
+                    meta.style.marginTop = '8px';
+                    meta.style.fontSize = '13px';
+                    meta.style.lineHeight = '1.6';
+                    meta.textContent = details;
+                    alert.appendChild(meta);
+                }
+
+                const firstCard = pageShell.querySelector('.card');
+                pageShell.insertBefore(alert, firstCard || pageShell.firstChild);
+                window.scrollTo({
+                    top: 0,
+                    behavior: 'smooth'
+                });
+            }
+
             function startLoadingOverlay() {
                 if (!loadingOverlay || !loadingMessage || !loadingTimer || submitting) {
                     return;
@@ -976,6 +1032,67 @@ DOKUMEN PENDUKUNG
                     loadingTimer.textContent = elapsed + ' detik';
                     loadingMessage.textContent = loadingMessageForElapsed(elapsed, steps);
                 }, 1000);
+            }
+
+            function stopLoadingOverlay() {
+                submitting = false;
+
+                if (loadingTimerId) {
+                    window.clearInterval(loadingTimerId);
+                    loadingTimerId = null;
+                }
+
+                if (loadingOverlay) {
+                    loadingOverlay.classList.add('hidden');
+                    loadingOverlay.setAttribute('aria-hidden', 'true');
+                }
+
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-disabled');
+                }
+            }
+
+            async function submitQuickSave() {
+                startLoadingOverlay();
+                if (loadingMessage) {
+                    loadingMessage.textContent = 'Menyimpan cepat tanpa reload halaman...';
+                }
+
+                const startedAt = Date.now();
+                try {
+                    const response = await fetch('setting_akun_quick_save.php', {
+                        method: 'POST',
+                        body: new FormData(form),
+                        credentials: 'same-origin',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    const payload = await response.json();
+                    stopLoadingOverlay();
+
+                    if (!response.ok || !payload.ok) {
+                        showInlineAlert('error', payload.message || 'Gagal menyimpan perubahan akun.');
+                        return;
+                    }
+
+                    const elapsedMs = Date.now() - startedAt;
+                    let debugDetails = 'Quick save selesai dalam ' + (elapsedMs / 1000).toFixed(2) + ' detik tanpa reload halaman.';
+
+                    if (payload.perf && Array.isArray(payload.perf.marks) && payload.perf.marks.length > 0) {
+                        debugDetails += ' Server: ' + payload.perf.marks.map(function(mark) {
+                            return mark.label + ' ' + (mark.delta_ms / 1000).toFixed(2) + ' dtk';
+                        }).join(' | ');
+                    }
+
+                    showInlineAlert('info', payload.message || 'Akun berhasil diperbarui.', isProgrammerRoxwood ? debugDetails : '');
+                } catch (error) {
+                    stopLoadingOverlay();
+                    showInlineAlert('error', 'Gagal menyimpan perubahan akun.', error && error.message ? error.message : '');
+                }
             }
 
             if (isProgrammerRoxwood) {
@@ -1059,7 +1176,24 @@ DOKUMEN PENDUKUNG
                     }
                 }
 
-                if (!form.checkValidity()) {
+                const hasUploads = hasAnySelectedFiles();
+                const isQuickSave = !hasUploads;
+                const validityOk = withIgnoredFileRequired(function() {
+                    return form.checkValidity();
+                });
+
+                if (!validityOk) {
+                    e.preventDefault();
+                    withIgnoredFileRequired(function() {
+                        form.reportValidity();
+                        return true;
+                    });
+                    return;
+                }
+
+                if (isQuickSave) {
+                    e.preventDefault();
+                    submitQuickSave();
                     return;
                 }
 
