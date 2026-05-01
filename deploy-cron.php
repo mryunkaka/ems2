@@ -1,101 +1,56 @@
 <?php
 
-declare(strict_types=1);
-
-$repo = __DIR__;
-$log = $repo . '/logs/git-deploy.log';
-$statusLog = $repo . '/logs/deploy-cron-status.log';
-$branch = 'main';
-$remote = 'origin';
-
 date_default_timezone_set('Asia/Jakarta');
 
-function writeStatus(string $statusFile, string $message): void
-{
-    $date = date('Y-m-d H:i:s');
-    @file_put_contents($statusFile, $date . ' - ' . $message . PHP_EOL);
-}
-
-function runCommand(string $command, ?int &$exitCode = null): string
-{
-    $output = [];
-    exec($command . ' 2>&1', $output, $exitCode);
-    return trim(implode("\n", $output));
-}
-
-function appendLog(string $logFile, string $message): void
-{
-    $date = date('Y-m-d H:i:s');
-    file_put_contents($logFile, $date . ' - ' . $message . PHP_EOL, FILE_APPEND);
-}
-
-function finish(string $message, int $exitCode = 0, bool $logStatus = true): void
-{
-    global $statusLog;
-
-    if ($logStatus) {
-        writeStatus($statusLog, $message);
-    }
-
-    if (PHP_SAPI !== 'cli') {
-        header('Content-Type: text/plain; charset=UTF-8');
-        echo $message;
-    }
-
-    exit($exitCode);
-}
-
-if (!is_dir($repo)) {
-    finish('ERROR: repo path tidak ditemukan: ' . $repo, 1);
-}
+$repo = '/home/hark8423/public_html/rh-ems2';
+$log = '/home/hark8423/git-deploy.log';
+$git = is_executable('/usr/bin/git') ? '/usr/bin/git' : 'git';
 
 if (!is_dir($repo . '/.git')) {
-    finish('ERROR: folder .git tidak ditemukan di: ' . $repo, 1);
+    exit(1);
 }
 
 chdir($repo);
 
-$currentHead = runCommand('git rev-parse HEAD', $exitCode);
-if ($exitCode !== 0 || $currentHead === '') {
-    finish('ERROR: gagal membaca HEAD. output=' . $currentHead, 1);
+$old = trim((string) shell_exec($git . ' rev-parse HEAD 2>&1'));
+if ($old === '' || preg_match('/fatal:|not found|unable to/i', $old)) {
+    exit(1);
 }
 
-runCommand(sprintf('git fetch %s %s', escapeshellarg($remote), escapeshellarg($branch)), $exitCode);
-if ($exitCode !== 0) {
-    finish('ERROR: git fetch gagal.', 1);
+$pullOutput = trim((string) shell_exec($git . ' pull origin main 2>&1'));
+$new = trim((string) shell_exec($git . ' rev-parse HEAD 2>&1'));
+
+if (
+    $new === '' ||
+    preg_match('/fatal:|not found|unable to/i', $new) ||
+    $old === $new
+) {
+    exit(0);
 }
 
-$remoteHead = runCommand(sprintf('git rev-parse %s/%s', escapeshellarg($remote), escapeshellarg($branch)), $exitCode);
-if ($exitCode !== 0 || $remoteHead === '') {
-    finish('ERROR: gagal membaca remote HEAD.', 1);
+$commits = trim((string) shell_exec(
+    $git . ' log ' . escapeshellarg($old . '..' . $new) . " --pretty=format:'%h | %an | %s' 2>&1"
+));
+
+if ($commits === '' || preg_match('/fatal:|not found|unable to/i', $commits)) {
+    $singleCommit = trim((string) shell_exec(
+        $git . " log -1 --pretty=format:'%h | %an | %s' " . escapeshellarg($new) . ' 2>&1'
+    ));
+
+    if ($singleCommit === '' || preg_match('/fatal:|not found|unable to/i', $singleCommit)) {
+        exit(0);
+    }
+
+    $commits = $singleCommit;
 }
 
-if ($currentHead === $remoteHead) {
-    finish('OK: already up to date', 0);
-}
+$date = date('Y-m-d H:i:s');
 
-runCommand(
-    sprintf('git merge-base --is-ancestor %s %s/%s', escapeshellarg($currentHead), escapeshellarg($remote), escapeshellarg($branch)),
-    $exitCode
-);
-if ($exitCode !== 0) {
-    finish('ERROR: branch lokal divergen, fast-forward tidak bisa dilakukan.', 1);
-}
+foreach (preg_split('/\r\n|\r|\n/', $commits) as $commit) {
+    $commit = trim((string) $commit);
+    if ($commit === '') {
+        continue;
+    }
 
-runCommand(sprintf('git merge --ff-only %s/%s', escapeshellarg($remote), escapeshellarg($branch)), $exitCode);
-if ($exitCode !== 0) {
-    finish('ERROR: git merge --ff-only gagal.', 1);
+    file_put_contents($log, $date . ' - Deploy ' . $commit . PHP_EOL, FILE_APPEND);
 }
-
-$newHead = runCommand('git rev-parse HEAD', $exitCode);
-if ($exitCode !== 0 || $newHead === '' || $newHead === $currentHead) {
-    finish('OK: tidak ada perubahan setelah merge', 0);
-}
-
-$commit = runCommand(sprintf('git log -1 --pretty=format:"%%h | %%an | %%s" %s', escapeshellarg($newHead)), $exitCode);
-if ($exitCode !== 0 || $commit === '') {
-    finish('OK: deploy berhasil, tetapi detail commit tidak terbaca', 0);
-}
-
-appendLog($log, 'Deploy ' . $commit);
-finish('OK: deployed ' . $commit, 0);
