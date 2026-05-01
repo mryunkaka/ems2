@@ -78,24 +78,62 @@ function settingAkunNormalizeDocName(?string $name): string
     return $value;
 }
 
-$otherDocSuggestions = [];
-$stmtOtherDocSuggestions = $pdo->query("SELECT dokumen_lainnya FROM user_rh WHERE dokumen_lainnya IS NOT NULL AND dokumen_lainnya <> ''");
-$allOtherDocRows = $stmtOtherDocSuggestions ? $stmtOtherDocSuggestions->fetchAll(PDO::FETCH_ASSOC) : [];
-foreach ($allOtherDocRows as $otherDocRow) {
-    $parsedDocs = ensureAcademyDocIds(parseAcademyDocs($otherDocRow['dokumen_lainnya'] ?? ''));
-    foreach ($parsedDocs as $parsedDoc) {
-        $docName = settingAkunNormalizeDocName($parsedDoc['name'] ?? '');
-        if ($docName === '') {
-            continue;
-        }
+function settingAkunDocSuggestionCachePath(): string
+{
+    return __DIR__ . '/../storage/cache/setting_akun_doc_suggestions.json';
+}
 
-        $lookupKey = strtolower($docName);
-        if (!isset($otherDocSuggestions[$lookupKey])) {
-            $otherDocSuggestions[$lookupKey] = $docName;
+function settingAkunLoadDocSuggestions(PDO $pdo): array
+{
+    $cachePath = settingAkunDocSuggestionCachePath();
+    $cacheTtl = 900;
+
+    if (is_file($cachePath) && (time() - (int)filemtime($cachePath)) < $cacheTtl) {
+        $cached = json_decode((string)file_get_contents($cachePath), true);
+        if (is_array($cached)) {
+            return $cached;
         }
     }
+
+    $suggestions = [];
+    $stmt = $pdo->query("
+        SELECT dokumen_lainnya
+        FROM user_rh
+        WHERE dokumen_lainnya IS NOT NULL
+          AND dokumen_lainnya <> ''
+        ORDER BY id DESC
+        LIMIT 250
+    ");
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+    foreach ($rows as $row) {
+        $parsedDocs = ensureAcademyDocIds(parseAcademyDocs($row['dokumen_lainnya'] ?? ''));
+        foreach ($parsedDocs as $parsedDoc) {
+            $docName = settingAkunNormalizeDocName($parsedDoc['name'] ?? '');
+            if ($docName === '') {
+                continue;
+            }
+
+            $lookupKey = strtolower($docName);
+            if (!isset($suggestions[$lookupKey])) {
+                $suggestions[$lookupKey] = $docName;
+            }
+        }
+    }
+
+    natcasesort($suggestions);
+    $result = array_values($suggestions);
+
+    $cacheDir = dirname($cachePath);
+    if (!is_dir($cacheDir)) {
+        @mkdir($cacheDir, 0755, true);
+    }
+
+    @file_put_contents($cachePath, json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    return $result;
 }
-natcasesort($otherDocSuggestions);
+
+$otherDocSuggestions = settingAkunLoadDocSuggestions($pdo);
 
 $citizenId    = $userDb['citizen_id'] ?? '';
 $jenisKelamin = $userDb['jenis_kelamin'] ?? '';

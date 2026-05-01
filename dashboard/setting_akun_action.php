@@ -694,6 +694,11 @@ try {
 // 🔐 FORCE RELOAD SESSION SETELAH PERUBAHAN KRITIS
 forceReloadUserSession($pdo, $userId);
 
+$settingAkunSuggestionCache = __DIR__ . '/../storage/cache/setting_akun_doc_suggestions.json';
+if (is_file($settingAkunSuggestionCache)) {
+    @unlink($settingAkunSuggestionCache);
+}
+
 /*
 |--------------------------------------------------------------------------
 | FLASH MESSAGE (SISTEM EMS / REKAP FARMASI)
