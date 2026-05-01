@@ -140,6 +140,27 @@ function twoDigit($num)
     return str_pad($num, 2, '0', STR_PAD_LEFT);
 }
 
+function settingAkunActionUserRhColumns(PDO $pdo): array
+{
+    static $columns = null;
+    if (is_array($columns)) {
+        return $columns;
+    }
+
+    $stmt = $pdo->query('SHOW COLUMNS FROM user_rh');
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $columns = [];
+
+    foreach ($rows as $row) {
+        $field = strtolower(trim((string)($row['Field'] ?? '')));
+        if ($field !== '') {
+            $columns[$field] = true;
+        }
+    }
+
+    return $columns;
+}
+
 /*
 |--------------------------------------------------------------------------
 | VALIDASI DASAR
@@ -242,6 +263,7 @@ $settingAkunDateFields = [
     'tanggal_join_manager',
 ];
 $settingAkunSelectColumns = [
+    'kode_nomor_induk_rs',
     'file_ktp',
     'file_sim',
     'file_kta',
@@ -250,8 +272,9 @@ $settingAkunSelectColumns = [
     'sertifikat_operasi',
     'dokumen_lainnya',
 ];
+$userRhColumns = settingAkunActionUserRhColumns($pdo);
 foreach (array_merge($settingAkunExtraDocFields, $settingAkunDateFields) as $optionalColumn) {
-    if (ems_column_exists($pdo, 'user_rh', $optionalColumn)) {
+    if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $settingAkunSelectColumns[] = $optionalColumn;
     }
 }
@@ -282,14 +305,7 @@ foreach ($requiredDocFields as $field => $message) {
     }
 }
 
-$stmt = $pdo->prepare("
-    SELECT kode_nomor_induk_rs 
-    FROM user_rh 
-    WHERE id = ?
-    LIMIT 1
-");
-$stmt->execute([$userId]);
-$currentKodeInduk = $stmt->fetchColumn();
+$currentKodeInduk = $userDb['kode_nomor_induk_rs'] ?? null;
 
 // ===============================
 // GENERATE KODE NOMOR INDUK RS
@@ -693,11 +709,6 @@ try {
 */
 // 🔐 FORCE RELOAD SESSION SETELAH PERUBAHAN KRITIS
 forceReloadUserSession($pdo, $userId);
-
-$settingAkunSuggestionCache = __DIR__ . '/../storage/cache/setting_akun_doc_suggestions.json';
-if (is_file($settingAkunSuggestionCache)) {
-    @unlink($settingAkunSuggestionCache);
-}
 
 /*
 |--------------------------------------------------------------------------

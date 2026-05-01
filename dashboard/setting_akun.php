@@ -52,9 +52,31 @@ $optionalSettingAkunColumns = [
     'tanggal_join_manager',
 ];
 
+function settingAkunUserRhColumns(PDO $pdo): array
+{
+    static $columns = null;
+    if (is_array($columns)) {
+        return $columns;
+    }
+
+    $stmt = $pdo->query('SHOW COLUMNS FROM user_rh');
+    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    $columns = [];
+
+    foreach ($rows as $row) {
+        $field = strtolower(trim((string)($row['Field'] ?? '')));
+        if ($field !== '') {
+            $columns[$field] = true;
+        }
+    }
+
+    return $columns;
+}
+
 $selectColumns = $baseSelectColumns;
+$userRhColumns = settingAkunUserRhColumns($pdo);
 foreach ($optionalSettingAkunColumns as $optionalColumn) {
-    if (ems_column_exists($pdo, 'user_rh', $optionalColumn)) {
+    if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $selectColumns[] = $optionalColumn;
     }
 }
@@ -181,19 +203,19 @@ $promotionDateConfigs = [
 ];
 
 $visiblePromotionDateFields = [];
-if ($medicPosNormalized === 'paramedic' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_paramedic')) {
+if ($medicPosNormalized === 'paramedic' && isset($userRhColumns['tanggal_naik_paramedic'])) {
     $visiblePromotionDateFields[] = 'tanggal_naik_paramedic';
 }
-if ($medicPosNormalized === 'co_asst' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_co_asst')) {
+if ($medicPosNormalized === 'co_asst' && isset($userRhColumns['tanggal_naik_co_asst'])) {
     $visiblePromotionDateFields[] = 'tanggal_naik_co_asst';
 }
-if ($medicPosNormalized === 'general_practitioner' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_dokter')) {
+if ($medicPosNormalized === 'general_practitioner' && isset($userRhColumns['tanggal_naik_dokter'])) {
     $visiblePromotionDateFields[] = 'tanggal_naik_dokter';
 }
-if ($medicPosNormalized === 'specialist' && ems_column_exists($pdo, 'user_rh', 'tanggal_naik_dokter_spesialis')) {
+if ($medicPosNormalized === 'specialist' && isset($userRhColumns['tanggal_naik_dokter_spesialis'])) {
     $visiblePromotionDateFields[] = 'tanggal_naik_dokter_spesialis';
 }
-if (ems_is_manager_plus_role($currentRoleNormalized) && ems_column_exists($pdo, 'user_rh', 'tanggal_join_manager')) {
+if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['tanggal_join_manager'])) {
     $visiblePromotionDateFields[] = 'tanggal_join_manager';
 }
 ?>
