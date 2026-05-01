@@ -189,7 +189,26 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
         </div>
 
         <div class="card card-section">
-            <div class="card-header">Filter Rentang Tanggal</div>
+            <div class="card-header card-header-between">
+                <span>Filter Rentang Tanggal</span>
+                <?php
+                $exportParams = [];
+                if (!empty($_GET['range'])) {
+                    $exportParams['range'] = $_GET['range'];
+                }
+                if (!empty($_GET['from'])) {
+                    $exportParams['from'] = $_GET['from'];
+                }
+                if (!empty($_GET['to'])) {
+                    $exportParams['to'] = $_GET['to'];
+                }
+                $exportQuery = http_build_query($exportParams);
+                $exportUrl = ems_url('/dashboard/restaurant_consumption_export.php' . ($exportQuery ? '?' . $exportQuery : ''));
+                ?>
+                <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?> Export Excel
+                </a>
+            </div>
             <div class="card-body">
                 <form method="get" id="filterForm" class="filter-bar">
                     <div class="filter-group">
