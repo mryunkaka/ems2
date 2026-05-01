@@ -375,8 +375,17 @@ try {
 }
 quickSaveMark('update_user');
 
-forceReloadUserSession($pdo, $userId);
-quickSaveMark('reload_session');
+$_SESSION['user_rh']['full_name'] = $fullName;
+$_SESSION['user_rh']['name'] = $fullName;
+$_SESSION['user_rh']['batch'] = $batchFromDb > 0 ? $batchFromDb : $batch;
+$_SESSION['user_rh']['tanggal_masuk'] = $tanggalMasuk;
+$_SESSION['user_rh']['citizen_id'] = $citizenId;
+$_SESSION['user_rh']['no_hp_ic'] = $noHpIc;
+$_SESSION['user_rh']['jenis_kelamin'] = $jenisKelamin;
+if ($kodeNomorInduk !== null) {
+    $_SESSION['user_rh']['kode_nomor_induk_rs'] = $kodeNomorInduk;
+}
+quickSaveMark('update_session');
 
 $perf = null;
 if (ems_current_user_is_programmer_roxwood()) {

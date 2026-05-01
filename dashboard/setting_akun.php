@@ -1053,11 +1053,29 @@ DOKUMEN PENDUKUNG
                 }
             }
 
-            async function submitQuickSave() {
-                startLoadingOverlay();
-                if (loadingMessage) {
-                    loadingMessage.textContent = 'Menyimpan cepat tanpa reload halaman...';
+            function startQuickSaveState() {
+                submitting = true;
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.setAttribute('aria-disabled', 'true');
+                    submitButton.dataset.originalText = submitButton.dataset.originalText || submitButton.textContent.trim();
+                    submitButton.textContent = 'Menyimpan...';
                 }
+            }
+
+            function stopQuickSaveState() {
+                submitting = false;
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-disabled');
+                    if (submitButton.dataset.originalText) {
+                        submitButton.textContent = submitButton.dataset.originalText;
+                    }
+                }
+            }
+
+            async function submitQuickSave() {
+                startQuickSaveState();
 
                 const startedAt = Date.now();
                 try {
@@ -1072,12 +1090,27 @@ DOKUMEN PENDUKUNG
                     });
 
                     const payload = await response.json();
-                    stopLoadingOverlay();
+                    stopQuickSaveState();
 
                     if (!response.ok || !payload.ok) {
                         showInlineAlert('error', payload.message || 'Gagal menyimpan perubahan akun.');
                         return;
                     }
+
+                    Array.from(form.elements).forEach(function(field) {
+                        if (!field || !field.name) {
+                            return;
+                        }
+
+                        if (field.type === 'checkbox' || field.type === 'radio') {
+                            field.defaultChecked = field.checked;
+                            return;
+                        }
+
+                        if (field.tagName === 'SELECT' || field.tagName === 'TEXTAREA' || field.tagName === 'INPUT') {
+                            field.defaultValue = field.value;
+                        }
+                    });
 
                     const elapsedMs = Date.now() - startedAt;
                     let debugDetails = 'Quick save selesai dalam ' + (elapsedMs / 1000).toFixed(2) + ' detik tanpa reload halaman.';
@@ -1090,7 +1123,7 @@ DOKUMEN PENDUKUNG
 
                     showInlineAlert('info', payload.message || 'Akun berhasil diperbarui.', isProgrammerRoxwood ? debugDetails : '');
                 } catch (error) {
-                    stopLoadingOverlay();
+                    stopQuickSaveState();
                     showInlineAlert('error', 'Gagal menyimpan perubahan akun.', error && error.message ? error.message : '');
                 }
             }
