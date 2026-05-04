@@ -3590,7 +3590,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         function onPackageChange() {
             applyPackageMode(getSelectedPackageMode(), {
-                preserveSelections: true
+                preserveSelections: false
             });
             saveFormState();
             recalcTotals();
