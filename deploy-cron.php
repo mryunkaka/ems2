@@ -2,96 +2,51 @@
 
 date_default_timezone_set('Asia/Jakarta');
 
-$repo = '/home/hark8423/public_html/rh-ems2';
-$log = '/home/hark8423/git-deploy.log';
-$git = is_executable('/usr/bin/git') ? '/usr/bin/git' : 'git';
+$repo = '/home/fouf9972/public_html/roxwoodhospitalime';
+$log = '/home/fouf9972/git-deploy.log';
+$branch = 'main';
+$git = '/usr/bin/git';
+$cronCommand = "/bin/bash -lc 'cd /home/fouf9972/public_html/roxwoodhospitalime && /usr/bin/git fetch origin main && /usr/bin/git checkout -B main origin/main && /usr/bin/git reset --hard origin/main >> /home/fouf9972/git-deploy.log 2>&1'";
 
 function respond(string $message, string $logFile, bool $writeLog = true, int $exitCode = 0): void
 {
     $date = date('Y-m-d H:i:s');
 
     if ($writeLog) {
-        file_put_contents($logFile, $date . ' - ' . $message . PHP_EOL, FILE_APPEND);
+        file_put_contents($logFile, $date . ' - ' . str_replace(PHP_EOL, ' | ', $message) . PHP_EOL, FILE_APPEND);
     }
 
     if (PHP_SAPI !== 'cli') {
         header('Content-Type: text/plain; charset=UTF-8');
-        echo $message;
     }
 
+    echo $message;
     exit($exitCode);
 }
 
-function gitCmd(string $git, string $repo, string $args): string
-{
-    return trim((string) shell_exec($git . ' -C ' . escapeshellarg($repo) . ' ' . $args . ' 2>&1'));
+if (!is_dir($repo)) {
+    respond('ERROR: folder repo tidak ditemukan di ' . $repo, $log, true, 1);
 }
 
 if (!is_dir($repo . '/.git')) {
     respond('ERROR: folder .git tidak ditemukan di ' . $repo, $log, true, 1);
 }
 
-$old = gitCmd($git, $repo, 'rev-parse HEAD');
-if ($old === '' || preg_match('/fatal:|not found|unable to/i', $old)) {
-    respond('ERROR: gagal membaca HEAD. output=' . $old, $log, true, 1);
+if (!is_executable($git)) {
+    respond('ERROR: git tidak ditemukan atau tidak executable di ' . $git, $log, true, 1);
 }
 
-$fetchOutput = gitCmd($git, $repo, 'fetch origin main');
-$remote = gitCmd($git, $repo, 'rev-parse origin/main');
+if (!function_exists('shell_exec') || !function_exists('escapeshellarg')) {
+    $message = implode(PHP_EOL, [
+        'ERROR: fungsi shell PHP dinonaktifkan oleh server.',
+        'Deploy git tidak bisa dijalankan lewat file PHP ini.',
+        'Gunakan cron command shell berikut:',
+        $cronCommand,
+        'Repo: ' . $repo,
+        'Branch: ' . $branch,
+    ]);
 
-if ($remote === '' || preg_match('/fatal:|not found|unable to/i', $remote)) {
-    respond('ERROR: git fetch / remote HEAD gagal. fetch=' . $fetchOutput . ' | remote=' . $remote, $log, true, 1);
+    respond($message, $log, true, 1);
 }
 
-if ($old === $remote) {
-    respond('OK: already up to date', $log, false, 0);
-}
-
-$checkoutOutput = gitCmd($git, $repo, 'checkout -B main origin/main');
-$new = gitCmd($git, $repo, 'rev-parse HEAD');
-
-if ($new === '' || preg_match('/fatal:|not found|unable to/i', $new)) {
-    respond('ERROR: checkout branch gagal. checkout=' . $checkoutOutput . ' | head=' . $new, $log, true, 1);
-}
-
-if ($new !== $remote) {
-    $resetOutput = gitCmd($git, $repo, 'reset --hard origin/main');
-    $new = gitCmd($git, $repo, 'rev-parse HEAD');
-
-    if ($new === '' || preg_match('/fatal:|not found|unable to/i', $new) || $new !== $remote) {
-        respond('ERROR: reset ke origin/main gagal. reset=' . $resetOutput . ' | head=' . $new . ' | remote=' . $remote, $log, true, 1);
-    }
-}
-
-$commits = gitCmd(
-    $git,
-    $repo,
-    'log ' . escapeshellarg($old . '..' . $new) . " --pretty=format:'%h | %an | %s'"
-);
-
-if ($commits === '' || preg_match('/fatal:|not found|unable to/i', $commits)) {
-    $singleCommit = gitCmd(
-        $git,
-        $repo,
-        "log -1 --pretty=format:'%h | %an | %s' " . escapeshellarg($new)
-    );
-
-    if ($singleCommit === '' || preg_match('/fatal:|not found|unable to/i', $singleCommit)) {
-        respond('OK: deploy berhasil, tapi detail commit tidak terbaca', $log, false, 0);
-    }
-
-    $commits = $singleCommit;
-}
-
-$date = date('Y-m-d H:i:s');
-
-foreach (preg_split('/\r\n|\r|\n/', $commits) as $commit) {
-    $commit = trim((string) $commit);
-    if ($commit === '') {
-        continue;
-    }
-
-    file_put_contents($log, $date . ' - Deploy ' . $commit . PHP_EOL, FILE_APPEND);
-}
-
-respond('OK: deploy selesai', $log, false, 0);
+respond('OK: shell PHP tersedia. Namun pada server ini tetap disarankan memakai cron command shell langsung.', $log, true, 0);

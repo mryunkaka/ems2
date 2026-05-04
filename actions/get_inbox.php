@@ -81,7 +81,70 @@ function inboxDateLabel(?string $value): string
     return date('d M Y H:i', $time) . ' WIB';
 }
 
-function inboxBuildIncomingMessage(array $row): string
+function inboxGroupAttachments(array $rows, string $foreignKey): array
+{
+    $grouped = [];
+    foreach ($rows as $row) {
+        $key = (int)($row[$foreignKey] ?? 0);
+        if ($key <= 0) {
+            continue;
+        }
+
+        $grouped[$key][] = $row;
+    }
+
+    return $grouped;
+}
+
+function inboxAttachmentPayload(array $attachments, string $fallbackName): array
+{
+    return array_map(static function (array $attachment) use ($fallbackName): array {
+        $filePath = '/' . ltrim((string)($attachment['file_path'] ?? ''), '/');
+        $fileName = trim((string)($attachment['file_name'] ?? ''));
+        $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
+        $extension = strtolower((string)pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));
+
+        return [
+            'src' => $filePath,
+            'name' => $resolvedName,
+            'is_image' => in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true),
+            'is_pdf' => $extension === 'pdf',
+        ];
+    }, $attachments);
+}
+
+function inboxBuildAttachmentSection(array $attachments, string $fallbackName): string
+{
+    $items = inboxAttachmentPayload($attachments, $fallbackName);
+    if (!$items) {
+        return '  <div class="card"><div class="meta-text-xs mb-2">Lampiran</div><div class="text-sm text-slate-700">Tidak ada lampiran.</div></div>';
+    }
+
+    $html = '  <div class="card"><div class="meta-text-xs mb-2">Lampiran</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">';
+    foreach ($items as $item) {
+        $src = inboxHtml((string)($item['src'] ?? ''));
+        $name = inboxHtml((string)($item['name'] ?? 'Lampiran'));
+        $preview = '<div style="padding:12px;border:1px dashed #cbd5e1;border-radius:14px;background:#f8fafc;color:#64748b;font-size:12px;">Preview tidak tersedia.</div>';
+        if (!empty($item['is_image']) && $src !== '') {
+            $preview = '<a href="' . $src . '" target="_blank" rel="noopener"><img src="' . $src . '" alt="' . $name . '" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:12px;border:1px solid #dbeafe;background:#e2e8f0;"></a>';
+        } elseif (!empty($item['is_pdf']) && $src !== '') {
+            $preview = '<iframe src="' . $src . '" title="' . $name . '" loading="lazy" style="width:100%;height:160px;border:1px solid #dbeafe;border-radius:12px;background:#fff;"></iframe>';
+        }
+
+        $html .= '<div style="border:1px solid #dbeafe;border-radius:16px;padding:12px;background:linear-gradient(180deg,#fff 0%,#f8fbff 100%);">';
+        $html .= $preview;
+        $html .= '<div style="margin-top:10px;font-size:12px;font-weight:700;color:#334155;word-break:break-word;">' . $name . '</div>';
+        if ($src !== '') {
+            $html .= '<a href="' . $src . '" target="_blank" rel="noopener" style="display:inline-flex;margin-top:8px;font-size:12px;font-weight:700;color:#0369a1;text-decoration:none;">Buka lampiran</a>';
+        }
+        $html .= '</div>';
+    }
+    $html .= '</div></div>';
+
+    return $html;
+}
+
+function inboxBuildIncomingMessage(array $row, array $attachments = []): string
 {
     $parts = [];
     $parts[] = '<div class="space-y-3">';
@@ -95,12 +158,13 @@ function inboxBuildIncomingMessage(array $row): string
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Pengirim</div><div class="text-sm text-slate-700">' . inboxHtml(inboxText($row['sender_name'] ?? '')) . '<br><span class="meta-text-xs">' . inboxHtml(inboxText($row['sender_phone'] ?? '')) . '</span></div></div>';
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Agenda / Keperluan</div><div class="whitespace-pre-line text-sm text-slate-700">' . inboxMultiline($row['meeting_topic'] ?? '-') . '</div></div>';
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Catatan</div><div class="whitespace-pre-line text-sm text-slate-700">' . inboxMultiline($row['notes'] ?? '-', '-') . '</div></div>';
+    $parts[] = inboxBuildAttachmentSection($attachments, 'Lampiran surat masuk');
     $parts[] = '</div>';
 
     return implode('', $parts);
 }
 
-function inboxBuildMinutesMessage(array $row): string
+function inboxBuildMinutesMessage(array $row, array $attachments = []): string
 {
     $parts = [];
     $parts[] = '<div class="space-y-3">';
@@ -113,6 +177,7 @@ function inboxBuildMinutesMessage(array $row): string
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Hasil Notulen</div><div class="whitespace-pre-line text-sm text-slate-700">' . inboxMultiline($row['summary'] ?? '-') . '</div></div>';
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Keputusan</div><div class="whitespace-pre-line text-sm text-slate-700">' . inboxMultiline($row['decisions'] ?? '-', '-') . '</div></div>';
     $parts[] = '  <div class="card"><div class="meta-text-xs mb-2">Tindak Lanjut</div><div class="whitespace-pre-line text-sm text-slate-700">' . inboxMultiline($row['follow_up'] ?? '-', '-') . '</div></div>';
+    $parts[] = inboxBuildAttachmentSection($attachments, 'Lampiran notulen');
     $parts[] = '</div>';
 
     return implode('', $parts);
@@ -133,6 +198,8 @@ if (!$user) {
 $userId = (int)($user['id'] ?? 0);
 $userDivision = ems_normalize_division($user['division'] ?? '');
 $items = [];
+$incomingAttachmentsMap = [];
+$minutesAttachmentsMap = [];
 
 if ($userId <= 0) {
     echo json_encode(['unread' => 0, 'items' => []]);
@@ -214,14 +281,28 @@ if ($hasInboxState) {
         LIMIT 20
     ");
     $stmt->execute(array_merge([$userId], $incomingParams));
+    $incomingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $incomingIds = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $incomingRows)));
+    if ($incomingIds && inboxTableExists($pdo, 'incoming_letter_attachments')) {
+        $placeholders = implode(',', array_fill(0, count($incomingIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM incoming_letter_attachments
+            WHERE incoming_letter_id IN ($placeholders)
+            ORDER BY incoming_letter_id ASC, sort_order ASC, id ASC
+        ");
+        $stmt->execute($incomingIds);
+        $incomingAttachmentsMap = inboxGroupAttachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'incoming_letter_id');
+    }
+
+    foreach ($incomingRows as $row) {
         $items[] = [
             'id' => 'incoming_letter:' . (int)$row['id'],
             'item_id' => (int)$row['id'],
             'source_type' => 'incoming_letter',
             'title' => 'Surat Masuk: ' . (string)$row['institution_name'],
-            'message' => inboxBuildIncomingMessage($row),
+            'message' => inboxBuildIncomingMessage($row, $incomingAttachmentsMap[(int)($row['id'] ?? 0)] ?? []),
             'is_read' => (int)($row['is_read'] ?? 0),
             'created_at' => (string)$row['created_at'],
             'created_at_label' => inboxDateLabel($row['created_at'] ?? ''),
@@ -266,14 +347,28 @@ if ($hasInboxState) {
             LIMIT 20
         ");
         $stmt->execute(array_merge([$userId], $minutesParams));
+        $minutesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $minutesIds = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $minutesRows)));
+        if ($minutesIds && inboxTableExists($pdo, 'meeting_minutes_attachments')) {
+            $placeholders = implode(',', array_fill(0, count($minutesIds), '?'));
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM meeting_minutes_attachments
+                WHERE meeting_minutes_id IN ($placeholders)
+                ORDER BY meeting_minutes_id ASC, sort_order ASC, id ASC
+            ");
+            $stmt->execute($minutesIds);
+            $minutesAttachmentsMap = inboxGroupAttachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'meeting_minutes_id');
+        }
+
+        foreach ($minutesRows as $row) {
             $items[] = [
                 'id' => 'meeting_minutes:' . (int)$row['id'],
                 'item_id' => (int)$row['id'],
                 'source_type' => 'meeting_minutes',
                 'title' => 'Notulen: ' . (string)$row['meeting_title'],
-                'message' => inboxBuildMinutesMessage($row),
+                'message' => inboxBuildMinutesMessage($row, $minutesAttachmentsMap[(int)($row['id'] ?? 0)] ?? []),
                 'is_read' => (int)($row['is_read'] ?? 0),
                 'created_at' => (string)$row['created_at'],
                 'created_at_label' => inboxDateLabel($row['created_at'] ?? ''),

@@ -74,6 +74,21 @@ function surat_table_has_column(PDO $pdo, string $table, string $column): bool
     return $cache[$key];
 }
 
+function surat_table_exists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$table]);
+    $cache[$table] = (bool)$stmt->fetchColumn();
+
+    return $cache[$table];
+}
+
 function surat_normalize_division_scope(?string $value): string
 {
     $scope = ems_normalize_division_scope($value);
@@ -164,6 +179,99 @@ function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files):
                 @unlink($fullPath);
             }
         }
+        throw $e;
+    }
+}
+
+function surat_store_minutes_attachment(array $file): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $tmpPath = (string)($file['tmp_name'] ?? '');
+    if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+        return null;
+    }
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = $finfo ? (string)finfo_file($finfo, $tmpPath) : '';
+    if ($finfo) {
+        finfo_close($finfo);
+    }
+
+    $baseDir = __DIR__ . '/../storage/letters/minutes';
+    if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
+        throw new Exception('Folder lampiran notulen tidak dapat dibuat.');
+    }
+
+    if (in_array($mime, ['image/jpeg', 'image/png'], true)) {
+        $path = uploadAndCompressFile($file, 'letters/minutes', 400000, 5000000);
+        if ($path === null) {
+            throw new Exception('Lampiran gambar notulen gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+        }
+
+        return $path;
+    }
+
+    if ($mime === 'application/pdf') {
+        $maxPdfSize = 500 * 1024;
+        $size = (int)($file['size'] ?? 0);
+        if ($size <= 0) {
+            throw new Exception('Ukuran PDF notulen tidak valid.');
+        }
+        if ($size > $maxPdfSize) {
+            throw new Exception('PDF notulen maksimal 500 KB. Kompres dulu di https://www.ilovepdf.com/id/mengompres-pdf');
+        }
+
+        $filename = bin2hex(random_bytes(8)) . '_' . time() . '.pdf';
+        $targetPath = $baseDir . '/' . $filename;
+        if (!move_uploaded_file($tmpPath, $targetPath)) {
+            throw new Exception('Lampiran PDF notulen gagal disimpan.');
+        }
+
+        return 'storage/letters/minutes/' . $filename;
+    }
+
+    throw new Exception('Lampiran notulen hanya menerima JPG, PNG, atau PDF.');
+}
+
+function saveMinutesAttachments(PDO $pdo, int $minutesId, array $files): void
+{
+    if ($minutesId <= 0 || empty($files)) {
+        return;
+    }
+
+    if (!surat_table_exists($pdo, 'meeting_minutes_attachments')) {
+        throw new Exception('Tabel lampiran notulen belum tersedia. Jalankan SQL docs/sql/2026-05-04_meeting_minutes_attachments.sql terlebih dahulu.');
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO meeting_minutes_attachments
+            (meeting_minutes_id, file_path, file_name, sort_order)
+        VALUES
+            (?, ?, ?, ?)
+    ");
+
+    $storedPaths = [];
+
+    try {
+        foreach (array_values($files) as $index => $file) {
+            $path = surat_store_minutes_attachment($file);
+            if ($path === null) {
+                throw new Exception('Lampiran notulen gagal diproses.');
+            }
+
+            $storedPaths[] = $path;
+            $stmt->execute([
+                $minutesId,
+                $path,
+                trim((string)($file['name'] ?? '')) ?: null,
+                $index + 1,
+            ]);
+        }
+    } catch (Throwable $e) {
+        deleteStoredFiles($storedPaths);
         throw $e;
     }
 }
@@ -444,6 +552,7 @@ try {
         $summary = trim((string)($_POST['summary'] ?? ''));
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
+        $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
             ? ems_all_division_scope_value()
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
@@ -502,6 +611,8 @@ try {
         }
 
         $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+        $pdo->beginTransaction();
+
         $stmt = $pdo->prepare("
             INSERT INTO meeting_minutes
                 (" . implode(', ', $insertColumns) . ")
@@ -509,6 +620,11 @@ try {
                 ($placeholders)
         ");
         $stmt->execute($insertValues);
+
+        $minutesId = (int)$pdo->lastInsertId();
+        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles);
+
+        $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Notulen pertemuan berhasil disimpan.';
         surat_redirect();
@@ -528,6 +644,7 @@ try {
         $summary = trim((string)($_POST['summary'] ?? ''));
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
+        $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
             ? ems_all_division_scope_value()
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
@@ -563,6 +680,7 @@ try {
 
         $revisionCount = (int)($minutes['revision_count'] ?? 0) + 1;
         $revisionLabel = surat_revision_label($revisionCount);
+        $pdo->beginTransaction();
 
         $assignments = [
             'minutes_code = ?',
@@ -615,6 +733,10 @@ try {
             WHERE id = ?
         ");
         $stmt->execute($params);
+
+        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles);
+
+        $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Notulen berhasil diubah. ' . $revisionLabel . ' tersimpan.';
         surat_redirect();
@@ -689,6 +811,15 @@ try {
             throw new Exception('Notulen tidak valid.');
         }
 
+        $pdo->beginTransaction();
+
+        $paths = [];
+        if (surat_table_exists($pdo, 'meeting_minutes_attachments')) {
+            $stmt = $pdo->prepare("SELECT file_path FROM meeting_minutes_attachments WHERE meeting_minutes_id = ?");
+            $stmt->execute([$minutesId]);
+            $paths = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        }
+
         $stmt = $pdo->prepare("DELETE FROM meeting_minutes WHERE id = ?");
         $stmt->execute([$minutesId]);
 
@@ -696,6 +827,8 @@ try {
             throw new Exception('Notulen tidak ditemukan.');
         }
 
+        $pdo->commit();
+        deleteStoredFiles($paths);
         $_SESSION['flash_messages'][] = 'Notulen berhasil dihapus.';
         surat_redirect();
     }

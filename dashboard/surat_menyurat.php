@@ -67,6 +67,21 @@ function surat_table_has_column(PDO $pdo, string $table, string $column): bool
     return $cache[$key];
 }
 
+function surat_table_exists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($table, $cache)) {
+        return $cache[$table];
+    }
+
+    $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+    $stmt->execute([$table]);
+    $cache[$table] = (bool)$stmt->fetchColumn();
+
+    return $cache[$table];
+}
+
 function surat_revision_badge(?string $label): string
 {
     $label = trim((string)$label);
@@ -153,18 +168,21 @@ $linkableIncoming = [];
 $linkableOutgoing = [];
 $incomingAttachmentsMap = [];
 $outgoingAttachmentsMap = [];
+$minutesAttachmentsMap = [];
 $hasIncomingDivisionScope = false;
 $hasOutgoingDivisionScope = false;
 $hasMinutesDivisionScope = false;
 $hasOutgoingRevisionColumns = false;
 $hasMinutesRevisionColumns = false;
 $hasMinutesCodeColumn = false;
+$hasMinutesAttachmentsTable = false;
 
 try {
     $hasIncomingDivisionScope = surat_table_has_column($pdo, 'incoming_letters', 'division_scope');
     $hasOutgoingDivisionScope = surat_table_has_column($pdo, 'outgoing_letters', 'division_scope');
     $hasMinutesDivisionScope = surat_table_has_column($pdo, 'meeting_minutes', 'division_scope');
     $hasMinutesCodeColumn = surat_table_has_column($pdo, 'meeting_minutes', 'minutes_code');
+    $hasMinutesAttachmentsTable = surat_table_exists($pdo, 'meeting_minutes_attachments');
     $hasOutgoingRevisionColumns = surat_table_has_column($pdo, 'outgoing_letters', 'revision_count')
         && surat_table_has_column($pdo, 'outgoing_letters', 'revision_label')
         && surat_table_has_column($pdo, 'outgoing_letters', 'updated_at')
@@ -273,6 +291,19 @@ try {
         $stmt->execute($outgoingIds);
         $outgoingAttachmentsMap = surat_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'outgoing_letter_id');
     }
+
+    $minutesIds = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $minutesRows)));
+    if ($hasMinutesAttachmentsTable && !empty($minutesIds)) {
+        $placeholders = implode(',', array_fill(0, count($minutesIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM meeting_minutes_attachments
+            WHERE meeting_minutes_id IN ($placeholders)
+            ORDER BY meeting_minutes_id ASC, sort_order ASC, id ASC
+        ");
+        $stmt->execute($minutesIds);
+        $minutesAttachmentsMap = surat_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'meeting_minutes_id');
+    }
 } catch (Throwable $e) {
     $errors[] = 'Tabel surat/notulen belum siap. Jalankan SQL baru terlebih dahulu.';
 }
@@ -294,8 +325,8 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php foreach ($errors as $error): ?>
             <div class="alert alert-error"><?= htmlspecialchars((string)$error) ?></div>
         <?php endforeach; ?>
-        <?php if (!$hasOutgoingRevisionColumns || !$hasMinutesRevisionColumns || !$hasIncomingDivisionScope || !$hasOutgoingDivisionScope || !$hasMinutesDivisionScope || !$hasMinutesCodeColumn): ?>
-            <div class="alert alert-warning">Sebagian fitur edit/revisi/divisi/kode notulen memerlukan SQL terbaru di folder <code>docs/sql</code>.</div>
+        <?php if (!$hasOutgoingRevisionColumns || !$hasMinutesRevisionColumns || !$hasIncomingDivisionScope || !$hasOutgoingDivisionScope || !$hasMinutesDivisionScope || !$hasMinutesCodeColumn || !$hasMinutesAttachmentsTable): ?>
+            <div class="alert alert-warning">Sebagian fitur edit/revisi/divisi/kode/lampiran notulen memerlukan SQL terbaru di folder <code>docs/sql</code>.</div>
         <?php endif; ?>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -550,7 +581,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             <div class="card card-section">
                 <div class="card-header">Input Notulen Pertemuan</div>
-                <form method="POST" action="surat_menyurat_action.php" class="form">
+                <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="add_meeting_minutes">
 
@@ -621,6 +652,26 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     <label>Tindak Lanjut</label>
                     <textarea name="follow_up" rows="3"></textarea>
+
+                    <div class="doc-upload-wrapper m-0">
+                        <div class="doc-upload-header">
+                            <label class="text-sm font-semibold text-slate-900">Lampiran Notulen</label>
+                            <span class="badge-muted-mini">Opsional, gambar dan PDF</span>
+                        </div>
+                        <div class="doc-upload-input">
+                            <label for="minutesAttachments" class="file-upload-label">
+                                <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                                <span class="file-text">
+                                    <strong>Pilih lampiran</strong>
+                                    <small>JPG / PNG / PDF, multi file</small>
+                                </span>
+                            </label>
+                            <input type="file" id="minutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
+                            <div class="file-selected-name" data-for="minutesAttachments"></div>
+                            <div class="meta-text-xs mt-2">PDF maksimal 500 KB. Jika lebih besar, kompres dulu di <a href="https://www.ilovepdf.com/id/mengompres-pdf" target="_blank" rel="noopener">iLovePDF</a>.</div>
+                            <div id="minutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                        </div>
+                    </div>
 
                     <div class="modal-actions mt-4">
                         <button type="submit" class="btn-success"><?= ems_icon('clipboard-document-list', 'h-4 w-4') ?> <span>Simpan Notulen</span></button>
@@ -763,6 +814,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Revisi</th>
                                 <th>Peserta</th>
                                 <th>Hasil</th>
+                                <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
@@ -770,7 +822,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php if ($institutionMinutesRows): ?>
                                 <?php foreach ($institutionMinutesRows as $row): ?>
                                     <tr>
-                                        <?php $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? '')); ?>
+                                        <?php
+                                        $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? ''));
+                                        $minutesAttachments = $minutesAttachmentsMap[(int)$row['id']] ?? [];
+                                        ?>
                                         <td>
                                             <strong><?= htmlspecialchars((string)($row['minutes_code'] ?: '-')) ?></strong>
                                             <div class="text-sm font-semibold text-slate-800 mt-1"><?= htmlspecialchars((string)$row['meeting_title']) ?></div>
@@ -794,6 +849,23 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['summary'], 110)) ?></div>
                                         </td>
                                         <td>
+                                            <?php if (!empty($minutesAttachments)): ?>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <?php foreach ($minutesAttachments as $attachment): ?>
+                                                        <a href="#"
+                                                            class="doc-badge btn-preview-doc"
+                                                            data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
+                                                            <?= ems_icon('paper-clip', 'h-4 w-4') ?>
+                                                            <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
+                                                        </a>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="meta-text-xs">-</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
                                             <div class="action-row-nowrap">
                                                 <button
                                                     type="button"
@@ -809,6 +881,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-attachments="<?= htmlspecialchars(json_encode(surat_attachment_payload($minutesAttachments, 'Lampiran notulen'), JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') ?>"
                                                     title="Lihat detail notulen"
                                                     aria-label="Lihat detail notulen">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
@@ -869,6 +942,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Revisi</th>
                                 <th>Peserta</th>
                                 <th>Hasil</th>
+                                <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
@@ -876,7 +950,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php if ($globalMinutesRows): ?>
                                 <?php foreach ($globalMinutesRows as $row): ?>
                                     <tr>
-                                        <?php $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? '')); ?>
+                                        <?php
+                                        $minutesSortKey = surat_sort_timestamp((string)($row['meeting_date'] ?? ''), (string)($row['meeting_time'] ?? ''), (string)($row['created_at'] ?? ''));
+                                        $minutesAttachments = $minutesAttachmentsMap[(int)$row['id']] ?? [];
+                                        ?>
                                         <td>
                                             <strong><?= htmlspecialchars((string)($row['minutes_code'] ?: '-')) ?></strong>
                                             <div class="text-sm font-semibold text-slate-800 mt-1"><?= htmlspecialchars((string)$row['meeting_title']) ?></div>
@@ -900,6 +977,23 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['summary'], 110)) ?></div>
                                         </td>
                                         <td>
+                                            <?php if (!empty($minutesAttachments)): ?>
+                                                <div class="flex flex-wrap gap-2">
+                                                    <?php foreach ($minutesAttachments as $attachment): ?>
+                                                        <a href="#"
+                                                            class="doc-badge btn-preview-doc"
+                                                            data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
+                                                            <?= ems_icon('paper-clip', 'h-4 w-4') ?>
+                                                            <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
+                                                        </a>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="meta-text-xs">-</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
                                             <div class="action-row-nowrap">
                                                 <button
                                                     type="button"
@@ -915,6 +1009,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     data-follow-up="<?= htmlspecialchars((string)($row['follow_up'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-division-scope="<?= htmlspecialchars((string)($row['division_scope'] ?: $allDivisionValue), ENT_QUOTES, 'UTF-8') ?>"
                                                     data-revision-label="<?= htmlspecialchars(surat_revision_badge($row['revision_label'] ?? null), ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-attachments="<?= htmlspecialchars(json_encode(surat_attachment_payload($minutesAttachments, 'Lampiran notulen'), JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8') ?>"
                                                     title="Lihat detail notulen"
                                                     aria-label="Lihat detail notulen">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
@@ -1066,6 +1161,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="meta-text-xs mb-2">Tindak Lanjut</div>
                     <div id="minutesModalFollowUp" class="whitespace-pre-line text-sm text-slate-700">-</div>
                 </div>
+                <div class="card">
+                    <div class="meta-text-xs mb-2">Lampiran</div>
+                    <div id="minutesModalAttachments" class="surat-attachment-grid">
+                        <div class="empty-state">Tidak ada lampiran.</div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="modal-foot">
@@ -1092,7 +1193,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 Revisi terakhir: <strong id="outgoingEditRevisionLabel">draft-awal</strong>.
                 Saat disimpan, sistem akan menaikkan revisi otomatis.
             </div>
-            <form method="POST" action="surat_menyurat_action.php" class="form">
+            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_outgoing_letter">
                 <input type="hidden" name="letter_id" id="editOutgoingLetterId">
@@ -1182,7 +1283,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 Revisi terakhir: <strong id="minutesEditRevisionLabel">draft-awal</strong>.
                 Saat disimpan, sistem akan menaikkan revisi otomatis.
             </div>
-            <form method="POST" action="surat_menyurat_action.php" class="form">
+            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_meeting_minutes">
                 <input type="hidden" name="minutes_id" id="editMinutesId">
@@ -1253,6 +1354,26 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 <label>Tindak Lanjut</label>
                 <textarea name="follow_up" id="editMinutesFollowUp" rows="3"></textarea>
+
+                <div class="doc-upload-wrapper m-0">
+                    <div class="doc-upload-header">
+                        <label class="text-sm font-semibold text-slate-900">Lampiran Tambahan Notulen</label>
+                        <span class="badge-muted-mini">Opsional, menambah lampiran baru</span>
+                    </div>
+                    <div class="doc-upload-input">
+                        <label for="editMinutesAttachments" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih lampiran</strong>
+                                <small>JPG / PNG / PDF, multi file</small>
+                            </span>
+                        </label>
+                        <input type="file" id="editMinutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
+                        <div class="file-selected-name" data-for="editMinutesAttachments"></div>
+                        <div class="meta-text-xs mt-2">PDF maksimal 500 KB. Jika lebih besar, kompres dulu di <a href="https://www.ilovepdf.com/id/mengompres-pdf" target="_blank" rel="noopener">iLovePDF</a>.</div>
+                        <div id="editMinutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
+                    </div>
+                </div>
 
                 <div class="modal-actions mt-4">
                     <button type="submit" class="btn-success"><?= ems_icon('check-circle', 'h-4 w-4') ?> <span>Simpan Perubahan</span></button>
@@ -1470,7 +1591,7 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         });
 
-        function setupMultiImagePreview(inputId, previewId) {
+        function setupAttachmentPreview(inputId, previewId) {
             const input = document.getElementById(inputId);
             const preview = document.getElementById(previewId);
             const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
@@ -1502,19 +1623,26 @@ include __DIR__ . '/../partials/sidebar.php';
                 nameBox.classList.remove('hidden');
 
                 files.forEach(function(file) {
-                    if (!String(file.type || '').startsWith('image/')) {
-                        return;
-                    }
-
-                    const url = URL.createObjectURL(file);
-                    objectUrls.push(url);
-
                     const item = document.createElement('div');
                     item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
-                    item.innerHTML = `
-                        <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
-                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
-                    `;
+                    if (String(file.type || '').startsWith('image/')) {
+                        const url = URL.createObjectURL(file);
+                        objectUrls.push(url);
+                        item.innerHTML = `
+                            <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
+                            <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                        `;
+                    } else if (String(file.type || '') === 'application/pdf' || /\.pdf$/i.test(String(file.name || ''))) {
+                        item.innerHTML = `
+                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">Preview PDF tidak tersedia</div>
+                            <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                        `;
+                    } else {
+                        item.innerHTML = `
+                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">Format tidak didukung</div>
+                            <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                        `;
+                    }
                     preview.appendChild(item);
                 });
             });
@@ -1551,7 +1679,9 @@ include __DIR__ . '/../partials/sidebar.php';
             return applyState;
         }
 
-        setupMultiImagePreview('outgoingAttachments', 'outgoingAttachmentsPreview');
+        setupAttachmentPreview('outgoingAttachments', 'outgoingAttachmentsPreview');
+        setupAttachmentPreview('minutesAttachments', 'minutesAttachmentsPreview');
+        setupAttachmentPreview('editMinutesAttachments', 'editMinutesAttachmentsPreview');
         setupAutoCode({
             type: 'outgoing',
             codeInputId: 'addOutgoingCode',
@@ -1610,6 +1740,7 @@ include __DIR__ . '/../partials/sidebar.php';
         const outgoingEditModal = document.getElementById('outgoingEditModal');
         const minutesEditModal = document.getElementById('minutesEditModal');
         const letterAttachmentContainer = document.getElementById('letterModalAttachments');
+        const minutesAttachmentContainer = document.getElementById('minutesModalAttachments');
         const editOutgoingCodeControl = setupAutoCode({
             type: 'outgoing',
             codeInputId: 'editOutgoingCode',
@@ -1686,6 +1817,46 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         }
 
+        function renderMinutesAttachments(rawAttachments) {
+            if (!minutesAttachmentContainer) {
+                return;
+            }
+
+            let attachments = [];
+            try {
+                attachments = JSON.parse(rawAttachments || '[]');
+            } catch (_) {
+                attachments = [];
+            }
+
+            if (!Array.isArray(attachments) || !attachments.length) {
+                minutesAttachmentContainer.innerHTML = '<div class="empty-state">Tidak ada lampiran.</div>';
+                return;
+            }
+
+            minutesAttachmentContainer.innerHTML = '';
+            attachments.forEach(function(attachment) {
+                const src = attachment && attachment.src ? String(attachment.src) : '';
+                const name = attachment && attachment.name ? String(attachment.name) : 'Lampiran';
+                const isImage = Boolean(attachment && attachment.is_image);
+                const isPdf = Boolean(attachment && attachment.is_pdf);
+                const card = document.createElement('div');
+                card.className = 'surat-attachment-card';
+
+                let previewHtml = '';
+                if (src !== '' && isImage) {
+                    previewHtml = `<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`;
+                } else if (src !== '' && isPdf) {
+                    previewHtml = `<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`;
+                } else {
+                    previewHtml = '<div class="empty-state">Preview tidak tersedia untuk file ini.</div>';
+                }
+
+                card.innerHTML = `${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src !== '' ? `<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>` : ''}`;
+                minutesAttachmentContainer.appendChild(card);
+            });
+        }
+
         if (letterDetailModal) {
             document.querySelectorAll('.btn-open-letter-modal').forEach(function(button) {
                 button.addEventListener('click', function() {
@@ -1728,6 +1899,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 modalSummary.textContent = button.dataset.summary || '-';
                 modalDecisions.textContent = button.dataset.decisions || '-';
                 modalFollowUp.textContent = button.dataset.followUp || '-';
+                renderMinutesAttachments(button.dataset.attachments || '[]');
 
                 openModal(minutesViewModal);
             }

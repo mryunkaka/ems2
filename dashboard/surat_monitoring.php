@@ -182,6 +182,7 @@ $timelineItems = [];
 $hasMinutesCodeColumn = false;
 $incomingAttachmentsMap = [];
 $outgoingAttachmentsMap = [];
+$minutesAttachmentsMap = [];
 
 try {
     $hasIncomingDivisionScope = surat_monitoring_table_has_column($pdo, 'incoming_letters', 'division_scope');
@@ -298,6 +299,19 @@ try {
     ");
     $stmt->execute($hasMinutesDivisionScope ? ['scope' => $scopeLabel] : []);
     $minutesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $minutesIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $minutesRows)));
+    if ($minutesIds && surat_monitoring_table_exists($pdo, 'meeting_minutes_attachments')) {
+        $placeholders = implode(',', array_fill(0, count($minutesIds), '?'));
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM meeting_minutes_attachments
+            WHERE meeting_minutes_id IN ($placeholders)
+            ORDER BY meeting_minutes_id ASC, sort_order ASC, id ASC
+        ");
+        $stmt->execute($minutesIds);
+        $minutesAttachmentsMap = surat_monitoring_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'meeting_minutes_id');
+    }
 
     try {
         $stmt = $pdo->prepare("
@@ -478,6 +492,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="surat-mini-list">
                         <?php if ($minutesRows): ?>
                             <?php foreach ($minutesRows as $row): ?>
+                                <?php $attachments = $minutesAttachmentsMap[(int) ($row['id'] ?? 0)] ?? []; ?>
                                 <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['meeting_title'] ?? '') . ' ' . ($row['summary'] ?? '') . ' ' . ($row['participants'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="surat-mini-top">
                                         <div>
@@ -488,7 +503,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </div>
                                     <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['summary'] ?? ''), 100), ENT_QUOTES, 'UTF-8') ?></p>
                                     <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['meeting_date'] ?? '', $row['meeting_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
-                                    <button type="button" class="btn-secondary action-icon-btn btn-view-minutes" data-title="<?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['meeting_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['meeting_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-participants="<?= htmlspecialchars((string) ($row['participants'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-decisions="<?= htmlspecialchars((string) ($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-revision="<?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?>" title="Buka notulen" aria-label="Buka notulen"><?= ems_icon('eye', 'h-4 w-4') ?></button>
+                                    <button type="button" class="btn-secondary action-icon-btn btn-view-minutes" data-title="<?= htmlspecialchars((string) ($row['meeting_title'] ?: 'Notulen'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['minutes_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['meeting_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['meeting_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-participants="<?= htmlspecialchars((string) ($row['participants'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-decisions="<?= htmlspecialchars((string) ($row['decisions'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-revision="<?= htmlspecialchars((string) (($row['revision_label'] ?: 'draft-awal')), ENT_QUOTES, 'UTF-8') ?>" data-attachments="<?= htmlspecialchars(json_encode(surat_monitoring_attachment_payload($attachments, 'Lampiran notulen'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>" title="Buka notulen" aria-label="Buka notulen"><?= ems_icon('eye', 'h-4 w-4') ?></button>
                                 </article>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -578,6 +593,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card mt-3"><div class="meta-text-xs mb-2">Ringkasan</div><div id="minutesModalSummary" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
             <div class="card mt-3"><div class="meta-text-xs mb-2">Keputusan</div><div id="minutesModalDecisions" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
             <div class="card mt-3"><div class="meta-text-xs mb-2">Tindak Lanjut</div><div id="minutesModalFollowUp" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Lampiran</div><div id="minutesModalAttachments" class="surat-attachment-grid"><div class="empty-state">Tidak ada lampiran.</div></div></div>
         </div>
         <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
     </div>
@@ -596,6 +612,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const letterModal = document.getElementById('letterDetailModal');
     const minutesModal = document.getElementById('minutesViewModal');
     const letterAttachmentContainer = document.getElementById('letterModalAttachments');
+    const minutesAttachmentContainer = document.getElementById('minutesModalAttachments');
     function openModal(modal){if(!modal)return;modal.classList.remove('hidden');document.body.classList.add('overflow-hidden')}
     function closeModal(modal){if(!modal)return;modal.classList.add('hidden');document.body.classList.remove('overflow-hidden')}
     document.querySelectorAll('.modal-overlay').forEach(function(modal){modal.addEventListener('click',function(event){if(event.target.closest('.btn-cancel')||event.target.closest('.modal-close-btn')){closeModal(modal)}})});
@@ -603,8 +620,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if(searchInput){searchInput.addEventListener('input',function(){const keyword=searchInput.value.trim().toLowerCase();filterItems.forEach(function(item){const haystack=item.dataset.searchScope||'';item.classList.toggle('is-hidden',keyword!==''&&!haystack.includes(keyword))})})}
     function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,function(match){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[match]})}
     function renderLetterAttachments(rawAttachments){if(!letterAttachmentContainer)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){letterAttachmentContainer.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}letterAttachmentContainer.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;letterAttachmentContainer.appendChild(card)})}
+    function renderMinutesAttachments(rawAttachments){if(!minutesAttachmentContainer)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){minutesAttachmentContainer.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}minutesAttachmentContainer.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;minutesAttachmentContainer.appendChild(card)})}
     document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';renderLetterAttachments(button.dataset.attachments||'[]');openModal(letterModal)})});
-    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';openModal(minutesModal)})});
+    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';renderMinutesAttachments(button.dataset.attachments||'[]');openModal(minutesModal)})});
 });
 </script>
 
