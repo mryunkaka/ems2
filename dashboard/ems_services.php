@@ -612,7 +612,7 @@ include __DIR__ . '/../partials/sidebar.php';
 	                    </select>
 	                    <small id="detailHint" class="text-muted">
 	                        Silahkan pilih jenis layanan terlebih dahulu
-	                    </small>
+	                    </small>tes
 	                </div>
 
                 <div id="operasiTingkatSection" class="hidden">
