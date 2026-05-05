@@ -33,7 +33,9 @@ function ems_icon(string $name, string $classes = 'h-5 w-5', string $stroke = '1
         'arrow-left' => '<path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />',
         'arrow-top-right-on-square' => '<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H19.5m0 0v6m0-6-7.5 7.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5H5.25A2.25 2.25 0 0 0 3 9.75v9A2.25 2.25 0 0 0 5.25 21h9a2.25 2.25 0 0 0 2.25-2.25V18" />',
         'arrow-right-on-rectangle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-7.5A2.25 2.25 0 0 0 3.75 5.25v13.5A2.25 2.25 0 0 0 6 21h7.5a2.25 2.25 0 0 0 2.25-2.25V15m-6-3h11.25m0 0-3-3m3 3-3 3" />',
+        'arrow-left-on-rectangle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h7.5a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 18 21h-7.5a2.25 2.25 0 0 1-2.25-2.25V15m6-3H3m0 0 3-3m-3 3 3 3" />',
         'arrow-right' => '<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12h15m0 0-6-6m6 6-6 6" />',
+        'arrow-uturn-left' => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 14.25 4.5 9.75 9 5.25" /><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 9.75H15a4.5 4.5 0 0 1 0 9h-1.5" />',
         'x-mark' => '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />',
         'chevron-left' => '<path stroke-linecap="round" stroke-linejoin="round" d="m15.75 19.5-7.5-7.5 7.5-7.5" />',
         'chevron-right' => '<path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />',
@@ -61,6 +63,11 @@ function ems_icon(string $name, string $classes = 'h-5 w-5', string $stroke = '1
         'arrow-up-tray' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />',
         'check-badge' => '<path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9a2.25 2.25 0 0 1-2.237-2.025L4.5 7.5A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5l-.763 9.225A2.25 2.25 0 0 1 16.5 18.75Zm-6-7.5 1.5 1.5 3-3" />',
         'check' => '<path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />',
+        'users' => '<path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a8.967 8.967 0 0 0 3.741-1.334A6.98 6.98 0 0 0 18 15.75m0 2.97v-.53a3.375 3.375 0 0 0-6.75 0v.53m6.75 0a9.024 9.024 0 0 1-12 0m12 0a6.98 6.98 0 0 0-3.741-1.336M6 18.72a8.967 8.967 0 0 1-3.741-1.334A6.98 6.98 0 0 1 6 15.75m0 2.97v-.53a3.375 3.375 0 0 1 6.75 0v.53M15 7.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0A2.25 2.25 0 1 1 3 10.5a2.25 2.25 0 0 1 4.5 0Z" />',
+        'wrench-screwdriver' => '<path stroke-linecap="round" stroke-linejoin="round" d="m11.42 3.17 2.25 2.25m0 0a4.5 4.5 0 0 1 5.91 5.91l-7.47 7.47a4.5 4.5 0 0 1-5.91-5.91l7.47-7.47Zm0 0L9.17 2.92M4.5 21l3.75-3.75" />',
+        'information-circle' => '<path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25h1.5v4.5h-1.5m0-7.5h.008v.008h-.008V8.25Zm9 3.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />',
+        'folder' => '<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V6.75A2.25 2.25 0 0 1 4.5 4.5h4.379a2.25 2.25 0 0 1 1.591.659l1.122 1.121a2.25 2.25 0 0 0 1.591.659H19.5a2.25 2.25 0 0 1 2.25 2.25v6.75A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-3.75Z" />',
+        'user-plus' => '<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v6m3-3h-6M15.75 18.75a6.75 6.75 0 1 0-13.5 0m10.5-9a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />',
         'x' => '<path stroke-linecap="round" stroke-linejoin="round" d="m6 18 12-12m-12 0 12 12" />',
     ];
 

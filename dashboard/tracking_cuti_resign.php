@@ -51,6 +51,21 @@ $stats = [
     'resigned' => 0
 ];
 
+function userRhColumnExists(PDO $pdo, string $columnName): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($columnName, $cache)) {
+        return $cache[$columnName];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$columnName]);
+    $cache[$columnName] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$columnName];
+}
+
 try {
     // Build query dengan filter
     $whereClause = "WHERE 1=1";
@@ -70,6 +85,21 @@ try {
     }
 
     // Ambil semua user dengan data cuti dan resign
+    $hasCutiEndedAt = userRhColumnExists($pdo, 'cuti_ended_at');
+    $hasCutiEndedBy = userRhColumnExists($pdo, 'cuti_ended_by');
+
+    $extraColumns = [];
+    $extraColumns[] = $hasCutiEndedAt ? 'u.cuti_ended_at' : 'NULL AS cuti_ended_at';
+    if ($hasCutiEndedBy) {
+        $extraColumns[] = 'u.cuti_ended_by';
+        $extraColumns[] = 'returner.full_name AS cuti_ended_by_name';
+    } else {
+        $extraColumns[] = 'NULL AS cuti_ended_by';
+        $extraColumns[] = 'NULL AS cuti_ended_by_name';
+    }
+
+    $returnerJoin = $hasCutiEndedBy ? 'LEFT JOIN user_rh returner ON returner.id = u.cuti_ended_by' : '';
+
     $stmt = $pdo->prepare("
         SELECT
             u.id,
@@ -86,13 +116,33 @@ try {
             u.resign_reason,
             u.resigned_by,
             u.resigned_at,
+            " . implode(",\n            ", $extraColumns) . ",
             resigner.full_name as resigned_by_name,
             approver.full_name as cuti_approved_by_name,
+            latest_cuti.id AS latest_cuti_request_id,
+            latest_cuti.request_code AS latest_cuti_request_code,
+            latest_cuti.start_date AS latest_cuti_request_start_date,
+            latest_cuti.end_date AS latest_cuti_request_end_date,
+            latest_cuti.days_total AS latest_cuti_request_days_total,
+            latest_cuti.status AS latest_cuti_request_status,
+            latest_cuti.created_at AS latest_cuti_request_created_at,
+            latest_cuti.approved_at AS latest_cuti_request_approved_at,
+            latest_cuti.rejection_reason AS latest_cuti_rejection_reason,
+            latest_cuti_approver.full_name AS latest_cuti_approved_by_name,
             (SELECT COUNT(*) FROM cuti_requests WHERE user_id = u.id AND status = 'approved') as total_cuti_approved,
             (SELECT COUNT(*) FROM resign_requests WHERE user_id = u.id AND status = 'approved') as total_resign_approved
         FROM user_rh u
         LEFT JOIN user_rh resigner ON resigner.id = u.resigned_by
         LEFT JOIN user_rh approver ON approver.id = u.cuti_approved_by
+        LEFT JOIN cuti_requests latest_cuti ON latest_cuti.id = (
+            SELECT cr2.id
+            FROM cuti_requests cr2
+            WHERE cr2.user_id = u.id
+            ORDER BY cr2.created_at DESC, cr2.id DESC
+            LIMIT 1
+        )
+        LEFT JOIN user_rh latest_cuti_approver ON latest_cuti_approver.id = latest_cuti.approved_by
+        {$returnerJoin}
         {$whereClause}
         ORDER BY
             u.is_active DESC,
@@ -109,14 +159,19 @@ try {
             $u['cuti_end_date'] ?? null,
             $u['cuti_status'] ?? null
         );
+        $u['cuti_ended_at_sort'] = !empty($u['cuti_ended_at']) ? strtotime((string)$u['cuti_ended_at']) : 0;
+        $u['latest_cuti_request_created_at_sort'] = !empty($u['latest_cuti_request_created_at']) ? strtotime((string)$u['latest_cuti_request_created_at']) : 0;
+        $u['latest_cuti_status'] = (string)($u['latest_cuti_request_status'] ?? '');
         if ((int)$u['is_active'] === 0) {
             $u['tracking_sort_priority'] = 3;
-        } elseif (($u['cuti_period_status'] ?? 'none') === 'scheduled') {
+        } elseif (($u['latest_cuti_status'] ?? '') === 'pending') {
             $u['tracking_sort_priority'] = 0;
-        } elseif (($u['cuti_period_status'] ?? 'none') === 'active') {
+        } elseif (($u['cuti_period_status'] ?? 'none') === 'scheduled') {
             $u['tracking_sort_priority'] = 1;
-        } else {
+        } elseif (($u['cuti_period_status'] ?? 'none') === 'active') {
             $u['tracking_sort_priority'] = 2;
+        } else {
+            $u['tracking_sort_priority'] = 4;
         }
     }
     unset($u);
@@ -132,7 +187,9 @@ try {
             }
 
             if ($filterStatus === 'active') {
-                return (int)$u['is_active'] === 1 && ($u['cuti_period_status'] ?? 'none') !== 'active';
+                return (int)$u['is_active'] === 1
+                    && ($u['cuti_period_status'] ?? 'none') !== 'active'
+                    && (($u['latest_cuti_status'] ?? '') !== 'pending');
             }
 
             return true;
@@ -145,6 +202,11 @@ try {
             return $priorityCompare;
         }
 
+        $latestRequestCompare = ((int)($b['latest_cuti_request_created_at_sort'] ?? 0)) <=> ((int)($a['latest_cuti_request_created_at_sort'] ?? 0));
+        if ($latestRequestCompare !== 0) {
+            return $latestRequestCompare;
+        }
+
         return strcmp((string)($a['full_name'] ?? ''), (string)($b['full_name'] ?? ''));
     });
 
@@ -153,6 +215,8 @@ try {
     foreach ($allUsers as $u) {
         if ((int)$u['is_active'] === 0) {
             $stats['resigned']++;
+        } elseif (($u['latest_cuti_status'] ?? '') === 'pending') {
+            $stats['active']++;
         } elseif (($u['cuti_period_status'] ?? 'none') === 'active') {
             $stats['on_cuti']++;
         } else {
@@ -289,6 +353,8 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Batch</th>
                             <th>Status</th>
                             <th>Cuti Progress</th>
+                            <th>Tanggal Kembali Kerja</th>
+                            <th>Dikonfirmasi Oleh</th>
                             <th>Detail</th>
                             <?php if ($canApprove): ?>
                             <th>Aksi</th>
@@ -298,7 +364,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <tbody>
                         <?php if (!$allUsers): ?>
                             <tr>
-                                <td colspan="<?= $canApprove ? 7 : 6 ?>" class="muted-placeholder">Tidak ada data user.</td>
+                                <td colspan="<?= $canApprove ? 9 : 8 ?>" class="muted-placeholder">Tidak ada data user.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($allUsers as $u): ?>
@@ -306,10 +372,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                 // Tentukan status user
                                 $cutiProgress = null;
                                 $cutiPeriodStatus = $u['cuti_period_status'] ?? 'none';
+                                $latestCutiStatus = (string)($u['latest_cuti_status'] ?? '');
 
                                 if ((int)$u['is_active'] === 0) {
                                     $statusBadge = '<span class="tracking-status-badge tracking-status-badge-resigned">Resigned</span>';
                                     $statusRow = 'bg-red-50';
+                                } elseif ($latestCutiStatus === 'pending') {
+                                    $statusBadge = '<span class="tracking-status-badge tracking-status-badge-pending">Menunggu Approval</span>';
+                                    $statusRow = 'bg-yellow-50';
                                 } elseif ($cutiPeriodStatus === 'active') {
                                     $statusBadge = '<span class="tracking-status-badge tracking-status-badge-cuti">Sedang Cuti</span>';
                                     $statusRow = 'bg-amber-50';
@@ -333,7 +403,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><?= (int)$u['batch'] ?></td>
                                     <td data-order="<?= (int)($u['tracking_sort_priority'] ?? 99) ?>"><?= $statusBadge ?></td>
                                     <td>
-                                        <?php if ($cutiPeriodStatus === 'active' && isset($cutiProgress)): ?>
+                                        <?php if ($latestCutiStatus === 'pending'): ?>
+                                            <div class="text-sm text-yellow-700">
+                                                Pengajuan terbaru menunggu approval
+                                                <div class="meta-text-xs">
+                                                    <?= formatTanggalIndo((string)($u['latest_cuti_request_start_date'] ?? '')) ?> - <?= formatTanggalIndo((string)($u['latest_cuti_request_end_date'] ?? '')) ?>
+                                                </div>
+                                                <div class="meta-text-xs">
+                                                    <?= (int)($u['latest_cuti_request_days_total'] ?? 0) ?> hari
+                                                </div>
+                                            </div>
+                                        <?php elseif ($cutiPeriodStatus === 'active' && isset($cutiProgress)): ?>
                                             <div class="w-full">
                                                 <div class="flex justify-between text-xs mb-1">
                                                     <span><?= $cutiProgress['used'] ?>/<?= $cutiProgress['total'] ?> hari</span>
@@ -364,6 +444,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <span class="meta-text-xs">-</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td data-order="<?= (int)($u['cuti_ended_at_sort'] ?? 0) ?>">
+                                        <?= !empty($u['cuti_ended_at']) ? htmlspecialchars(formatTanggalID((string)$u['cuti_ended_at'])) : '-' ?>
+                                    </td>
+                                    <td><?= htmlspecialchars((string)($u['cuti_ended_by_name'] ?? '-')) ?></td>
                                     <td>
                                         <?php if ((int)$u['is_active'] === 0): ?>
                                             <!-- Resigned -->
@@ -381,6 +465,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <div class="mt-1 p-2 bg-gray-50 rounded text-xs whitespace-pre-line"><?= htmlspecialchars($u['resign_reason']) ?></div>
                                                     </details>
                                                 <?php endif; ?>
+                                            </div>
+                                        <?php elseif ($latestCutiStatus === 'pending'): ?>
+                                            <div class="text-sm">
+                                                <div class="font-medium text-yellow-700">Pengajuan Cuti Terbaru</div>
+                                                <div class="meta-text-xs">
+                                                    Kode: <?= htmlspecialchars((string)($u['latest_cuti_request_code'] ?? '-')) ?>
+                                                </div>
+                                                <div class="meta-text-xs">
+                                                    Diajukan: <?= !empty($u['latest_cuti_request_created_at']) ? formatTanggalID((string)$u['latest_cuti_request_created_at']) : '-' ?>
+                                                </div>
+                                                <div class="meta-text-xs">
+                                                    Periode: <?= formatTanggalIndo((string)($u['latest_cuti_request_start_date'] ?? '')) ?> - <?= formatTanggalIndo((string)($u['latest_cuti_request_end_date'] ?? '')) ?>
+                                                </div>
                                             </div>
                                         <?php elseif ($cutiPeriodStatus === 'active'): ?>
                                             <!-- Sedang Cuti -->
@@ -420,7 +517,24 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <?php if ($canApprove): ?>
                                     <td>
-                                        <?php if ($cutiPeriodStatus === 'active' && isset($cutiProgress)): ?>
+                                        <?php if ($latestCutiStatus === 'pending' && (int)($u['latest_cuti_request_id'] ?? 0) > 0): ?>
+                                            <div class="tracking-action-group">
+                                                <button type="button"
+                                                        onclick="approveTrackingCuti(<?= (int)$u['latest_cuti_request_id'] ?>, '<?= htmlspecialchars((string)($u['latest_cuti_request_code'] ?? '')) ?>')"
+                                                        class="btn-success btn-sm action-icon-btn"
+                                                        title="Setujui cuti"
+                                                        aria-label="Setujui cuti">
+                                                    <?= ems_icon('check', 'h-4 w-4') ?>
+                                                </button>
+                                                <button type="button"
+                                                        onclick="rejectTrackingCuti(<?= (int)$u['latest_cuti_request_id'] ?>, '<?= htmlspecialchars((string)($u['latest_cuti_request_code'] ?? '')) ?>')"
+                                                        class="btn-reject-soft btn-sm action-icon-btn"
+                                                        title="Tolak cuti"
+                                                        aria-label="Tolak cuti">
+                                                    <?= ems_icon('x-mark', 'h-4 w-4') ?>
+                                                </button>
+                                            </div>
+                                        <?php elseif ($cutiPeriodStatus === 'active' && isset($cutiProgress)): ?>
                                             <button type="button" 
                                                     onclick="kembaliKerja(<?= (int)$u['id'] ?>, '<?= htmlspecialchars($u['full_name']) ?>', <?= (int)$cutiProgress['total'] ?>, <?= (int)$cutiProgress['used'] ?>)" 
                                                     class="btn-success btn-sm action-icon-btn"
@@ -557,6 +671,90 @@ function closeKembaliKerjaModal() {
     currentUsedDays = 0;
 }
 
+function approveTrackingCuti(requestId, requestCode) {
+    if (!requestId) {
+        alert('Request cuti tidak valid.');
+        return;
+    }
+
+    if (!window.confirm('Setujui pengajuan cuti ' + requestCode + '?')) {
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('action', 'approve_cuti');
+    formData.append('request_id', requestId);
+    formData.append('csrf_token', csrfToken);
+
+    fetch(window.emsUrl('/dashboard/pengajuan_cuti_resign_action.php'), {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            throw new Error('Network response was not ok: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message || 'Pengajuan cuti berhasil disetujui.');
+            window.location.reload();
+        } else {
+            alert(data.error || 'Gagal menyetujui pengajuan cuti.');
+        }
+    })
+    .catch(function(error) {
+        alert('Terjadi kesalahan: ' + error.message);
+    });
+}
+
+function rejectTrackingCuti(requestId, requestCode) {
+    if (!requestId) {
+        alert('Request cuti tidak valid.');
+        return;
+    }
+
+    var reason = window.prompt('Masukkan alasan penolakan untuk ' + requestCode + ':');
+    if (reason === null) {
+        return;
+    }
+
+    reason = reason.trim();
+    if (!reason) {
+        alert('Alasan penolakan wajib diisi.');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('action', 'reject_cuti');
+    formData.append('request_id', requestId);
+    formData.append('rejection_reason', reason);
+    formData.append('csrf_token', csrfToken);
+
+    fetch(window.emsUrl('/dashboard/pengajuan_cuti_resign_action.php'), {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            throw new Error('Network response was not ok: ' + response.status);
+        }
+        return response.json();
+    })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message || 'Pengajuan cuti berhasil ditolak.');
+            window.location.reload();
+        } else {
+            alert(data.error || 'Gagal menolak pengajuan cuti.');
+        }
+    })
+    .catch(function(error) {
+        alert('Terjadi kesalahan: ' + error.message);
+    });
+}
+
 // Bind confirm button
 document.addEventListener('DOMContentLoaded', function() {
     if (window.jQuery && jQuery.fn.DataTable) {
@@ -569,7 +767,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: '/assets/design/js/datatables-id.json'
             },
             columnDefs: [
-                { orderable: false, targets: <?= $canApprove ? '[4, 5, 6]' : '[4, 5]' ?> }
+                { orderable: false, targets: <?= $canApprove ? '[4, 6, 7, 8]' : '[4, 6, 7]' ?> }
             ]
         });
     }
@@ -803,6 +1001,40 @@ document.addEventListener('DOMContentLoaded', function() {
     overflow: hidden;
 }
 
+.tracking-table-card .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#trackingCutiTable {
+    min-width: 1500px;
+}
+
+#trackingCutiTable th {
+    white-space: nowrap;
+    font-size: 0.67rem;
+}
+
+#trackingCutiTable td {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    vertical-align: top;
+}
+
+#trackingCutiTable .meta-text-xs,
+#trackingCutiTable .text-xs {
+    font-size: 0.66rem !important;
+    white-space: nowrap;
+}
+
+.tracking-action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
 .tracking-legend-card {
     padding: 1rem;
     border: 1px solid rgba(226, 232, 240, 0.9);
@@ -848,6 +1080,12 @@ document.addEventListener('DOMContentLoaded', function() {
     background: #ffe4e6;
     border-color: #fda4af;
     color: #be123c;
+}
+
+.tracking-status-badge-pending {
+    background: #fef3c7;
+    border-color: #fcd34d;
+    color: #a16207;
 }
 
 /* Modal Overlay - Full screen fixed position */

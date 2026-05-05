@@ -45,6 +45,21 @@ function userRhColumnExists(PDO $pdo, string $columnName): bool
     return $cache[$columnName];
 }
 
+function cutiRequestColumnExists(PDO $pdo, string $columnName): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($columnName, $cache)) {
+        return $cache[$columnName];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM cuti_requests LIKE ?");
+    $stmt->execute([$columnName]);
+    $cache[$columnName] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$columnName];
+}
+
 // Pastikan request adalah POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     sendJsonResponse(['success' => false, 'error' => 'Method not allowed'], 405);
@@ -157,6 +172,46 @@ try {
             WHERE id = ?
         ");
         $stmt->execute($updateParams);
+
+        $requestUpdateFields = [];
+        $requestUpdateParams = [];
+
+        if (cutiRequestColumnExists($pdo, 'actual_end_date')) {
+            $requestUpdateFields[] = 'actual_end_date = ?';
+            $requestUpdateParams[] = $today->format('Y-m-d');
+        }
+
+        if (cutiRequestColumnExists($pdo, 'returned_to_work_at')) {
+            $requestUpdateFields[] = 'returned_to_work_at = NOW()';
+        }
+
+        if (cutiRequestColumnExists($pdo, 'returned_to_work_by')) {
+            $requestUpdateFields[] = 'returned_to_work_by = ?';
+            $requestUpdateParams[] = $userId;
+        }
+
+        if (cutiRequestColumnExists($pdo, 'actual_days_used')) {
+            $requestUpdateFields[] = 'actual_days_used = ?';
+            $requestUpdateParams[] = $daysUsed;
+        }
+
+        if (!empty($requestUpdateFields)) {
+            $requestUpdateParams[] = $targetUserId;
+            $requestUpdateParams[] = $cutiData['cuti_start_date'];
+            $requestUpdateParams[] = $cutiData['cuti_end_date'];
+
+            $stmt = $pdo->prepare("
+                UPDATE cuti_requests
+                SET " . implode(",\n                    ", $requestUpdateFields) . "
+                WHERE user_id = ?
+                  AND start_date = ?
+                  AND end_date = ?
+                  AND status = 'approved'
+                ORDER BY approved_at DESC, id DESC
+                LIMIT 1
+            ");
+            $stmt->execute($requestUpdateParams);
+        }
 
         // Log ke account_logs (use existing columns)
         $stmt = $pdo->prepare("

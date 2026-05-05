@@ -14,77 +14,172 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
-$selectedUserId = (int)($_GET['user_id'] ?? 0);
-$users = [];
-$selectedUser = null;
 $cutiHistory = [];
-$resignHistory = [];
 $summary = [
-    'total_cuti_requests' => 0,
-    'total_cuti_days_approved' => 0,
-    'cuti_pending' => 0,
-    'cuti_rejected' => 0,
-    'total_resign_requests' => 0,
-    'resign_approved' => 0,
+    'total_pengaju_cuti' => 0,
+    'total_pengajuan_cuti' => 0,
+    'cuti_approved' => 0,
+    'kembali_lebih_awal' => 0,
 ];
 
-try {
-    $users = $pdo->query("
-        SELECT id, full_name, role, position, division, is_active
-        FROM user_rh
-        ORDER BY full_name ASC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+function userRhColumnExists(PDO $pdo, string $columnName): bool
+{
+    static $cache = [];
 
-    if ($selectedUserId > 0) {
-        $stmt = $pdo->prepare("
-            SELECT id, full_name, role, position, division, is_active, resign_reason, resigned_at
-            FROM user_rh
-            WHERE id = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$selectedUserId]);
-        $selectedUser = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($selectedUser) {
-            $stmt = $pdo->prepare("
-                SELECT
-                    cr.*,
-                    approver.full_name AS approved_by_name
-                FROM cuti_requests cr
-                LEFT JOIN user_rh approver ON approver.id = cr.approved_by
-                WHERE cr.user_id = ?
-                ORDER BY cr.created_at DESC
-            ");
-            $stmt->execute([$selectedUserId]);
-            $cutiHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $stmt = $pdo->prepare("
-                SELECT
-                    rr.*,
-                    approver.full_name AS approved_by_name
-                FROM resign_requests rr
-                LEFT JOIN user_rh approver ON approver.id = rr.approved_by
-                WHERE rr.user_id = ?
-                ORDER BY rr.created_at DESC
-            ");
-            $stmt->execute([$selectedUserId]);
-            $resignHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $summary['total_cuti_requests'] = count($cutiHistory);
-            $summary['total_cuti_days_approved'] = array_sum(array_map(
-                static fn(array $row): int => ($row['status'] ?? '') === 'approved' ? (int)($row['days_total'] ?? 0) : 0,
-                $cutiHistory
-            ));
-            $summary['cuti_pending'] = count(array_filter($cutiHistory, static fn(array $row): bool => ($row['status'] ?? '') === 'pending'));
-            $summary['cuti_rejected'] = count(array_filter($cutiHistory, static fn(array $row): bool => ($row['status'] ?? '') === 'rejected'));
-            $summary['total_resign_requests'] = count($resignHistory);
-            $summary['resign_approved'] = count(array_filter($resignHistory, static fn(array $row): bool => ($row['status'] ?? '') === 'approved'));
-        } else {
-            $errors[] = 'User tidak ditemukan.';
-        }
+    if (array_key_exists($columnName, $cache)) {
+        return $cache[$columnName];
     }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$columnName]);
+    $cache[$columnName] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$columnName];
+}
+
+function cutiRequestColumnExists(PDO $pdo, string $columnName): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($columnName, $cache)) {
+        return $cache[$columnName];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM cuti_requests LIKE ?");
+    $stmt->execute([$columnName]);
+    $cache[$columnName] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$columnName];
+}
+
+try {
+    $hasCutiEndedAt = userRhColumnExists($pdo, 'cuti_ended_at');
+    $hasCutiEndedBy = userRhColumnExists($pdo, 'cuti_ended_by');
+    $hasCutiOriginalDays = userRhColumnExists($pdo, 'cuti_original_days');
+
+    $earlyReturnColumns = [];
+    if ($hasCutiEndedAt) {
+        $earlyReturnColumns[] = 'u.cuti_ended_at';
+    } else {
+        $earlyReturnColumns[] = 'NULL AS cuti_ended_at';
+    }
+
+    if ($hasCutiEndedBy) {
+        $earlyReturnColumns[] = 'u.cuti_ended_by';
+        $earlyReturnColumns[] = 'returner.full_name AS cuti_ended_by_name';
+    } else {
+        $earlyReturnColumns[] = 'NULL AS cuti_ended_by';
+        $earlyReturnColumns[] = 'NULL AS cuti_ended_by_name';
+    }
+
+    if ($hasCutiOriginalDays) {
+        $earlyReturnColumns[] = 'u.cuti_original_days';
+    } else {
+        $earlyReturnColumns[] = 'NULL AS cuti_original_days';
+    }
+
+    $hasActualEndDate = cutiRequestColumnExists($pdo, 'actual_end_date');
+    $hasReturnedToWorkAt = cutiRequestColumnExists($pdo, 'returned_to_work_at');
+    $hasReturnedToWorkBy = cutiRequestColumnExists($pdo, 'returned_to_work_by');
+    $hasActualDaysUsed = cutiRequestColumnExists($pdo, 'actual_days_used');
+
+    $requestReturnColumns = [];
+    $requestReturnColumns[] = $hasActualEndDate ? 'cr.actual_end_date' : 'NULL AS actual_end_date';
+    $requestReturnColumns[] = $hasReturnedToWorkAt ? 'cr.returned_to_work_at' : 'NULL AS returned_to_work_at';
+    if ($hasReturnedToWorkBy) {
+        $requestReturnColumns[] = 'cr.returned_to_work_by';
+        $requestReturnColumns[] = 'returned_by.full_name AS returned_to_work_by_name';
+    } else {
+        $requestReturnColumns[] = 'NULL AS returned_to_work_by';
+        $requestReturnColumns[] = 'NULL AS returned_to_work_by_name';
+    }
+    $requestReturnColumns[] = $hasActualDaysUsed ? 'cr.actual_days_used' : 'NULL AS actual_days_used';
+
+    $joinReturner = $hasCutiEndedBy
+        ? "LEFT JOIN user_rh returner ON returner.id = u.cuti_ended_by"
+        : "";
+    $joinReturnedBy = $hasReturnedToWorkBy
+        ? "LEFT JOIN user_rh returned_by ON returned_by.id = cr.returned_to_work_by"
+        : "";
+
+    $stmt = $pdo->query("
+        SELECT
+            cr.*,
+            u.full_name,
+            u.role,
+            u.position,
+            u.division,
+            u.is_active,
+            approver.full_name AS approved_by_name,
+            " . implode(",\n            ", $earlyReturnColumns) . ",
+            " . implode(",\n            ", $requestReturnColumns) . "
+        FROM cuti_requests cr
+        INNER JOIN user_rh u ON u.id = cr.user_id
+        LEFT JOIN user_rh approver ON approver.id = cr.approved_by
+        {$joinReturner}
+        {$joinReturnedBy}
+        ORDER BY cr.created_at DESC, cr.id DESC
+    ");
+    $cutiHistory = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($cutiHistory as &$row) {
+        $isEarlyReturn = false;
+
+        $approvedDays = (int)($row['days_total'] ?? 0);
+        $actualDaysUsed = (int)($row['actual_days_used'] ?? 0);
+        $returnedEffectiveDate = null;
+        $returnedByName = null;
+
+        if (($row['status'] ?? '') === 'approved') {
+            if (!empty($row['actual_end_date'])) {
+                $returnedEffectiveDate = (string)$row['actual_end_date'];
+                $returnedByName = (string)($row['returned_to_work_by_name'] ?? '');
+                $isEarlyReturn = $actualDaysUsed > 0 && $approvedDays > 0 && $actualDaysUsed < $approvedDays;
+            } else {
+                $originalDays = (int)($row['cuti_original_days'] ?? 0);
+                $usedDays = 0;
+
+                if (!empty($row['start_date']) && !empty($row['end_date'])) {
+                    try {
+                        $usedDays = (new DateTime((string)$row['start_date']))->diff(new DateTime((string)$row['end_date']))->days + 1;
+                    } catch (Throwable $e) {
+                        $usedDays = 0;
+                    }
+                }
+
+                $isEarlyReturn = !empty($row['cuti_ended_at'])
+                    && $originalDays > 0
+                    && $originalDays === $approvedDays
+                    && $usedDays > 0
+                    && $usedDays < $approvedDays;
+
+                if ($isEarlyReturn) {
+                    $returnedEffectiveDate = (string)($row['end_date'] ?? '');
+                    $returnedByName = (string)($row['cuti_ended_by_name'] ?? '');
+                }
+            }
+        }
+
+        $row['is_early_return'] = $isEarlyReturn;
+        $row['returned_effective_date'] = $returnedEffectiveDate;
+        $row['returned_by_name'] = $returnedByName;
+        $row['created_at_sort'] = !empty($row['created_at']) ? strtotime((string)$row['created_at']) : 0;
+        $row['returned_effective_date_sort'] = !empty($row['returned_effective_date']) ? strtotime((string)$row['returned_effective_date']) : 0;
+        $row['days_used_after_return'] = $isEarlyReturn
+            ? (($actualDaysUsed > 0) ? $actualDaysUsed : null)
+            : null;
+    }
+    unset($row);
+
+    $summary['total_pengaju_cuti'] = count(array_unique(array_map(
+        static fn(array $row): int => (int)($row['user_id'] ?? 0),
+        $cutiHistory
+    )));
+    $summary['total_pengajuan_cuti'] = count($cutiHistory);
+    $summary['cuti_approved'] = count(array_filter($cutiHistory, static fn(array $row): bool => ($row['status'] ?? '') === 'approved'));
+    $summary['kembali_lebih_awal'] = count(array_filter($cutiHistory, static fn(array $row): bool => !empty($row['is_early_return'])));
 } catch (Throwable $e) {
-    $errors[] = 'Gagal memuat history cuti & resign: ' . $e->getMessage();
+    $errors[] = 'Gagal memuat history cuti: ' . $e->getMessage();
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -93,7 +188,7 @@ include __DIR__ . '/../partials/sidebar.php';
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title"><?= htmlspecialchars($pageTitle) ?></h1>
-        <p class="page-subtitle">Pilih satu nama user untuk melihat seluruh riwayat cuti, total hari cuti, dan histori resign tanpa memuat semua data sekaligus.</p>
+        <p class="page-subtitle">Monitoring seluruh tenaga medis yang pernah mengajukan cuti, termasuk siapa yang kembali kerja lebih cepat dan tanggal efektif kembali kerjanya.</p>
 
         <?php foreach ($messages as $message): ?>
             <div class="alert alert-info"><?= htmlspecialchars((string)$message) ?></div>
@@ -102,246 +197,127 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="alert alert-error"><?= htmlspecialchars((string)$error) ?></div>
         <?php endforeach; ?>
 
-        <div class="card card-section history-filter-card mb-4">
-            <div class="history-filter-head">
-                <div>
-                    <h2 class="history-filter-title">Filter User</h2>
-                    <p class="history-filter-copy">Halaman ini sengaja tidak menampilkan semua data. Pilih satu user agar riwayat cuti dan resign tampil lebih fokus.</p>
-                </div>
+        <div class="tracking-hero mb-4">
+            <div>
+                <div class="tracking-kicker">History & Monitoring</div>
+                <h2 class="tracking-hero-title">Seluruh histori pengajuan cuti medis dalam satu tampilan.</h2>
+                <p class="tracking-hero-copy">Tabel ini hanya menampilkan user yang pernah mengajukan cuti. Data paling baru berada di urutan paling atas.</p>
             </div>
-            <form method="GET" class="history-filter-form">
-                <div class="history-filter-field">
-                    <label for="historyUserSearch">Nama User</label>
-                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
-                        <input
-                            type="text"
-                            id="historyUserSearch"
-                            data-user-autocomplete-input
-                            placeholder="Ketik nama user untuk melihat history..."
-                            value="<?= htmlspecialchars((string)($selectedUser['full_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            required>
-                        <input type="hidden" id="historyUserId" name="user_id" value="<?= $selectedUserId > 0 ? $selectedUserId : '' ?>" data-user-autocomplete-hidden>
-                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
-                    </div>
-                </div>
-
-                <div class="history-filter-actions">
-                    <button type="submit" class="btn-secondary">Tampilkan History</button>
-                    <a href="history_cuti_resign.php" class="btn-secondary">Reset</a>
-                </div>
-            </form>
+            <div class="tracking-hero-meta">
+                <div class="tracking-hero-meta-label">Urutan Data</div>
+                <div class="tracking-hero-meta-value">Terbaru Dulu</div>
+            </div>
         </div>
 
-        <?php if ($selectedUser): ?>
-            <div class="tracking-hero mb-4">
+        <div class="tracking-stats-grid mb-4">
+            <article class="tracking-stat-card">
+                <div class="tracking-stat-icon is-total"><?= ems_icon('user-group', 'h-5 w-5') ?></div>
+                <div class="tracking-stat-body">
+                    <div class="tracking-stat-label">Total Pengaju Cuti</div>
+                    <div class="tracking-stat-value"><?= $summary['total_pengaju_cuti'] ?></div>
+                    <div class="tracking-stat-note">User unik yang pernah mengajukan cuti</div>
+                </div>
+            </article>
+            <article class="tracking-stat-card">
+                <div class="tracking-stat-icon is-cuti"><?= ems_icon('calendar-days', 'h-5 w-5') ?></div>
+                <div class="tracking-stat-body">
+                    <div class="tracking-stat-label">Total Pengajuan Cuti</div>
+                    <div class="tracking-stat-value text-sky-700"><?= $summary['total_pengajuan_cuti'] ?></div>
+                    <div class="tracking-stat-note">Semua histori request cuti</div>
+                </div>
+            </article>
+            <article class="tracking-stat-card">
+                <div class="tracking-stat-icon is-approved"><?= ems_icon('check-circle', 'h-5 w-5') ?></div>
+                <div class="tracking-stat-body">
+                    <div class="tracking-stat-label">Cuti Approved</div>
+                    <div class="tracking-stat-value text-emerald-700"><?= $summary['cuti_approved'] ?></div>
+                    <div class="tracking-stat-note">Pengajuan yang sudah disetujui</div>
+                </div>
+            </article>
+            <article class="tracking-stat-card">
+                <div class="tracking-stat-icon is-return"><?= ems_icon('arrow-uturn-left', 'h-5 w-5') ?></div>
+                <div class="tracking-stat-body">
+                    <div class="tracking-stat-label">Kembali Lebih Awal</div>
+                    <div class="tracking-stat-value text-amber-700"><?= $summary['kembali_lebih_awal'] ?></div>
+                    <div class="tracking-stat-note">Cuti yang diakhiri sebelum tanggal rencana</div>
+                </div>
+            </article>
+        </div>
+
+        <div class="card card-section history-table-card">
+            <div class="history-table-head">
                 <div>
-                    <div class="tracking-kicker">Riwayat User</div>
-                    <h2 class="tracking-hero-title"><?= htmlspecialchars($selectedUser['full_name']) ?></h2>
-                    <p class="tracking-hero-copy">
-                        <?= htmlspecialchars(ems_role_label($selectedUser['role'])) ?> |
-                        <?= htmlspecialchars(ems_position_label($selectedUser['position'])) ?> |
-                        <?= htmlspecialchars(ems_normalize_division($selectedUser['division'] ?? '')) ?>
-                    </p>
-                </div>
-                <div class="tracking-hero-meta">
-                    <div class="tracking-hero-meta-label">Status Akun</div>
-                    <div class="tracking-hero-meta-value"><?= (int)$selectedUser['is_active'] === 1 ? 'Aktif' : 'Nonaktif' ?></div>
+                    <h3 class="history-table-title">History Pengajuan Cuti</h3>
+                    <p class="history-table-copy">Menampilkan semua histori pengajuan cuti beserta periode, status, approver, dan informasi kembali kerja bila cuti dipercepat selesai.</p>
                 </div>
             </div>
-
-            <div class="tracking-stats-grid mb-4">
-                <article class="tracking-stat-card">
-                    <div class="tracking-stat-icon is-total"><?= ems_icon('calendar-days', 'h-5 w-5') ?></div>
-                    <div class="tracking-stat-body">
-                        <div class="tracking-stat-label">Total Pengajuan Cuti</div>
-                        <div class="tracking-stat-value"><?= $summary['total_cuti_requests'] ?></div>
-                        <div class="tracking-stat-note">Semua request cuti user ini</div>
-                    </div>
-                </article>
-                <article class="tracking-stat-card">
-                    <div class="tracking-stat-icon is-cuti"><?= ems_icon('check-circle', 'h-5 w-5') ?></div>
-                    <div class="tracking-stat-body">
-                        <div class="tracking-stat-label">Total Hari Cuti Approved</div>
-                        <div class="tracking-stat-value text-emerald-700"><?= $summary['total_cuti_days_approved'] ?></div>
-                        <div class="tracking-stat-note">Akumulasi hari cuti yang disetujui</div>
-                    </div>
-                </article>
-                <article class="tracking-stat-card">
-                    <div class="tracking-stat-icon is-active"><?= ems_icon('clock', 'h-5 w-5') ?></div>
-                    <div class="tracking-stat-body">
-                        <div class="tracking-stat-label">Cuti Pending / Rejected</div>
-                        <div class="tracking-stat-value text-amber-700"><?= $summary['cuti_pending'] ?> / <?= $summary['cuti_rejected'] ?></div>
-                        <div class="tracking-stat-note">Pending dibanding ditolak</div>
-                    </div>
-                </article>
-                <article class="tracking-stat-card">
-                    <div class="tracking-stat-icon is-resigned"><?= ems_icon('user-minus', 'h-5 w-5') ?></div>
-                    <div class="tracking-stat-body">
-                        <div class="tracking-stat-label">Total Pengajuan Resign</div>
-                        <div class="tracking-stat-value text-rose-700"><?= $summary['total_resign_requests'] ?></div>
-                        <div class="tracking-stat-note">Approved: <?= $summary['resign_approved'] ?></div>
-                    </div>
-                </article>
+            <div class="table-wrapper table-wrapper-sm">
+                <table id="hrCutiHistoryTable" class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Tanggal Pengajuan</th>
+                            <th>Nama Medis</th>
+                            <th>Divisi / Posisi</th>
+                            <th>Kode</th>
+                            <th>Periode Pengajuan</th>
+                            <th>Total Hari</th>
+                            <th>Status</th>
+                            <th>Approver</th>
+                            <th>Tanggal Kembali Kerja</th>
+                            <th>Dikonfirmasi Oleh</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($cutiHistory as $row): ?>
+                            <?php $badge = get_status_badge((string)($row['status'] ?? 'pending')); ?>
+                            <tr>
+                                <td data-order="<?= (int)($row['created_at_sort'] ?? 0) ?>"><?= htmlspecialchars(formatTanggalID((string)$row['created_at'])) ?></td>
+                                <td>
+                                    <strong><?= htmlspecialchars((string)($row['full_name'] ?? '-')) ?></strong>
+                                    <div class="table-meta"><?= (int)($row['is_active'] ?? 0) === 1 ? 'Aktif' : 'Nonaktif' ?></div>
+                                </td>
+                                <td>
+                                    <?= htmlspecialchars(ems_normalize_division((string)($row['division'] ?? ''))) ?>
+                                    <div class="table-meta"><?= htmlspecialchars(ems_position_label((string)($row['position'] ?? ''))) ?></div>
+                                </td>
+                                <td><strong><?= htmlspecialchars((string)($row['request_code'] ?? '-')) ?></strong></td>
+                                <td>
+                                    <?= htmlspecialchars(formatTanggalIndo((string)($row['start_date'] ?? ''))) ?>
+                                    -
+                                    <?= htmlspecialchars(formatTanggalIndo((string)($row['end_date'] ?? ''))) ?>
+                                </td>
+                                <td>
+                                    <?= (int)($row['days_total'] ?? 0) ?> hari
+                                    <?php if (!empty($row['is_early_return']) && $row['days_used_after_return'] !== null): ?>
+                                        <div class="table-meta">Dipakai: <?= (int)$row['days_used_after_return'] ?> hari</div>
+                                    <?php endif; ?>
+                                </td>
+                                <td><span class="request-status-badge request-status-<?= htmlspecialchars((string)($row['status'] ?? 'pending')) ?>"><?= htmlspecialchars($badge['label']) ?></span></td>
+                                <td><?= htmlspecialchars((string)($row['approved_by_name'] ?? '-')) ?></td>
+                                <td data-order="<?= (int)($row['returned_effective_date_sort'] ?? 0) ?>"><?= htmlspecialchars(!empty($row['returned_effective_date']) ? formatTanggalIndo((string)$row['returned_effective_date']) : '-') ?></td>
+                                <td><?= htmlspecialchars((string)($row['returned_by_name'] ?? '-')) ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if (!$cutiHistory): ?>
+                    <div class="muted-placeholder p-4">Belum ada histori pengajuan cuti.</div>
+                <?php endif; ?>
             </div>
-
-            <div class="history-section-grid">
-                <div class="card card-section history-table-card">
-                    <div class="history-table-head">
-                        <div>
-                            <h3 class="history-table-title">History Cuti</h3>
-                            <p class="history-table-copy">Semua pengajuan cuti user terpilih beserta periode, status, dan approver.</p>
-                        </div>
-                    </div>
-                    <div class="table-wrapper table-wrapper-sm">
-                        <table id="hrCutiHistoryTable" class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>Kode</th>
-                                    <th>Tanggal Pengajuan</th>
-                                    <th>Periode Cuti</th>
-                                    <th>Total Hari</th>
-                                    <th>Status</th>
-                                    <th>Approver</th>
-                                    <th>Alasan Ditolak</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($cutiHistory as $row): ?>
-                                    <?php $badge = get_status_badge((string)($row['status'] ?? 'pending')); ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars((string)$row['request_code']) ?></strong></td>
-                                        <td><?= htmlspecialchars(formatTanggalID((string)$row['created_at'])) ?></td>
-                                        <td>
-                                            <?= htmlspecialchars(formatTanggalIndo((string)$row['start_date'])) ?>
-                                            -
-                                            <?= htmlspecialchars(formatTanggalIndo((string)$row['end_date'])) ?>
-                                        </td>
-                                        <td><?= (int)($row['days_total'] ?? 0) ?> hari</td>
-                                        <td><span class="request-status-badge request-status-<?= htmlspecialchars((string)$row['status']) ?>"><?= htmlspecialchars($badge['label']) ?></span></td>
-                                        <td><?= htmlspecialchars((string)($row['approved_by_name'] ?? '-')) ?></td>
-                                        <td><?= htmlspecialchars((string)($row['rejection_reason'] ?? '-')) ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                        <?php if (!$cutiHistory): ?>
-                            <div class="muted-placeholder p-4">User ini belum pernah mengajukan cuti.</div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div class="card card-section history-table-card">
-                    <div class="history-table-head">
-                        <div>
-                            <h3 class="history-table-title">History Resign</h3>
-                            <p class="history-table-copy">Riwayat pengajuan resign, status persetujuan, dan ringkasan alasan pengajuan.</p>
-                        </div>
-                    </div>
-                    <div class="table-wrapper table-wrapper-sm">
-                        <table id="hrResignHistoryTable" class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th>Kode</th>
-                                    <th>Tanggal Pengajuan</th>
-                                    <th>Status</th>
-                                    <th>Approver</th>
-                                    <th>Alasan Ditolak</th>
-                                    <th>Ringkasan Alasan</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($resignHistory as $row): ?>
-                                    <?php
-                                    $badge = get_status_badge((string)($row['status'] ?? 'pending'));
-                                    $reasonPreview = trim((string)($row['reason_ic'] ?? ''));
-                                    if ($reasonPreview !== '' && strlen($reasonPreview) > 80) {
-                                        $reasonPreview = substr($reasonPreview, 0, 80) . '...';
-                                    }
-                                    ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars((string)$row['request_code']) ?></strong></td>
-                                        <td><?= htmlspecialchars(formatTanggalID((string)$row['created_at'])) ?></td>
-                                        <td><span class="request-status-badge request-status-<?= htmlspecialchars((string)$row['status']) ?>"><?= htmlspecialchars($badge['label']) ?></span></td>
-                                        <td><?= htmlspecialchars((string)($row['approved_by_name'] ?? '-')) ?></td>
-                                        <td><?= htmlspecialchars((string)($row['rejection_reason'] ?? '-')) ?></td>
-                                        <td><?= htmlspecialchars($reasonPreview !== '' ? $reasonPreview : '-') ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                        <?php if (!$resignHistory): ?>
-                            <div class="muted-placeholder p-4">User ini belum pernah mengajukan resign.</div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-        <?php else: ?>
-            <div class="card card-section">
-                <div class="muted-placeholder">Pilih nama user terlebih dahulu agar riwayat cuti dan resign ditampilkan.</div>
-            </div>
-        <?php endif; ?>
+        </div>
     </div>
 </section>
 
 <style>
 .page-shell {
-    max-width: 1380px;
+    max-width: 1480px;
 }
 
-.history-filter-card,
 .history-table-card {
     border: 1px solid rgba(226, 232, 240, 0.9);
     box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-}
-
-.history-filter-card {
-    padding: 1.25rem;
-    background:
-        linear-gradient(135deg, rgba(240, 249, 255, 0.92), rgba(255, 255, 255, 0.96));
-}
-
-.history-filter-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.history-filter-title {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 800;
-    color: #0f172a;
-}
-
-.history-filter-copy {
-    margin-top: 0.35rem;
-    font-size: 0.86rem;
-    color: #64748b;
-}
-
-.history-filter-form {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
-    align-items: end;
-}
-
-.history-filter-field label {
-    display: block;
-    margin-bottom: 0.45rem;
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #0369a1;
-}
-
-.history-filter-actions {
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.97);
 }
 
 .tracking-hero {
@@ -438,18 +414,18 @@ include __DIR__ . '/../partials/sidebar.php';
 }
 
 .tracking-stat-icon.is-cuti {
+    background: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+}
+
+.tracking-stat-icon.is-approved {
     background: rgba(16, 185, 129, 0.12);
     color: #047857;
 }
 
-.tracking-stat-icon.is-active {
+.tracking-stat-icon.is-return {
     background: rgba(245, 158, 11, 0.14);
     color: #b45309;
-}
-
-.tracking-stat-icon.is-resigned {
-    background: rgba(244, 63, 94, 0.12);
-    color: #be123c;
 }
 
 .tracking-stat-body {
@@ -478,17 +454,6 @@ include __DIR__ . '/../partials/sidebar.php';
     color: #64748b;
 }
 
-.history-section-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem;
-}
-
-.history-table-card {
-    overflow: hidden;
-    background: rgba(255, 255, 255, 0.97);
-}
-
 .history-table-head {
     display: flex;
     align-items: flex-start;
@@ -512,19 +477,36 @@ include __DIR__ . '/../partials/sidebar.php';
 
 .table-wrapper.table-wrapper-sm {
     padding: 1rem 1.2rem 1.2rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#hrCutiHistoryTable {
+    min-width: 1420px;
 }
 
 .table-custom thead th {
     background: #f8fafc;
     color: #334155;
-    font-size: 0.77rem;
+    font-size: 0.67rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .table-custom tbody td {
     vertical-align: top;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+
+.table-meta {
+    margin-top: 0.25rem;
+    font-size: 0.68rem;
+    color: #64748b;
+    white-space: nowrap;
 }
 
 .muted-placeholder {
@@ -538,17 +520,9 @@ include __DIR__ . '/../partials/sidebar.php';
     .tracking-stats-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
-    .history-section-grid {
-        grid-template-columns: 1fr;
-    }
 }
 
 @media (max-width: 840px) {
-    .history-filter-form {
-        grid-template-columns: 1fr;
-    }
-
     .tracking-hero {
         flex-direction: column;
     }
@@ -569,7 +543,6 @@ include __DIR__ . '/../partials/sidebar.php';
         font-size: 1.45rem;
     }
 
-    .history-filter-card,
     .history-table-card {
         border-radius: 1.1rem;
     }
@@ -584,20 +557,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (document.querySelector('#hrCutiHistoryTable tbody tr')) {
         jQuery('#hrCutiHistoryTable').DataTable({
-            pageLength: 10,
-            order: [[1, 'desc']],
+            pageLength: 25,
+            order: [[0, 'desc']],
+            scrollX: true,
+            autoWidth: false,
             language: {
                 url: '/assets/design/js/datatables-id.json'
-            }
-        });
-    }
-
-    if (document.querySelector('#hrResignHistoryTable tbody tr')) {
-        jQuery('#hrResignHistoryTable').DataTable({
-            pageLength: 10,
-            order: [[1, 'desc']],
-            language: {
-                url: '/assets/design/js/datatables-id.json'
+            },
+            columnDefs: [
+                { targets: '_all', className: 'dt-nowrap' }
+            ],
+            drawCallback: function() {
+                jQuery('#hrCutiHistoryTable th, #hrCutiHistoryTable td').css('white-space', 'nowrap');
             }
         });
     }
