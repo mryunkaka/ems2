@@ -160,7 +160,7 @@ $leaderboard = $stmtLeaderboard->fetchAll(PDO::FETCH_ASSOC);
 
             <?php if (empty($todaySessions)): ?>
                 <p class="section-empty">
-                    Belum ada sesi hari ini.
+                    Belum ada sesi hari ini. tes
                 </p>
             <?php else: ?>
                 <div class="table-wrapper-sm">
