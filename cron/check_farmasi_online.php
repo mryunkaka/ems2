@@ -9,6 +9,38 @@ require __DIR__ . '/../config/database.php';
 date_default_timezone_set('Asia/Jakarta');
 
 /* =========================================================
+   0️⃣ USER MELEWATI BATAS MAX DUTY → AUTO OFFLINE
+   ========================================================= */
+$stmtSettings = $pdo->prepare("
+    SELECT max_duty_minutes
+    FROM farmasi_online_settings
+    ORDER BY id ASC
+    LIMIT 1
+");
+$stmtSettings->execute();
+$maxDutyMinutes = max(0, (int)$stmtSettings->fetchColumn());
+
+$usersMaxDutyExpired = [];
+if ($maxDutyMinutes > 0) {
+    $stmtMaxDutyExpired = $pdo->prepare("
+        SELECT
+            ufs.user_id,
+            ur.full_name,
+            TIMESTAMPDIFF(SECOND, s.session_start, NOW()) AS current_session_seconds
+        FROM user_farmasi_status ufs
+        JOIN user_farmasi_sessions s
+            ON s.user_id = ufs.user_id
+           AND s.session_end IS NULL
+        JOIN user_rh ur
+            ON ur.id = ufs.user_id
+        WHERE ufs.status = 'online'
+          AND TIMESTAMPDIFF(SECOND, s.session_start, NOW()) >= ?
+    ");
+    $stmtMaxDutyExpired->execute([$maxDutyMinutes * 60]);
+    $usersMaxDutyExpired = $stmtMaxDutyExpired->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/* =========================================================
    1️⃣ USER IDLE ≥ 15 MENIT → KIRIM WARNING
    ========================================================= */
 $usersIdle = $pdo->query("
@@ -22,6 +54,67 @@ $usersIdle = $pdo->query("
 $pdo->beginTransaction();
 
 try {
+    /* ===============================
+       AUTO OFFLINE MAX DUTY
+       =============================== */
+    if (!empty($usersMaxDutyExpired)) {
+        $setOfflineMaxDuty = $pdo->prepare("
+            UPDATE user_farmasi_status
+            SET status = 'offline',
+                auto_offline_at = NOW(),
+                current_session_number = 0,
+                updated_at = NOW()
+            WHERE user_id = ?
+              AND status = 'online'
+        ");
+
+        $closeSessionMaxDuty = $pdo->prepare("
+            UPDATE user_farmasi_sessions
+            SET
+                session_end = NOW(),
+                duration_seconds = TIMESTAMPDIFF(SECOND, session_start, NOW()),
+                end_reason = 'auto_offline',
+                ended_by_user_id = user_id
+            WHERE user_id = ?
+              AND session_end IS NULL
+        ");
+
+        $insertActivityMaxDuty = $pdo->prepare("
+            INSERT INTO farmasi_activities
+                (activity_type, medic_user_id, medic_name, description)
+            VALUES
+                ('auto_offline', ?, ?, ?)
+        ");
+
+        $insertInboxMaxDuty = $pdo->prepare("
+            INSERT INTO user_inbox
+                (user_id, title, message, type, is_read, created_at)
+            VALUES
+                (?, ?, ?, 'system', 0, NOW())
+        ");
+
+        foreach ($usersMaxDutyExpired as $userMaxDuty) {
+            $uid = (int)($userMaxDuty['user_id'] ?? 0);
+            $fullName = (string)($userMaxDuty['full_name'] ?? 'Medis');
+
+            if ($uid <= 0) {
+                continue;
+            }
+
+            $setOfflineMaxDuty->execute([$uid]);
+            $closeSessionMaxDuty->execute([$uid]);
+            $insertActivityMaxDuty->execute([
+                $uid,
+                $fullName,
+                'Auto OFFLINE oleh sistem (maksimal waktu jaga tercapai)'
+            ]);
+            $insertInboxMaxDuty->execute([
+                $uid,
+                'Status Anda OFFLINE',
+                "Sistem mengubah status Anda menjadi OFFLINE karena batas maksimal waktu jaga telah tercapai.\n\nSilakan ONLINE kembali jika masih bertugas dan cooldown sudah selesai."
+            ]);
+        }
+    }
 
     /* ===============================
        SET DEADLINE + NOTIF
@@ -169,8 +262,13 @@ if (!empty($usersIdle)) {
 }
 
 /* ---------- PUSH OFFLINE ---------- */
-if (!empty($usersAutoOffline)) {
-    $PUSH_USERS = $usersAutoOffline;
+if (!empty($usersAutoOffline) || !empty($usersMaxDutyExpired)) {
+    $PUSH_USERS = array_values(array_map(static function ($user) {
+        return [
+            'user_id' => (int)($user['user_id'] ?? 0),
+            'full_name' => (string)($user['full_name'] ?? 'Medis'),
+        ];
+    }, array_merge($usersAutoOffline, $usersMaxDutyExpired)));
     $PUSH_TYPE  = 'offline';
     require __DIR__ . '/../actions/push_send.php';
 }

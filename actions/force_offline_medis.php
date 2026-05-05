@@ -33,6 +33,7 @@ try {
         UPDATE user_farmasi_status
         SET status = 'offline',
             auto_offline_at = NOW(),
+            current_session_number = 0,
             updated_at = NOW()
         WHERE user_id = ?
     ");

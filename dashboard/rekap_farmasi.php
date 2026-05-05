@@ -230,6 +230,69 @@ function ensureFarmasiOnline(PDO $pdo, int $userId, string $medicName, string $m
     }
 }
 
+function getFarmasiOnlineCooldownRemaining(PDO $pdo, int $userId): int
+{
+    if ($userId <= 0) {
+        return 0;
+    }
+
+    try {
+        $stmtSettings = $pdo->prepare("
+            SELECT cooldown_minutes
+            FROM farmasi_online_settings
+            ORDER BY id ASC
+            LIMIT 1
+        ");
+        $stmtSettings->execute();
+        $cooldownMinutes = max(0, (int)$stmtSettings->fetchColumn());
+
+        if ($cooldownMinutes <= 0) {
+            return 0;
+        }
+
+        $stmtCooldown = $pdo->prepare("
+            SELECT TIMESTAMPDIFF(SECOND, session_end, NOW()) AS seconds_since_offline
+            FROM user_farmasi_sessions
+            WHERE user_id = ?
+              AND session_end IS NOT NULL
+            ORDER BY session_end DESC
+            LIMIT 1
+        ");
+        $stmtCooldown->execute([$userId]);
+        $cooldownRow = $stmtCooldown->fetch(PDO::FETCH_ASSOC);
+
+        if (!$cooldownRow) {
+            return 0;
+        }
+
+        $secondsSinceOffline = max(0, (int)($cooldownRow['seconds_since_offline'] ?? 0));
+        $cooldownSeconds = $cooldownMinutes * 60;
+
+        if ($secondsSinceOffline >= $cooldownSeconds) {
+            return 0;
+        }
+
+        return $cooldownSeconds - $secondsSinceOffline;
+    } catch (Throwable $e) {
+        return 0;
+    }
+}
+
+function canAccessFarmasiSettingsByDivision(?string $division): bool
+{
+    $normalized = strtolower(trim((string)$division));
+    $compact = str_replace([' ', '_', '-'], '', $normalized);
+
+    $allowed = [
+        'generalaffair',
+        'executive',
+        'comitedisiplin',
+        'disciplinarycommittee',
+    ];
+
+    return in_array($compact, $allowed, true);
+}
+
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
@@ -266,6 +329,9 @@ $medicRole    = $user['role'] ?? '';
 $medicRoleLabel = ems_role_label($medicRole);
 $medicDivisionLabel = ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? '') ?: '-';
 $userId       = (int)($user['id'] ?? 0);
+
+// Cek apakah user boleh melihat tombol settings Medis Online
+$canViewFarmasiSettings = canAccessFarmasiSettingsByDivision($user['division'] ?? '');
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
 $packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
@@ -569,6 +635,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 3) Tambah transaksi penjualan (bisa beberapa paket sekaligus)
     if ($action === 'add_sale') {
+        $onlineCooldownRemaining = getFarmasiOnlineCooldownRemaining($pdo, $userId);
+        if ($onlineCooldownRemaining > 0) {
+            $errors[] = "Cooldown Medis Online masih aktif. Tunggu {$onlineCooldownRemaining} detik lagi sebelum bisa menyimpan transaksi farmasi.";
+        }
+
         // ===============================
         // COOLDOWN ANTI-SPAM (SERVER - SESSION BASED)
         // ===============================
@@ -1185,13 +1256,14 @@ $stmtOnlineMedics = $pdo->prepare("
            AND created_at <  DATE_FORMAT(NOW(), '%Y-%m-%d 23:59:59') + INTERVAL (6 - WEEKDAY(NOW())) DAY
         ) AS weekly_transaksi,
         
-        -- TAMBAHAN: HITUNG JAM ONLINE MINGGU INI
-        (SELECT COALESCE(SUM(duration_seconds), 0)
+        -- TAMBAHAN: HITUNG DURASI SESI ONLINE SAAT INI
+        (SELECT COALESCE(TIMESTAMPDIFF(SECOND, session_start, NOW()), 0)
          FROM user_farmasi_sessions
          WHERE user_id = ufs.user_id
-           AND session_start >= DATE_FORMAT(NOW(), '%Y-%m-%d 00:00:00') - INTERVAL (WEEKDAY(NOW())) DAY
-           AND session_start <  DATE_FORMAT(NOW(), '%Y-%m-%d 23:59:59') + INTERVAL (6 - WEEKDAY(NOW())) DAY
-        ) AS weekly_online_seconds
+           AND session_end IS NULL
+         ORDER BY session_start DESC
+         LIMIT 1
+        ) AS current_online_seconds
         
     FROM user_farmasi_status ufs
     JOIN user_rh ur
@@ -1221,11 +1293,11 @@ $onlineMedics = $stmtOnlineMedics->fetchAll(PDO::FETCH_ASSOC);
 
 // FORMAT DURASI UNTUK TAMPILAN
 foreach ($onlineMedics as &$m) {
-    $seconds = (int)($m['weekly_online_seconds'] ?? 0);
+    $seconds = (int)($m['current_online_seconds'] ?? 0);
     $hours = floor($seconds / 3600);
     $minutes = floor(($seconds % 3600) / 60);
     $secs = $seconds % 60;
-    $m['weekly_online_text'] = "{$hours}j {$minutes}m {$secs}d";
+    $m['current_online_text'] = "{$hours}j {$minutes}m {$secs}d";
     $m['join_duration_text'] = formatJoinDurationDetailed($m['tanggal_masuk'] ?? null);
     $m['medic_role_label'] = ems_role_label($m['medic_role'] ?? '');
     $m['medic_division_label'] = ems_normalize_division($m['medic_division'] ?? '') ?: '-';
@@ -2146,6 +2218,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div> -->
                     <?php endif; ?>
 
+                    <div id="onlineCooldownNotice" class="notice-box notice-warning" style="display:none;"></div>
+
                     <!-- NOTICE COOLDOWN GLOBAL (REALTIME) -->
                     <div id="cooldownNotice" class="notice-box notice-info">
                     </div>
@@ -2391,7 +2465,14 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="farmasi-card-header">
                         <div class="card-header-between">
                             <h3 class="farmasi-card-title">Medis Online</h3>
-                            <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
+                            <div class="flex items-center gap-2">
+                                <?php if ($canViewFarmasiSettings): ?>
+                                    <button type="button" id="btnFarmasiSettings" class="btn-secondary btn-sm" onclick="openFarmasiSettingsModal()">
+                                        <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?> Setting
+                                    </button>
+                                <?php endif; ?>
+                                <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
+                            </div>
                         </div>
                         <p class="farmasi-card-subtitle">Prioritas penjualan paling sedikit di urutan atas.</p>
                     </div>
@@ -2429,9 +2510,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <span><strong>Join:</strong> <?= htmlspecialchars($m['join_duration_text']) ?></span>
                                                 <span><strong>Online:</strong>
                                                     <strong class="weekly-online"
-                                                        data-seconds="<?= (int)($m['weekly_online_seconds'] ?? 0) ?>"
+                                                        data-seconds="<?= (int)($m['current_online_seconds'] ?? 0) ?>"
                                                         data-user-id="<?= (int)$m['user_id'] ?>">
-                                                        <?= htmlspecialchars($m['weekly_online_text'] ?? '0j 0m') ?>
+                                                        <?= htmlspecialchars($m['current_online_text'] ?? '0j 0m') ?>
                                                     </strong>
                                                 </span>
                                             </div>
@@ -3690,6 +3771,17 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             }
 
+            if (typeof window.getFarmasiOnlineCooldownRemaining === 'function') {
+                const remainOnlineCooldown = window.getFarmasiOnlineCooldownRemaining();
+                if (remainOnlineCooldown > 0) {
+                    alert(`Cooldown Medis Online masih aktif. Tunggu ${remainOnlineCooldown} detik lagi sebelum menyimpan transaksi farmasi.`);
+                    if (typeof window.refreshFarmasiDutyState === 'function') {
+                        window.refreshFarmasiDutyState();
+                    }
+                    return;
+                }
+            }
+
             if (CONSUMER_LOCK) {
                 alert('Citizen ID ini sudah punya transaksi hari ini. 1 Citizen ID hanya boleh 1 transaksi per hari.');
                 return;
@@ -4227,6 +4319,14 @@ include __DIR__ . '/../partials/sidebar.php';
                     }, timeoutMs);
                 }
 
+                if (!requestOptions.method) {
+                    requestOptions.method = 'GET';
+                }
+
+                if (!requestOptions.cache && String(requestOptions.method).toUpperCase() === 'GET') {
+                    requestOptions.cache = 'no-store';
+                }
+
                 try {
                     const res = await fetch(url, requestOptions);
                     const contentType = String(res.headers.get('content-type') || '').toLowerCase();
@@ -4432,6 +4532,8 @@ include __DIR__ . '/../partials/sidebar.php';
     </script>
     <script>
         (function() {
+            window.FarmasiRealtime = window.FarmasiRealtime || {};
+
             const container = document.getElementById('onlineMedicsContainer');
             const totalBadge = document.getElementById('totalMedicsBadge');
             if (!container || !totalBadge) return;
@@ -4466,7 +4568,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     id: m.user_id,
                     name: m.medic_name,
                     tx: m.total_transaksi,
-                    seconds: m.weekly_online_seconds,
+                    seconds: m.current_online_seconds,
                     allTx: m.total_transaksi_semua,
                     batch: m.medic_batch,
                     role: m.medic_role_label,
@@ -4509,7 +4611,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                     <div class="online-medic-inline-meta">
                         <span><strong>Join:</strong> ${escapeHtml(m.join_duration_text || '-')}</span>
-                        <span><strong>Online:</strong> <strong class="weekly-online" data-seconds="${m.weekly_online_seconds}" data-user-id="${m.user_id}">${escapeHtml(m.weekly_online_text)}</strong></span>
+                        <span><strong>Online:</strong> <strong class="weekly-online" data-seconds="${m.current_online_seconds}" data-user-id="${m.user_id}">${escapeHtml(m.current_online_text)}</strong></span>
                     </div>
                     <button type="button" class="btn-force-offline"
                         data-user-id="${m.user_id}"
@@ -4588,8 +4690,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const medicsPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_online_medics.php'),
-                interval: 15000,
-                maxInterval: 180000,
+                interval: 3000,
+                maxInterval: 30000,
                 timeoutMs: 6000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
@@ -4603,6 +4705,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 },
                 onError: handleMedicsError
             });
+
+            window.FarmasiRealtime.refreshOnlineMedics = function() {
+                medicsPoller.trigger();
+            };
 
             setInterval(updateOnlineDurations, 1000);
             medicsPoller.start();
@@ -4953,6 +5059,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <script>
     (function() {
+        window.FarmasiRealtime = window.FarmasiRealtime || {};
+
         const badge = document.getElementById('farmasiStatusBadge');
         const text = document.getElementById('farmasiStatusText');
         if (!badge || !text) return;
@@ -4972,12 +5080,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 badge.classList.add('status-offline');
                 text.textContent = 'OFFLINE';
             }
+
+            badge.dataset.status = status;
         }
 
         const statusPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_farmasi_status.php'),
-            interval: 15000,
-            maxInterval: 120000,
+            interval: 3000,
+            maxInterval: 30000,
             timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.status !== 'string') {
@@ -4997,6 +5107,15 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             }
         });
+
+        window.FarmasiRealtime.applyOwnStatus = function(status) {
+            badge.title = '';
+            updateUI(status);
+        };
+
+        window.FarmasiRealtime.refreshStatus = function() {
+            statusPoller.trigger();
+        };
 
         statusPoller.start();
     })();
@@ -5267,6 +5386,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 const json = await res.json();
                 if (!json.success) {
                     alert(json.message || 'Gagal mengubah status');
+                    if (typeof window.refreshFarmasiDutyState === 'function') {
+                        window.refreshFarmasiDutyState();
+                    }
                     isBusy = false;
                     return;
                 }
@@ -5283,6 +5405,21 @@ include __DIR__ . '/../partials/sidebar.php';
                 } else {
                     badge.classList.add('status-offline');
                     text.textContent = 'OFFLINE';
+                }
+
+                if (window.FarmasiRealtime) {
+                    if (typeof window.FarmasiRealtime.applyOwnStatus === 'function') {
+                        window.FarmasiRealtime.applyOwnStatus(next);
+                    }
+                    if (typeof window.FarmasiRealtime.refreshStatus === 'function') {
+                        window.FarmasiRealtime.refreshStatus();
+                    }
+                    if (typeof window.FarmasiRealtime.refreshOnlineMedics === 'function') {
+                        window.FarmasiRealtime.refreshOnlineMedics();
+                        setTimeout(function() {
+                            window.FarmasiRealtime.refreshOnlineMedics();
+                        }, 750);
+                    }
                 }
 
             } catch (e) {
@@ -5431,6 +5568,21 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 closeModal();
                 alert('Berhasil di-force offline');
+
+                if (window.FarmasiRealtime) {
+                    if (typeof window.FarmasiRealtime.refreshOnlineMedics === 'function') {
+                        window.FarmasiRealtime.refreshOnlineMedics();
+                        setTimeout(function() {
+                            window.FarmasiRealtime.refreshOnlineMedics();
+                        }, 750);
+                    }
+                    if (String(targetUserId) === String(<?= json_encode((string)$userId) ?>) && typeof window.FarmasiRealtime.applyOwnStatus === 'function') {
+                        window.FarmasiRealtime.applyOwnStatus('offline');
+                    }
+                    if (typeof window.FarmasiRealtime.refreshStatus === 'function') {
+                        window.FarmasiRealtime.refreshStatus();
+                    }
+                }
 
             } catch (err) {
                 console.error(err);
@@ -5916,6 +6068,338 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         fetchState();
+    })();
+</script>
+
+<!-- Modal Setting Medis Online -->
+<?php if ($canViewFarmasiSettings): ?>
+<div id="farmasiSettingsModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell max-w-md">
+        <div class="modal-head px-5 py-4">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('cog-6-tooth', 'h-5 w-5') ?> <span>Setting Medis Online</span>
+            </div>
+            <button type="button" onclick="closeFarmasiSettingsModal()" class="btn-danger btn-compact">
+                <?= ems_icon('x-mark', 'h-4 w-4') ?> <span>Tutup</span>
+            </button>
+        </div>
+        <div class="modal-content p-5">
+            <form id="farmasiSettingsForm">
+                <div class="space-y-4">
+                    <div>
+                        <label for="settingMaxMedics" class="block text-sm font-medium text-slate-700 mb-1">
+                            Maksimal Medis Online
+                        </label>
+                        <input type="number" id="settingMaxMedics" name="max_online_medics" min="0" value="0"
+                            class="form-input w-full rounded-lg border-slate-300">
+                        <small class="text-slate-500">0 = tidak ada batasan</small>
+                    </div>
+                    <div>
+                        <label for="settingMaxDuty" class="block text-sm font-medium text-slate-700 mb-1">
+                            Maksimal Waktu Jaga (HH:MM:SS)
+                        </label>
+                        <input type="text" id="settingMaxDuty" name="max_duty_duration" placeholder="01:00:00"
+                            class="form-input w-full rounded-lg border-slate-300">
+                        <small class="text-slate-500">Format: HH:MM:SS (contoh: 01:00:00) | 0 atau kosong = tidak ada batasan</small>
+                    </div>
+                    <div>
+                        <label for="settingCooldown" class="block text-sm font-medium text-slate-700 mb-1">
+                            Cooldown Per User (menit)
+                        </label>
+                        <input type="number" id="settingCooldown" name="cooldown_minutes" min="0" value="0"
+                            class="form-input w-full rounded-lg border-slate-300">
+                        <small class="text-slate-500">0 = tidak ada cooldown</small>
+                    </div>
+                </div>
+                <div class="modal-actions mt-5">
+                    <button type="button" onclick="closeFarmasiSettingsModal()" class="btn-secondary">Batal</button>
+                    <button type="submit" id="btnSaveSettings" class="btn-success">Simpan Setting</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<script>
+    // =============================================
+    // FARMASI ONLINE SETTINGS & TIMER RESET
+    // =============================================
+    (function() {
+        const FARMASI_SETTINGS = {
+            maxOnlineMedics: 0,
+            maxDutyMinutes: 0,
+            cooldownMinutes: 0
+        };
+
+        const onlineCooldownBox = document.getElementById('onlineCooldownNotice');
+        const submitButton = document.getElementById('btnSubmit');
+        let dutyCheckInterval = null;
+        let hasShownMaxDutyWarning = false;
+        let onlineCooldownUntilMs = 0;
+
+        function formatDurationHms(totalSeconds) {
+            const seconds = Math.max(0, parseInt(totalSeconds || 0, 10));
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+
+            if (hours > 0) {
+                return `${hours}j ${minutes}m ${secs}d`;
+            }
+
+            if (minutes > 0) {
+                return `${minutes}m ${secs}d`;
+            }
+
+            return `${secs} detik`;
+        }
+
+        function getOnlineCooldownRemainingSeconds() {
+            if (!onlineCooldownUntilMs) {
+                return 0;
+            }
+
+            return Math.max(0, Math.ceil((onlineCooldownUntilMs - Date.now()) / 1000));
+        }
+
+        function renderOnlineCooldownNotice() {
+            if (!onlineCooldownBox) {
+                return;
+            }
+
+            const remain = getOnlineCooldownRemainingSeconds();
+            const badge = document.getElementById('farmasiStatusBadge');
+            const currentStatus = badge ? String(badge.dataset.status || 'offline') : 'offline';
+            const shouldLockSubmit = remain > 0;
+
+            if (submitButton && !PROFILE_INCOMPLETE) {
+                submitButton.disabled = shouldLockSubmit;
+                submitButton.classList.toggle('btn-disabled', shouldLockSubmit);
+            }
+
+            if (remain <= 0 || currentStatus === 'online') {
+                if (remain <= 0) {
+                    onlineCooldownBox.style.display = 'none';
+                    onlineCooldownBox.innerHTML = '';
+                    return;
+                }
+            }
+
+            onlineCooldownBox.innerHTML = `
+                <strong>Cooldown Medis Online Masih Aktif</strong><br>
+                Anda belum bisa melakukan transaksi atau kembali online untuk jualan obat farmasi.<br>
+                Sisa waktu: <strong>${formatDurationHms(remain)}</strong>.
+            `;
+            onlineCooldownBox.style.display = 'block';
+        }
+
+        function applyOnlineCooldown(seconds) {
+            const remain = Math.max(0, parseInt(seconds || 0, 10));
+            onlineCooldownUntilMs = remain > 0 ? (Date.now() + (remain * 1000)) : 0;
+            renderOnlineCooldownNotice();
+        }
+
+        window.getFarmasiOnlineCooldownRemaining = getOnlineCooldownRemainingSeconds;
+
+        // Load settings dari server
+        async function loadSettings() {
+            try {
+                const res = await fetch(window.emsUrl('/actions/get_farmasi_settings.php'), {
+                    cache: 'no-store'
+                });
+                const json = await res.json();
+                if (json.success && json.settings) {
+                    FARMASI_SETTINGS.maxOnlineMedics = parseInt(json.settings.max_online_medics || 0, 10);
+                    FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings.max_duty_minutes || 0, 10);
+                    FARMASI_SETTINGS.cooldownMinutes = parseInt(json.settings.cooldown_minutes || 0, 10);
+
+                    // Update form values
+                    const maxMedicsEl = document.getElementById('settingMaxMedics');
+                    const maxDutyEl = document.getElementById('settingMaxDuty');
+                    const cooldownEl = document.getElementById('settingCooldown');
+
+                    if (maxMedicsEl) maxMedicsEl.value = FARMASI_SETTINGS.maxOnlineMedics;
+                    if (maxDutyEl) maxDutyEl.value = json.settings.max_duty_duration || '';
+                    if (cooldownEl) cooldownEl.value = FARMASI_SETTINGS.cooldownMinutes;
+                }
+            } catch (e) {
+                console.error('Gagal memuat settings:', e);
+            }
+        }
+
+        // Check duty limits untuk auto-offline
+        async function checkDutyLimits() {
+            const badge = document.getElementById('farmasiStatusBadge');
+            if (!badge) {
+                return;
+            }
+
+            try {
+                const res = await fetch(window.emsUrl('/actions/check_farmasi_duty_limits.php'), {
+                    cache: 'no-store'
+                });
+                const json = await res.json();
+
+                if (json.success) {
+                    applyOnlineCooldown(parseInt(json.cooldown_remaining_seconds || 0, 10));
+
+                    if (badge.dataset.status !== 'online') {
+                        hasShownMaxDutyWarning = false;
+                        return;
+                    }
+
+                    // Hanya check jika ada max duty time
+                    if (FARMASI_SETTINGS.maxDutyMinutes <= 0) {
+                        return;
+                    }
+
+                    // Check should auto-offline
+                    if (json.should_auto_offline) {
+                        // Auto offline
+                        await autoOffline();
+                        return;
+                    }
+
+                    // Warning 5 menit sebelum auto-offline
+                    const secondsRemaining = (parseInt(json.max_duty_seconds || 0, 10) - parseInt(json.current_session_seconds || 0, 10));
+                    const minutesRemaining = Math.ceil(secondsRemaining / 60);
+                    if (secondsRemaining > 0 && minutesRemaining <= 5 && !hasShownMaxDutyWarning) {
+                        hasShownMaxDutyWarning = true;
+                        alert('Peringatan: Waktu jaga tersisa ' + minutesRemaining + ' menit. Sistem akan auto-offline setelah batas waktu tercapai.');
+                    }
+                }
+            } catch (e) {
+                // Silent error
+            }
+        }
+
+        // Auto offline
+        async function autoOffline() {
+            try {
+                const res = await fetch(window.emsUrl('/actions/auto_offline_farmasi.php'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const json = await res.json();
+
+                if (json.success) {
+                    alert('Anda telah auto-offline karena mencapai batas waktu jaga maksimal.');
+                    if (window.FarmasiRealtime) {
+                        if (typeof window.FarmasiRealtime.applyOwnStatus === 'function') {
+                            window.FarmasiRealtime.applyOwnStatus('offline');
+                        }
+                        if (typeof window.FarmasiRealtime.refreshStatus === 'function') {
+                            window.FarmasiRealtime.refreshStatus();
+                        }
+                        if (typeof window.FarmasiRealtime.refreshOnlineMedics === 'function') {
+                            window.FarmasiRealtime.refreshOnlineMedics();
+                            setTimeout(function() {
+                                window.FarmasiRealtime.refreshOnlineMedics();
+                            }, 750);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Auto offline failed:', e);
+            }
+        }
+
+        // Start duty check interval
+        function startDutyCheck() {
+            if (dutyCheckInterval) clearInterval(dutyCheckInterval);
+            dutyCheckInterval = setInterval(function() {
+                renderOnlineCooldownNotice();
+                checkDutyLimits();
+            }, 5000);
+            setInterval(renderOnlineCooldownNotice, 1000);
+            checkDutyLimits();
+        }
+
+        window.refreshFarmasiDutyState = checkDutyLimits;
+
+        // Global functions untuk modal
+        window.openFarmasiSettingsModal = function() {
+            const modal = document.getElementById('farmasiSettingsModal');
+            if (modal) {
+                loadSettings();
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+                document.body.classList.add('modal-open');
+            }
+        };
+
+        window.closeFarmasiSettingsModal = function() {
+            const modal = document.getElementById('farmasiSettingsModal');
+            if (modal) {
+                modal.style.display = 'none';
+                modal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+            }
+        };
+
+        // Form submit handler
+        const settingsForm = document.getElementById('farmasiSettingsForm');
+        if (settingsForm) {
+            settingsForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+
+                const btnSave = document.getElementById('btnSaveSettings');
+                if (btnSave) {
+                    btnSave.textContent = 'Menyimpan...';
+                    btnSave.disabled = true;
+                }
+
+                const maxMedics = parseInt(document.getElementById('settingMaxMedics').value || 0, 10);
+                const maxDuty = (document.getElementById('settingMaxDuty').value || '').trim();
+                const cooldown = parseInt(document.getElementById('settingCooldown').value || 0, 10);
+
+                try {
+                    const res = await fetch(window.emsUrl('/actions/save_farmasi_settings.php'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            max_online_medics: maxMedics,
+                            max_duty_duration: maxDuty,
+                            cooldown_minutes: cooldown
+                        })
+                    });
+
+                    const json = await res.json();
+                    if (json.success) {
+                        alert('Settings berhasil disimpan!');
+                        closeFarmasiSettingsModal();
+                        // Update local settings
+                        FARMASI_SETTINGS.maxOnlineMedics = maxMedics;
+                        FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings?.max_duty_minutes || 0, 10);
+                        FARMASI_SETTINGS.cooldownMinutes = cooldown;
+                        // Restart duty check jika perlu
+                        if (FARMASI_SETTINGS.maxDutyMinutes > 0) {
+                            startDutyCheck();
+                        }
+                        renderOnlineCooldownNotice();
+                    } else {
+                        alert(json.message || 'Gagal menyimpan settings');
+                    }
+                } catch (e) {
+                    alert('Koneksi server gagal');
+                } finally {
+                    if (btnSave) {
+                        btnSave.textContent = 'Simpan Setting';
+                        btnSave.disabled = false;
+                    }
+                }
+            });
+        }
+
+        // Init: load settings dan start duty check
+        loadSettings();
+        setInterval(loadSettings, 15000);
+        startDutyCheck();
     })();
 </script>
 
