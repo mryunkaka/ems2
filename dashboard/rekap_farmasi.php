@@ -297,6 +297,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
@@ -335,6 +336,7 @@ $canViewFarmasiSettings = canAccessFarmasiSettingsByDivision($user['division'] ?
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
 $packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
+$salesHasCooperationColumns = gaCooperationSalesColumnsReady($pdo);
 
 $stmtCurrentUser = $pdo->prepare("
     SELECT tanggal_masuk, citizen_id, batch
@@ -692,6 +694,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $consumerName = farmasiConsumerNameDisplay($rawConsumerName);
                 $submittedIdentityId = (int)($_POST['identity_id'] ?? 0);
                 $mergeTargets = [];
+                $cooperationMemberStatus = null;
+                $cooperationPricing = [];
+                $hasClaimedFreePackage = false;
 
 
                 $packageMainRaw = trim((string)($_POST['package_main'] ?? ''));
@@ -760,6 +765,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pkgIfaksId > 0)   $selectedIds[] = $pkgIfaksId;
                 if ($pkgPainId > 0)    $selectedIds[] = $pkgPainId;
 
+                if (empty($errors)) {
+                    $cooperationMemberStatus = gaCooperationResolveMember($pdo, $consumerName, $effectiveUnit);
+                    $availableCooperationPackageIds = [];
+
+                    if ($cooperationMemberStatus) {
+                        $availableCooperationPackageIds = array_values(array_diff(
+                            array_map('intval', (array)($cooperationMemberStatus['eligible_package_ids'] ?? [])),
+                            array_map('intval', (array)($cooperationMemberStatus['used_package_ids'] ?? []))
+                        ));
+                    }
+
+                    if (empty($selectedIds) && !empty($availableCooperationPackageIds)) {
+                        $selectedIds = $availableCooperationPackageIds;
+                    }
+                }
+
                 if (empty($selectedIds) && empty($errors)) {
                     $errors[] = "Pilih minimal satu paket.";
                 }
@@ -786,6 +807,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!isset($packagesSelected[$id])) {
                             $errors[] = "Ada paket yang tidak ditemukan di database.";
                             break;
+                        }
+                    }
+
+                    if (empty($errors)) {
+                        $cooperationPricing = gaCooperationFindPackagePricing($selectedIds, $cooperationMemberStatus);
+                        foreach ($cooperationPricing as $pricingMeta) {
+                            if (!empty($pricingMeta['claimed_free'])) {
+                                $hasClaimedFreePackage = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -821,6 +852,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         FROM sales
                         WHERE DATE(created_at) = :today
                           " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
+                          " . ($salesHasCooperationColumns ? " AND COALESCE(cooperation_claimed_free, 0) = 0" : "") . "
                           AND UPPER(
                               REPLACE(
                                   REPLACE(
@@ -858,7 +890,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         (int)$totals['total_ifaks'] +
                         (int)$totals['total_painkiller'];
 
-                    if ($totalToday > 0) {
+                    if ($totalToday > 0 && !$cooperationMemberStatus) {
                         $errors[] = "{$consumerIdentifierLabel} {$consumerName} sudah punya transaksi hari ini. 1 Citizen ID hanya boleh 1 transaksi per hari.";
                     }
 
@@ -951,9 +983,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             package_id,
                             package_name,
                             price,
+                            " . ($salesHasCooperationColumns ? "original_price, cooperation_discount_amount," : "") . "
                             qty_bandage,
                             qty_ifaks,
                             qty_painkiller,
+                            identity_id,
+                            " . ($salesHasCooperationColumns ? "cooperation_id, cooperation_member_id, cooperation_period_type, cooperation_period_key, cooperation_claimed_free," : "") . "
                             created_at,
                             tx_hash
                         )
@@ -967,9 +1002,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             :pid,
                             :pname,
                             :price,
+                            " . ($salesHasCooperationColumns ? ":original_price, :cooperation_discount_amount," : "") . "
                             :qb,
                             :qi,
                             :qp,
+                            :identity_id,
+                            " . ($salesHasCooperationColumns ? ":cooperation_id, :cooperation_member_id, :cooperation_period_type, :cooperation_period_key, :cooperation_claimed_free," : "") . "
                             :created,
                             :tx
                         )
@@ -981,7 +1019,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // custom => 1 baris "Paket Custom"
                         // selain custom => tetap per paket
                         // ===============================
-                        if ($isCustomPackage) {
+                        if ($isCustomPackage && !$hasClaimedFreePackage) {
                             $customPrice = 0;
                             $customBandage = 0;
                             $customIfaks = 0;
@@ -1007,15 +1045,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ':pid'     => $customPackageId,
                                 ':pname'   => 'Paket Custom',
                                 ':price'   => $customPrice,
+                                ...($salesHasCooperationColumns ? [
+                                    ':original_price' => $customPrice,
+                                    ':cooperation_discount_amount' => 0,
+                                ] : []),
                                 ':qb'      => $customBandage,
                                 ':qi'      => $customIfaks,
                                 ':qp'      => $customPain,
+                                ':identity_id' => $submittedIdentityId > 0 ? $submittedIdentityId : null,
+                                ...($salesHasCooperationColumns ? [
+                                    ':cooperation_id' => null,
+                                    ':cooperation_member_id' => null,
+                                    ':cooperation_period_type' => null,
+                                    ':cooperation_period_key' => null,
+                                    ':cooperation_claimed_free' => 0,
+                                ] : []),
                                 ':created' => $now,
                                 ':tx'      => $txHash,
                             ]);
                         } else {
                             foreach ($selectedIds as $id) {
                                 $p = $packagesSelected[$id];
+                                $originalPrice = (int)$p['price'];
+                                $pricing = $cooperationPricing[(int)$id] ?? [
+                                    'eligible' => false,
+                                    'claimed_free' => false,
+                                ];
+                                $claimedFree = !empty($pricing['claimed_free']);
+                                $finalPrice = $claimedFree ? 0 : $originalPrice;
+                                $discountAmount = $claimedFree ? $originalPrice : 0;
+                                $periodMeta = $cooperationMemberStatus['period_meta'] ?? null;
 
                                 $txHash = hash('sha256', $postedToken . '|' . $id);
 
@@ -1027,10 +1086,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     ...($salesHasUnitCode ? [':unit_code' => $effectiveUnit] : []),
                                     ':pid'     => (int)$p['id'],
                                     ':pname'   => $p['name'],
-                                    ':price'   => (int)$p['price'],
+                                    ':price'   => $finalPrice,
+                                    ...($salesHasCooperationColumns ? [
+                                        ':original_price' => $originalPrice,
+                                        ':cooperation_discount_amount' => $discountAmount,
+                                    ] : []),
                                     ':qb'      => (int)$p['bandage_qty'],
                                     ':qi'      => (int)$p['ifaks_qty'],
                                     ':qp'      => (int)$p['painkiller_qty'],
+                                    ':identity_id' => $submittedIdentityId > 0 ? $submittedIdentityId : null,
+                                    ...($salesHasCooperationColumns ? [
+                                        ':cooperation_id' => $cooperationMemberStatus['cooperation_id'] ?? null,
+                                        ':cooperation_member_id' => $cooperationMemberStatus['member_id'] ?? null,
+                                        ':cooperation_period_type' => $cooperationMemberStatus['period_type'] ?? null,
+                                        ':cooperation_period_key' => $periodMeta['key'] ?? null,
+                                        ':cooperation_claimed_free' => $claimedFree ? 1 : 0,
+                                    ] : []),
                                     ':created' => $now,
                                     ':tx'      => $txHash,
                                 ]);
@@ -1049,10 +1120,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                             foreach ($selectedIds as $id) {
                                 $p = $packagesSelected[$id];
+                                $pricing = $cooperationPricing[(int)$id] ?? [
+                                    'eligible' => false,
+                                    'claimed_free' => false,
+                                ];
                                 $logTotalBandage += (int)$p['bandage_qty'];
                                 $logTotalIfaks   += (int)$p['ifaks_qty'];
                                 $logTotalPain    += (int)$p['painkiller_qty'];
-                                $logTotalPrice   += (int)$p['price'];
+                                $logTotalPrice   += !empty($pricing['claimed_free']) ? 0 : (int)$p['price'];
                             }
 
                             // Buat deskripsi singkat
@@ -1353,6 +1428,7 @@ $stmtDailyTotals = $pdo->prepare("
     FROM sales
     WHERE DATE(created_at) = :today
       " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
+      " . ($salesHasCooperationColumns ? " AND COALESCE(cooperation_claimed_free, 0) = 0" : "") . "
     GROUP BY consumer_name
 ");
 $dailyTotalsParams = [':today' => $todayDate];
@@ -1384,6 +1460,7 @@ foreach ($dailyTotalsRows as $row) {
 $stmtDailyDetail = $pdo->prepare("
     SELECT consumer_name, medic_name, package_name, created_at,
            qty_bandage, qty_ifaks, qty_painkiller
+           " . ($salesHasCooperationColumns ? ", COALESCE(cooperation_claimed_free, 0) AS cooperation_claimed_free" : ", 0 AS cooperation_claimed_free") . "
     FROM sales
     WHERE DATE(created_at) = :today
       " . ($salesHasUnitCode ? " AND unit_code = :unit_code" : "") . "
@@ -1405,33 +1482,62 @@ foreach ($detailRows as $row) {
         continue;
     }
     $displayName = trim((string)$row['consumer_name']);
-    if (!isset($dailyDetailJS[$key])) {
-        $dailyDetailJS[$key] = [];
-    }
-    $dailyDetailJS[$key][] = [
+    $isCooperationFree = (int)($row['cooperation_claimed_free'] ?? 0) === 1;
+    $detailItem = [
         'consumer_name' => $displayName,
         'medic'      => $row['medic_name'],
-        'package'    => $row['package_name'],
+        'package'    => $isCooperationFree ? 'PAKET GRATIS' : $row['package_name'],
         'time'       => formatTanggalID($row['created_at']),
         'bandage'    => (int)$row['qty_bandage'],
         'ifaks'      => (int)$row['qty_ifaks'],
         'painkiller' => (int)$row['qty_painkiller'],
+        'cooperation_claimed_free' => $isCooperationFree ? 1 : 0,
     ];
+    if (!isset($dailyDetailJS[$key])) {
+        $dailyDetailJS[$key] = [];
+    }
+    if ($isCooperationFree && !empty($dailyDetailJS[$key])) {
+        $lastIndex = count($dailyDetailJS[$key]) - 1;
+        $lastItem = $dailyDetailJS[$key][$lastIndex];
+        if (
+            (int)($lastItem['cooperation_claimed_free'] ?? 0) === 1 &&
+            (string)($lastItem['medic'] ?? '') === (string)$row['medic_name'] &&
+            (string)($lastItem['time'] ?? '') === formatTanggalID($row['created_at'])
+        ) {
+            $dailyDetailJS[$key][$lastIndex]['bandage'] += (int)$row['qty_bandage'];
+            $dailyDetailJS[$key][$lastIndex]['ifaks'] += (int)$row['qty_ifaks'];
+            $dailyDetailJS[$key][$lastIndex]['painkiller'] += (int)$row['qty_painkiller'];
+        } else {
+            $dailyDetailJS[$key][] = $detailItem;
+        }
+    } else {
+        $dailyDetailJS[$key][] = $detailItem;
+    }
 
     if ($displayName !== '') {
         if (!isset($dailyDetailByNameJS[$displayName])) {
             $dailyDetailByNameJS[$displayName] = [];
         }
-        $dailyDetailByNameJS[$displayName][] = [
-            'consumer_name' => $displayName,
-            'medic'      => $row['medic_name'],
-            'package'    => $row['package_name'],
-            'time'       => formatTanggalID($row['created_at']),
-            'bandage'    => (int)$row['qty_bandage'],
-            'ifaks'      => (int)$row['qty_ifaks'],
-            'painkiller' => (int)$row['qty_painkiller'],
-        ];
-        $todayConsumerNamesJS[$displayName] = $displayName;
+        if ($isCooperationFree && !empty($dailyDetailByNameJS[$displayName])) {
+            $lastIndexByName = count($dailyDetailByNameJS[$displayName]) - 1;
+            $lastItemByName = $dailyDetailByNameJS[$displayName][$lastIndexByName];
+            if (
+                (int)($lastItemByName['cooperation_claimed_free'] ?? 0) === 1 &&
+                (string)($lastItemByName['medic'] ?? '') === (string)$row['medic_name'] &&
+                (string)($lastItemByName['time'] ?? '') === formatTanggalID($row['created_at'])
+            ) {
+                $dailyDetailByNameJS[$displayName][$lastIndexByName]['bandage'] += (int)$row['qty_bandage'];
+                $dailyDetailByNameJS[$displayName][$lastIndexByName]['ifaks'] += (int)$row['qty_ifaks'];
+                $dailyDetailByNameJS[$displayName][$lastIndexByName]['painkiller'] += (int)$row['qty_painkiller'];
+            } else {
+                $dailyDetailByNameJS[$displayName][] = $detailItem;
+            }
+        } else {
+            $dailyDetailByNameJS[$displayName][] = $detailItem;
+        }
+        if (!$isCooperationFree) {
+            $todayConsumerNamesJS[$displayName] = $displayName;
+        }
     }
 }
 
@@ -1466,6 +1572,105 @@ $sqlSales .= " ORDER BY created_at DESC";
 $stmtSales = $pdo->prepare($sqlSales);
 $stmtSales->execute($paramsSales);
 $filteredSales = $stmtSales->fetchAll(PDO::FETCH_ASSOC);
+
+if ($salesHasCooperationColumns && !empty($filteredSales)) {
+    $groupedFilteredSales = [];
+    $normalTransactionGroupCounts = [];
+
+    foreach ($filteredSales as $saleRow) {
+        $isCooperationFree = (int)($saleRow['cooperation_claimed_free'] ?? 0) === 1;
+        if ($isCooperationFree) {
+            continue;
+        }
+
+        $groupBaseKey = implode('|', [
+            (string)($saleRow['consumer_name'] ?? ''),
+            (string)($saleRow['medic_name'] ?? ''),
+            (string)($saleRow['medic_jabatan'] ?? ''),
+            (string)($saleRow['created_at'] ?? ''),
+        ]);
+
+        if (!isset($normalTransactionGroupCounts[$groupBaseKey])) {
+            $normalTransactionGroupCounts[$groupBaseKey] = 0;
+        }
+        $normalTransactionGroupCounts[$groupBaseKey]++;
+    }
+
+    foreach ($filteredSales as $saleRow) {
+        $isCooperationFree = (int)($saleRow['cooperation_claimed_free'] ?? 0) === 1;
+        $groupBaseKey = implode('|', [
+            (string)($saleRow['consumer_name'] ?? ''),
+            (string)($saleRow['medic_name'] ?? ''),
+            (string)($saleRow['medic_jabatan'] ?? ''),
+            (string)($saleRow['created_at'] ?? ''),
+            (string)($saleRow['cooperation_member_id'] ?? ''),
+        ]);
+
+        $normalGroupKey = implode('|', [
+            (string)($saleRow['consumer_name'] ?? ''),
+            (string)($saleRow['medic_name'] ?? ''),
+            (string)($saleRow['medic_jabatan'] ?? ''),
+            (string)($saleRow['created_at'] ?? ''),
+        ]);
+        $isCustomGroupCandidate = !$isCooperationFree
+            && ($normalTransactionGroupCounts[$normalGroupKey] ?? 0) > 1;
+
+        if (!$isCooperationFree) {
+            $lastIndex = count($groupedFilteredSales) - 1;
+            $lastRow = $lastIndex >= 0 ? $groupedFilteredSales[$lastIndex] : null;
+            $lastGroupKey = $lastRow['custom_group_key'] ?? null;
+
+            if ($isCustomGroupCandidate && $lastRow && $lastGroupKey === ('custom|' . $groupBaseKey)) {
+                $groupedFilteredSales[$lastIndex]['qty_bandage'] += (int)($saleRow['qty_bandage'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['qty_ifaks'] += (int)($saleRow['qty_ifaks'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['qty_painkiller'] += (int)($saleRow['qty_painkiller'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['price'] += (int)($saleRow['price'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['original_price'] += (int)($saleRow['original_price'] ?? $saleRow['price'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['cooperation_discount_amount'] += (int)($saleRow['cooperation_discount_amount'] ?? 0);
+                $groupedFilteredSales[$lastIndex]['grouped_sale_ids'][] = (int)($saleRow['id'] ?? 0);
+                continue;
+            }
+
+            $saleRow['grouped_sale_ids'] = [(int)($saleRow['id'] ?? 0)];
+            if ($isCustomGroupCandidate) {
+                $saleRow['package_name'] = 'Paket Custom';
+                $saleRow['custom_group_key'] = 'custom|' . $groupBaseKey;
+            }
+            $groupedFilteredSales[] = $saleRow;
+            continue;
+        }
+
+        $groupKey = 'free|' . $groupBaseKey;
+
+        $lastIndex = count($groupedFilteredSales) - 1;
+        $lastRow = $lastIndex >= 0 ? $groupedFilteredSales[$lastIndex] : null;
+        $lastGroupKey = $lastRow['cooperation_group_key'] ?? null;
+
+        if ($lastRow && $lastGroupKey === $groupKey) {
+            $groupedFilteredSales[$lastIndex]['qty_bandage'] += (int)($saleRow['qty_bandage'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['qty_ifaks'] += (int)($saleRow['qty_ifaks'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['qty_painkiller'] += (int)($saleRow['qty_painkiller'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['price'] += (int)($saleRow['price'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['original_price'] += (int)($saleRow['original_price'] ?? $saleRow['price'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['cooperation_discount_amount'] += (int)($saleRow['cooperation_discount_amount'] ?? 0);
+            $groupedFilteredSales[$lastIndex]['grouped_sale_ids'][] = (int)($saleRow['id'] ?? 0);
+            continue;
+        }
+
+        $saleRow['package_name'] = 'PAKET GRATIS';
+        $saleRow['grouped_sale_ids'] = [(int)($saleRow['id'] ?? 0)];
+        $saleRow['cooperation_group_key'] = $groupKey;
+        $groupedFilteredSales[] = $saleRow;
+    }
+
+    foreach ($groupedFilteredSales as &$groupedSaleRow) {
+        unset($groupedSaleRow['cooperation_group_key']);
+        unset($groupedSaleRow['custom_group_key']);
+    }
+    unset($groupedSaleRow);
+
+    $filteredSales = $groupedFilteredSales;
+}
 
 $consumerIdentityPhotoMap = [];
 $identityMasterReady = ems_table_exists($pdo, 'identity_master');
@@ -2828,11 +3033,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                             ?>
                                             <tr>
                                                 <td class="table-align-center">
+                                                    <?php $groupedSaleIds = array_values(array_filter(array_map('intval', (array)($s['grouped_sale_ids'] ?? [$s['id'] ?? 0])))); ?>
                                                     <?php if ($medicName && $s['medic_name'] === $medicName): ?>
                                                         <input type="checkbox"
                                                             class="row-check"
-                                                            name="sale_ids[]"
-                                                            value="<?= (int)$s['id'] ?>">
+                                                            value="<?= htmlspecialchars(implode(',', $groupedSaleIds), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-grouped-sale-ids="<?= htmlspecialchars(implode(',', $groupedSaleIds), ENT_QUOTES, 'UTF-8') ?>">
                                                     <?php else: ?>
                                                         <span class="switcher-caption">-</span>
                                                     <?php endif; ?>
@@ -3035,6 +3241,13 @@ include __DIR__ . '/../partials/sidebar.php';
             locked: false,
             data: null
         };
+        const COOP_STATUS_URL = window.emsUrl('/ajax/get_cooperation_member_status.php');
+        const COOP_STATE = {
+            loading: false,
+            requestId: 0,
+            member: null,
+            citizenId: '',
+        };
 
         function escapeHtml(str) {
             return (str || '').replace(/[&<>"']/g, function(c) {
@@ -3186,6 +3399,7 @@ include __DIR__ . '/../partials/sidebar.php';
             updateSimilarConsumerBox();
             saveFormState();
             recalcTotals();
+            fetchCooperationStatus(payload.citizen_id || '');
         }
 
         function clearOcrIdentityPayload() {
@@ -3308,6 +3522,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const footEl = document.getElementById('consumerNoticeFoot');
 
             CONSUMER_LOCK = !!(payload && payload.locked);
+            box.classList.remove('notice-danger', 'notice-warning', 'notice-info', 'notice-success');
+            box.classList.add('notice-' + ((payload && payload.variant) ? payload.variant : 'danger'));
 
             if (titleEl) titleEl.innerHTML = payload && payload.title ? payload.title : '';
             if (textEl) textEl.innerHTML = payload && payload.text ? payload.text : '';
@@ -3328,6 +3544,8 @@ include __DIR__ . '/../partials/sidebar.php';
             const footEl = document.getElementById('consumerNoticeFoot');
 
             CONSUMER_LOCK = false;
+            box.classList.remove('notice-danger', 'notice-warning', 'notice-info', 'notice-success');
+            box.classList.add('notice-danger');
 
             box.style.display = 'none';
             if (titleEl) titleEl.innerHTML = '';
@@ -3367,6 +3585,180 @@ include __DIR__ . '/../partials/sidebar.php';
             if (!box) return;
             box.innerHTML = '';
             box.style.display = 'none';
+        }
+
+        function getSelectedPackageIds() {
+            const ids = [];
+            const activeMode = getSelectedPackageMode();
+            const activeIds = activeMode === 'custom' ? ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'] : ['pkg_main'];
+
+            activeIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el && el.value) {
+                    ids.push(parseInt(el.value, 10));
+                }
+            });
+
+            return ids.filter(function(id) {
+                return Number.isInteger(id) && id > 0;
+            });
+        }
+
+        function getCooperationAvailableFreePackageIds() {
+            if (!COOP_STATE.member) {
+                return [];
+            }
+
+            const eligibleIds = (COOP_STATE.member.eligible_package_ids || []).map(function(id) {
+                return parseInt(id, 10);
+            }).filter(function(id) {
+                return Number.isInteger(id) && id > 0;
+            });
+            const usedIds = new Set((COOP_STATE.member.used_package_ids || []).map(function(id) {
+                return parseInt(id, 10);
+            }));
+
+            return eligibleIds.filter(function(id) {
+                return !usedIds.has(id);
+            });
+        }
+
+        function cooperationUsesAutomaticPackages() {
+            return !!COOP_STATE.member && getCooperationAvailableFreePackageIds().length > 0;
+        }
+
+        function applyCooperationPackageState() {
+            const autoMode = cooperationUsesAutomaticPackages();
+            const mainEl = document.getElementById('pkg_main');
+            const customRow = document.getElementById('customPackageRow');
+            const activeLabel = document.getElementById('activePackageLabel');
+            const packageIds = ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'];
+
+            packageIds.forEach(function(id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.disabled = autoMode;
+            });
+
+            if (autoMode) {
+                packageIds.forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.value = '';
+                    }
+                });
+
+                if (customRow) {
+                    customRow.classList.add('hidden');
+                }
+
+                if (activeLabel) {
+                    activeLabel.textContent = 'Kerja Sama Instansi';
+                }
+
+                if (mainEl) {
+                    mainEl.setAttribute('data-cooperation-disabled', '1');
+                }
+            } else {
+                if (mainEl) {
+                    mainEl.removeAttribute('data-cooperation-disabled');
+                }
+
+                applyPackageMode(inferPackageMode(), {
+                    preserveSelections: true
+                });
+            }
+        }
+
+        function getEffectivePackageIdsForCurrentSelection() {
+            if (cooperationUsesAutomaticPackages()) {
+                return getCooperationAvailableFreePackageIds();
+            }
+
+            return getSelectedPackageIds();
+        }
+
+        function clearCooperationState() {
+            COOP_STATE.loading = false;
+            COOP_STATE.member = null;
+            COOP_STATE.citizenId = '';
+        }
+
+        function getCooperationPricingForSelection(selectedPackageIds) {
+            const result = {
+                freeIds: [],
+                paidIds: [],
+                totalDiscount: 0,
+            };
+
+            if (!COOP_STATE.member) {
+                result.paidIds = selectedPackageIds.slice();
+                return result;
+            }
+
+            const eligibleIds = new Set((COOP_STATE.member.eligible_package_ids || []).map(function(id) {
+                return parseInt(id, 10);
+            }));
+            const usedIds = new Set((COOP_STATE.member.used_package_ids || []).map(function(id) {
+                return parseInt(id, 10);
+            }));
+            const reservedFreeIds = new Set();
+
+            selectedPackageIds.forEach(function(packageId) {
+                const pkg = PACKAGES[packageId];
+                if (!pkg) {
+                    return;
+                }
+
+                if (eligibleIds.has(packageId) && !usedIds.has(packageId) && !reservedFreeIds.has(packageId)) {
+                    reservedFreeIds.add(packageId);
+                    result.freeIds.push(packageId);
+                    result.totalDiscount += parseInt(pkg.price || 0, 10);
+                    return;
+                }
+
+                result.paidIds.push(packageId);
+            });
+
+            return result;
+        }
+
+        async function fetchCooperationStatus(citizenId) {
+            const normalizedId = formatConsumerName(citizenId || '');
+            const requestId = ++COOP_STATE.requestId;
+
+            if (!looksLikeCitizenId(normalizedId)) {
+                clearCooperationState();
+                recalcTotals();
+                return;
+            }
+
+            COOP_STATE.loading = true;
+            COOP_STATE.citizenId = normalizedId;
+
+            try {
+                const res = await fetch(COOP_STATUS_URL + '?citizen_id=' + encodeURIComponent(normalizedId), {
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
+                const payload = await res.json();
+
+                if (requestId !== COOP_STATE.requestId) {
+                    return;
+                }
+
+                COOP_STATE.loading = false;
+                COOP_STATE.citizenId = normalizedId;
+                COOP_STATE.member = payload && payload.success && payload.is_cooperation_member ? (payload.member || null) : null;
+                recalcTotals();
+            } catch (error) {
+                if (requestId !== COOP_STATE.requestId) {
+                    return;
+                }
+
+                clearCooperationState();
+                recalcTotals();
+            }
         }
 
         function renderConsumerSummaryCards(names) {
@@ -3425,18 +3817,10 @@ include __DIR__ . '/../partials/sidebar.php';
         function recalcTotals() {
             // Fairness hanya mengunci submit, bukan logic input
             const fairnessLocked = FAIRNESS_STATE.locked;
+            applyCooperationPackageState();
 
             // Kumpulkan ID paket yang dipilih
-            const ids = [];
-            const activeMode = getSelectedPackageMode();
-            const activeIds = activeMode === 'custom' ? ['pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'] : ['pkg_main'];
-
-            activeIds.forEach(function(id) {
-                const el = document.getElementById(id);
-                if (el && el.value) {
-                    ids.push(el.value);
-                }
-            });
+            const ids = getEffectivePackageIdsForCurrentSelection();
 
             let totalBandage = 0;
             let totalIfaks = 0;
@@ -3452,6 +3836,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 totalPain += parseInt(pkg.painkiller || 0, 10);
                 totalPrice += parseInt(pkg.price || 0, 10);
             });
+
+            const cooperationPricing = getCooperationPricingForSelection(ids);
+            totalPrice = Math.max(0, totalPrice - cooperationPricing.totalDiscount);
 
             // ===============================
             // FLAG OVER LIMIT (UNTUK CONFIRM)
@@ -3536,6 +3923,86 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             if (exactBoughtToday) {
+                if (COOP_STATE.member) {
+                    IS_OVER_LIMIT = false;
+                    CONSUMER_LOCK = false;
+
+                    const selectedPricing = getCooperationPricingForSelection(ids);
+                    const autoPackages = cooperationUsesAutomaticPackages();
+                    const freePackageNames = selectedPricing.freeIds.map(function(packageId) {
+                        return PACKAGES[packageId] ? String(PACKAGES[packageId].name || '') : '';
+                    }).filter(Boolean);
+                    const usedPackageNames = (COOP_STATE.member.packages || [])
+                        .filter(function(pkg) {
+                            return !!pkg.claimed_in_period;
+                        })
+                        .map(function(pkg) {
+                            return String(pkg.name || '');
+                        })
+                        .filter(Boolean);
+
+                    if (!autoPackages && freePackageNames.length === 0) {
+                        clearConsumerNotice();
+                        return;
+                    }
+
+                    let bodyHtml = '';
+                    bodyHtml += '<div class="consumer-merge-notice__section-label">Status kerja sama instansi</div>';
+                    bodyHtml += '<div class="notice-detail-item"><strong>Nama:</strong> ' + escapeHtml(COOP_STATE.member.member_name || '-') + '</div>';
+                    bodyHtml += '<div class="notice-detail-item"><strong>Instansi:</strong> ' + escapeHtml(COOP_STATE.member.institution_name || '-') + '</div>';
+                    bodyHtml += '<div class="notice-detail-item"><strong>Periode gratis:</strong> ' + escapeHtml(COOP_STATE.member.period_label || '-') + ' (' + escapeHtml((COOP_STATE.member.period_meta && COOP_STATE.member.period_meta.label) || '-') + ')</div>';
+
+                    if (autoPackages && freePackageNames.length > 0) {
+                        bodyHtml += '<div class="notice-detail-item"><strong>Paket gratis otomatis:</strong> ' + escapeHtml(freePackageNames.join(', ')) + '</div>';
+                    } else if (freePackageNames.length > 0) {
+                        bodyHtml += '<div class="notice-detail-item"><strong>Gratis untuk pilihan saat ini:</strong> ' + escapeHtml(freePackageNames.join(', ')) + '</div>';
+                    }
+
+                    if (usedPackageNames.length > 0) {
+                        bodyHtml += '<div class="notice-detail-item"><strong>Gratis yang sudah dipakai periode ini:</strong> ' + escapeHtml(usedPackageNames.join(', ')) + '</div>';
+                    }
+
+                    if (detail.length > 0) {
+                        bodyHtml += '<div class="consumer-merge-notice__section-label">Riwayat transaksi hari ini</div><ul class="notice-detail-list">';
+                        detail.forEach(function(d) {
+                            const qtyParts = [];
+                            if (parseInt(d.bandage || 0, 10) > 0) qtyParts.push('Bandage: ' + parseInt(d.bandage || 0, 10));
+                            if (parseInt(d.ifaks || 0, 10) > 0) qtyParts.push('IFAKS: ' + parseInt(d.ifaks || 0, 10));
+                            if (parseInt(d.painkiller || 0, 10) > 0) qtyParts.push('Painkiller: ' + parseInt(d.painkiller || 0, 10));
+                            bodyHtml += '<li class="notice-detail-item">' +
+                                '<strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
+                                '<small>Waktu: ' + escapeHtml(d.time || '-') + ' &nbsp;|&nbsp; Medis: ' + escapeHtml(d.medic || '-') + (qtyParts.length > 0 ? ' &nbsp;|&nbsp; ' + escapeHtml(qtyParts.join(', ')) : '') + '</small>' +
+                                '</li>';
+                        });
+                        bodyHtml += '</ul>';
+                    }
+
+                    let footHtml = 'Konsumen ini terdaftar sebagai anggota kerja sama instansi. ';
+                    if (autoPackages && freePackageNames.length > 0) {
+                        footHtml += 'Benefit gratis masih tersedia, jadi pilihan paket manual dinonaktifkan dan sistem otomatis mengambil paket dari setting kerja sama. Jangan lakukan pembayaran. ';
+                    } else if (freePackageNames.length > 0) {
+                        footHtml += 'Untuk paket gratis yang masih tersedia, jangan lakukan pembayaran. ';
+                    } else {
+                        footHtml += 'Gratis untuk periode ini sudah dipakai atau paket yang dipilih tidak termasuk kerja sama, jadi transaksi tetap boleh dilanjutkan sebagai pembelian normal. ';
+                    }
+                    footHtml += 'Benefit yang tidak dipakai pada periode ini tidak diakumulasi ke periode berikutnya.';
+
+                    showConsumerNotice({
+                        title: '<strong>' + escapeHtml(cname) + '</strong>' + (COOP_STATE.member.member_name ? ' - <strong>' + escapeHtml(COOP_STATE.member.member_name) + '</strong>' : '') + ' adalah konsumen kerja sama instansi.',
+                        text: autoPackages && freePackageNames.length > 0
+                            ? 'Benefit gratis masih aktif. Paket kerja sama diambil otomatis dari setting dan tidak perlu pilih paket manual.'
+                            : (freePackageNames.length > 0
+                                ? 'Pilihan saat ini masih memiliki benefit gratis aktif. Sistem akan mengubah harga paket yang eligible menjadi gratis.'
+                                : 'Konsumen kerja sama tetap boleh membeli obat normal jika benefit gratis periode ini sudah habis atau paket yang dipilih di luar setting kerja sama.'),
+                        body: bodyHtml,
+                        actions: '',
+                        foot: footHtml,
+                        variant: autoPackages && freePackageNames.length > 0 ? 'success' : 'info',
+                        locked: false
+                    });
+                    return;
+                }
+
                 IS_OVER_LIMIT = false;
                 CONSUMER_LOCK = true;
 
@@ -3622,6 +4089,86 @@ include __DIR__ . '/../partials/sidebar.php';
                 return; // STOP: tidak lanjut ke proses lain
             }
 
+            if (COOP_STATE.member) {
+                IS_OVER_LIMIT = false;
+                CONSUMER_LOCK = false;
+
+                const selectedPricing = getCooperationPricingForSelection(ids);
+                const autoPackages = cooperationUsesAutomaticPackages();
+                const freePackageNames = selectedPricing.freeIds.map(function(packageId) {
+                    return PACKAGES[packageId] ? String(PACKAGES[packageId].name || '') : '';
+                }).filter(Boolean);
+                const usedPackageNames = (COOP_STATE.member.packages || [])
+                    .filter(function(pkg) {
+                        return !!pkg.claimed_in_period;
+                    })
+                    .map(function(pkg) {
+                        return String(pkg.name || '');
+                    })
+                    .filter(Boolean);
+
+                if (!autoPackages && freePackageNames.length === 0) {
+                    clearConsumerNotice();
+                    return;
+                }
+
+                let bodyHtml = '';
+                bodyHtml += '<div class="consumer-merge-notice__section-label">Status kerja sama instansi</div>';
+                bodyHtml += '<div class="notice-detail-item"><strong>Nama:</strong> ' + escapeHtml(COOP_STATE.member.member_name || '-') + '</div>';
+                bodyHtml += '<div class="notice-detail-item"><strong>Instansi:</strong> ' + escapeHtml(COOP_STATE.member.institution_name || '-') + '</div>';
+                bodyHtml += '<div class="notice-detail-item"><strong>Periode gratis:</strong> ' + escapeHtml(COOP_STATE.member.period_label || '-') + ' (' + escapeHtml((COOP_STATE.member.period_meta && COOP_STATE.member.period_meta.label) || '-') + ')</div>';
+
+                if (autoPackages && freePackageNames.length > 0) {
+                    bodyHtml += '<div class="notice-detail-item"><strong>Paket gratis otomatis:</strong> ' + escapeHtml(freePackageNames.join(', ')) + '</div>';
+                } else if (freePackageNames.length > 0) {
+                    bodyHtml += '<div class="notice-detail-item"><strong>Gratis untuk pilihan saat ini:</strong> ' + escapeHtml(freePackageNames.join(', ')) + '</div>';
+                }
+
+                if (usedPackageNames.length > 0) {
+                    bodyHtml += '<div class="notice-detail-item"><strong>Gratis yang sudah dipakai periode ini:</strong> ' + escapeHtml(usedPackageNames.join(', ')) + '</div>';
+                }
+
+                if (detail.length > 0) {
+                    bodyHtml += '<div class="consumer-merge-notice__section-label">Riwayat transaksi hari ini</div><ul class="notice-detail-list">';
+                    detail.forEach(function(d) {
+                        const qtyParts = [];
+                        if (parseInt(d.bandage || 0, 10) > 0) qtyParts.push('Bandage: ' + parseInt(d.bandage || 0, 10));
+                        if (parseInt(d.ifaks || 0, 10) > 0) qtyParts.push('IFAKS: ' + parseInt(d.ifaks || 0, 10));
+                        if (parseInt(d.painkiller || 0, 10) > 0) qtyParts.push('Painkiller: ' + parseInt(d.painkiller || 0, 10));
+                        bodyHtml += '<li class="notice-detail-item">' +
+                            '<strong>' + escapeHtml(d.package || '-') + '</strong><br>' +
+                            '<small>Waktu: ' + escapeHtml(d.time || '-') + ' &nbsp;|&nbsp; Medis: ' + escapeHtml(d.medic || '-') + (qtyParts.length > 0 ? ' &nbsp;|&nbsp; ' + escapeHtml(qtyParts.join(', ')) : '') + '</small>' +
+                            '</li>';
+                    });
+                    bodyHtml += '</ul>';
+                }
+
+                let footHtml = 'Konsumen ini terdaftar sebagai anggota kerja sama instansi. ';
+                if (autoPackages && freePackageNames.length > 0) {
+                    footHtml += 'Benefit gratis masih tersedia, jadi pilihan paket manual dinonaktifkan dan sistem otomatis mengambil paket dari setting kerja sama. Jangan lakukan pembayaran. ';
+                } else if (freePackageNames.length > 0) {
+                    footHtml += 'Untuk paket gratis yang masih tersedia, jangan lakukan pembayaran. ';
+                } else {
+                    footHtml += 'Jika paket yang dipilih tidak termasuk kerja sama atau benefit gratis periode ini sudah habis, transaksi tetap dihitung normal. ';
+                }
+                footHtml += 'Benefit gratis reset sesuai periode setting dan sisa periode sebelumnya hangus.';
+
+                showConsumerNotice({
+                    title: '<strong>' + escapeHtml(cname) + '</strong>' + (COOP_STATE.member.member_name ? ' - <strong>' + escapeHtml(COOP_STATE.member.member_name) + '</strong>' : '') + ' adalah konsumen kerja sama instansi.',
+                    text: autoPackages && freePackageNames.length > 0
+                        ? 'Benefit gratis masih aktif. Paket kerja sama diambil otomatis dari setting dan tidak perlu pilih paket manual.'
+                        : (freePackageNames.length > 0
+                            ? 'Pilihan saat ini akan diberi harga gratis untuk paket yang masih tersedia pada periode aktif.'
+                            : 'Belum ada benefit gratis yang bisa dipakai untuk pilihan saat ini, tetapi transaksi normal tetap boleh dilanjutkan.'),
+                    body: bodyHtml,
+                    actions: '',
+                    foot: footHtml,
+                    variant: autoPackages && freePackageNames.length > 0 ? 'success' : 'info',
+                    locked: false
+                });
+                return;
+            }
+
             if (!exactBoughtToday && similarHistoricalNames.length > 0) {
                 IS_OVER_LIMIT = false;
                 CONSUMER_LOCK = false;
@@ -3691,6 +4238,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             if (consumerInput) consumerInput.value = '';
             clearOcrIdentityPayload();
+            clearCooperationState();
 
             ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'].forEach(id => {
                 const el = document.getElementById(id);
@@ -3878,6 +4426,33 @@ include __DIR__ . '/../partials/sidebar.php';
         applyProfileRequirementLock();
 
         function confirmBulkDelete() {
+            const bulkDeleteForm = document.getElementById('bulkDeleteForm');
+            if (bulkDeleteForm) {
+                bulkDeleteForm.querySelectorAll('.js-generated-sale-id').forEach(function(input) {
+                    input.remove();
+                });
+
+                bulkDeleteForm.querySelectorAll('.row-check:checked').forEach(function(checkbox) {
+                    const groupedIds = String(checkbox.getAttribute('data-grouped-sale-ids') || checkbox.value || '')
+                        .split(',')
+                        .map(function(item) {
+                            return parseInt(item, 10);
+                        })
+                        .filter(function(item) {
+                            return Number.isInteger(item) && item > 0;
+                        });
+
+                    groupedIds.forEach(function(id) {
+                        const hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.name = 'sale_ids[]';
+                        hidden.value = String(id);
+                        hidden.className = 'js-generated-sale-id';
+                        bulkDeleteForm.appendChild(hidden);
+                    });
+                });
+            }
+
             const checked = document.querySelectorAll('.row-check:checked').length;
             if (!checked) {
                 alert('Tidak ada transaksi yang dipilih untuk dihapus.');
@@ -4047,6 +4622,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         saveFormState();
                         updateSimilarConsumerBox();
                         recalcTotals();
+                        fetchCooperationStatus(consumerInput.value);
                     });
                 });
             }
@@ -4079,6 +4655,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     syncMergeHiddenFields();
                     updateSimilarConsumerBox();
                     recalcTotals();
+                    fetchCooperationStatus(consumerInput.value);
                 });
             }
 
@@ -4121,6 +4698,7 @@ include __DIR__ . '/../partials/sidebar.php';
             updateSimilarConsumerBox();
             syncMergeHiddenFields();
             recalcTotals(); // hitung awal berdasarkan form yang dipulihkan
+            fetchCooperationStatus((document.getElementById('consumerNameInput') || {}).value || '');
             renderPricePerPcs();
             updateSalesTableFooterTotalsFallback();
 
@@ -6402,6 +6980,60 @@ include __DIR__ . '/../partials/sidebar.php';
         startDutyCheck();
     })();
 </script>
+
+<style>
+    #consumerNotice.notice-success.consumer-merge-notice {
+        border-color: rgba(134, 239, 172, 0.9);
+        background: linear-gradient(135deg, rgba(240, 253, 244, 0.98), rgba(236, 253, 245, 0.98));
+        color: #14532d;
+    }
+
+    #consumerNotice.notice-success .consumer-merge-notice__icon {
+        border-color: #86efac;
+        background: #ffffff;
+        color: #15803d;
+    }
+
+    #consumerNotice.notice-success .consumer-merge-notice__title,
+    #consumerNotice.notice-success .consumer-merge-notice__section-label {
+        color: #166534;
+    }
+
+    #consumerNotice.notice-success .consumer-merge-notice__text,
+    #consumerNotice.notice-success .consumer-merge-notice__foot {
+        color: #166534;
+    }
+
+    #consumerNotice.notice-success .consumer-merge-notice__foot {
+        border-top-color: rgba(134, 239, 172, 0.9);
+    }
+
+    #consumerNotice.notice-info.consumer-merge-notice {
+        border-color: rgba(147, 197, 253, 0.9);
+        background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(240, 249, 255, 0.98));
+        color: #1e3a8a;
+    }
+
+    #consumerNotice.notice-info .consumer-merge-notice__icon {
+        border-color: #93c5fd;
+        background: #ffffff;
+        color: #2563eb;
+    }
+
+    #consumerNotice.notice-info .consumer-merge-notice__title,
+    #consumerNotice.notice-info .consumer-merge-notice__section-label {
+        color: #1d4ed8;
+    }
+
+    #consumerNotice.notice-info .consumer-merge-notice__text,
+    #consumerNotice.notice-info .consumer-merge-notice__foot {
+        color: #1e40af;
+    }
+
+    #consumerNotice.notice-info .consumer-merge-notice__foot {
+        border-top-color: rgba(147, 197, 253, 0.9);
+    }
+</style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
 <?php
