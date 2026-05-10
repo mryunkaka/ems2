@@ -10,6 +10,70 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
 </main>
 </div>
 
+<div id="globalUploadOverlay" class="global-upload-overlay hidden" aria-hidden="true">
+    <div class="global-upload-overlay-box">
+        <div class="global-upload-spinner" aria-hidden="true"></div>
+        <div class="global-upload-title">Upload sedang diproses</div>
+        <div class="global-upload-copy">Mohon tunggu. File besar mungkin memerlukan waktu lebih lama untuk diproses dan dikirim.</div>
+    </div>
+</div>
+
+<style>
+    .global-upload-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.72);
+        backdrop-filter: blur(6px);
+    }
+
+    .global-upload-overlay.hidden {
+        display: none;
+    }
+
+    .global-upload-overlay-box {
+        width: min(100%, 420px);
+        border-radius: 24px;
+        background: #ffffff;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+    }
+
+    .global-upload-spinner {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 16px;
+        border-radius: 999px;
+        border: 4px solid #dbeafe;
+        border-top-color: #0284c7;
+        animation: ems-upload-spin 0.9s linear infinite;
+    }
+
+    .global-upload-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .global-upload-copy {
+        margin-top: 8px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #475569;
+    }
+
+    @keyframes ems-upload-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+
 <script src="<?= htmlspecialchars(ems_asset('/assets/js/app.js?refresh=20260501-setting-akun-fast'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/design/js/app-shell.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.umd.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
@@ -60,6 +124,70 @@ window.addEventListener('resize', function() {
         document.body.classList.remove('sidebar-open');
     }
 });
+</script>
+
+<script>
+    (function setupGlobalUploadOverlay() {
+        const overlay = document.getElementById('globalUploadOverlay');
+        if (!overlay) {
+            return;
+        }
+
+        function showOverlay() {
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open');
+        }
+
+        function hideOverlay() {
+            overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open');
+        }
+
+        window.emsShowUploadOverlay = showOverlay;
+        window.emsHideUploadOverlay = hideOverlay;
+
+        window.addEventListener('pageshow', hideOverlay);
+        window.addEventListener('pagehide', hideOverlay);
+
+        document.addEventListener('submit', function(event) {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement)) {
+                return;
+            }
+
+            const hasFileInput = form.matches('[enctype="multipart/form-data"]') || !!form.querySelector('input[type="file"]');
+            if (!hasFileInput) {
+                return;
+            }
+
+            const fileInputs = Array.from(form.querySelectorAll('input[type="file"]'));
+            const hasSelectedFiles = fileInputs.some(function(input) {
+                return input.files && input.files.length > 0;
+            });
+
+            if (!hasSelectedFiles) {
+                return;
+            }
+
+            const submitButtons = Array.from(form.querySelectorAll('button[type="submit"], input[type="submit"]'));
+            submitButtons.forEach(function(button) {
+                button.disabled = true;
+            });
+
+            window.requestAnimationFrame(function() {
+                if (event.defaultPrevented) {
+                    submitButtons.forEach(function(button) {
+                        button.disabled = false;
+                    });
+                    return;
+                }
+
+                showOverlay();
+            });
+        }, true);
+    })();
 </script>
 
 <script>

@@ -17,6 +17,13 @@ $profile = ems_recruitment_profile('medical_candidate');
 </head>
 
 <body>
+    <div id="publicUploadOverlay" class="global-upload-overlay hidden" aria-hidden="true">
+        <div class="global-upload-overlay-box">
+            <div class="global-upload-spinner" aria-hidden="true"></div>
+            <div class="global-upload-title">Upload sedang diproses</div>
+            <div class="global-upload-copy">Mohon tunggu. File besar mungkin memerlukan waktu lebih lama untuk diproses dan dikirim.</div>
+        </div>
+    </div>
     <div class="public-shell">
         <div class="public-layout">
             <aside class="public-panel public-panel-hero public-sticky">
@@ -343,12 +350,70 @@ $profile = ems_recruitment_profile('medical_candidate');
     <script src="/assets/vendor/photoswipe/photoswipe-lightbox.umd.min.js"></script>
     <script src="/assets/design/js/photoswipe-init.js"></script>
 
+    <style>
+        .global-upload-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(15, 23, 42, 0.72);
+            backdrop-filter: blur(6px);
+        }
+
+        .global-upload-overlay.hidden {
+            display: none;
+        }
+
+        .global-upload-overlay-box {
+            width: min(100%, 420px);
+            border-radius: 24px;
+            background: #ffffff;
+            padding: 24px;
+            text-align: center;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+        }
+
+        .global-upload-spinner {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto 16px;
+            border-radius: 999px;
+            border: 4px solid #dbeafe;
+            border-top-color: #0284c7;
+            animation: ems-upload-spin 0.9s linear infinite;
+        }
+
+        .global-upload-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        .global-upload-copy {
+            margin-top: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #475569;
+        }
+
+        @keyframes ems-upload-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
     <script>
         (function() {
             const form = document.getElementById('publicRecruitmentForm');
             const submitButton = document.getElementById('publicRecruitmentSubmitButton');
             const processingNotice = document.getElementById('uploadProcessingNotice');
+            const overlay = document.getElementById('publicUploadOverlay');
             const compressionState = new Map();
+            const STORAGE_KEY = 'public_recruitment_form_draft_v1';
             const IMAGE_INPUT_IDS = [
                 'ktpIc',
                 'skbFile',
@@ -372,6 +437,61 @@ $profile = ems_recruitment_profile('medical_candidate');
                 if (submitButton) {
                     submitButton.disabled = isProcessing;
                 }
+            }
+
+            function showOverlay() {
+                if (!overlay) return;
+                overlay.classList.remove('hidden');
+                overlay.setAttribute('aria-hidden', 'false');
+            }
+
+            function hideOverlay() {
+                if (!overlay) return;
+                overlay.classList.add('hidden');
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+
+            function collectDraftData() {
+                const data = {};
+                form?.querySelectorAll('input, textarea, select').forEach((field) => {
+                    const name = field.getAttribute('name');
+                    if (!name || field.type === 'file') {
+                        return;
+                    }
+                    data[name] = field.value || '';
+                });
+                return data;
+            }
+
+            function saveDraft() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(collectDraftData()));
+                } catch (_) {}
+            }
+
+            function applySavedDraft() {
+                try {
+                    const raw = localStorage.getItem(STORAGE_KEY);
+                    if (!raw) {
+                        return;
+                    }
+
+                    const draft = JSON.parse(raw);
+                    if (!draft || typeof draft !== 'object') {
+                        return;
+                    }
+
+                    form?.querySelectorAll('input, textarea, select').forEach((field) => {
+                        const name = field.getAttribute('name');
+                        if (!name || field.type === 'file') {
+                            return;
+                        }
+
+                        if (Object.prototype.hasOwnProperty.call(draft, name)) {
+                            field.value = draft[name] || '';
+                        }
+                    });
+                } catch (_) {}
             }
 
             function installNoPasteProtection() {
@@ -626,6 +746,15 @@ $profile = ems_recruitment_profile('medical_candidate');
                 });
             });
 
+            form?.querySelectorAll('input, textarea, select').forEach((field) => {
+                if (field.type === 'file') {
+                    return;
+                }
+
+                const eventName = field.tagName === 'SELECT' ? 'change' : 'input';
+                field.addEventListener(eventName, saveDraft);
+            });
+
             form?.addEventListener('submit', async function(event) {
                 if (!form.checkValidity()) {
                     event.preventDefault();
@@ -647,10 +776,17 @@ $profile = ems_recruitment_profile('medical_candidate');
                     return false;
                 }
 
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (_) {}
+
+                showOverlay();
                 form.submit();
                 return true;
             });
 
+            window.addEventListener('pageshow', hideOverlay);
+            applySavedDraft();
             installNoPasteProtection();
         })();
     </script>
