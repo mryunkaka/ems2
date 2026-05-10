@@ -345,11 +345,11 @@ function calculateCompositeScore(
         $penalty += min(8, count($crossFlags) * 4);
         $penalty = min($penalty, 38);
     } else {
-        if ($durationSeconds < 120) {
+        if ($durationSeconds < 45) {
             $penalty += 12;
-        } elseif ($durationSeconds < 180) {
+        } elseif ($durationSeconds < 75) {
             $penalty += 8;
-        } elseif ($durationSeconds < 240) {
+        } elseif ($durationSeconds < 105) {
             $penalty += 5;
         }
 
@@ -413,8 +413,8 @@ function makeFinalDecision(
             $avg >= 65 &&
             ($scores['honesty_humility']['score'] ?? 0) >= 60 &&
             count($biasFlags) === 0 &&
-            $durationSeconds >= 300 &&
-            $durationSeconds <= 3600
+            $durationSeconds >= 90 &&
+            $durationSeconds <= 2400
         ) {
             $decision = 'recommended';
             $confidence = 'high';
@@ -425,7 +425,7 @@ function makeFinalDecision(
             $avg < 40 ||
             ($scores['honesty_humility']['score'] ?? 0) < 40 ||
             count($biasFlags) >= 2 ||
-            $durationSeconds < 180
+            $durationSeconds < 60
         ) {
             $decision = 'not_recommended';
             $confidence = 'high';

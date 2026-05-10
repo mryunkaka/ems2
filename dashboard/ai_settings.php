@@ -226,6 +226,20 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div>Fitur AI rekrutmen berikutnya tinggal memanggil service Gemini yang sudah disiapkan.</div>
                     </div>
                 </div>
+
+                <div class="card mb-0">
+                    <div class="card-header">
+                        <?= ems_icon('sparkles', 'h-5 w-5') ?>
+                        <span>Cara Setup Gemini</span>
+                    </div>
+                    <div class="space-y-3 text-sm text-slate-700">
+                        <div>1. Jalankan migration <code>docs/sql/20_2026-04-08_gemini_ai_foundation.sql</code> jika tabel AI belum tersedia.</div>
+                        <div>2. Buka Google AI Studio dan login dengan akun Google: <a href="https://ai.google.dev/aistudio" target="_blank" rel="noopener">https://ai.google.dev/aistudio</a></div>
+                        <div>3. Buat atau pilih project, lalu generate API key dari halaman API Keys: <a href="https://ai.google.dev/gemini-api/docs/api-key?hl=id" target="_blank" rel="noopener">panduan resmi Gemini API key</a></div>
+                        <div>4. Kembali ke halaman ini, isi <code>Gemini API Key</code>, biarkan <code>Base URL</code> default <code>https://generativelanguage.googleapis.com/v1beta</code>, lalu pilih model seperti <code>gemini-2.5-flash</code>.</div>
+                        <div>5. Aktifkan checkbox <strong>Aktifkan provider AI</strong>, klik <strong>Simpan Setting</strong>, lalu klik <strong>Test Connection Gemini</strong>.</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
