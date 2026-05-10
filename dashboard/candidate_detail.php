@@ -204,6 +204,22 @@ if ($candidateCitizenId !== '') {
     $userDocuments = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+$applicantDocuments = [];
+$stmt = $pdo->prepare("
+    SELECT document_type, file_path
+    FROM applicant_documents
+    WHERE applicant_id = ?
+");
+$stmt->execute([$id]);
+foreach (($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $documentRow) {
+    $type = trim((string)($documentRow['document_type'] ?? ''));
+    $path = trim((string)($documentRow['file_path'] ?? ''));
+    if ($type === '' || $path === '') {
+        continue;
+    }
+    $applicantDocuments[$type] = $path;
+}
+
 function candidateDisplayLabel(?string $value): string
 {
     $value = (string)($value ?? '');
@@ -340,10 +356,12 @@ function candidateDisplayLabel(?string $value): string
                     <tbody>
                         <?php
                         $documents = [
-                            'KTP' => $userDocuments['file_ktp'] ?? '',
-                            'SKB' => $userDocuments['file_skb'] ?? '',
-                            'KTA' => $userDocuments['file_kta'] ?? '',
-                            'SIM' => $userDocuments['file_sim'] ?? '',
+                            'KTP' => $applicantDocuments['ktp_ic'] ?? ($userDocuments['file_ktp'] ?? ''),
+                            'SKB' => $applicantDocuments['skb'] ?? ($userDocuments['file_skb'] ?? ''),
+                            'KTA' => $applicantDocuments['kta'] ?? ($userDocuments['file_kta'] ?? ''),
+                            'SIM' => $applicantDocuments['sim'] ?? ($userDocuments['file_sim'] ?? ''),
+                            'Surat Keterangan Sehat' => $applicantDocuments['surat_keterangan_sehat'] ?? '',
+                            'Surat Keterangan Psikolog' => $applicantDocuments['surat_keterangan_psikolog'] ?? '',
                         ];
                         $uploadBase = '../';
                         ?>
@@ -376,7 +394,7 @@ function candidateDisplayLabel(?string $value): string
             </div>
 
             <div class="mt-2 text-xs text-slate-500">
-                Dokumen ditampilkan dari data akun `user_rh` berdasarkan `Citizen ID`.
+                Dokumen ditampilkan dari data pelamar dan akun `user_rh` berdasarkan `Citizen ID`.
             </div>
         </div>
 

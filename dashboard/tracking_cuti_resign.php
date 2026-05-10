@@ -124,6 +124,8 @@ try {
             latest_cuti.start_date AS latest_cuti_request_start_date,
             latest_cuti.end_date AS latest_cuti_request_end_date,
             latest_cuti.days_total AS latest_cuti_request_days_total,
+            latest_cuti.reason_ic AS latest_cuti_request_reason_ic,
+            latest_cuti.reason_ooc AS latest_cuti_request_reason_ooc,
             latest_cuti.status AS latest_cuti_request_status,
             latest_cuti.created_at AS latest_cuti_request_created_at,
             latest_cuti.approved_at AS latest_cuti_request_approved_at,
@@ -353,6 +355,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Batch</th>
                             <th>Status</th>
                             <th>Cuti Progress</th>
+                            <th>Alasan</th>
                             <th>Tanggal Kembali Kerja</th>
                             <th>Dikonfirmasi Oleh</th>
                             <th>Detail</th>
@@ -364,7 +367,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <tbody>
                         <?php if (!$allUsers): ?>
                             <tr>
-                                <td colspan="<?= $canApprove ? 9 : 8 ?>" class="muted-placeholder">Tidak ada data user.</td>
+                                <td colspan="<?= $canApprove ? 10 : 9 ?>" class="muted-placeholder">Tidak ada data user.</td>
                             </tr>
                         <?php else: ?>
                             <?php foreach ($allUsers as $u): ?>
@@ -440,6 +443,34 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="text-sm text-gray-600">
                                                 <?= (int)$u['total_cuti_approved'] ?>x riwayat cuti
                                             </div>
+                                        <?php else: ?>
+                                            <span class="meta-text-xs">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="tracking-reason-cell">
+                                        <?php
+                                        $cutiReasonIc = trim((string)($u['latest_cuti_request_reason_ic'] ?? ''));
+                                        $cutiReasonOoc = trim((string)($u['latest_cuti_request_reason_ooc'] ?? ''));
+                                        $resignReason = trim((string)($u['resign_reason'] ?? ''));
+                                        $rejectionReason = trim((string)($u['latest_cuti_rejection_reason'] ?? ''));
+                                        ?>
+                                        <?php if ((int)$u['is_active'] === 0 && $resignReason !== ''): ?>
+                                            <div class="text-sm whitespace-pre-line"><?= htmlspecialchars($resignReason) ?></div>
+                                        <?php elseif (in_array($cutiPeriodStatus, ['active', 'scheduled'], true) || $latestCutiStatus === 'pending'): ?>
+                                            <?php if ($cutiReasonIc !== '' || $cutiReasonOoc !== ''): ?>
+                                                <div class="text-sm">
+                                                    <?php if ($cutiReasonIc !== ''): ?>
+                                                        <div><strong>IC:</strong> <span class="whitespace-pre-line"><?= htmlspecialchars($cutiReasonIc) ?></span></div>
+                                                    <?php endif; ?>
+                                                    <?php if ($cutiReasonOoc !== ''): ?>
+                                                        <div class="meta-text-xs"><strong>OOC:</strong> <span class="whitespace-pre-line"><?= htmlspecialchars($cutiReasonOoc) ?></span></div>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php elseif ($rejectionReason !== ''): ?>
+                                                <div class="text-sm whitespace-pre-line"><?= htmlspecialchars($rejectionReason) ?></div>
+                                            <?php else: ?>
+                                                <span class="meta-text-xs">-</span>
+                                            <?php endif; ?>
                                         <?php else: ?>
                                             <span class="meta-text-xs">-</span>
                                         <?php endif; ?>
@@ -767,7 +798,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: '/assets/design/js/datatables-id.json'
             },
             columnDefs: [
-                { orderable: false, targets: <?= $canApprove ? '[4, 6, 7, 8]' : '[4, 6, 7]' ?> }
+                { orderable: false, targets: <?= $canApprove ? '[4, 5, 7, 8, 9]' : '[4, 5, 7, 8]' ?> }
             ]
         });
     }
@@ -1016,16 +1047,28 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 #trackingCutiTable td {
-    white-space: nowrap;
     font-size: 0.75rem;
     line-height: 1.35;
     vertical-align: top;
+}
+
+#trackingCutiTable td:not(.tracking-reason-cell) {
+    white-space: nowrap;
 }
 
 #trackingCutiTable .meta-text-xs,
 #trackingCutiTable .text-xs {
     font-size: 0.66rem !important;
     white-space: nowrap;
+}
+
+.tracking-reason-cell {
+    min-width: 220px;
+    white-space: normal;
+}
+
+.tracking-reason-cell .meta-text-xs {
+    white-space: normal !important;
 }
 
 .tracking-action-group {

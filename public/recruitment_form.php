@@ -35,7 +35,23 @@ $profile = ems_recruitment_profile('medical_candidate');
                 </p>
 
                 <div class="alert alert-info mt-5 mb-0 border-white/15 bg-white/10 text-slate-100">
-                    Pastikan dokumen yang diunggah terbaca dengan jelas dan menggunakan format JPG.
+                    Pastikan dokumen yang diunggah terbaca dengan jelas dan menggunakan format gambar yang didukung.
+                </div>
+
+                <div class="card mt-5 mb-0 border-white/10 bg-white/10 text-white shadow-none">
+                    <div class="card-header border-white/10 pb-3 text-white">
+                        <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+                        <span>Persyaratan Umum</span>
+                    </div>
+                    <div class="space-y-2 text-sm leading-6 text-slate-200">
+                        <p>✔ Berusia minimal 17 tahun pada saat mendaftar,</p>
+                        <p>✔ Tidak memiliki catatan kriminal, dan dibuktikan dengan SKB</p>
+                        <p>✔ Calon Kandidat dinyatakan sehat dan siap melakukan interview, dengan melampirkan surat kesehatan &amp; surat psikologi</p>
+                        <p>✔ Tidak sedang bergabung dengan Instansi dan tidak terlibat dengan fraksi manapun</p>
+                        <p>✔ Jika memiliki kunci sebelumnya baik whitelist maupun fraksi harus mengikuti City Rules ke 21, yaitu harus menunggu masa pemutihan selama 14 hari setelah kunci dilepas</p>
+                        <p>✔ Apabila pendaftar berasal dari instansi swasta, maka proses administrasi pendaftaran EMS baru tidak diwajibkan menunggu masa 14 (empat belas) hari sebagaimana City Rules, dan dapat diproses sesuai dengan kebijakan yang berlaku.</p>
+                        <p>✔ Wajib pernah datang ke roxwood hospital untuk mengenal lingkungan &amp; fasilitas rumah sakit.</p>
+                    </div>
                 </div>
 
                 <div class="public-feature-list">
@@ -196,7 +212,7 @@ $profile = ems_recruitment_profile('medical_candidate');
                             <span>Lampiran Dokumen</span>
                         </div>
 
-                        <p class="section-intro">Unggah dokumen dalam format JPG dengan gambar yang jelas dan tidak terpotong.</p>
+                        <p class="section-intro">Unggah dokumen dalam format JPG, JPEG, PNG, WEBP, GIF, atau BMP dengan gambar yang jelas dan tidak terpotong.</p>
 
                         <div class="grid gap-4 lg:grid-cols-3">
                             <div class="doc-upload-wrapper m-0">
@@ -209,10 +225,10 @@ $profile = ems_recruitment_profile('medical_candidate');
                                         <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
                                         <span class="file-text">
                                             <strong>Pilih file</strong>
-                                            <small>JPG / JPEG</small>
+                                            <small>JPG / JPEG / PNG / WEBP / GIF / BMP</small>
                                         </span>
                                     </label>
-                                    <input type="file" id="ktpIc" name="ktp_ic" accept=".jpg,.jpeg,image/jpeg" class="sr-only" required>
+                                    <input type="file" id="ktpIc" name="ktp_ic" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp" class="sr-only" required>
                                     <div class="file-selected-name" data-for="ktpIc"></div>
                                     <img id="thumbKtpIc" class="hidden mt-3 h-28 w-full rounded-2xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau KTP IC">
                                 </div>
@@ -228,10 +244,10 @@ $profile = ems_recruitment_profile('medical_candidate');
                                         <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
                                         <span class="file-text">
                                             <strong>Pilih file</strong>
-                                            <small>JPG / JPEG</small>
+                                            <small>JPG / JPEG / PNG / WEBP / GIF / BMP</small>
                                         </span>
                                     </label>
-                                    <input type="file" id="skbFile" name="skb" accept=".jpg,.jpeg,image/jpeg" class="sr-only" required>
+                                    <input type="file" id="skbFile" name="skb" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp" class="sr-only" required>
                                     <div class="file-selected-name" data-for="skbFile"></div>
                                     <img id="thumbSkb" class="hidden mt-3 h-28 w-full rounded-2xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau SKB">
                                 </div>
@@ -247,12 +263,50 @@ $profile = ems_recruitment_profile('medical_candidate');
                                         <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
                                         <span class="file-text">
                                             <strong>Pilih file</strong>
-                                            <small>JPG / JPEG</small>
+                                            <small>JPG / JPEG / PNG / WEBP / GIF / BMP</small>
                                         </span>
                                     </label>
-                                    <input type="file" id="simFile" name="sim" accept=".jpg,.jpeg,image/jpeg" class="sr-only">
+                                    <input type="file" id="simFile" name="sim" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp" class="sr-only">
                                     <div class="file-selected-name" data-for="simFile"></div>
                                     <img id="thumbSim" class="hidden mt-3 h-28 w-full rounded-2xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau SIM">
+                                </div>
+                            </div>
+
+                            <div class="doc-upload-wrapper m-0">
+                                <div class="doc-upload-header">
+                                    <label class="text-sm font-semibold text-slate-900">Surat Keterangan Sehat</label>
+                                    <span class="badge-muted-mini">Wajib</span>
+                                </div>
+                                <div class="doc-upload-input">
+                                    <label for="suratSehatFile" class="file-upload-label">
+                                        <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                        <span class="file-text">
+                                            <strong>Pilih file</strong>
+                                            <small>JPG / JPEG / PNG / WEBP / GIF / BMP</small>
+                                        </span>
+                                    </label>
+                                    <input type="file" id="suratSehatFile" name="surat_keterangan_sehat" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp" class="sr-only" required>
+                                    <div class="file-selected-name" data-for="suratSehatFile"></div>
+                                    <img id="thumbSuratSehat" class="hidden mt-3 h-28 w-full rounded-2xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau Surat Keterangan Sehat">
+                                </div>
+                            </div>
+
+                            <div class="doc-upload-wrapper m-0">
+                                <div class="doc-upload-header">
+                                    <label class="text-sm font-semibold text-slate-900">Surat Keterangan Psikolog</label>
+                                    <span class="badge-muted-mini">Wajib</span>
+                                </div>
+                                <div class="doc-upload-input">
+                                    <label for="suratPsikologFile" class="file-upload-label">
+                                        <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
+                                        <span class="file-text">
+                                            <strong>Pilih file</strong>
+                                            <small>JPG / JPEG / PNG / WEBP / GIF / BMP</small>
+                                        </span>
+                                    </label>
+                                    <input type="file" id="suratPsikologFile" name="surat_keterangan_psikolog" accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,image/jpeg,image/png,image/webp,image/gif,image/bmp" class="sr-only" required>
+                                    <div class="file-selected-name" data-for="suratPsikologFile"></div>
+                                    <img id="thumbSuratPsikolog" class="hidden mt-3 h-28 w-full rounded-2xl border border-slate-200 object-cover identity-photo cursor-zoom-in" alt="Pratinjau Surat Keterangan Psikolog">
                                 </div>
                             </div>
                         </div>
@@ -335,10 +389,14 @@ $profile = ems_recruitment_profile('medical_candidate');
             setSelectedName('ktpIc');
             setSelectedName('skbFile');
             setSelectedName('simFile');
+            setSelectedName('suratSehatFile');
+            setSelectedName('suratPsikologFile');
 
             setupThumb('ktpIc', 'thumbKtpIc');
             setupThumb('skbFile', 'thumbSkb');
             setupThumb('simFile', 'thumbSim');
+            setupThumb('suratSehatFile', 'thumbSuratSehat');
+            setupThumb('suratPsikologFile', 'thumbSuratPsikolog');
 
             document.querySelectorAll('label.file-upload-label[for]').forEach((label) => {
                 label.addEventListener('click', function(event) {

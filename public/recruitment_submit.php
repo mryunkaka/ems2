@@ -15,45 +15,6 @@ const EMS_ASSISTANT_MANAGER_DOC_BYPASS_CITIZEN_ID = 'RH39IQLC';
 /* ===============================
    FUNGSI
    =============================== */
-function compressJpegSmart(
-    string $sourcePath,
-    string $targetPath,
-    int $maxWidth = 1200,
-    int $targetSize = 300000,
-    int $minQuality = 70
-): bool {
-    $src = imagecreatefromstring(file_get_contents($sourcePath));
-    if (!$src) return false;
-
-    $w = imagesx($src);
-    $h = imagesy($src);
-
-    if ($w > $maxWidth) {
-        $ratio = $maxWidth / $w;
-        $nw = $maxWidth;
-        $nh = (int)($h * $ratio);
-        $dst = imagecreatetruecolor($nw, $nh);
-        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
-        imagedestroy($src);
-    } else {
-        $dst = $src;
-    }
-
-    imageinterlace($dst, true);
-
-    for ($q = 90; $q >= $minQuality; $q -= 5) {
-        imagejpeg($dst, $targetPath, $q);
-        if (filesize($targetPath) <= $targetSize) {
-            imagedestroy($dst);
-            return true;
-        }
-    }
-
-    imagejpeg($dst, $targetPath, $minQuality);
-    imagedestroy($dst);
-    return true;
-}
-
 function slugName(string $name): string
 {
     $name = strtolower(trim($name));
@@ -114,8 +75,36 @@ function recruitmentAllowedApplicantDocumentTypes(PDO $pdo): array
         return $cache;
     }
 
-    $cache = ['ktp_ic', 'skb', 'sim'];
+    $cache = ['ktp_ic', 'skb', 'sim', 'kta', 'surat_keterangan_sehat', 'surat_keterangan_psikolog'];
     return $cache;
+}
+
+function recruitmentStoreApplicantImage(array $file, string $uploadDir, string $documentType): string
+{
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        throw new Exception("Upload {$documentType} gagal");
+    }
+
+    $imgInfo = @getimagesize($tmp);
+    $allowedMimes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif',
+        'image/bmp',
+    ];
+
+    if ($imgInfo === false || !in_array((string)($imgInfo['mime'] ?? ''), $allowedMimes, true)) {
+        throw new Exception("File {$documentType} harus berupa gambar yang valid");
+    }
+
+    $finalPath = $uploadDir . '/' . $documentType . '.png';
+    if (!emsConvertImageToPng($tmp, $finalPath)) {
+        throw new Exception("Gagal memproses {$documentType}");
+    }
+
+    return $finalPath;
 }
 
 function recruitmentInsertApplicantDocument(PDO $pdo, int $applicantId, string $documentType, string $filePath): void
@@ -549,7 +538,7 @@ try {
             throw new Exception('Gagal membuat folder upload');
         }
 
-        foreach (['ktp_ic', 'skb', 'sim'] as $doc) {
+        foreach (['ktp_ic', 'skb', 'sim', 'surat_keterangan_sehat', 'surat_keterangan_psikolog'] as $doc) {
             $existingDocPath = recruitmentResolveExistingUserDoc(
                 $pdo,
                 $citizenId,
@@ -574,27 +563,13 @@ try {
                 throw new Exception("Upload {$doc} gagal");
             }
 
-            $tmp = $_FILES[$doc]['tmp_name'];
-            $imgInfo = getimagesize($tmp);
-            if ($imgInfo === false || $imgInfo['mime'] !== 'image/jpeg') {
-                throw new Exception("File {$doc} bukan JPG valid");
-            }
-
-            if (!function_exists('imagejpeg')) {
-                throw new Exception('PHP GD extension tidak aktif');
-            }
-
-            $finalPath = $uploadDir . '/' . $doc . '.jpg';
-
-            if (!compressJpegSmart($tmp, $finalPath)) {
-                throw new Exception("Gagal memproses {$doc}");
-            }
+            $finalPath = recruitmentStoreApplicantImage($_FILES[$doc], $uploadDir, $doc);
 
             recruitmentInsertApplicantDocument(
                 $pdo,
                 (int)$applicantId,
                 $doc,
-                'storage/applicants/' . $folderName . '/' . $doc . '.jpg'
+                'storage/applicants/' . $folderName . '/' . basename($finalPath)
             );
         }
     }

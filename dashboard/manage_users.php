@@ -112,6 +112,25 @@ function manageUsersCanManageProtectedUser(array $sessionUser, array $targetUser
         && (int)($sessionUser['id'] ?? 0) === (int)($targetUser['id'] ?? 0);
 }
 
+function manageUsersMemberStatus(array $userRow): string
+{
+    if ((int)($userRow['is_active'] ?? 0) === 0) {
+        return 'resign';
+    }
+
+    $cutiPeriodStatus = get_cuti_period_status(
+        $userRow['cuti_start_date'] ?? null,
+        $userRow['cuti_end_date'] ?? null,
+        $userRow['cuti_status'] ?? null
+    );
+
+    if (in_array($cutiPeriodStatus, ['active', 'scheduled'], true)) {
+        return 'cuti';
+    }
+
+    return 'active';
+}
+
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
@@ -161,6 +180,9 @@ $stmtUsers = $pdo->prepare("
         {$jenisKelaminSelect}
         u.is_active,
         u.tanggal_masuk,
+        u.cuti_start_date,
+        u.cuti_end_date,
+        u.cuti_status,
         {$optionalSelectSql}
 
         u.batch,
@@ -630,6 +652,12 @@ uksort($usersByBatch, function ($a, $b) {
 	                            </option>
 	                        <?php endforeach; ?>
 	                    </select>
+                        <select id="memberStatusFilter" class="toolbar-select">
+                            <option value="all" selected>Semua Anggota</option>
+                            <option value="active">Anggota Aktif</option>
+                            <option value="cuti">Anggota Cuti</option>
+                            <option value="resign">Anggota Resign</option>
+                        </select>
 	                    <select id="searchColumn" class="toolbar-select">
 	                        <option value="all" selected>Semua Kolom</option>
 	                        <option value="name">Nama</option>
@@ -764,6 +792,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                                break;
 		                                            }
 		                                        }
+		                                        $memberStatus = manageUsersMemberStatus($u);
 		                                        $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
                                                 $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
 		                                        ?>
@@ -782,7 +811,8 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-has-skb="<?= $hasSkb ? '1' : '0' ?>"
 			                                            data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
 			                                            data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
-			                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>">
+			                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
+                                                        data-member-status="<?= htmlspecialchars($memberStatus) ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -1019,6 +1049,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 break;
                                             }
                                         }
+                                        $memberStatus = manageUsersMemberStatus($u);
                                         $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
                                         $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
                                         ?>
@@ -1038,7 +1069,8 @@ uksort($usersByBatch, function ($a, $b) {
                                             data-has-skb="<?= $hasSkb ? '1' : '0' ?>"
                                             data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
                                             data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
-                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>">
+                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
+                                            data-member-status="<?= htmlspecialchars($memberStatus) ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -1732,6 +1764,7 @@ uksort($usersByBatch, function ($a, $b) {
 	        const searchInput = document.getElementById('searchUser');
 	        const searchColumn = document.getElementById('searchColumn');
 	        const docStatusFilter = document.getElementById('docStatusFilter');
+	        const memberStatusFilter = document.getElementById('memberStatusFilter');
 	        const clearFilterButton = document.getElementById('btnClearUserFilters');
 	        const otherDocFilterMap = window.manageUsersOtherDocFilterMap || {};
 
@@ -1777,6 +1810,7 @@ uksort($usersByBatch, function ($a, $b) {
 	            const terms = keyword.split(/\s+/).filter(Boolean);
 	            const mode = searchColumn ? searchColumn.value : 'all';
 	            const docFilterValue = docStatusFilter ? docStatusFilter.value : 'all';
+	            const memberStatusValue = memberStatusFilter ? memberStatusFilter.value : 'all';
 	            const batchCards = document.querySelectorAll('.table-wrapper > .card');
 
 	            batchCards.forEach(card => {
@@ -1800,10 +1834,14 @@ uksort($usersByBatch, function ($a, $b) {
 	                    const docAttr = docAttrMap[docFilterValue] || '';
 	                    const otherDocName = otherDocFilterMap[docFilterValue] || '';
 	                    const otherDocNames = (row.getAttribute('data-other-doc-names') || '').split('|').filter(Boolean);
+                        const rowMemberStatus = row.getAttribute('data-member-status') || 'active';
 	                    const matchesDocFilter = docAttr
 	                        ? row.getAttribute(docAttr) !== '1'
 	                        : (otherDocName ? !otherDocNames.includes(otherDocName) : true);
-	                    const isMatch = matchesSearch && matchesDocFilter;
+                        const matchesMemberStatus = memberStatusValue === 'all'
+                            ? true
+                            : rowMemberStatus === memberStatusValue;
+	                    const isMatch = matchesSearch && matchesDocFilter && matchesMemberStatus;
 
 	                    if (isMatch) {
 	                        row.style.display = '';
@@ -1835,11 +1873,17 @@ uksort($usersByBatch, function ($a, $b) {
 	            if (docStatusFilter) {
 	                docStatusFilter.addEventListener('change', applyUserFilters);
 	            }
+                if (memberStatusFilter) {
+                    memberStatusFilter.addEventListener('change', applyUserFilters);
+                }
 	            if (clearFilterButton) {
 	                clearFilterButton.addEventListener('click', function() {
 	                    if (docStatusFilter) {
 	                        docStatusFilter.value = 'all';
 	                    }
+                        if (memberStatusFilter) {
+                            memberStatusFilter.value = 'all';
+                        }
 	                    if (searchColumn) {
 	                        searchColumn.value = 'all';
 	                    }
@@ -2218,4 +2262,3 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 	<?php include __DIR__ . '/../partials/footer.php'; ?>
-
