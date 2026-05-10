@@ -99,12 +99,81 @@ function recruitmentStoreApplicantImage(array $file, string $uploadDir, string $
         throw new Exception("File {$documentType} harus berupa gambar yang valid");
     }
 
-    $finalPath = $uploadDir . '/' . $documentType . '.png';
-    if (!emsConvertImageToPng($tmp, $finalPath)) {
+    $mime = (string)($imgInfo['mime'] ?? '');
+    $sourceImage = null;
+    if ($mime === 'image/jpeg') {
+        $sourceImage = @imagecreatefromjpeg($tmp);
+    } elseif ($mime === 'image/png') {
+        $sourceImage = @imagecreatefrompng($tmp);
+    } elseif ($mime === 'image/webp' && function_exists('imagecreatefromwebp')) {
+        $sourceImage = @imagecreatefromwebp($tmp);
+    } elseif ($mime === 'image/gif' && function_exists('imagecreatefromgif')) {
+        $sourceImage = @imagecreatefromgif($tmp);
+    } elseif ($mime === 'image/bmp' && function_exists('imagecreatefrombmp')) {
+        $sourceImage = @imagecreatefrombmp($tmp);
+    }
+
+    if (!$sourceImage) {
+        throw new Exception("File {$documentType} tidak dapat dibaca server");
+    }
+
+    $sourceWidth = imagesx($sourceImage);
+    $sourceHeight = imagesy($sourceImage);
+    $maxLongEdge = 2400;
+    $longestEdge = max($sourceWidth, $sourceHeight, 1);
+    $scale = $longestEdge > $maxLongEdge ? ($maxLongEdge / $longestEdge) : 1;
+    $targetWidth = max(1, (int)round($sourceWidth * $scale));
+    $targetHeight = max(1, (int)round($sourceHeight * $scale));
+
+    $canvas = imagecreatetruecolor($targetWidth, $targetHeight);
+    if (!$canvas) {
+        imagedestroy($sourceImage);
+        throw new Exception("Server gagal menyiapkan kompresi {$documentType}");
+    }
+
+    $white = imagecolorallocate($canvas, 255, 255, 255);
+    imagefill($canvas, 0, 0, $white);
+    imagecopyresampled($canvas, $sourceImage, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+    imagedestroy($sourceImage);
+
+    $finalPath = $uploadDir . '/' . $documentType . '.jpg';
+    $qualitySteps = [90, 86, 82, 78, 74, 70, 66];
+    $targetMaxBytes = 500 * 1024;
+    $saved = false;
+
+    foreach ($qualitySteps as $quality) {
+        $saved = imagejpeg($canvas, $finalPath, $quality);
+        if (!$saved) {
+            continue;
+        }
+
+        clearstatcache(true, $finalPath);
+        $finalSize = is_file($finalPath) ? (int)filesize($finalPath) : 0;
+        if ($finalSize > 0 && $finalSize <= $targetMaxBytes) {
+            break;
+        }
+    }
+
+    imagedestroy($canvas);
+
+    if (!$saved || !is_file($finalPath)) {
         throw new Exception("Gagal memproses {$documentType}");
     }
 
     return $finalPath;
+}
+
+function recruitmentUploadErrorMessage(int $errorCode, string $documentType): string
+{
+    return match ($errorCode) {
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => "Ukuran file {$documentType} terlalu besar untuk server. Coba upload ulang, gambar akan dikompres otomatis sebelum dikirim.",
+        UPLOAD_ERR_PARTIAL => "Upload {$documentType} terputus sebelum selesai. Silakan coba lagi.",
+        UPLOAD_ERR_NO_FILE => "File {$documentType} belum dipilih.",
+        UPLOAD_ERR_NO_TMP_DIR => "Server upload sementara tidak siap.",
+        UPLOAD_ERR_CANT_WRITE => "Server gagal menyimpan file {$documentType}.",
+        UPLOAD_ERR_EXTENSION => "Upload {$documentType} dihentikan oleh konfigurasi server.",
+        default => "Upload {$documentType} gagal.",
+    };
 }
 
 function recruitmentInsertApplicantDocument(PDO $pdo, int $applicantId, string $documentType, string $filePath): void
@@ -350,6 +419,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+if (empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+    http_response_code(413);
+    exit('Ukuran request terlalu besar atau upload gagal diproses server. Silakan coba lagi; gambar akan dikompres otomatis sebelum dikirim.');
+}
+
 $required = ['ic_name', 'ic_phone', 'ooc_age', 'academy_ready', 'rule_commitment'];
 foreach ($required as $field) {
     if (empty($_POST[$field])) {
@@ -560,7 +634,7 @@ try {
                 $_FILES[$doc]['error'] !== UPLOAD_ERR_OK ||
                 !is_uploaded_file($_FILES[$doc]['tmp_name'])
             ) {
-                throw new Exception("Upload {$doc} gagal");
+                throw new Exception(recruitmentUploadErrorMessage((int)($_FILES[$doc]['error'] ?? UPLOAD_ERR_NO_FILE), $doc));
             }
 
             $finalPath = recruitmentStoreApplicantImage($_FILES[$doc], $uploadDir, $doc);

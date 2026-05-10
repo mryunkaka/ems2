@@ -38,6 +38,10 @@ $profile = ems_recruitment_profile('medical_candidate');
                     Pastikan dokumen yang diunggah terbaca dengan jelas dan menggunakan format gambar yang didukung.
                 </div>
 
+                <div class="alert alert-info mt-3 mb-0 border-white/15 bg-white/10 text-slate-100">
+                    File gambar besar akan dikompres otomatis sebelum dikirim agar upload tetap lancar dan hasil di storage tetap tajam saat di-zoom.
+                </div>
+
                 <div class="card mt-5 mb-0 border-white/10 bg-white/10 text-white shadow-none">
                     <div class="card-header border-white/10 pb-3 text-white">
                         <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
@@ -90,7 +94,7 @@ $profile = ems_recruitment_profile('medical_candidate');
                     <div class="badge-muted"><?= htmlspecialchars($profile['badge']) ?></div>
                 </div>
 
-                <form action="recruitment_submit.php" method="post" enctype="multipart/form-data">
+                <form action="recruitment_submit.php" method="post" enctype="multipart/form-data" id="publicRecruitmentForm">
                     <input type="hidden" name="recruitment_type" value="<?= htmlspecialchars($profile['type']) ?>">
                     <section class="card">
                         <div class="card-header">
@@ -317,11 +321,14 @@ $profile = ems_recruitment_profile('medical_candidate');
                             <?= ems_icon('arrow-right-circle', 'h-5 w-5') ?>
                             <span>Finalisasi</span>
                         </div>
+                        <div id="uploadProcessingNotice" class="alert alert-info mb-4 hidden">
+                            Gambar sedang diproses dan dikompres. Mohon tunggu sebentar.
+                        </div>
                         <p class="helper-note mb-4">
                             Setelah pendaftaran dikirim, Anda akan diarahkan ke tahapan pertanyaan lanjutan. Pastikan semua jawaban dan dokumen sudah benar.
                         </p>
                         <div class="form-submit-wrapper">
-                            <button type="submit" class="btn-success w-full justify-center md:w-auto">
+                            <button type="submit" id="publicRecruitmentSubmitButton" class="btn-success w-full justify-center md:w-auto">
                                 <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
                                 <span>Kirim Pendaftaran</span>
                             </button>
@@ -338,6 +345,161 @@ $profile = ems_recruitment_profile('medical_candidate');
 
     <script>
         (function() {
+            const form = document.getElementById('publicRecruitmentForm');
+            const submitButton = document.getElementById('publicRecruitmentSubmitButton');
+            const processingNotice = document.getElementById('uploadProcessingNotice');
+            const compressionState = new Map();
+            const IMAGE_INPUT_IDS = [
+                'ktpIc',
+                'skbFile',
+                'simFile',
+                'suratSehatFile',
+                'suratPsikologFile'
+            ];
+
+            function formatFileSize(bytes) {
+                if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+                if (bytes >= 1024 * 1024) {
+                    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+                }
+                return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+            }
+
+            function setProcessingState(isProcessing) {
+                if (processingNotice) {
+                    processingNotice.classList.toggle('hidden', !isProcessing);
+                }
+                if (submitButton) {
+                    submitButton.disabled = isProcessing;
+                }
+            }
+
+            function isCompressionRunning() {
+                for (const state of compressionState.values()) {
+                    if (state && state.status === 'processing') {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            function waitForAllCompression() {
+                const pending = [];
+                for (const state of compressionState.values()) {
+                    if (state && state.promise) {
+                        pending.push(state.promise.catch(() => null));
+                    }
+                }
+                return Promise.all(pending);
+            }
+
+            function updateSelectedName(inputId, file, originalFile) {
+                const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+                if (!nameBox) return;
+
+                if (!file) {
+                    nameBox.textContent = '';
+                    nameBox.classList.add('hidden');
+                    return;
+                }
+
+                const sizeText = formatFileSize(file.size);
+                const originalSizeText = originalFile ? formatFileSize(originalFile.size) : '';
+                const compressedNote = originalFile && originalFile.size !== file.size
+                    ? ' • hasil kompresi dari ' + originalSizeText
+                    : '';
+
+                nameBox.textContent = (file.name || 'File dipilih') + ' • ' + sizeText + compressedNote;
+                nameBox.classList.remove('hidden');
+            }
+
+            function replaceInputFile(input, file) {
+                const transfer = new DataTransfer();
+                transfer.items.add(file);
+                input.files = transfer.files;
+            }
+
+            function blobFromCanvas(canvas, quality) {
+                return new Promise((resolve) => {
+                    canvas.toBlob(resolve, 'image/jpeg', quality);
+                });
+            }
+
+            function loadImageFromFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onerror = () => reject(new Error('File tidak dapat dibaca.'));
+                    reader.onload = () => {
+                        const image = new Image();
+                        image.onerror = () => reject(new Error('Gambar tidak dapat diproses.'));
+                        image.onload = () => resolve(image);
+                        image.src = String(reader.result || '');
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            async function compressImageFile(file) {
+                const image = await loadImageFromFile(file);
+                const maxLongEdge = 2400;
+                const width = image.naturalWidth || image.width;
+                const height = image.naturalHeight || image.height;
+                const longestEdge = Math.max(width, height, 1);
+                const scale = longestEdge > maxLongEdge ? (maxLongEdge / longestEdge) : 1;
+                const targetWidth = Math.max(1, Math.round(width * scale));
+                const targetHeight = Math.max(1, Math.round(height * scale));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+
+                const context = canvas.getContext('2d', {
+                    alpha: false,
+                    willReadFrequently: false
+                });
+                if (!context) {
+                    throw new Error('Canvas browser tidak tersedia.');
+                }
+
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, targetWidth, targetHeight);
+                context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+                const targetMinBytes = 220 * 1024;
+                const targetMaxBytes = 500 * 1024;
+                const qualitySteps = [0.92, 0.88, 0.84, 0.80, 0.76, 0.72, 0.68];
+                let selectedBlob = null;
+
+                for (const quality of qualitySteps) {
+                    const blob = await blobFromCanvas(canvas, quality);
+                    if (!blob) {
+                        continue;
+                    }
+
+                    selectedBlob = blob;
+                    if (blob.size <= targetMaxBytes) {
+                        if (blob.size < targetMinBytes) {
+                            break;
+                        }
+                        break;
+                    }
+                }
+
+                if (!selectedBlob) {
+                    throw new Error('Gagal membuat file hasil kompresi.');
+                }
+
+                const originalBaseName = (file.name || 'upload').replace(/\.[^.]+$/, '');
+                return new File(
+                    [selectedBlob],
+                    originalBaseName + '.jpg',
+                    {
+                        type: 'image/jpeg',
+                        lastModified: Date.now()
+                    }
+                );
+            }
+
             function setSelectedName(inputId) {
                 const input = document.getElementById(inputId);
                 if (!input) return;
@@ -345,16 +507,56 @@ $profile = ems_recruitment_profile('medical_candidate');
                 const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
                 if (!nameBox) return;
 
-                input.addEventListener('change', function() {
+                input.addEventListener('change', async function() {
                     const file = this.files && this.files[0] ? this.files[0] : null;
                     if (!file) {
-                        nameBox.textContent = '';
-                        nameBox.classList.add('hidden');
+                        compressionState.delete(inputId);
+                        updateSelectedName(inputId, null);
+                        setProcessingState(isCompressionRunning());
                         return;
                     }
 
-                    nameBox.textContent = file.name || 'File dipilih';
-                    nameBox.classList.remove('hidden');
+                    updateSelectedName(inputId, file);
+
+                    const compressionPromise = (async () => {
+                        const mime = String(file.type || '').toLowerCase();
+                        if (!mime.startsWith('image/')) {
+                            return file;
+                        }
+
+                        if (file.size <= 450 * 1024) {
+                            return file;
+                        }
+
+                        return compressImageFile(file);
+                    })();
+
+                    compressionState.set(inputId, {
+                        status: 'processing',
+                        promise: compressionPromise
+                    });
+                    setProcessingState(true);
+
+                    try {
+                        const processedFile = await compressionPromise;
+                        if (!processedFile) {
+                            throw new Error('Kompresi file gagal.');
+                        }
+
+                        replaceInputFile(this, processedFile);
+                        updateSelectedName(inputId, processedFile, file);
+                        compressionState.set(inputId, {
+                            status: 'done',
+                            promise: Promise.resolve(processedFile)
+                        });
+                    } catch (error) {
+                        compressionState.delete(inputId);
+                        alert((error && error.message) ? error.message : 'Gagal memproses gambar.');
+                        this.value = '';
+                        updateSelectedName(inputId, null);
+                    } finally {
+                        setProcessingState(isCompressionRunning());
+                    }
                 });
             }
 
@@ -412,6 +614,25 @@ $profile = ems_recruitment_profile('medical_candidate');
                         input.click();
                     } catch (_) {}
                 });
+            });
+
+            form?.addEventListener('submit', async function(event) {
+                if (!isCompressionRunning()) {
+                    return;
+                }
+
+                event.preventDefault();
+                setProcessingState(true);
+                await waitForAllCompression();
+                setProcessingState(false);
+
+                if (isCompressionRunning()) {
+                    alert('Beberapa file masih diproses. Mohon tunggu sebentar lalu kirim kembali.');
+                    return false;
+                }
+
+                form.submit();
+                return true;
             });
         })();
     </script>
