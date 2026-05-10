@@ -374,6 +374,16 @@ $profile = ems_recruitment_profile('medical_candidate');
                 }
             }
 
+            function installNoPasteProtection() {
+                form?.querySelectorAll('input:not([type="file"]):not([type="hidden"]), textarea').forEach((field) => {
+                    ['paste', 'copy', 'cut', 'drop'].forEach((eventName) => {
+                        field.addEventListener(eventName, function(event) {
+                            event.preventDefault();
+                        });
+                    });
+                });
+            }
+
             function isCompressionRunning() {
                 for (const state of compressionState.values()) {
                     if (state && state.status === 'processing') {
@@ -617,6 +627,12 @@ $profile = ems_recruitment_profile('medical_candidate');
             });
 
             form?.addEventListener('submit', async function(event) {
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    form.reportValidity();
+                    return false;
+                }
+
                 if (!isCompressionRunning()) {
                     return;
                 }
@@ -634,6 +650,8 @@ $profile = ems_recruitment_profile('medical_candidate');
                 form.submit();
                 return true;
             });
+
+            installNoPasteProtection();
         })();
     </script>
 </body>

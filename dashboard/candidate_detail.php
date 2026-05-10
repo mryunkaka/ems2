@@ -31,8 +31,8 @@ $stmt = $pdo->prepare("SELECT * FROM ai_test_results WHERE applicant_id = ?");
 $stmt->execute([$id]);
 $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$candidate || !$result) {
-    exit('Data kandidat tidak lengkap');
+if (!$candidate) {
+    exit('Data kandidat tidak ditemukan');
 }
 
 /* ===============================
@@ -42,7 +42,10 @@ $recruitmentType = ems_normalize_recruitment_type($candidate['recruitment_type']
 $profile = ems_recruitment_profile($recruitmentType);
 $questions = ems_recruitment_questions_for_applicant($recruitmentType, $id);
 
-$answers = json_decode($result['answers_json'], true) ?? [];
+$result = $result ?: [];
+$hasAiResult = !empty($result);
+
+$answers = json_decode((string)($result['answers_json'] ?? ''), true) ?? [];
 $answers = is_array($answers) ? $answers : [];
 $yesCount = 0;
 $noCount = 0;
@@ -112,7 +115,7 @@ $generatedSummaryError = null;
 $generatedSummarySuccess = isset($_GET['summary_regenerated']) && $_GET['summary_regenerated'] === '1';
 $featureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $id);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_summary'])) {
+if ($hasAiResult && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_summary'])) {
     try {
         if (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === '') {
             throw new RuntimeException('AI summary belum bisa digenerate ulang karena AI belum aktif atau API key belum diisi.');
@@ -151,7 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_summary
 }
 
 try {
-    $shouldGenerateAiSummary = !empty($aiSettings['is_enabled'])
+    $shouldGenerateAiSummary = $hasAiResult
+        && !empty($aiSettings['is_enabled'])
         && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
         && !ems_ai_has_successful_summary_log($pdo, $featureKey);
 
@@ -259,6 +263,12 @@ function candidateDisplayLabel(?string $value): string
                 Keputusan: <?= htmlspecialchars(candidateDisplayLabel($result['decision'])) ?>
             </div>
         </div>
+
+        <?php if (!$hasAiResult): ?>
+            <div class="alert alert-warning mb-4">
+                Hasil AI untuk kandidat ini belum tersedia atau belum tersimpan lengkap. Detail formulir dan dokumen tetap ditampilkan.
+            </div>
+        <?php endif; ?>
 
         <div class="candidate-grid mb-4">
             <div class="card">
@@ -404,19 +414,21 @@ function candidateDisplayLabel(?string $value): string
             <h3>Ringkasan <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></h3>
 
             <div class="mt-3 flex flex-wrap items-center gap-3">
-                <form method="POST">
-                    <button type="submit" name="regenerate_ai_summary" value="1" class="btn-secondary" onclick="return confirm('Generate ulang akan membuat ulang Ringkasan AI untuk kandidat ini. Lanjutkan?');">
-                        <?= ems_icon('arrow-path', 'h-4 w-4') ?>
-                        <span>Generate Ulang Ringkasan AI</span>
-                    </button>
-                </form>
+                <?php if ($hasAiResult): ?>
+                    <form method="POST">
+                        <button type="submit" name="regenerate_ai_summary" value="1" class="btn-secondary" onclick="return confirm('Generate ulang akan membuat ulang Ringkasan AI untuk kandidat ini. Lanjutkan?');">
+                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                            <span>Generate Ulang Ringkasan AI</span>
+                        </button>
+                    </form>
+                <?php endif; ?>
                 <?php if ($generatedSummarySuccess): ?>
                     <span class="text-sm text-emerald-700">Ringkasan AI berhasil diperbarui.</span>
                 <?php endif; ?>
             </div>
 
             <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[15px] leading-relaxed text-slate-700 shadow-soft border-l-4 border-l-primary">
-                <?= nl2br(htmlspecialchars($personalityNarrative)) ?>
+                <?= nl2br(htmlspecialchars($hasAiResult ? $personalityNarrative : 'Ringkasan AI belum tersedia karena hasil assessment kandidat belum lengkap.')) ?>
             </div>
 
             <?php if ($generatedSummaryError !== null): ?>
@@ -433,42 +445,46 @@ function candidateDisplayLabel(?string $value): string
 
         <div class="card mt-4">
             <h3>Jawaban Kandidat</h3>
-            <div class="candidate-grid">
-                <?php foreach ($answerChunks as $chunkIndex => $chunk): ?>
-                    <div class="table-wrapper candidate-answers">
-                        <table class="table-custom">
-                            <thead>
-                                <tr>
-                                    <th class="w-14">No</th>
-                                    <th>Pertanyaan</th>
-                                    <th class="w-24">Jawaban</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($chunk as $rowIndex => $entry): ?>
-                                    <?php $displayNumber = ($chunkIndex * $answerChunkSize) + $rowIndex + 1; ?>
+            <?php if ($hasAiResult): ?>
+                <div class="candidate-grid">
+                    <?php foreach ($answerChunks as $chunkIndex => $chunk): ?>
+                        <div class="table-wrapper candidate-answers">
+                            <table class="table-custom">
+                                <thead>
                                     <tr>
-                                        <td><?= $displayNumber ?></td>
-                                        <td><?= htmlspecialchars($entry['question']) ?></td>
-                                        <td>
-                                            <?php
-                                            $ans = $entry['answer'];
-                                            if ($ans === 'ya') {
-                                                echo '<span class="badge-success">YA</span>';
-                                            } elseif ($ans === 'tidak') {
-                                                echo '<span class="badge-danger">TIDAK</span>';
-                                            } else {
-                                                echo '-';
-                                            }
-                                            ?>
-                                        </td>
+                                        <th class="w-14">No</th>
+                                        <th>Pertanyaan</th>
+                                        <th class="w-24">Jawaban</th>
                                     </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endforeach; ?>
-            </div>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($chunk as $rowIndex => $entry): ?>
+                                        <?php $displayNumber = ($chunkIndex * $answerChunkSize) + $rowIndex + 1; ?>
+                                        <tr>
+                                            <td><?= $displayNumber ?></td>
+                                            <td><?= htmlspecialchars($entry['question']) ?></td>
+                                            <td>
+                                                <?php
+                                                $ans = $entry['answer'];
+                                                if ($ans === 'ya') {
+                                                    echo '<span class="badge-success">YA</span>';
+                                                } elseif ($ans === 'tidak') {
+                                                    echo '<span class="badge-danger">TIDAK</span>';
+                                                } else {
+                                                    echo '-';
+                                                }
+                                                ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="helper-note">Jawaban assessment belum tersedia untuk kandidat ini.</div>
+            <?php endif; ?>
         </div>
     </div>
 </section>

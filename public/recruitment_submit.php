@@ -176,6 +176,25 @@ function recruitmentUploadErrorMessage(int $errorCode, string $documentType): st
     };
 }
 
+function recruitmentRequirePostedFields(array $fields): void
+{
+    foreach ($fields as $field => $label) {
+        $value = $_POST[$field] ?? null;
+        if (is_array($value)) {
+            if ($value === []) {
+                http_response_code(400);
+                exit("Field {$label} wajib diisi.");
+            }
+            continue;
+        }
+
+        if (trim((string)$value) === '') {
+            http_response_code(400);
+            exit("Field {$label} wajib diisi.");
+        }
+    }
+}
+
 function recruitmentInsertApplicantDocument(PDO $pdo, int $applicantId, string $documentType, string $filePath): void
 {
     $allowedTypes = recruitmentAllowedApplicantDocumentTypes($pdo);
@@ -424,13 +443,23 @@ if (empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     exit('Ukuran request terlalu besar atau upload gagal diproses server. Silakan coba lagi; gambar akan dikompres otomatis sebelum dikirim.');
 }
 
-$required = ['ic_name', 'ic_phone', 'ooc_age', 'academy_ready', 'rule_commitment'];
-foreach ($required as $field) {
-    if (empty($_POST[$field])) {
-        http_response_code(400);
-        exit;
-    }
-}
+$requiredFields = [
+    'ic_name' => 'Nama IC',
+    'citizen_id' => 'Citizen ID',
+    'ooc_age' => 'Umur OOC',
+    'jenis_kelamin' => 'Jenis Kelamin',
+    'ic_phone' => 'Nomor Telepon IC',
+    'medical_experience' => 'Pengalaman Medis',
+    'city_duration' => 'Lama di Kota IME',
+    'online_schedule' => 'Jam Biasanya Online',
+    'other_city_responsibility' => 'Tanggung Jawab di Kota Lain',
+    'academy_ready' => 'Bersedia Mengikuti Medical Academy',
+    'rule_commitment' => 'Siap Mengikuti Aturan dan Etika',
+    'duty_duration' => 'Perkiraan Waktu Duty',
+    'motivation' => 'Alasan Bergabung',
+    'work_principle' => 'Prinsip Kerja',
+];
+recruitmentRequirePostedFields($requiredFields);
 
 /* ===============================
    PREP DATA
@@ -448,6 +477,11 @@ if ($citizenId === '' || $jenisKelamin === '') {
 if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
     http_response_code(400);
     exit;
+}
+
+if ((int)($_POST['ooc_age'] ?? 0) <= 0) {
+    http_response_code(400);
+    exit('Umur OOC tidak valid.');
 }
 
 $recruitmentType = ems_normalize_recruitment_type($_POST['recruitment_type'] ?? '');
