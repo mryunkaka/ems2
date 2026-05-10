@@ -11,6 +11,7 @@ require_once __DIR__ . '/../config/recruitment_profiles.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
+$userDivision = ems_normalize_division($user['division'] ?? '');
 
 // HARD GUARD
 if (strtolower($role) === 'staff') {
@@ -20,6 +21,109 @@ if (strtolower($role) === 'staff') {
 
 $listRecruitmentType = 'medical_candidate';
 $pageTitle = 'Calon Kandidat';
+
+function candidateCanHardDelete(array $user, string $userDivision): bool
+{
+    if (in_array($userDivision, ['Human Capital', 'Human Resource', 'Executive'], true)) {
+        return true;
+    }
+
+    $name = (string)($user['full_name'] ?? $user['name'] ?? '');
+    return ems_is_programmer_roxwood_name($name);
+}
+
+function candidateDeleteCleanupFilePaths(array $relativePaths): void
+{
+    $directories = [];
+
+    foreach ($relativePaths as $relativePath) {
+        $relativePath = trim((string)$relativePath);
+        if ($relativePath === '') {
+            continue;
+        }
+
+        $absolutePath = realpath(__DIR__ . '/../' . ltrim($relativePath, '/'));
+        if ($absolutePath === false || !is_file($absolutePath)) {
+            continue;
+        }
+
+        @unlink($absolutePath);
+        $directories[dirname($absolutePath)] = true;
+    }
+
+    foreach (array_keys($directories) as $directory) {
+        if (!is_dir($directory)) {
+            continue;
+        }
+
+        $items = @scandir($directory);
+        if ($items === false) {
+            continue;
+        }
+
+        $remaining = array_values(array_diff($items, ['.', '..']));
+        if ($remaining === []) {
+            @rmdir($directory);
+        }
+    }
+}
+
+function candidateDeletePermanently(PDO $pdo, int $applicantId): array
+{
+    $filePaths = [];
+
+    if (ems_table_exists($pdo, 'applicant_documents')) {
+        $stmt = $pdo->prepare("
+            SELECT file_path
+            FROM applicant_documents
+            WHERE applicant_id = ?
+        ");
+        $stmt->execute([$applicantId]);
+        $filePaths = array_map(
+            static fn(array $row): string => (string)($row['file_path'] ?? ''),
+            $stmt->fetchAll(PDO::FETCH_ASSOC) ?: []
+        );
+    }
+
+    $pdo->beginTransaction();
+
+    try {
+        foreach ([
+            'applicant_interview_question_responses',
+            'applicant_interview_question_packs',
+            'applicant_interview_scores',
+            'applicant_interview_results',
+            'applicant_final_decisions',
+            'applicant_documents',
+            'ai_test_results',
+        ] as $table) {
+            if (!ems_table_exists($pdo, $table)) {
+                continue;
+            }
+
+            $stmt = $pdo->prepare("DELETE FROM {$table} WHERE applicant_id = ?");
+            $stmt->execute([$applicantId]);
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM medical_applicants WHERE id = ?");
+        $stmt->execute([$applicantId]);
+        $deletedApplicants = (int)$stmt->rowCount();
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    candidateDeleteCleanupFilePaths($filePaths);
+
+    return [
+        'deleted_applicants' => $deletedApplicants,
+        'deleted_files' => count(array_filter(array_map('trim', $filePaths))),
+    ];
+}
 
 function candidateStatusMeta(string $status): array
 {
@@ -179,6 +283,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     exit;
 }
 
+/* ===============================
+   HAPUS PERMANEN KANDIDAT
+   =============================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_candidate_permanently'])) {
+
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    if (!candidateCanHardDelete($user, $userDivision)) {
+        exit('Akses hapus permanen ditolak');
+    }
+
+    $applicantId = (int)($_POST['applicant_id'] ?? 0);
+    if ($applicantId <= 0) {
+        exit('Invalid applicant');
+    }
+
+    try {
+        candidateDeletePermanently($pdo, $applicantId);
+        unset($_SESSION['recruitment_track_map'][(string)$applicantId]);
+        header('Location: candidates.php?deleted=1');
+        exit;
+    } catch (Throwable $e) {
+        header('Location: candidates.php?delete_error=1');
+        exit;
+    }
+}
+
 $candidateSql = "
     SELECT
         m.id,
@@ -244,6 +377,18 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="card">
             <div class="card-header">Calon Kandidat</div>
 
+            <?php if (isset($_GET['deleted']) && $_GET['deleted'] === '1'): ?>
+                <div class="alert alert-success mb-4">
+                    Data kandidat berhasil dihapus permanen.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['delete_error']) && $_GET['delete_error'] === '1'): ?>
+                <div class="alert alert-danger mb-4">
+                    Gagal menghapus permanen data kandidat.
+                </div>
+            <?php endif; ?>
+
             <div class="table-wrapper">
                 <table id="candidateTable" class="table-custom">
                     <thead>
@@ -281,6 +426,7 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             $statusBadge = '<span class="' . htmlspecialchars($statusMeta['class']) . '">' . htmlspecialchars($statusMeta['label']) . '</span>';
                             $finalDecisionMeta = candidateDecisionMeta($c['final_result']);
                             $aiDecisionMeta = candidateDecisionMeta($c['ai_decision']);
+                            $canHardDelete = candidateCanHardDelete($user, $userDivision);
                             ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
@@ -363,6 +509,22 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                         <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
                                             <?= ems_icon('check-badge', 'h-4 w-4') ?>
                                         </a>
+                                    <?php endif; ?>
+
+                                    <?php if ($canHardDelete): ?>
+                                        <form method="post">
+                                            <?php echo csrfField(); ?>
+                                            <input type="hidden" name="delete_candidate_permanently" value="1">
+                                            <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                            <button
+                                                type="submit"
+                                                class="btn-danger btn-sm action-icon-btn candidate-action-btn"
+                                                onclick="return confirm('Hapus permanen kandidat ini?\n\nSemua data rekrutmen, hasil AI, interview, keputusan final, dan dokumen upload akan dihapus total dan tidak bisa dikembalikan.')"
+                                                title="Hapus permanen kandidat"
+                                                aria-label="Hapus permanen kandidat">
+                                                <?= ems_icon('trash', 'h-4 w-4') ?>
+                                            </button>
+                                        </form>
                                     <?php endif; ?>
                                     </div>
                                 </td>
