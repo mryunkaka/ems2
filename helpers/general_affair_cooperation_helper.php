@@ -271,3 +271,205 @@ function gaCooperationFindPackagePricing(array $selectedPackageIds, ?array $memb
 
     return $results;
 }
+
+function gaCooperationFetchFreeClaimRows(PDO $pdo, string $unitCode, string $startDateTime, string $endDateTime, int $institutionId = 0): array
+{
+    if (!gaCooperationTablesReady($pdo) || !gaCooperationSalesColumnsReady($pdo)) {
+        return [];
+    }
+
+    $sql = "
+        SELECT
+            s.id,
+            s.consumer_name,
+            s.medic_name,
+            s.medic_jabatan,
+            s.package_id,
+            s.package_name,
+            s.price,
+            s.original_price,
+            s.cooperation_discount_amount,
+            s.qty_bandage,
+            s.qty_ifaks,
+            s.qty_painkiller,
+            s.identity_id,
+            s.cooperation_id,
+            s.cooperation_member_id,
+            s.cooperation_period_type,
+            s.cooperation_period_key,
+            s.cooperation_claimed_free,
+            s.created_at,
+            gc.institution_name,
+            gc.unit_code,
+            gc.period_type AS institution_period_type,
+            gcm.citizen_id,
+            gcm.member_name
+        FROM sales s
+        INNER JOIN general_affair_cooperations gc
+            ON gc.id = s.cooperation_id
+        LEFT JOIN general_affair_cooperation_members gcm
+            ON gcm.id = s.cooperation_member_id
+        WHERE gc.unit_code = :unit_code
+          AND COALESCE(s.cooperation_claimed_free, 0) = 1
+          AND s.created_at BETWEEN :start_date AND :end_date
+    ";
+
+    $params = [
+        ':unit_code' => ems_normalize_unit_code($unitCode),
+        ':start_date' => $startDateTime,
+        ':end_date' => $endDateTime,
+    ];
+
+    if ($institutionId > 0) {
+        $sql .= " AND gc.id = :institution_id";
+        $params[':institution_id'] = $institutionId;
+    }
+
+    $sql .= "
+        ORDER BY s.created_at DESC, gc.institution_name ASC, s.consumer_name ASC, s.id DESC
+    ";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function gaCooperationGroupFreeClaimRows(array $rows): array
+{
+    $grouped = [];
+
+    foreach ($rows as $row) {
+        $groupKey = implode('|', [
+            (string)($row['cooperation_id'] ?? ''),
+            (string)($row['cooperation_member_id'] ?? ''),
+            (string)($row['consumer_name'] ?? ''),
+            (string)($row['medic_name'] ?? ''),
+            (string)($row['medic_jabatan'] ?? ''),
+            (string)($row['created_at'] ?? ''),
+        ]);
+
+        if (!isset($grouped[$groupKey])) {
+            $memberName = trim((string)($row['member_name'] ?? ''));
+            $citizenId = ems_normalize_citizen_id((string)($row['citizen_id'] ?? $row['consumer_name'] ?? ''));
+
+            $grouped[$groupKey] = [
+                'group_key' => $groupKey,
+                'transaction_at' => (string)($row['created_at'] ?? ''),
+                'institution_name' => (string)($row['institution_name'] ?? ''),
+                'cooperation_id' => (int)($row['cooperation_id'] ?? 0),
+                'cooperation_member_id' => (int)($row['cooperation_member_id'] ?? 0),
+                'member_name' => $memberName !== '' ? $memberName : $citizenId,
+                'citizen_id' => $citizenId,
+                'medic_name' => (string)($row['medic_name'] ?? ''),
+                'medic_jabatan' => (string)($row['medic_jabatan'] ?? ''),
+                'period_type' => (string)(($row['cooperation_period_type'] ?? '') !== ''
+                    ? $row['cooperation_period_type']
+                    : ($row['institution_period_type'] ?? '')),
+                'period_key' => (string)($row['cooperation_period_key'] ?? ''),
+                'package_names' => [],
+                'package_ids' => [],
+                'sale_ids' => [],
+                'total_original_price' => 0,
+                'total_discount_amount' => 0,
+                'total_final_price' => 0,
+                'total_bandage' => 0,
+                'total_ifaks' => 0,
+                'total_painkiller' => 0,
+                'package_count' => 0,
+            ];
+        }
+
+        $grouped[$groupKey]['package_names'][] = trim((string)($row['package_name'] ?? ''));
+        $grouped[$groupKey]['package_ids'][] = (int)($row['package_id'] ?? 0);
+        $grouped[$groupKey]['sale_ids'][] = (int)($row['id'] ?? 0);
+        $grouped[$groupKey]['total_original_price'] += (int)($row['original_price'] ?? $row['price'] ?? 0);
+        $grouped[$groupKey]['total_discount_amount'] += (int)($row['cooperation_discount_amount'] ?? 0);
+        $grouped[$groupKey]['total_final_price'] += (int)($row['price'] ?? 0);
+        $grouped[$groupKey]['total_bandage'] += (int)($row['qty_bandage'] ?? 0);
+        $grouped[$groupKey]['total_ifaks'] += (int)($row['qty_ifaks'] ?? 0);
+        $grouped[$groupKey]['total_painkiller'] += (int)($row['qty_painkiller'] ?? 0);
+        $grouped[$groupKey]['package_count']++;
+    }
+
+    foreach ($grouped as &$item) {
+        $packageNames = array_values(array_filter(array_map('trim', $item['package_names'])));
+        $packageIds = array_values(array_filter(array_map('intval', $item['package_ids'])));
+        $saleIds = array_values(array_filter(array_map('intval', $item['sale_ids'])));
+
+        $item['package_names'] = array_values(array_unique($packageNames));
+        $item['package_ids'] = array_values(array_unique($packageIds));
+        $item['sale_ids'] = array_values(array_unique($saleIds));
+        $item['package_summary'] = implode(', ', $item['package_names']);
+        $item['period_label'] = gaCooperationHistoryPeriodLabel(
+            (string)($item['period_type'] ?? ''),
+            (string)($item['period_key'] ?? '')
+        );
+    }
+    unset($item);
+
+    return array_values($grouped);
+}
+
+function gaCooperationHistorySummary(array $groupedRows): array
+{
+    $institutionIds = [];
+    $memberKeys = [];
+    $packageTotal = 0;
+    $discountTotal = 0;
+
+    foreach ($groupedRows as $row) {
+        $institutionId = (int)($row['cooperation_id'] ?? 0);
+        $memberKey = (string)($row['cooperation_member_id'] ?? '') . '|' . (string)($row['citizen_id'] ?? '');
+
+        if ($institutionId > 0) {
+            $institutionIds[$institutionId] = true;
+        }
+        if (trim($memberKey, '|') !== '') {
+            $memberKeys[$memberKey] = true;
+        }
+
+        $packageTotal += (int)($row['package_count'] ?? 0);
+        $discountTotal += (int)($row['total_discount_amount'] ?? 0);
+    }
+
+    return [
+        'transactions' => count($groupedRows),
+        'institutions' => count($institutionIds),
+        'members' => count($memberKeys),
+        'packages' => $packageTotal,
+        'discount_total' => $discountTotal,
+    ];
+}
+
+function gaCooperationHistoryPeriodLabel(string $periodType, string $periodKey): string
+{
+    $periodType = trim($periodType);
+    $periodKey = trim($periodKey);
+
+    if ($periodType === '' || $periodKey === '') {
+        return '-';
+    }
+
+    try {
+        if ($periodType === 'daily') {
+            $date = new DateTimeImmutable($periodKey);
+            return $date->format('d M Y');
+        }
+
+        if ($periodType === 'monthly') {
+            $date = new DateTimeImmutable($periodKey . '-01');
+            return $date->format('F Y');
+        }
+
+        if ($periodType === 'weekly' && preg_match('/^(\d{4})-W(\d{2})$/', $periodKey, $matches)) {
+            $date = (new DateTimeImmutable())->setISODate((int)$matches[1], (int)$matches[2])->setTime(0, 0, 0);
+            $end = $date->modify('+6 days');
+            return $date->format('d M Y') . ' - ' . $end->format('d M Y');
+        }
+    } catch (Throwable $e) {
+        return $periodKey;
+    }
+
+    return $periodKey;
+}

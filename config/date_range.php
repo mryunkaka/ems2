@@ -12,6 +12,7 @@ $validRanges = [
     'week2',
     'week3',
     'week4',
+    'month1',
     'custom'
 ];
 
@@ -77,6 +78,11 @@ switch ($range) {
     case 'week4':
         $startDT = $weeks[$range]['start'];
         $endDT   = $weeks[$range]['end'];
+        break;
+
+    case 'month1':
+        $startDT = (clone $now)->modify('first day of this month')->setTime(0, 0, 0);
+        $endDT   = (clone $now)->modify('last day of this month')->setTime(23, 59, 59);
         break;
 
     case 'custom':

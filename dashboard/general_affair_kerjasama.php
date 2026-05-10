@@ -107,8 +107,16 @@ include __DIR__ . '/../partials/sidebar.php';
 ?>
 <section class="content">
     <div class="page page-shell">
-        <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
-        <p class="page-subtitle">Kelola instansi kerja sama, anggota berdasarkan Citizen ID, dan paket obat gratis per periode untuk unit <?= htmlspecialchars($unitLabel, ENT_QUOTES, 'UTF-8') ?>.</p>
+        <div class="ga-coop-page-head">
+            <div>
+                <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
+                <p class="page-subtitle">Kelola instansi kerja sama, anggota berdasarkan Citizen ID, dan paket obat gratis per periode untuk unit <?= htmlspecialchars($unitLabel, ENT_QUOTES, 'UTF-8') ?>.</p>
+            </div>
+            <a href="<?= htmlspecialchars(ems_url('/dashboard/general_affair_kerjasama_history.php'), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                <?= ems_icon('clipboard-document-list', 'h-4 w-4') ?>
+                <span>List History Paket Gratis</span>
+            </a>
+        </div>
 
         <?php foreach ($messages as $message): ?>
             <div class="alert alert-info"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
@@ -460,6 +468,14 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <style>
+.ga-coop-page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
 .ga-visit-stats-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -505,6 +521,11 @@ document.addEventListener('DOMContentLoaded', function() {
     .ga-visit-stats-grid,
     .ga-coop-member-row {
         grid-template-columns: 1fr;
+    }
+
+    .ga-coop-page-head {
+        display: flex;
+        flex-direction: column;
     }
 }
 </style>
