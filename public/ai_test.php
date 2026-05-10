@@ -10,13 +10,13 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 $applicantId = (int)($_GET['applicant_id'] ?? 0);
 
 if ($applicantId <= 0) {
-    header('Location: recruitment_form.php');
+    header('Location: recruitment_form.php?reset_device_flow=1');
     exit;
 }
 
 $hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recruitment_type');
 $stmt = $pdo->prepare("
-    SELECT id, ic_name, status" . ($hasRecruitmentTypeColumn ? ", recruitment_type" : "") . "
+    SELECT id, ic_name, citizen_id, status" . ($hasRecruitmentTypeColumn ? ", recruitment_type" : "") . "
     FROM medical_applicants
     WHERE id = ?
 ");
@@ -24,7 +24,7 @@ $stmt->execute([$applicantId]);
 $applicant = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$applicant) {
-    header('Location: recruitment_form.php');
+    header('Location: recruitment_form.php?reset_device_flow=1');
     exit;
 }
 
@@ -243,13 +243,41 @@ $hideQuestionCounts = $recruitmentType === 'assistant_manager';
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const FLOW_KEY = 'ems_medical_recruitment_flow_v1';
+            const FORM_DRAFT_KEY = 'public_recruitment_form_draft_v1';
             const STORAGE_KEY = 'ai_test_<?= $applicantId ?>';
             const form = document.getElementById('aiTestForm');
             const modal = document.getElementById('introModal');
             const startBtn = document.getElementById('btnStartTest');
             const closeBtn = document.getElementById('btnCloseIntro');
+            const submitButton = form ? form.querySelector('button[type="submit"]') : null;
+            const track = <?= json_encode($recruitmentType, JSON_UNESCAPED_UNICODE) ?>;
+            const citizenId = <?= json_encode((string)($applicant['citizen_id'] ?? ''), JSON_UNESCAPED_UNICODE) ?>;
 
-            let data = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+            function safeJsonParse(raw, fallback) {
+                try {
+                    return raw ? JSON.parse(raw) : fallback;
+                } catch (_) {
+                    return fallback;
+                }
+            }
+
+            function getFlowState() {
+                return safeJsonParse(localStorage.getItem(FLOW_KEY), null);
+            }
+
+            function setFlowState(patch) {
+                const current = getFlowState();
+                const next = Object.assign({}, current && typeof current === 'object' ? current : {}, patch, {
+                    updatedAt: Date.now()
+                });
+                localStorage.setItem(FLOW_KEY, JSON.stringify(next));
+            }
+
+            let data = safeJsonParse(localStorage.getItem(STORAGE_KEY), {
+                startTime: null,
+                answers: {}
+            }) || {
                 startTime: null,
                 answers: {}
             };
@@ -277,6 +305,18 @@ $hideQuestionCounts = $recruitmentType === 'assistant_manager';
             } else {
                 showModal();
             }
+
+            setFlowState({
+                track,
+                phase: 'ai_test',
+                applicantId: <?= (int)$applicantId ?>,
+                citizenId,
+                aiTestStorageKey: STORAGE_KEY
+            });
+
+            try {
+                localStorage.removeItem(FORM_DRAFT_KEY);
+            } catch (_) {}
 
             closeBtn.addEventListener('click', () => {
                 if (!data.startTime) return;
@@ -334,8 +374,9 @@ $hideQuestionCounts = $recruitmentType === 'assistant_manager';
                 const end = Math.floor(Date.now() / 1000);
                 document.getElementById('end_time').value = end;
                 document.getElementById('duration_seconds').value = data.startTime ? (end - data.startTime) : 0;
-
-                localStorage.removeItem(STORAGE_KEY);
+                if (submitButton) {
+                    submitButton.disabled = true;
+                }
             });
 
             function save() {

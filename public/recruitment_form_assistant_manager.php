@@ -140,9 +140,9 @@ $profile = ems_recruitment_profile('assistant_manager');
                         </div>
 
                         <div class="form-group">
-                            <label for="medical_experience" class="text-sm font-semibold text-slate-900">Pengalaman Organisasi / Operasional</label>
-                            <small class="hint-warning">Sebutkan pengalaman memimpin tim, mengelola fasilitas, atau pekerjaan operasional. Minimal 80 karakter.</small>
-                            <textarea id="medical_experience" name="medical_experience" rows="4" minlength="80" placeholder="Tulis pengalaman Anda secara rinci" required data-no-paste></textarea>
+                            <label for="medical_experience" class="text-sm font-semibold text-slate-900">Pengalaman Medis / EMS</label>
+                            <small class="hint-warning">Sebutkan pengalaman medis atau EMS yang relevan secara rinci. Minimal 80 karakter.</small>
+                            <textarea id="medical_experience" name="medical_experience" rows="4" minlength="80" placeholder="Tulis pengalaman medis / EMS Anda secara rinci" required data-no-paste></textarea>
                         </div>
 
                         <div class="row-form-2">
@@ -490,7 +490,7 @@ $profile = ems_recruitment_profile('assistant_manager');
 
             form?.addEventListener('submit', function(event) {
                 const checks = [
-                    { id: 'medical_experience', min: 80, label: 'Pengalaman organisasi / operasional' },
+                    { id: 'medical_experience', min: 80, label: 'Pengalaman medis / EMS' },
                     { id: 'other_city_responsibility', min: 30, label: 'Tanggung jawab lain' },
                     { id: 'motivation', min: 120, label: 'Alasan bergabung' },
                     { id: 'work_principle', min: 120, label: 'Prinsip kerja' }

@@ -368,10 +368,16 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <h1 class="page-title">Daftar Calon Kandidat</h1>
                 <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
             </div>
-            <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
-                <?= ems_icon('plus', 'h-4 w-4') ?>
-                <span>Kandidat Baru</span>
-            </a>
+            <div class="flex items-center gap-2">
+                <a href="<?= htmlspecialchars(ems_url('/dashboard/candidates_export.php'), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary btn-sm">
+                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
+                    <span>Export Excel</span>
+                </a>
+                <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
+                    <?= ems_icon('plus', 'h-4 w-4') ?>
+                    <span>Kandidat Baru</span>
+                </a>
+            </div>
         </div>
 
         <div class="card">

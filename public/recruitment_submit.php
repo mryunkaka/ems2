@@ -430,6 +430,69 @@ function recruitmentFetchVerifiedUser(PDO $pdo, string $citizenId, int $verified
     return $row ?: null;
 }
 
+function recruitmentFindExistingApplicant(PDO $pdo, string $citizenId, string $recruitmentType): ?array
+{
+    $citizenId = trim($citizenId);
+    if ($citizenId === '') {
+        return null;
+    }
+
+    $hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recruitment_type');
+    $sql = "
+        SELECT
+            m.id,
+            m.status,
+            EXISTS(
+                SELECT 1
+                FROM ai_test_results r
+                WHERE r.applicant_id = m.id
+            ) AS has_ai_result
+        FROM medical_applicants m
+        WHERE m.citizen_id = ?
+    ";
+    $params = [$citizenId];
+
+    if ($hasRecruitmentTypeColumn) {
+        $sql .= " AND COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = ?";
+        $params[] = $recruitmentType;
+    }
+
+    $sql .= " ORDER BY m.id DESC LIMIT 1";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+function recruitmentRedirectToExistingApplicant(array $existingApplicant, string $recruitmentType): void
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $applicantId = (int)($existingApplicant['id'] ?? 0);
+    if ($applicantId <= 0) {
+        header('Location: recruitment_done.php');
+        exit;
+    }
+
+    $_SESSION['recruitment_track_map'] = $_SESSION['recruitment_track_map'] ?? [];
+    $_SESSION['recruitment_track_map'][(string)$applicantId] = $recruitmentType;
+
+    $status = trim((string)($existingApplicant['status'] ?? ''));
+    $hasAiResult = (int)($existingApplicant['has_ai_result'] ?? 0) === 1;
+
+    if ($status === 'ai_test' && !$hasAiResult) {
+        header('Location: ai_test.php?applicant_id=' . $applicantId . '&track=' . urlencode($recruitmentType));
+        exit;
+    }
+
+    header('Location: recruitment_done.php');
+    exit;
+}
+
 /* ===============================
    VALIDASI REQUEST
    =============================== */
@@ -541,6 +604,11 @@ if ($isAssistantManager) {
         http_response_code(400);
         exit('Data identitas akun EMS belum lengkap');
     }
+}
+
+$existingApplicant = recruitmentFindExistingApplicant($pdo, $citizenId, $recruitmentType);
+if ($existingApplicant) {
+    recruitmentRedirectToExistingApplicant($existingApplicant, $recruitmentType);
 }
 
 $folderName = slugName($icName) . '_' . $icPhone;

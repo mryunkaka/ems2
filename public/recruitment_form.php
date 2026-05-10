@@ -150,9 +150,9 @@ $profile = ems_recruitment_profile('medical_candidate');
                         </div>
 
                         <div class="form-group">
-                            <label for="medical_experience" class="text-sm font-semibold text-slate-900">Pengalaman Medis di Server Lain</label>
-                            <small class="hint-warning">Sebutkan server dan posisi terakhir. Jika belum ada, tulis "-".</small>
-                            <textarea id="medical_experience" name="medical_experience" rows="3" placeholder="Tulis pengalaman medis Anda" required></textarea>
+                            <label for="medical_experience" class="text-sm font-semibold text-slate-900">Pengalaman Medis / EMS</label>
+                            <small class="hint-warning">Sebutkan pengalaman medis atau EMS yang pernah dijalani. Jika belum ada, tulis "-".</small>
+                            <textarea id="medical_experience" name="medical_experience" rows="3" placeholder="Tulis pengalaman medis / EMS Anda" required></textarea>
                         </div>
 
                         <div class="row-form-2">
@@ -413,7 +413,11 @@ $profile = ems_recruitment_profile('medical_candidate');
             const processingNotice = document.getElementById('uploadProcessingNotice');
             const overlay = document.getElementById('publicUploadOverlay');
             const compressionState = new Map();
+            const FLOW_KEY = 'ems_medical_recruitment_flow_v1';
             const STORAGE_KEY = 'public_recruitment_form_draft_v1';
+            const RECRUITMENT_TRACK = 'medical_candidate';
+            const DONE_URL = <?= json_encode(ems_url('/public/recruitment_done.php'), JSON_UNESCAPED_UNICODE) ?>;
+            const AI_TEST_BASE_URL = <?= json_encode(ems_url('/public/ai_test.php'), JSON_UNESCAPED_UNICODE) ?>;
             const IMAGE_INPUT_IDS = [
                 'ktpIc',
                 'skbFile',
@@ -463,10 +467,90 @@ $profile = ems_recruitment_profile('medical_candidate');
                 return data;
             }
 
+            function normalizeCitizenId(value) {
+                return String(value || '').trim().toUpperCase();
+            }
+
+            function readJson(key, fallback) {
+                try {
+                    const raw = localStorage.getItem(key);
+                    return raw ? JSON.parse(raw) : fallback;
+                } catch (_) {
+                    return fallback;
+                }
+            }
+
+            function getFlowState() {
+                return readJson(FLOW_KEY, null);
+            }
+
+            function setFlowState(patch) {
+                try {
+                    const current = getFlowState();
+                    const next = Object.assign({}, current && typeof current === 'object' ? current : {}, patch, {
+                        updatedAt: Date.now()
+                    });
+                    localStorage.setItem(FLOW_KEY, JSON.stringify(next));
+                } catch (_) {}
+            }
+
+            function syncFormFlowState() {
+                const citizenId = normalizeCitizenId(form?.querySelector('[name="citizen_id"]')?.value);
+                const current = getFlowState();
+
+                if (!citizenId) {
+                    if (current && current.phase === 'form' && current.track === RECRUITMENT_TRACK && !current.applicantId) {
+                        try {
+                            localStorage.removeItem(FLOW_KEY);
+                        } catch (_) {}
+                    }
+                    return;
+                }
+
+                setFlowState({
+                    track: RECRUITMENT_TRACK,
+                    phase: 'form',
+                    citizenId,
+                    formDraftKey: STORAGE_KEY
+                });
+            }
+
+            function redirectFromFlowState() {
+                const current = getFlowState();
+                if (!current || current.track !== RECRUITMENT_TRACK) {
+                    return false;
+                }
+
+                if (current.phase === 'ai_test' && current.applicantId) {
+                    window.location.replace(AI_TEST_BASE_URL + '?applicant_id=' + encodeURIComponent(current.applicantId) + '&track=' + encodeURIComponent(RECRUITMENT_TRACK));
+                    return true;
+                }
+
+                if (current.phase === 'done') {
+                    window.location.replace(DONE_URL);
+                    return true;
+                }
+
+                return false;
+            }
+
+            const resetFlowRequested = new URLSearchParams(window.location.search).get('reset_device_flow') === '1';
+            if (resetFlowRequested) {
+                try {
+                    const current = getFlowState();
+                    if (current && current.aiTestStorageKey) {
+                        localStorage.removeItem(String(current.aiTestStorageKey));
+                    }
+                    localStorage.removeItem(FLOW_KEY);
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (_) {}
+            }
+
             function saveDraft() {
                 try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(collectDraftData()));
                 } catch (_) {}
+                syncFormFlowState();
             }
 
             function applySavedDraft() {
@@ -776,17 +860,17 @@ $profile = ems_recruitment_profile('medical_candidate');
                     return false;
                 }
 
-                try {
-                    localStorage.removeItem(STORAGE_KEY);
-                } catch (_) {}
-
                 showOverlay();
                 form.submit();
                 return true;
             });
 
             window.addEventListener('pageshow', hideOverlay);
+            if (redirectFromFlowState()) {
+                return;
+            }
             applySavedDraft();
+            syncFormFlowState();
             installNoPasteProtection();
         })();
     </script>

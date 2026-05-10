@@ -288,7 +288,7 @@ function candidateDisplayLabel(?string $value): string
                 <h3>Pengalaman dan Komitmen</h3>
                 <div class="space-y-3 text-sm text-slate-700">
                     <div>
-                        <strong>Pengalaman Organisasi / Operasional</strong>
+                        <strong>Pengalaman Medis / EMS</strong>
                         <div class="mt-1 whitespace-pre-line rounded-xl bg-slate-50 p-3"><?= htmlspecialchars((string)($candidate['medical_experience'] ?? '-')) ?></div>
                     </div>
                     <div>

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../assets/design/ui/icon.php';
+require_once __DIR__ . '/../config/helpers.php';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -76,9 +77,13 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
                         <span>Akses Lanjutan</span>
                     </div>
                     <p class="helper-note mb-4">
-                        Anda bisa kembali ke kanal utama komunitas untuk memantau informasi terbaru dari tim.
+                        Anda bisa memakai tombol reset device untuk menghapus state browser lokal tanpa mengulang data yang sudah tersimpan di server.
                     </p>
-                    <div class="form-submit-wrapper">
+                    <div class="form-submit-wrapper gap-3">
+                        <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php'), ENT_QUOTES, 'UTF-8') ?>" id="resetRecruitmentDeviceState" class="btn-secondary w-full justify-center md:w-auto">
+                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                            <span>Reset Device ke Form Awal</span>
+                        </a>
                         <a href="https://discord.gg/imeroleplay" class="btn-primary w-full justify-center md:w-auto">
                             <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
                             <span>Kunjungi Web Utama IME</span>
@@ -92,6 +97,50 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
             </main>
         </div>
     </div>
+    <script>
+        (function() {
+            const FLOW_KEY = 'ems_medical_recruitment_flow_v1';
+            const FORM_DRAFT_KEY = 'public_recruitment_form_draft_v1';
+            const flowState = (() => {
+                try {
+                    const raw = localStorage.getItem(FLOW_KEY);
+                    return raw ? JSON.parse(raw) : null;
+                } catch (_) {
+                    return null;
+                }
+            })();
+
+            if (flowState && typeof flowState === 'object') {
+                try {
+                    localStorage.setItem(FLOW_KEY, JSON.stringify(Object.assign({}, flowState, {
+                        phase: 'done',
+                        updatedAt: Date.now()
+                    })));
+                } catch (_) {}
+
+                if (flowState.aiTestStorageKey) {
+                    try {
+                        localStorage.removeItem(String(flowState.aiTestStorageKey));
+                    } catch (_) {}
+                }
+            }
+
+            try {
+                localStorage.removeItem(FORM_DRAFT_KEY);
+            } catch (_) {}
+
+            document.getElementById('resetRecruitmentDeviceState')?.addEventListener('click', function() {
+                try {
+                    const current = flowState && typeof flowState === 'object' ? flowState : null;
+                    if (current && current.aiTestStorageKey) {
+                        localStorage.removeItem(String(current.aiTestStorageKey));
+                    }
+                    localStorage.removeItem(FLOW_KEY);
+                    localStorage.removeItem(FORM_DRAFT_KEY);
+                } catch (_) {}
+            });
+        })();
+    </script>
 </body>
 
 </html>
