@@ -279,7 +279,7 @@ function candidateDisplayLabel(?string $value): string
                     <div><strong>Jenis Kelamin:</strong> <?= htmlspecialchars((string)($candidate['jenis_kelamin'] ?? '-')) ?></div>
                     <div><strong>Umur OOC:</strong> <?= htmlspecialchars((string)($candidate['ooc_age'] ?? '-')) ?></div>
                     <div><strong>Nomor Telepon IC:</strong> <?= htmlspecialchars((string)($candidate['ic_phone'] ?? '-')) ?></div>
-                    <div><strong>Lama di RS:</strong> <?= htmlspecialchars((string)($candidate['city_duration'] ?? '-')) ?></div>
+                    <div><strong>Lama di Kota IME:</strong> <?= htmlspecialchars((string)($candidate['city_duration'] ?? '-')) ?></div>
                     <div><strong>Jam Biasanya Online:</strong><br><span class="whitespace-pre-line"><?= htmlspecialchars((string)($candidate['online_schedule'] ?? '-')) ?></span></div>
                 </div>
             </div>
