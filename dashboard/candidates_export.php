@@ -5,6 +5,8 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -50,6 +52,41 @@ function candidatesExportDecisionLabel(?string $decision): string
     };
 }
 
+function candidatesExportRecomputedResult(array $row): array
+{
+    $answers = json_decode((string)($row['answers_json'] ?? ''), true);
+    if (!is_array($answers) || $answers === []) {
+        return [
+            'ai_score' => (float)($row['ai_score'] ?? 0),
+            'ai_decision' => (string)($row['ai_decision'] ?? ''),
+        ];
+    }
+
+    $recruitmentType = ems_normalize_recruitment_type($row['recruitment_type'] ?? 'medical_candidate');
+    $questionIds = array_map('intval', array_keys($answers));
+    $traitItems = $recruitmentType === 'assistant_manager'
+        ? ems_assistant_manager_trait_items($questionIds)
+        : getTraitItems($recruitmentType);
+
+    $scores = [];
+    foreach ($traitItems as $trait => $items) {
+        $scores[$trait] = calculateTraitScore($answers, $items);
+    }
+
+    $biasFlags = detectResponseBias($answers);
+    if ($recruitmentType === 'assistant_manager') {
+        $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
+    }
+
+    $crossFlags = crossValidateWithForm($scores, $row, $recruitmentType);
+    $finalDecision = makeFinalDecision($scores, $biasFlags, $crossFlags, (int)($row['duration_seconds'] ?? 0), $recruitmentType);
+
+    return [
+        'ai_score' => (float)($finalDecision['composite_score'] ?? $finalDecision['average_score'] ?? ($row['ai_score'] ?? 0)),
+        'ai_decision' => (string)($finalDecision['decision'] ?? ($row['ai_decision'] ?? '')),
+    ];
+}
+
 $listRecruitmentType = 'medical_candidate';
 $candidateSql = "
     SELECT
@@ -61,8 +98,14 @@ $candidateSql = "
         m.created_at,
         m.status,
         m.rejection_stage,
+        m.rule_commitment,
+        m.other_city_responsibility,
+        m.motivation,
+        m.recruitment_type,
         r.score_total AS ai_score,
         r.decision AS ai_decision,
+        r.answers_json,
+        r.duration_seconds,
         ir.average_score AS interview_score,
         ir.ml_confidence AS confidence,
         ir.is_locked AS interview_locked,
@@ -186,7 +229,8 @@ $sheet->getStyle($headerRange)->applyFromArray([
 
 $rowIndex = 6;
 foreach ($candidates as $index => $candidate) {
-    $aiScore = (float)($candidate['ai_score'] ?? 0);
+    $recomputedResult = candidatesExportRecomputedResult($candidate);
+    $aiScore = (float)($recomputedResult['ai_score'] ?? $candidate['ai_score'] ?? 0);
     $interviewScore = (float)($candidate['interview_score'] ?? 0);
     $confidence = (float)($candidate['confidence'] ?? 0);
     $isInterviewLocked = (int)($candidate['interview_locked'] ?? 0) === 1;
@@ -196,7 +240,7 @@ foreach ($candidates as $index => $candidate) {
         : null;
 
     $finalResult = candidatesExportDecisionLabel($candidate['final_result'] ?? null);
-    $aiDecision = candidatesExportDecisionLabel($candidate['ai_decision'] ?? null);
+    $aiDecision = candidatesExportDecisionLabel($recomputedResult['ai_decision'] ?? ($candidate['ai_decision'] ?? null));
     $statusLabel = candidatesExportStatusLabel((string)($candidate['status'] ?? ''));
     $interviewerSummary = trim((string)($candidate['interviewers'] ?? ''));
     $resultSummary = $finalResult !== '-' ? $finalResult : $aiDecision;

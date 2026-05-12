@@ -11,6 +11,7 @@ require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/../config/error_logger.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 
 /* ===============================
    ROLE GUARD
@@ -57,6 +58,24 @@ if (!$ai) {
     exit('AI Test belum tersedia');
 }
 
+$aiAnswers = json_decode((string)($ai['answers_json'] ?? ''), true);
+$aiAnswers = is_array($aiAnswers) ? $aiAnswers : [];
+$aiQuestionIds = array_map('intval', array_keys($aiAnswers));
+$aiTraitItems = $isAssistantManagerTrack
+    ? ems_assistant_manager_trait_items($aiQuestionIds)
+    : getTraitItems($recruitmentType);
+$aiScores = [];
+foreach ($aiTraitItems as $trait => $items) {
+    $aiScores[$trait] = calculateTraitScore($aiAnswers, $items);
+}
+$aiBiasFlags = detectResponseBias($aiAnswers);
+if ($isAssistantManagerTrack) {
+    $aiBiasFlags = array_values(array_unique(array_merge($aiBiasFlags, ems_assistant_manager_trap_flags($aiAnswers))));
+}
+$aiCrossFlags = crossValidateWithForm($aiScores, $candidate, $recruitmentType);
+$aiFinalDecision = makeFinalDecision($aiScores, $aiBiasFlags, $aiCrossFlags, (int)($ai['duration_seconds'] ?? 0), $recruitmentType);
+$ai['score_total'] = (float)($aiFinalDecision['composite_score'] ?? $ai['score_total'] ?? 0);
+$ai['decision'] = (string)($aiFinalDecision['decision'] ?? $ai['decision'] ?? '');
 $aiRecommendation = $ai['decision']; // recommended | consider | not_recommended
 
 function candidateDecisionLabel(?string $value): string

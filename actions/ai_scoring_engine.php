@@ -383,7 +383,7 @@ function makeFinalDecision(
 
     if ($profile === 'assistant_manager') {
         if (
-            $avg >= 70 &&
+            $compositeScore >= 70 &&
             ($scores['honesty_humility']['score'] ?? 0) >= 65 &&
             ($scores['obedience']['score'] ?? 0) >= 65 &&
             ($scores['consistency']['score'] ?? 0) >= 65 &&
@@ -397,9 +397,9 @@ function makeFinalDecision(
         }
 
         if (
-            $avg < 50 ||
-            ($scores['honesty_humility']['score'] ?? 0) < 45 ||
-            ($scores['obedience']['score'] ?? 0) < 45 ||
+            $compositeScore < 55 ||
+            (($scores['honesty_humility']['score'] ?? 0) < 45 && $compositeScore < 60) ||
+            (($scores['obedience']['score'] ?? 0) < 45 && $compositeScore < 60) ||
             count($biasFlags) >= 2 ||
             count($crossFlags) >= 2 ||
             $durationSeconds < 240
@@ -410,7 +410,7 @@ function makeFinalDecision(
         }
     } else {
         if (
-            $avg >= 65 &&
+            $compositeScore >= 65 &&
             ($scores['honesty_humility']['score'] ?? 0) >= 60 &&
             count($biasFlags) === 0 &&
             $durationSeconds >= 90 &&
@@ -422,8 +422,8 @@ function makeFinalDecision(
         }
 
         if (
-            $avg < 40 ||
-            ($scores['honesty_humility']['score'] ?? 0) < 40 ||
+            $compositeScore < 55 ||
+            (($scores['honesty_humility']['score'] ?? 0) < 40 && $compositeScore < 60) ||
             count($biasFlags) >= 2 ||
             $durationSeconds < 60
         ) {

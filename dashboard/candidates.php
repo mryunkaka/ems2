@@ -8,6 +8,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
@@ -158,6 +159,41 @@ function candidateDecisionMeta(?string $decision): array
             'class' => 'badge-secondary',
         ],
     };
+}
+
+function candidateRecomputedResult(array $row): array
+{
+    $answers = json_decode((string)($row['answers_json'] ?? ''), true);
+    if (!is_array($answers) || $answers === []) {
+        return [
+            'ai_score' => (float)($row['ai_score'] ?? 0),
+            'ai_decision' => (string)($row['ai_decision'] ?? ''),
+        ];
+    }
+
+    $recruitmentType = ems_normalize_recruitment_type($row['recruitment_type'] ?? 'medical_candidate');
+    $questionIds = array_map('intval', array_keys($answers));
+    $traitItems = $recruitmentType === 'assistant_manager'
+        ? ems_assistant_manager_trait_items($questionIds)
+        : getTraitItems($recruitmentType);
+
+    $scores = [];
+    foreach ($traitItems as $trait => $items) {
+        $scores[$trait] = calculateTraitScore($answers, $items);
+    }
+
+    $biasFlags = detectResponseBias($answers);
+    if ($recruitmentType === 'assistant_manager') {
+        $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
+    }
+
+    $crossFlags = crossValidateWithForm($scores, $row, $recruitmentType);
+    $finalDecision = makeFinalDecision($scores, $biasFlags, $crossFlags, (int)($row['duration_seconds'] ?? 0), $recruitmentType);
+
+    return [
+        'ai_score' => (float)($finalDecision['composite_score'] ?? $finalDecision['average_score'] ?? ($row['ai_score'] ?? 0)),
+        'ai_decision' => (string)($finalDecision['decision'] ?? ($row['ai_decision'] ?? '')),
+    ];
 }
 
 /* ===============================
@@ -319,8 +355,14 @@ $candidateSql = "
         m.created_at,
         m.status,
         m.rejection_stage,
+        m.rule_commitment,
+        m.other_city_responsibility,
+        m.motivation,
+        m.recruitment_type,
         r.score_total AS ai_score,
         r.decision   AS ai_decision,
+        r.answers_json,
+        r.duration_seconds,
         ir.average_score   AS interview_score,
         ir.ml_confidence   AS confidence,
         ir.is_locked       AS interview_locked,
@@ -414,8 +456,9 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <tbody>
                         <?php foreach ($candidates as $i => $c): ?>
                             <?php
+                            $recomputedResult = candidateRecomputedResult($c);
                             $interviewScore = (float)($c['interview_score'] ?? 0);
-                            $aiScore = (float)($c['ai_score'] ?? 0);
+                            $aiScore = (float)($recomputedResult['ai_score'] ?? $c['ai_score'] ?? 0);
                             $confidence = (float)($c['confidence'] ?? 0);
                             $combinedScore = '-';
 
@@ -431,7 +474,7 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             $statusMeta = candidateStatusMeta((string)$c['status']);
                             $statusBadge = '<span class="' . htmlspecialchars($statusMeta['class']) . '">' . htmlspecialchars($statusMeta['label']) . '</span>';
                             $finalDecisionMeta = candidateDecisionMeta($c['final_result']);
-                            $aiDecisionMeta = candidateDecisionMeta($c['ai_decision']);
+                            $aiDecisionMeta = candidateDecisionMeta($recomputedResult['ai_decision'] ?? $c['ai_decision']);
                             $canHardDelete = candidateCanHardDelete($user, $userDivision);
                             ?>
                             <tr>
