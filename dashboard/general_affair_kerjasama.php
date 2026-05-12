@@ -23,6 +23,7 @@ $unitLabel = ems_unit_label($effectiveUnit);
 $tableReady = gaCooperationTablesReady($pdo);
 $periodOptions = gaCooperationPeriodOptions();
 $claimScopeOptions = gaCooperationClaimScopeOptions();
+$calculationModeOptions = gaCooperationCalculationModeOptions();
 $medicineFields = gaCooperationMedicineFields();
 $pricePerPcs = gaCooperationRegulationPricePerPcs($pdo, $effectiveUnit);
 
@@ -57,6 +58,7 @@ if ($tableReady) {
         $notesMeta = gaCooperationParseNotesMeta((string)($row['notes'] ?? ''));
         $row['notes'] = (string)($notesMeta['notes'] ?? '');
         $row['claim_scope'] = (string)($notesMeta['claim_scope'] ?? 'per_person');
+        $row['calculation_mode'] = (string)($notesMeta['calculation_mode'] ?? 'manual');
 
         $stmtMembers = $pdo->prepare("
             SELECT id, citizen_id, member_name, identity_id
@@ -67,6 +69,7 @@ if ($tableReady) {
         ");
         $stmtMembers->execute([':cooperation_id' => $cooperationId]);
         $members = $stmtMembers->fetchAll(PDO::FETCH_ASSOC);
+        $memberCount = count($members);
 
         $stmtPackages = $pdo->prepare("
             SELECT
@@ -84,11 +87,17 @@ if ($tableReady) {
         $stmtPackages->execute([':cooperation_id' => $cooperationId]);
         $packageRows = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
         $medicineQtys = gaCooperationResolveMedicineQtys($notesMeta, $packageRows);
-        $medicineSummary = gaCooperationSummarizeMedicines($medicineQtys, $pricePerPcs);
+        $medicineSummary = gaCooperationSummarizeMedicines(
+            $medicineQtys,
+            $pricePerPcs,
+            (string)($row['calculation_mode'] ?? 'manual'),
+            $memberCount
+        );
 
         $cooperations[] = [
             'row' => $row,
             'members' => $members,
+            'member_count' => $memberCount,
             'medicine_qtys' => $medicineQtys,
             'medicine_summary_lines' => $medicineSummary['lines'],
             'medicine_total_price' => $medicineSummary['total_price'],
@@ -175,6 +184,16 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?php foreach ($claimScopeOptions as $value => $label): ?>
                             <label class="ga-coop-scope-option">
                                 <input type="radio" name="claim_scope" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>"<?= (($old['claim_scope'] ?? 'per_person') === $value) ? ' checked' : '' ?>>
+                                <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <label id="calculationModeLabel">Mode Hitung Obat Gratis</label>
+                    <div class="ga-coop-claim-scope" id="calculationModeSection">
+                        <?php foreach ($calculationModeOptions as $value => $label): ?>
+                            <label class="ga-coop-scope-option">
+                                <input type="radio" name="calculation_mode" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>"<?= (($old['calculation_mode'] ?? 'manual') === $value) ? ' checked' : '' ?>>
                                 <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
                             </label>
                         <?php endforeach; ?>
@@ -282,6 +301,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td>
                                         <?= htmlspecialchars(gaCooperationPeriodLabel((string)$row['period_type']), ENT_QUOTES, 'UTF-8') ?>
                                         <div class="meta-text-xs"><?= htmlspecialchars(gaCooperationClaimScopeLabel((string)($row['claim_scope'] ?? 'per_person')), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="meta-text-xs"><?= htmlspecialchars(gaCooperationCalculationModeLabel((string)($row['calculation_mode'] ?? 'manual')), ENT_QUOTES, 'UTF-8') ?></div>
                                     </td>
                                     <td>
                                         <?php if ($medicineSummaryLines): ?>
@@ -317,6 +337,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 data-institution-name="<?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?>"
                                                 data-period-type="<?= htmlspecialchars((string)$row['period_type'], ENT_QUOTES, 'UTF-8') ?>"
                                                 data-claim-scope="<?= htmlspecialchars((string)($row['claim_scope'] ?? 'per_person'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-calculation-mode="<?= htmlspecialchars((string)($row['calculation_mode'] ?? 'manual'), ENT_QUOTES, 'UTF-8') ?>"
                                                 data-notes="<?= htmlspecialchars((string)($row['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
                                                 data-bandage-qty="<?= (int)($medicineQtys['bandage_qty'] ?? 0) ?>"
                                                 data-ifaks-qty="<?= (int)($medicineQtys['ifaks_qty'] ?? 0) ?>"
@@ -368,6 +389,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetButton = document.getElementById('resetCooperationForm');
     const form = document.getElementById('cooperationForm');
     const submitLabel = document.getElementById('cooperationSubmitLabel');
+    const calculationModeLabel = document.getElementById('calculationModeLabel');
+    const calculationModeSection = document.getElementById('calculationModeSection');
     const medicineTotalPrice = document.getElementById('medicineTotalPrice');
     const medicineTotalSummary = document.getElementById('medicineTotalSummary');
     let memberIndex = membersContainer ? membersContainer.querySelectorAll('.ga-coop-member-row').length : 0;
@@ -398,24 +421,59 @@ document.addEventListener('DOMContentLoaded', function() {
         return '$' + Number(value || 0).toLocaleString('en-US');
     }
 
+    function syncCalculationModeVisibility() {
+        const claimScope = document.querySelector('input[name="claim_scope"]:checked')?.value || 'per_person';
+        const shouldShow = claimScope === 'per_institution';
+
+        if (calculationModeLabel) {
+            calculationModeLabel.style.display = shouldShow ? '' : 'none';
+        }
+        if (calculationModeSection) {
+            calculationModeSection.style.display = shouldShow ? 'flex' : 'none';
+        }
+
+        if (!shouldShow) {
+            document.querySelectorAll('input[name="calculation_mode"]').forEach(function(radio) {
+                radio.checked = radio.value === 'manual';
+            });
+        }
+    }
+
     function updateMedicineSummary() {
+        syncCalculationModeVisibility();
         const bandageQty = Math.max(0, parseInt(document.getElementById('bandage_qty')?.value || '0', 10) || 0);
         const ifaksQty = Math.max(0, parseInt(document.getElementById('ifaks_qty')?.value || '0', 10) || 0);
         const painkillerQty = Math.max(0, parseInt(document.getElementById('painkiller_qty')?.value || '0', 10) || 0);
+        const calculationMode = document.querySelector('input[name="calculation_mode"]:checked')?.value || 'manual';
+        const memberCount = Array.from(document.querySelectorAll('.ga-coop-member-row')).filter(function(row) {
+            const citizen = row.querySelector('input[name*="[citizen_id]"]')?.value || '';
+            const memberName = row.querySelector('input[name*="[member_name]"]')?.value || '';
+            return citizen.trim() !== '' || memberName.trim() !== '';
+        }).length;
+        const multiplier = calculationMode === 'per_member_auto' ? memberCount : 1;
         const items = [];
         let total = 0;
 
         if (bandageQty > 0) {
-            total += bandageQty * Number(pricePerPcs.bandage || 0);
-            items.push('Bandage ' + bandageQty);
+            const effectiveQty = bandageQty * multiplier;
+            total += effectiveQty * Number(pricePerPcs.bandage || 0);
+            items.push(calculationMode === 'per_member_auto'
+                ? ('Bandage ' + bandageQty + ' x ' + memberCount + ' anggota = ' + effectiveQty)
+                : ('Bandage ' + bandageQty));
         }
         if (ifaksQty > 0) {
-            total += ifaksQty * Number(pricePerPcs.ifaks || 0);
-            items.push('Ifaks ' + ifaksQty);
+            const effectiveQty = ifaksQty * multiplier;
+            total += effectiveQty * Number(pricePerPcs.ifaks || 0);
+            items.push(calculationMode === 'per_member_auto'
+                ? ('Ifaks ' + ifaksQty + ' x ' + memberCount + ' anggota = ' + effectiveQty)
+                : ('Ifaks ' + ifaksQty));
         }
         if (painkillerQty > 0) {
-            total += painkillerQty * Number(pricePerPcs.painkiller || 0);
-            items.push('Painkiller ' + painkillerQty);
+            const effectiveQty = painkillerQty * multiplier;
+            total += effectiveQty * Number(pricePerPcs.painkiller || 0);
+            items.push(calculationMode === 'per_member_auto'
+                ? ('Painkiller ' + painkillerQty + ' x ' + memberCount + ' anggota = ' + effectiveQty)
+                : ('Painkiller ' + painkillerQty));
         }
 
         if (medicineTotalPrice) {
@@ -455,6 +513,9 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('input[name="claim_scope"]').forEach(function(radio) {
             radio.checked = radio.value === 'per_person';
         });
+        document.querySelectorAll('input[name="calculation_mode"]').forEach(function(radio) {
+            radio.checked = radio.value === 'manual';
+        });
         if (submitLabel) {
             submitLabel.textContent = 'Simpan Kerjasama';
         }
@@ -470,6 +531,7 @@ document.addEventListener('DOMContentLoaded', function() {
         addMemberBtn.addEventListener('click', function() {
             if (!membersContainer) return;
             membersContainer.appendChild(createMemberRow({ citizen_id: '', member_name: '' }));
+            updateMedicineSummary();
         });
     }
 
@@ -479,6 +541,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (row) {
                 row.remove();
                 ensureOneMemberRow();
+                updateMedicineSummary();
             }
         }
     });
@@ -493,6 +556,9 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('periodType').value = button.dataset.periodType || 'daily';
             document.querySelectorAll('input[name="claim_scope"]').forEach(function(radio) {
                 radio.checked = radio.value === (button.dataset.claimScope || 'per_person');
+            });
+            document.querySelectorAll('input[name="calculation_mode"]').forEach(function(radio) {
+                radio.checked = radio.value === (button.dataset.calculationMode || 'manual');
             });
             document.getElementById('cooperationNotes').value = button.dataset.notes || '';
             document.getElementById('bandage_qty').value = button.dataset.bandageQty || '0';
@@ -537,6 +603,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const input = document.getElementById(fieldId);
         if (input) {
             input.addEventListener('input', updateMedicineSummary);
+        }
+    });
+
+    document.querySelectorAll('input[name="claim_scope"]').forEach(function(radio) {
+        radio.addEventListener('change', updateMedicineSummary);
+    });
+
+    document.querySelectorAll('input[name="calculation_mode"]').forEach(function(radio) {
+        radio.addEventListener('change', updateMedicineSummary);
+    });
+
+    document.addEventListener('input', function(event) {
+        if (event.target.matches('.ga-coop-member-row input')) {
+            updateMedicineSummary();
         }
     });
 

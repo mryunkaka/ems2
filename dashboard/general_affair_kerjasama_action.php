@@ -42,6 +42,7 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
     $periodType = trim((string)($_POST['period_type'] ?? 'daily'));
     $notes = trim((string)($_POST['notes'] ?? ''));
     $claimScope = trim((string)($_POST['claim_scope'] ?? 'per_person'));
+    $calculationMode = trim((string)($_POST['calculation_mode'] ?? 'manual'));
     $medicineQtys = gaCooperationNormalizeMedicineQtys((array)$_POST);
     $members = gaCooperationNormalizeMembersInput((array)($_POST['members'] ?? []));
 
@@ -55,6 +56,10 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
 
     if (!isset(gaCooperationClaimScopeOptions()[$claimScope])) {
         throw new InvalidArgumentException('Mode paket gratis tidak valid.');
+    }
+
+    if (!isset(gaCooperationCalculationModeOptions()[$calculationMode])) {
+        throw new InvalidArgumentException('Mode hitung obat gratis tidak valid.');
     }
 
     if (!gaCooperationHasConfiguredMedicines($medicineQtys)) {
@@ -94,7 +99,8 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
         'institution_name' => $institutionName,
         'period_type' => $periodType,
         'claim_scope' => $claimScope,
-        'notes' => gaCooperationComposeNotesMeta($notes, $claimScope, $medicineQtys),
+        'calculation_mode' => $calculationMode,
+        'notes' => gaCooperationComposeNotesMeta($notes, $claimScope, $medicineQtys, $calculationMode),
         'medicine_qtys' => $medicineQtys,
         'members' => $members,
     ];
@@ -267,6 +273,7 @@ try {
         'institution_name' => $_POST['institution_name'] ?? '',
         'period_type' => $_POST['period_type'] ?? 'daily',
         'claim_scope' => $_POST['claim_scope'] ?? 'per_person',
+        'calculation_mode' => $_POST['calculation_mode'] ?? 'manual',
         'notes' => $_POST['notes'] ?? '',
         'bandage_qty' => $_POST['bandage_qty'] ?? '',
         'ifaks_qty' => $_POST['ifaks_qty'] ?? '',

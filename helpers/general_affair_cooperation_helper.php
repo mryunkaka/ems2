@@ -57,6 +57,20 @@ function gaCooperationClaimScopeLabel(string $scope): string
     return $options[$scope] ?? 'Per Orang';
 }
 
+function gaCooperationCalculationModeOptions(): array
+{
+    return [
+        'manual' => 'Manual Hitung',
+        'per_member_auto' => 'Otomatis x Anggota',
+    ];
+}
+
+function gaCooperationCalculationModeLabel(string $mode): string
+{
+    $options = gaCooperationCalculationModeOptions();
+    return $options[$mode] ?? 'Manual Hitung';
+}
+
 function gaCooperationMedicineFields(): array
 {
     return [
@@ -84,6 +98,7 @@ function gaCooperationParseNotesMeta(?string $notes): array
     $raw = trim((string)$notes);
     $meta = [
         'claim_scope' => 'per_person',
+        'calculation_mode' => 'manual',
         'bandage_qty' => 0,
         'ifaks_qty' => 0,
         'painkiller_qty' => 0,
@@ -103,6 +118,10 @@ function gaCooperationParseNotesMeta(?string $notes): array
             $meta['claim_scope'] = strtolower((string)$matches[1]);
             continue;
         }
+        if (preg_match('/^\[calculation_mode:(manual|per_member_auto)\]$/i', $trimmed, $matches)) {
+            $meta['calculation_mode'] = strtolower((string)$matches[1]);
+            continue;
+        }
         if (preg_match('/^\[(bandage_qty|ifaks_qty|painkiller_qty):(\d+)\]$/i', $trimmed, $matches)) {
             $meta[strtolower((string)$matches[1])] = max(0, (int)$matches[2]);
             continue;
@@ -115,13 +134,20 @@ function gaCooperationParseNotesMeta(?string $notes): array
     return $meta;
 }
 
-function gaCooperationComposeNotesMeta(?string $notes, string $claimScope, array $medicineQtys = []): ?string
+function gaCooperationComposeNotesMeta(
+    ?string $notes,
+    string $claimScope,
+    array $medicineQtys = [],
+    string $calculationMode = 'manual'
+): ?string
 {
     $claimScope = array_key_exists($claimScope, gaCooperationClaimScopeOptions()) ? $claimScope : 'per_person';
+    $calculationMode = array_key_exists($calculationMode, gaCooperationCalculationModeOptions()) ? $calculationMode : 'manual';
     $medicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
     $cleanNotes = trim((string)$notes);
     $parts = [
         '[claim_scope:' . $claimScope . ']',
+        '[calculation_mode:' . $calculationMode . ']',
         '[bandage_qty:' . $medicineQtys['bandage_qty'] . ']',
         '[ifaks_qty:' . $medicineQtys['ifaks_qty'] . ']',
         '[painkiller_qty:' . $medicineQtys['painkiller_qty'] . ']',
@@ -205,9 +231,29 @@ function gaCooperationRegulationPricePerPcs(PDO $pdo, string $unitCode): array
     return $pricePerPcs;
 }
 
-function gaCooperationSummarizeMedicines(array $medicineQtys, array $pricePerPcs): array
+function gaCooperationEffectiveMedicineQtys(array $medicineQtys, string $calculationMode, int $memberCount): array
 {
     $medicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
+    $calculationMode = array_key_exists($calculationMode, gaCooperationCalculationModeOptions()) ? $calculationMode : 'manual';
+    $multiplier = $calculationMode === 'per_member_auto' ? max(0, $memberCount) : 1;
+
+    foreach ($medicineQtys as $field => $qty) {
+        $medicineQtys[$field] = max(0, (int)$qty) * $multiplier;
+    }
+
+    return $medicineQtys;
+}
+
+function gaCooperationSummarizeMedicines(
+    array $medicineQtys,
+    array $pricePerPcs,
+    string $calculationMode = 'manual',
+    int $memberCount = 0
+): array
+{
+    $baseMedicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
+    $calculationMode = array_key_exists($calculationMode, gaCooperationCalculationModeOptions()) ? $calculationMode : 'manual';
+    $medicineQtys = gaCooperationEffectiveMedicineQtys($baseMedicineQtys, $calculationMode, $memberCount);
     $lines = [];
     $totalPrice = 0;
     $configuredTypes = 0;
@@ -224,13 +270,26 @@ function gaCooperationSummarizeMedicines(array $medicineQtys, array $pricePerPcs
         $configuredTypes++;
         $totalPrice += $lineTotal;
 
-        $lines[] = sprintf(
-            '%s %d x $%s = $%s',
-            $label,
-            $qty,
-            number_format($unitPrice, 0, ',', '.'),
-            number_format($lineTotal, 0, ',', '.')
-        );
+        if ($calculationMode === 'per_member_auto') {
+            $baseQty = (int)($baseMedicineQtys[$field] ?? 0);
+            $lines[] = sprintf(
+                '%s %d x %d anggota = %d x $%s = $%s',
+                $label,
+                $baseQty,
+                max(0, $memberCount),
+                $qty,
+                number_format($unitPrice, 0, ',', '.'),
+                number_format($lineTotal, 0, ',', '.')
+            );
+        } else {
+            $lines[] = sprintf(
+                '%s %d x $%s = $%s',
+                $label,
+                $qty,
+                number_format($unitPrice, 0, ',', '.'),
+                number_format($lineTotal, 0, ',', '.')
+            );
+        }
     }
 
     return [
@@ -239,6 +298,9 @@ function gaCooperationSummarizeMedicines(array $medicineQtys, array $pricePerPcs
         'configured_types' => $configuredTypes,
         'total_qty' => array_sum($medicineQtys),
         'qtys' => $medicineQtys,
+        'base_qtys' => $baseMedicineQtys,
+        'calculation_mode' => $calculationMode,
+        'member_count' => max(0, $memberCount),
     ];
 }
 

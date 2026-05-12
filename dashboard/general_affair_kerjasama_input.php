@@ -168,9 +168,9 @@ if (gaCooperationTablesReady($pdo)) {
             $medicineQtys = gaCooperationResolveMedicineQtys($notesMeta, $stmtPkg->fetchAll(PDO::FETCH_ASSOC) ?: []);
         }
 
-        $summary = gaCooperationSummarizeMedicines($medicineQtys, $pricePerPcs);
-
         $memberCount = gaInputCountActiveMembers($pdo, $cooperationId);
+        $calculationMode = (string)($notesMeta['calculation_mode'] ?? 'manual');
+        $summary = gaCooperationSummarizeMedicines($medicineQtys, $pricePerPcs, $calculationMode, $memberCount);
 
         $entry = [
             'id' => $cooperationId,
@@ -181,6 +181,8 @@ if (gaCooperationTablesReady($pdo)) {
             'is_active' => (int)($cooperationRow['is_active'] ?? 0) === 1,
             'claim_scope' => (string)($notesMeta['claim_scope'] ?? 'per_person'),
             'claim_scope_label' => gaCooperationClaimScopeLabel((string)($notesMeta['claim_scope'] ?? 'per_person')),
+            'calculation_mode' => $calculationMode,
+            'calculation_mode_label' => gaCooperationCalculationModeLabel($calculationMode),
             'member_count' => $memberCount,
             'quota_label' => gaInputTransactionQuotaLabel((string)($notesMeta['claim_scope'] ?? 'per_person'), $memberCount),
             'medicine_qtys' => $medicineQtys,
@@ -380,6 +382,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <?php if ($selectedSetting): ?>
                                         <div><strong><?= htmlspecialchars((string)$selectedSetting['institution_name'], ENT_QUOTES, 'UTF-8') ?></strong></div>
                                         <small class="meta-text-xs"><?= htmlspecialchars((string)$selectedSetting['period_label'], ENT_QUOTES, 'UTF-8') ?></small>
+                                        <small class="meta-text-xs"><?= htmlspecialchars((string)($selectedSetting['calculation_mode_label'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></small>
                                     <?php else: ?>
                                         <span class="muted-placeholder">Tidak terhubung</span>
                                     <?php endif; ?>
@@ -656,7 +659,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (settingName) settingName.textContent = setting.institution_name || '-';
         if (settingPeriod) settingPeriod.textContent = setting.period_label || '-';
         if (settingQuota) {
-            settingQuota.textContent = (setting.claim_scope_label || '-') + ' | Kuota: ' + (setting.quota_label || '-');
+            settingQuota.textContent = (setting.claim_scope_label || '-') + ' | ' + (setting.calculation_mode_label || '-') + ' | Kuota: ' + (setting.quota_label || '-');
         }
         if (settingNotes) settingNotes.textContent = setting.notes || '';
         if (settingPackages) settingPackages.textContent = packageLines.length ? packageLines.join('\n') : '-';
