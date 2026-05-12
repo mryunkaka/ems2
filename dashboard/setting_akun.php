@@ -45,6 +45,13 @@ $optionalSettingAkunColumns = [
     'sertifikat_operasi_besar',
     'sertifikat_class_co_asst',
     'sertifikat_class_paramedic',
+    'tanggal_dikeluarkan_sertifikat_heli',
+    'tanggal_dikeluarkan_sertifikat_operasi',
+    'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'tanggal_dikeluarkan_sertifikat_class_paramedic',
     'tanggal_naik_paramedic',
     'tanggal_naik_co_asst',
     'tanggal_naik_dokter',
@@ -384,10 +391,22 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
 DOKUMEN PENDUKUNG
 =============================== -->
                 <?php
-                function renderDocInput($label, $name, $path = null, $required = false)
+                function renderDocInput($label, $name, $path = null, $required = false, ?string $issuedDateField = null, ?string $issuedDateValue = null)
                 {
+                    $canDelete = !$required && !empty($path);
+                    $hasIssuedDateValue = trim((string)$issuedDateValue) !== '';
+                    $shouldShowIssuedDate = $issuedDateField !== null && (!empty($path) || $hasIssuedDateValue);
+                    $issuedDateLabel = $label !== '' ? 'Tanggal Dikeluarkan ' . $label : 'Tanggal Dikeluarkan';
                 ?>
-                    <div class="doc-upload-wrapper">
+                    <div class="doc-upload-wrapper"
+                        <?php if ($issuedDateField !== null): ?>
+                        data-issued-doc-wrapper
+                        data-doc-name="<?= htmlspecialchars($name) ?>"
+                        data-has-existing-file="<?= !empty($path) ? '1' : '0' ?>"
+                        <?php endif; ?>>
+                        <?php if ($canDelete): ?>
+                            <input type="hidden" name="delete_doc_fields[<?= htmlspecialchars($name) ?>]" value="0" data-doc-delete-input="<?= htmlspecialchars($name) ?>">
+                        <?php endif; ?>
                         <div class="doc-upload-header">
                             <label class="doc-label">
                                 <?= htmlspecialchars($label) ?>
@@ -400,11 +419,18 @@ DOKUMEN PENDUKUNG
                                 <div class="doc-status-badge">
                                     <span class="badge-success-mini">Sudah diunggah</span>
                                     <a href="#"
-                                        class="btn-link btn-preview-doc"
+                                        class="btn-link btn-preview-doc btn-doc-pill"
                                         data-src="<?= htmlspecialchars(settingAkunPreviewUrl($path)) ?>"
                                         data-title="<?= htmlspecialchars($label) ?>">
                                         Lihat dokumen
                                     </a>
+                                    <?php if ($canDelete): ?>
+                                        <button type="button"
+                                            class="btn-danger button-compact btn-delete-doc btn-doc-pill"
+                                            data-doc-target="<?= htmlspecialchars($name) ?>">
+                                            Hapus
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             <?php else: ?>
                                 <span class="badge-muted-mini">Belum ada</span>
@@ -428,8 +454,23 @@ DOKUMEN PENDUKUNG
                             <div class="file-selected-name" data-for="<?= htmlspecialchars($name) ?>"></div>
                         </div>
 
+                        <?php if ($issuedDateField !== null): ?>
+                            <div class="doc-issued-date-row<?= $shouldShowIssuedDate ? '' : ' hidden' ?>"
+                                data-issued-date-row>
+                                <div>
+                                    <label><?= htmlspecialchars($issuedDateLabel) ?></label>
+                                    <input type="date"
+                                        name="<?= htmlspecialchars($issuedDateField) ?>"
+                                        value="<?= htmlspecialchars((string)$issuedDateValue) ?>"
+                                        data-issued-date-input
+                                        data-doc-label="<?= htmlspecialchars($label) ?>"
+                                        data-issued-date-label="<?= htmlspecialchars($issuedDateLabel) ?>">
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
                         <?php if (!empty($path)): ?>
-                            <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
+                            <small class="doc-hint" data-doc-hint="<?= htmlspecialchars($name) ?>">Upload ulang akan menggantikan file sebelumnya</small>
                         <?php elseif ($required): ?>
                             <small class="doc-hint">Dokumen ini wajib diunggah.</small>
                         <?php endif; ?>
@@ -465,22 +506,22 @@ DOKUMEN PENDUKUNG
                 renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb'], true);
                 renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
                 renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
-                renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli']);
-                renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi']);
+                renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
+                renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
                 if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik']);
+                    renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_plastik', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_plastik'] ?? '');
                 }
                 if (array_key_exists('sertifikat_operasi_kecil', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', $userDb['sertifikat_operasi_kecil']);
+                    renderDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', $userDb['sertifikat_operasi_kecil'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_kecil', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_kecil' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_kecil'] ?? '');
                 }
                 if (array_key_exists('sertifikat_operasi_besar', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', $userDb['sertifikat_operasi_besar']);
+                    renderDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', $userDb['sertifikat_operasi_besar'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_besar', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_besar' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_besar'] ?? '');
                 }
                 if (array_key_exists('sertifikat_class_co_asst', $userDb)) {
-                    renderDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', $userDb['sertifikat_class_co_asst']);
+                    renderDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', $userDb['sertifikat_class_co_asst'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_co_asst', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_co_asst' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_co_asst'] ?? '');
                 }
                 if (array_key_exists('sertifikat_class_paramedic', $userDb)) {
-                    renderDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', $userDb['sertifikat_class_paramedic']);
+                    renderDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', $userDb['sertifikat_class_paramedic'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_paramedic', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_paramedic' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_paramedic'] ?? '');
                 }
                 ?>
 
@@ -513,6 +554,7 @@ DOKUMEN PENDUKUNG
                         <?php if (empty($otherDocs)): ?>
                             <div class="academy-doc-row" data-row="academy">
                                 <input type="hidden" name="academy_doc_id[]" value="">
+                                <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
 
                                 <div class="row-form-2 academy-grid">
                                     <div>
@@ -540,6 +582,9 @@ DOKUMEN PENDUKUNG
                                                 class="sr-only">
                                             <div class="file-selected-name" data-for="academy_file_new_0"></div>
                                         </div>
+                                        <div class="action-row-end academy-doc-actions">
+                                            <button type="button" class="btn-secondary button-compact" data-academy-delete>Hapus Baris</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -547,6 +592,7 @@ DOKUMEN PENDUKUNG
                             <?php foreach ($otherDocs as $idx => $ad): ?>
                                 <div class="academy-doc-row" data-row="academy">
                                     <input type="hidden" name="academy_doc_id[]" value="<?= htmlspecialchars($ad['id'] ?? '') ?>">
+                                    <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
 
                                     <div class="row-form-2 academy-grid">
                                         <div>
@@ -560,11 +606,16 @@ DOKUMEN PENDUKUNG
                                             <div class="academy-doc-preview">
                                                 <span class="badge-success-mini">Sudah diunggah</span>
                                                 <a href="#"
-                                                    class="btn-link btn-preview-doc"
+                                                    class="btn-link btn-preview-doc btn-doc-pill"
                                                     data-src="<?= htmlspecialchars(settingAkunPreviewUrl($ad['path'] ?? '')) ?>"
                                                     data-title="<?= htmlspecialchars($ad['name'] ?? 'File Lainnya') ?>">
                                                     Lihat dokumen
                                                 </a>
+                                                <button type="button"
+                                                    class="btn-danger button-compact btn-delete-academy-doc btn-doc-pill"
+                                                    data-academy-delete>
+                                                    Hapus
+                                                </button>
                                             </div>
                                         </div>
 
@@ -700,6 +751,7 @@ DOKUMEN PENDUKUNG
                 row.setAttribute('data-row', 'academy');
                 row.innerHTML = `
 	                    <input type="hidden" name="academy_doc_id[]" value="">
+                        <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
 	                    <div class="row-form-2 academy-grid">
 	                        <div>
 	                            <label>Nama File Lainnya</label>
@@ -718,11 +770,48 @@ DOKUMEN PENDUKUNG
                                 <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" class="sr-only">
 	                                <div class="file-selected-name" data-for="${id}"></div>
 	                            </div>
+                                <div class="action-row-end academy-doc-actions">
+                                    <button type="button" class="btn-secondary button-compact" data-academy-delete>Hapus Baris</button>
+                                </div>
 	                        </div>
 	                    </div>
 	                `;
 
                 container.appendChild(row);
+            });
+
+            container.addEventListener('click', function(e) {
+                const deleteButton = e.target.closest('[data-academy-delete]');
+                if (!deleteButton) {
+                    return;
+                }
+
+                const row = deleteButton.closest('.academy-doc-row');
+                if (!row) {
+                    return;
+                }
+
+                const idInput = row.querySelector('input[name="academy_doc_id[]"]');
+                const deleteInput = row.querySelector('[data-academy-delete-input]');
+                const fileInput = row.querySelector('input[type="file"]');
+
+                if (fileInput) {
+                    fileInput.value = '';
+                }
+
+                if (idInput && idInput.value.trim() !== '') {
+                    if (!window.confirm('Hapus file ini saat disimpan? File akan dihapus permanen dari server.')) {
+                        return;
+                    }
+
+                    if (deleteInput) {
+                        deleteInput.value = '1';
+                    }
+                    row.style.display = 'none';
+                    return;
+                }
+
+                row.remove();
             });
         });
     </script>
@@ -804,6 +893,50 @@ DOKUMEN PENDUKUNG
         line-height: 1.5;
     }
 
+    .doc-issued-date-row {
+        margin-top: 12px;
+    }
+
+    .doc-issued-date-row.hidden {
+        display: none;
+    }
+
+    .doc-status-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .btn-doc-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .academy-doc-preview {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+    }
+
+    @media (max-width: 640px) {
+        .doc-status-badge,
+        .academy-doc-preview {
+            justify-content: flex-start;
+        }
+    }
+
     @keyframes settingAkunSpin {
         to {
             transform: rotate(360deg);
@@ -813,6 +946,99 @@ DOKUMEN PENDUKUNG
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        function syncIssuedDateVisibility(wrapper) {
+            if (!wrapper) {
+                return;
+            }
+
+            const row = wrapper.querySelector('[data-issued-date-row]');
+            const dateInput = wrapper.querySelector('[data-issued-date-input]');
+            const fileInput = wrapper.querySelector('input[type="file"]');
+            const deleteInput = wrapper.querySelector('[data-doc-delete-input]');
+
+            if (!row || !dateInput || !fileInput) {
+                return;
+            }
+
+            const hasExistingFile = wrapper.getAttribute('data-has-existing-file') === '1';
+            const markedDelete = deleteInput && deleteInput.value === '1';
+            const hasSelectedUpload = !!(fileInput.files && fileInput.files.length > 0);
+            const shouldShow = !markedDelete && (hasExistingFile || hasSelectedUpload || dateInput.value.trim() !== '');
+
+            row.classList.toggle('hidden', !shouldShow);
+            dateInput.required = hasSelectedUpload && !markedDelete;
+        }
+
+        document.querySelectorAll('[data-issued-doc-wrapper]').forEach(function(wrapper) {
+            syncIssuedDateVisibility(wrapper);
+        });
+
+        document.addEventListener('click', function(e) {
+            const deleteButton = e.target.closest('.btn-delete-doc');
+            if (!deleteButton) {
+                return;
+            }
+
+            const target = deleteButton.getAttribute('data-doc-target');
+            const deleteInput = document.querySelector('[data-doc-delete-input="' + target + '"]');
+            const wrapper = deleteButton.closest('.doc-upload-wrapper');
+            const fileInput = document.getElementById(target);
+            const hint = document.querySelector('[data-doc-hint="' + target + '"]');
+
+            if (!target || !deleteInput || !wrapper) {
+                return;
+            }
+
+            if (!window.confirm('Hapus dokumen ini saat disimpan? File akan dihapus permanen dari server.')) {
+                return;
+            }
+
+            deleteInput.value = '1';
+            if (fileInput) {
+                fileInput.value = '';
+            }
+
+            wrapper.classList.add('doc-pending-delete');
+            deleteButton.disabled = true;
+            deleteButton.textContent = 'Akan dihapus';
+            wrapper.setAttribute('data-has-existing-file', '0');
+            syncIssuedDateVisibility(wrapper);
+
+            if (hint) {
+                hint.textContent = 'Dokumen akan dihapus permanen saat perubahan disimpan.';
+            }
+        });
+
+        document.addEventListener('change', function(e) {
+            const input = e.target;
+            if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+                return;
+            }
+
+            const wrapper = input.closest('[data-issued-doc-wrapper]');
+            if (wrapper) {
+                const deleteInput = wrapper.querySelector('[data-doc-delete-input]');
+                const deleteButton = wrapper.querySelector('.btn-delete-doc');
+                const hint = wrapper.querySelector('[data-doc-hint]');
+
+                if (deleteInput && input.files && input.files.length > 0) {
+                    deleteInput.value = '0';
+                }
+                if (deleteButton) {
+                    deleteButton.disabled = false;
+                    deleteButton.textContent = 'Hapus';
+                }
+                wrapper.classList.remove('doc-pending-delete');
+                syncIssuedDateVisibility(wrapper);
+
+                if (hint && input.files && input.files.length > 0) {
+                    const dateInput = wrapper.querySelector('[data-issued-date-input]');
+                    const issuedDateLabel = dateInput ? (dateInput.getAttribute('data-issued-date-label') || 'Tanggal dikeluarkan') : 'Tanggal dikeluarkan';
+                    hint.textContent = issuedDateLabel + ' wajib diisi untuk dokumen yang baru diupload.';
+                }
+            }
+        });
+
         setTimeout(function() {
             document.querySelectorAll(
                 '.alert-info, .alert-warning, .alert-error'
@@ -965,6 +1191,37 @@ DOKUMEN PENDUKUNG
                 return Array.from(form.querySelectorAll('input[type="file"]')).some(function(input) {
                     return input.files && input.files.length > 0;
                 });
+            }
+
+            function validateIssuedDateUploads() {
+                const wrappers = Array.from(form.querySelectorAll('[data-issued-doc-wrapper]'));
+
+                for (const wrapper of wrappers) {
+                    const fileInput = wrapper.querySelector('input[type="file"]');
+                    const dateInput = wrapper.querySelector('[data-issued-date-input]');
+                    const label = dateInput ? (dateInput.getAttribute('data-issued-date-label') || dateInput.getAttribute('data-doc-label') || 'Dokumen') : 'Dokumen';
+
+                    if (!fileInput || !dateInput) {
+                        continue;
+                    }
+
+                    const hasSelectedUpload = !!(fileInput.files && fileInput.files.length > 0);
+                    if (!hasSelectedUpload) {
+                        continue;
+                    }
+
+                    if (dateInput.value.trim() === '') {
+                        alert(label + ' wajib diisi saat upload dokumen.');
+                        const row = wrapper.querySelector('[data-issued-date-row]');
+                        if (row) {
+                            row.classList.remove('hidden');
+                        }
+                        dateInput.focus();
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             function withIgnoredFileRequired(checker) {
@@ -1224,6 +1481,12 @@ DOKUMEN PENDUKUNG
 
                 const hasUploads = hasAnySelectedFiles();
                 const isQuickSave = !hasUploads;
+
+                if (!validateIssuedDateUploads()) {
+                    e.preventDefault();
+                    return;
+                }
+
                 const validityOk = withIgnoredFileRequired(function() {
                     return form.checkValidity();
                 });

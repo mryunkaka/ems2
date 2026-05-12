@@ -79,6 +79,19 @@ function quickSaveTwoDigit($num): string
     return str_pad((string)$num, 2, '0', STR_PAD_LEFT);
 }
 
+function quickSaveDeleteOldFileIfExists(?string $dbPath): void
+{
+    $dbPath = trim((string)$dbPath);
+    if ($dbPath === '') {
+        return;
+    }
+
+    $fullPath = __DIR__ . '/../' . $dbPath;
+    if (is_file($fullPath)) {
+        @unlink($fullPath);
+    }
+}
+
 $quickSaveStartedAt = microtime(true);
 $quickSaveMarks = [];
 quickSaveMark('bootstrap');
@@ -166,6 +179,15 @@ $extraDocFields = [
     'sertifikat_class_co_asst',
     'sertifikat_class_paramedic',
 ];
+$issuedDateFields = [
+    'tanggal_dikeluarkan_sertifikat_heli',
+    'tanggal_dikeluarkan_sertifikat_operasi',
+    'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'tanggal_dikeluarkan_sertifikat_class_paramedic',
+];
 $dateFields = [
     'tanggal_naik_paramedic',
     'tanggal_naik_co_asst',
@@ -184,7 +206,7 @@ $selectColumns = [
     'dokumen_lainnya',
 ];
 $userRhColumns = quickSaveColumns($pdo);
-foreach (array_merge($extraDocFields, $dateFields) as $optionalColumn) {
+foreach (array_merge($extraDocFields, $issuedDateFields, $dateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $selectColumns[] = $optionalColumn;
     }
@@ -217,11 +239,70 @@ foreach ($existingAcademyDocs as $d) {
     $existingById[(string)$d['id']] = $d;
 }
 
+$docFields = [
+    'file_ktp',
+    'file_sim',
+    'file_kta',
+    'file_skb',
+    'sertifikat_heli',
+    'sertifikat_operasi',
+];
+foreach ($extraDocFields as $extraDocField) {
+    if (array_key_exists($extraDocField, $userDb)) {
+        $docFields[] = $extraDocField;
+    }
+}
+
+$docIssuedDateMap = [
+    'sertifikat_heli' => 'tanggal_dikeluarkan_sertifikat_heli',
+    'sertifikat_operasi' => 'tanggal_dikeluarkan_sertifikat_operasi',
+    'sertifikat_operasi_plastik' => 'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'sertifikat_operasi_kecil' => 'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'sertifikat_operasi_besar' => 'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'sertifikat_class_co_asst' => 'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'sertifikat_class_paramedic' => 'tanggal_dikeluarkan_sertifikat_class_paramedic',
+];
+
+foreach ($docIssuedDateMap as $docField => $issuedDateField) {
+    if (!in_array($docField, $docFields, true)) {
+        continue;
+    }
+
+    $hasNewUpload = !empty($_FILES[$docField]['tmp_name']) && (int)($_FILES[$docField]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;
+    if (!$hasNewUpload) {
+        continue;
+    }
+
+    $postedIssuedDate = trim((string)($_POST[$issuedDateField] ?? ''));
+    if ($postedIssuedDate === '') {
+        quickSaveRespond(false, 'Tanggal dikeluarkan wajib diisi saat upload dokumen sertifikat.', [], 422);
+    }
+}
+
+$deleteDocFieldsRaw = $_POST['delete_doc_fields'] ?? [];
+$docFieldsToNull = [];
+if (is_array($deleteDocFieldsRaw)) {
+    foreach ($deleteDocFieldsRaw as $field => $flag) {
+        if ((string)$flag !== '1') {
+            continue;
+        }
+        if (!in_array($field, $docFields, true)) {
+            continue;
+        }
+        if (!empty($userDb[$field])) {
+            quickSaveDeleteOldFileIfExists((string)$userDb[$field]);
+        }
+        $docFieldsToNull[$field] = null;
+    }
+}
+
 $postedIds = $_POST['academy_doc_id'] ?? [];
 $postedNames = $_POST['academy_doc_name'] ?? [];
+$postedDeletes = $_POST['academy_doc_delete'] ?? [];
 $max = max(
     is_array($postedIds) ? count($postedIds) : 0,
-    is_array($postedNames) ? count($postedNames) : 0
+    is_array($postedNames) ? count($postedNames) : 0,
+    is_array($postedDeletes) ? count($postedDeletes) : 0
 );
 
 $academyFinal = [];
@@ -229,9 +310,15 @@ $seen = [];
 for ($i = 0; $i < $max; $i++) {
     $id = is_array($postedIds) ? trim((string)($postedIds[$i] ?? '')) : '';
     $name = is_array($postedNames) ? sanitizeAcademyDocName((string)($postedNames[$i] ?? '')) : '';
+    $markedDelete = is_array($postedDeletes) && (string)($postedDeletes[$i] ?? '0') === '1';
 
     if ($id !== '' && isset($existingById[$id])) {
         $doc = $existingById[$id];
+        if ($markedDelete) {
+            quickSaveDeleteOldFileIfExists((string)($doc['path'] ?? ''));
+            $seen[$id] = true;
+            continue;
+        }
         $academyFinal[] = [
             'id' => $id,
             'name' => $name !== '' ? $name : (string)($doc['name'] ?? 'File Lainnya'),
@@ -302,6 +389,37 @@ foreach ($dateFields as $dateField) {
 }
 quickSaveMark('prepare_dates');
 
+$issuedDateValues = [];
+foreach ($issuedDateFields as $dateField) {
+    if (!array_key_exists($dateField, $userDb)) {
+        continue;
+    }
+
+    $postedValue = trim((string)($_POST[$dateField] ?? ''));
+    if ($postedValue !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $postedValue)) {
+        quickSaveRespond(false, 'Format tanggal dikeluarkan sertifikat tidak valid.', [], 422);
+    }
+    $issuedDateValues[$dateField] = $postedValue !== '' ? $postedValue : null;
+}
+
+$docIssuedDateMap = [
+    'sertifikat_heli' => 'tanggal_dikeluarkan_sertifikat_heli',
+    'sertifikat_operasi' => 'tanggal_dikeluarkan_sertifikat_operasi',
+    'sertifikat_operasi_plastik' => 'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'sertifikat_operasi_kecil' => 'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'sertifikat_operasi_besar' => 'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'sertifikat_class_co_asst' => 'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'sertifikat_class_paramedic' => 'tanggal_dikeluarkan_sertifikat_class_paramedic',
+];
+
+foreach ($docFieldsToNull as $docField => $_unused) {
+    $issuedDateField = $docIssuedDateMap[$docField] ?? null;
+    if ($issuedDateField !== null && array_key_exists($issuedDateField, $issuedDateValues)) {
+        $issuedDateValues[$issuedDateField] = null;
+    }
+}
+quickSaveMark('prepare_issued_dates');
+
 $currentKodeInduk = $userDb['kode_nomor_induk_rs'] ?? null;
 $kodeNomorInduk = null;
 if (empty($currentKodeInduk)) {
@@ -343,7 +461,17 @@ if ($batchFromDb === 0) {
     $params[] = $batch;
 }
 
+foreach ($docFieldsToNull as $col => $value) {
+    $sql .= ", {$col} = ?";
+    $params[] = $value;
+}
+
 foreach ($dateFieldValues as $col => $value) {
+    $sql .= ", {$col} = ?";
+    $params[] = $value;
+}
+
+foreach ($issuedDateValues as $col => $value) {
     $sql .= ", {$col} = ?";
     $params[] = $value;
 }

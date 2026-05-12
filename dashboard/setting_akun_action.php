@@ -302,6 +302,15 @@ $settingAkunExtraDocFields = [
     'sertifikat_class_co_asst',
     'sertifikat_class_paramedic',
 ];
+$settingAkunIssuedDateFields = [
+    'tanggal_dikeluarkan_sertifikat_heli',
+    'tanggal_dikeluarkan_sertifikat_operasi',
+    'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'tanggal_dikeluarkan_sertifikat_class_paramedic',
+];
 $settingAkunDateFields = [
     'tanggal_naik_paramedic',
     'tanggal_naik_co_asst',
@@ -320,7 +329,7 @@ $settingAkunSelectColumns = [
     'dokumen_lainnya',
 ];
 $userRhColumns = settingAkunActionUserRhColumns($pdo);
-foreach (array_merge($settingAkunExtraDocFields, $settingAkunDateFields) as $optionalColumn) {
+foreach (array_merge($settingAkunExtraDocFields, $settingAkunIssuedDateFields, $settingAkunDateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $settingAkunSelectColumns[] = $optionalColumn;
     }
@@ -435,9 +444,56 @@ foreach ($settingAkunExtraDocFields as $extraDocField) {
     }
 }
 
+$docIssuedDateMap = [
+    'sertifikat_heli' => 'tanggal_dikeluarkan_sertifikat_heli',
+    'sertifikat_operasi' => 'tanggal_dikeluarkan_sertifikat_operasi',
+    'sertifikat_operasi_plastik' => 'tanggal_dikeluarkan_sertifikat_operasi_plastik',
+    'sertifikat_operasi_kecil' => 'tanggal_dikeluarkan_sertifikat_operasi_kecil',
+    'sertifikat_operasi_besar' => 'tanggal_dikeluarkan_sertifikat_operasi_besar',
+    'sertifikat_class_co_asst' => 'tanggal_dikeluarkan_sertifikat_class_co_asst',
+    'sertifikat_class_paramedic' => 'tanggal_dikeluarkan_sertifikat_class_paramedic',
+];
+
+foreach ($docIssuedDateMap as $docField => $issuedDateField) {
+    if (!in_array($docField, $docFields, true)) {
+        continue;
+    }
+
+    $hasNewUpload = !empty($_FILES[$docField]['tmp_name']) && (int)($_FILES[$docField]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK;
+    if (!$hasNewUpload) {
+        continue;
+    }
+
+    $postedIssuedDate = trim((string)($_POST[$issuedDateField] ?? ''));
+    if ($postedIssuedDate === '') {
+        $_SESSION['flash_errors'][] = 'Tanggal dikeluarkan wajib diisi saat upload dokumen sertifikat.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+}
+
 $uploadedPaths = [];
+$docFieldsToNull = [];
+$deleteDocFieldsRaw = $_POST['delete_doc_fields'] ?? [];
+$deleteDocFields = [];
+
+if (is_array($deleteDocFieldsRaw)) {
+    foreach ($deleteDocFieldsRaw as $field => $flag) {
+        if ((string)$flag !== '1') {
+            continue;
+        }
+        if (!in_array($field, $docFields, true)) {
+            continue;
+        }
+        $deleteDocFields[$field] = true;
+    }
+}
 
 foreach ($docFields as $field) {
+    if (isset($deleteDocFields[$field]) && !empty($userDb[$field])) {
+        deleteOldFileIfExists($userDb[$field]);
+        $docFieldsToNull[$field] = null;
+    }
 
     // Tidak upload → skip
     if (
@@ -478,6 +534,7 @@ foreach ($docFields as $field) {
     }
 
     $uploadedPaths[$field] = $webPath;
+    unset($docFieldsToNull[$field]);
 }
 settingAkunPerfMark('process_primary_uploads');
 
@@ -493,6 +550,7 @@ foreach ($existingAcademyDocs as $d) {
 
 $postedIds = $_POST['academy_doc_id'] ?? [];
 $postedNames = $_POST['academy_doc_name'] ?? [];
+$postedDeletes = $_POST['academy_doc_delete'] ?? [];
 
 $fileBag = $_FILES['academy_doc_file'] ?? null;
 $fileCount = is_array($fileBag) && isset($fileBag['name']) && is_array($fileBag['name']) ? count($fileBag['name']) : 0;
@@ -500,6 +558,7 @@ $fileCount = is_array($fileBag) && isset($fileBag['name']) && is_array($fileBag[
 $max = max(
     is_array($postedIds) ? count($postedIds) : 0,
     is_array($postedNames) ? count($postedNames) : 0,
+    is_array($postedDeletes) ? count($postedDeletes) : 0,
     $fileCount
 );
 
@@ -509,6 +568,7 @@ $seen = [];
 for ($i = 0; $i < $max; $i++) {
     $id = is_array($postedIds) ? trim((string)($postedIds[$i] ?? '')) : '';
     $name = is_array($postedNames) ? sanitizeAcademyDocName((string)($postedNames[$i] ?? '')) : '';
+    $markedDelete = is_array($postedDeletes) && (string)($postedDeletes[$i] ?? '0') === '1';
 
     $hasFile = false;
     $fileTmp = null;
@@ -532,6 +592,14 @@ for ($i = 0; $i < $max; $i++) {
         $doc = $existingById[$id];
         $path = (string)($doc['path'] ?? '');
         $finalName = $name !== '' ? $name : (string)($doc['name'] ?? 'File Lainnya');
+
+        if ($markedDelete) {
+            if ($path !== '') {
+                deleteOldFileIfExists($path);
+            }
+            $seen[$id] = true;
+            continue;
+        }
 
         if ($hasFile) {
             if (emsUploadedFileExceedsLimit([
@@ -572,6 +640,10 @@ for ($i = 0; $i < $max; $i++) {
     }
 
     // New doc (wajib ada file)
+    if ($markedDelete) {
+        continue;
+    }
+
     if (!$hasFile) {
         continue;
     }
@@ -686,6 +758,30 @@ foreach ($settingAkunDateFields as $dateField) {
 }
 settingAkunPerfMark('prepare_date_fields');
 
+$issuedDateValues = [];
+foreach ($settingAkunIssuedDateFields as $dateField) {
+    if (!array_key_exists($dateField, $userDb)) {
+        continue;
+    }
+
+    $postedValue = trim((string)($_POST[$dateField] ?? ''));
+    if ($postedValue !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $postedValue)) {
+        $_SESSION['flash_errors'][] = 'Format tanggal dikeluarkan sertifikat tidak valid.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+
+    $issuedDateValues[$dateField] = $postedValue !== '' ? $postedValue : null;
+}
+
+foreach ($docFieldsToNull as $docField => $_unused) {
+    $issuedDateField = $docIssuedDateMap[$docField] ?? null;
+    if ($issuedDateField !== null && array_key_exists($issuedDateField, $issuedDateValues)) {
+        $issuedDateValues[$issuedDateField] = null;
+    }
+}
+settingAkunPerfMark('prepare_issued_dates');
+
 /*
 |--------------------------------------------------------------------------
 | UPDATE DATA USER
@@ -721,7 +817,17 @@ foreach ($uploadedPaths as $col => $path) {
     $params[]  = $path;
 }
 
+foreach ($docFieldsToNull as $col => $value) {
+    $sql .= ", {$col} = ?";
+    $params[] = $value;
+}
+
 foreach ($dateFieldValues as $col => $value) {
+    $sql .= ", {$col} = ?";
+    $params[] = $value;
+}
+
+foreach ($issuedDateValues as $col => $value) {
     $sql .= ", {$col} = ?";
     $params[] = $value;
 }

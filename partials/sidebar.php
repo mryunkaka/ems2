@@ -385,34 +385,112 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
 
     <nav class="sidebar-menu">
         <?php foreach ($groupedNav as $groupTitle => $items): ?>
-            <?php if (empty($items)) continue; ?>
+            <?php
+            $visibleItems = array_values(array_filter($items, static function (array $item): bool {
+                return ($item['page'] ?? '') !== 'setting_akun.php';
+            }));
+            ?>
+            <?php if (empty($visibleItems)) continue; ?>
             <div class="sidebar-group-title"><?= htmlspecialchars($groupTitle) ?></div>
-            <?php foreach ($items as $item): ?>
+            <?php foreach ($visibleItems as $item): ?>
                 <a href="<?= htmlspecialchars($item['href']) ?>" class="<?= isActive($item['page']) ?>">
                     <span class="icon"><?= ems_icon($item['icon'], 'h-5 w-5') ?></span>
                     <span class="text"><?= htmlspecialchars($item['label']) ?></span>
                 </a>
             <?php endforeach; ?>
         <?php endforeach; ?>
-
-        <a href="/auth/logout.php"
-            onclick="
-                if (confirm('Yakin ingin keluar?')) {
-                    sessionStorage.removeItem('farmasi_activity_closed');
-                    return true;
-                }
-                return false;
-            "
-            class="logout">
-            <span class="icon"><?= ems_icon('arrow-right-on-rectangle', 'h-5 w-5') ?></span>
-            <span class="text">Keluar</span>
-        </a>
     </nav>
 
     <div class="sidebar-footer">
-        EMS &copy; <?= date('Y') ?>
+        <span class="sidebar-footer-copy">EMS &copy; <?= date('Y') ?></span>
+        <div class="sidebar-footer-actions">
+            <a href="/dashboard/setting_akun.php" class="sidebar-footer-action <?= isActive('setting_akun.php') ?>" aria-label="Setting Akun" title="Setting Akun">
+                <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?>
+            </a>
+            <a href="/auth/logout.php"
+                onclick="
+                    if (confirm('Yakin ingin keluar?')) {
+                        sessionStorage.removeItem('farmasi_activity_closed');
+                        return true;
+                    }
+                    return false;
+                "
+                class="sidebar-footer-action"
+                aria-label="Keluar"
+                title="Keluar">
+                <?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?>
+            </a>
+        </div>
     </div>
 </aside>
 
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="document.body.classList.remove('sidebar-open');"></div>
+<style>
+    .sidebar {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .sidebar-menu {
+        flex: 1 1 auto;
+        min-height: 0;
+        padding-bottom: 20px;
+    }
+
+    .sidebar-footer {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .sidebar-footer-copy {
+        min-width: 0;
+    }
+
+    .sidebar-footer-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .sidebar-footer-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        color: #e2e8f0;
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .sidebar-footer-action:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .sidebar-footer-action.active {
+        background: rgba(255, 255, 255, 0.16);
+        color: #ffffff;
+    }
+
+    @media (max-width: 767px) {
+        .sidebar {
+            height: calc(100vh - 4rem);
+            max-height: calc(100dvh - 4rem);
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .sidebar-menu {
+            padding-bottom: 12px;
+        }
+    }
+</style>
 <main class="main-content">
