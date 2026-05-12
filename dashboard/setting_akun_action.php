@@ -441,6 +441,12 @@ foreach ($docFields as $field) {
         continue;
     }
 
+    if (emsUploadedFileExceedsLimit($_FILES[$field])) {
+        $_SESSION['flash_errors'][] = "Ukuran {$field} maksimal " . emsUploadLimitLabel() . '.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+
     // 🔴 HAPUS FILE LAMA JIKA ADA
     if (!empty($userDb[$field])) {
         deleteOldFileIfExists($userDb[$field]);
@@ -522,6 +528,14 @@ for ($i = 0; $i < $max; $i++) {
         $finalName = $name !== '' ? $name : (string)($doc['name'] ?? 'File Lainnya');
 
         if ($hasFile) {
+            if (emsUploadedFileExceedsLimit([
+                'size' => (int)($fileBag['size'][$i] ?? 0),
+            ])) {
+                $_SESSION['flash_errors'][] = 'Ukuran file lainnya maksimal ' . emsUploadLimitLabel() . '.';
+                header('Location: setting_akun.php');
+                exit;
+            }
+
             if ($path !== '') deleteOldFileIfExists($path);
 
             $info = getimagesize($fileTmp);
@@ -562,6 +576,14 @@ for ($i = 0; $i < $max; $i++) {
     } else {
         $id = preg_replace('/[^a-zA-Z0-9_\-]/', '', $id);
         if ($id === '') $id = bin2hex(random_bytes(8));
+    }
+
+    if (emsUploadedFileExceedsLimit([
+        'size' => (int)($fileBag['size'][$i] ?? 0),
+    ])) {
+        $_SESSION['flash_errors'][] = 'Ukuran file lainnya maksimal ' . emsUploadLimitLabel() . '.';
+        header('Location: setting_akun.php');
+        exit;
     }
 
     $info = getimagesize($fileTmp);

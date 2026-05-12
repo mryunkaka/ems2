@@ -161,7 +161,7 @@ function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files):
         foreach (array_values($files) as $index => $file) {
             $path = uploadAndCompressFile($file, 'letters/outgoing', 400000, 5000000);
             if (!$path) {
-                throw new Exception('Lampiran surat keluar gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+                throw new Exception('Lampiran surat keluar gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
             }
 
             $storedPaths[] = $path;
@@ -208,20 +208,20 @@ function surat_store_minutes_attachment(array $file): ?string
     if (in_array($mime, ['image/jpeg', 'image/png'], true)) {
         $path = uploadAndCompressFile($file, 'letters/minutes', 400000, 5000000);
         if ($path === null) {
-            throw new Exception('Lampiran gambar notulen gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
+            throw new Exception('Lampiran gambar notulen gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
         }
 
         return $path;
     }
 
     if ($mime === 'application/pdf') {
-        $maxPdfSize = 500 * 1024;
+        $maxPdfSize = emsUploadLimitBytes();
         $size = (int)($file['size'] ?? 0);
         if ($size <= 0) {
             throw new Exception('Ukuran PDF notulen tidak valid.');
         }
         if ($size > $maxPdfSize) {
-            throw new Exception('PDF notulen maksimal 500 KB. Kompres dulu di https://www.ilovepdf.com/id/mengompres-pdf');
+            throw new Exception('PDF notulen maksimal ' . emsUploadLimitLabel() . '.');
         }
 
         $filename = bin2hex(random_bytes(8)) . '_' . time() . '.pdf';

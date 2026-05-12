@@ -1,0 +1,8 @@
+[12-May-2026 15:23:18 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function ems_url() in /home/fouf9972/public_html/rh_ems/public/recruitment_form.php:419
+Stack trace:
+#0 {main}
+  thrown in /home/fouf9972/public_html/rh_ems/public/recruitment_form.php on line 419
+[12-May-2026 15:32:14 Asia/Jakarta] PHP Fatal error:  Uncaught Error: Call to undefined function ems_url() in /home/fouf9972/public_html/rh_ems/public/recruitment_form.php:419
+Stack trace:
+#0 {main}
+  thrown in /home/fouf9972/public_html/rh_ems/public/recruitment_form.php on line 419

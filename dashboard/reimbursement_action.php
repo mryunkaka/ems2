@@ -9,6 +9,7 @@ session_start();
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +62,12 @@ if (
     isset($_FILES['receipt_file']) &&
     $_FILES['receipt_file']['error'] === UPLOAD_ERR_OK
 ) {
+    if (emsUploadedFileExceedsLimit($_FILES['receipt_file'])) {
+        $_SESSION['flash_errors'][] = 'Ukuran bukti pembayaran maksimal ' . emsUploadLimitLabel() . '.';
+        header('Location: reimbursement.php');
+        exit;
+    }
+
     $tmp  = $_FILES['receipt_file']['tmp_name'];
     $info = getimagesize($tmp);
 

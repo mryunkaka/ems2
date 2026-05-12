@@ -434,7 +434,7 @@ window.previewImage = function(event, previewId) {
         }
 
         if (file.size > 5 * 1024 * 1024) {
-            alert('Ukuran file maksimal 5MB');
+            alert('Ukuran file maksimal 1MB');
             event.target.value = '';
             return;
         }
