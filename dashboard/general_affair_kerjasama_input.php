@@ -114,6 +114,27 @@ function gaInputCountActiveMembers(PDO $pdo, int $cooperationId): int
     return (int)$stmt->fetchColumn();
 }
 
+function gaInputCompactMedicineLines(array $effectiveQtys): array
+{
+    $lines = [];
+    $labels = [
+        'bandage_qty' => 'Bandage',
+        'ifaks_qty' => 'Ifaks',
+        'painkiller_qty' => 'Painkiller',
+    ];
+
+    foreach ($labels as $field => $label) {
+        $qty = max(0, (int)($effectiveQtys[$field] ?? 0));
+        if ($qty <= 0) {
+            continue;
+        }
+
+        $lines[] = $label . ' = ' . number_format($qty, 0, ',', '.');
+    }
+
+    return $lines;
+}
+
 $hasMainTable = gaInputTableExists($pdo, 'secretary_file_records');
 $hasAttachmentTable = gaInputTableExists($pdo, 'secretary_file_record_attachments');
 $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
@@ -186,7 +207,7 @@ if (gaCooperationTablesReady($pdo)) {
             'member_count' => $memberCount,
             'quota_label' => gaInputTransactionQuotaLabel((string)($notesMeta['claim_scope'] ?? 'per_person'), $memberCount),
             'medicine_qtys' => $medicineQtys,
-            'medicine_summary_lines' => $summary['lines'],
+            'medicine_summary_lines' => gaInputCompactMedicineLines((array)($summary['qtys'] ?? [])),
             'medicine_total_price' => $summary['total_price'],
         ];
 
@@ -525,7 +546,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="meta-text-xs mt-1" id="gaSettingQuota">-</div>
                     <div class="meta-text-xs mt-1 whitespace-pre-line" id="gaSettingNotes"></div>
                     <div class="mt-3">
-                        <div class="font-semibold text-slate-900">Obat Gratis dan Harga Sesuai Regulasi</div>
+                        <div class="font-semibold text-slate-900">Obat Gratis yang Harus Diberikan</div>
                         <div id="gaSettingPackages" class="meta-text-xs mt-2 whitespace-pre-line">-</div>
                         <div class="meta-text-xs mt-2"><strong>Total Harga Regulasi Gratis:</strong> <span id="gaSettingTotalPrice">$0</span></div>
                     </div>
