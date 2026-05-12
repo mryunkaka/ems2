@@ -1530,18 +1530,35 @@ function compressImageSmart(
         $dst = $src;
     }
 
+    $targetDir = dirname($targetPath);
+    if (!is_dir($targetDir) && !@mkdir($targetDir, 0755, true)) {
+        imagedestroy($dst);
+        return false;
+    }
+
+    $saved = false;
+
     // Compress
     if ($mime === 'image/png') {
-        imagepng($dst, $targetPath, 7);
+        $saved = imagepng($dst, $targetPath, 7);
     } else {
         for ($q = 90; $q >= $minQuality; $q -= 5) {
-            imagejpeg($dst, $targetPath, $q);
-            if (filesize($targetPath) <= $targetSize) break;
+            $saved = imagejpeg($dst, $targetPath, $q);
+            if (!$saved) {
+                break;
+            }
+
+            clearstatcache(true, $targetPath);
+            if (is_file($targetPath) && filesize($targetPath) <= $targetSize) {
+                break;
+            }
         }
     }
 
     imagedestroy($dst);
-    return true;
+    clearstatcache(true, $targetPath);
+
+    return $saved && is_file($targetPath) && filesize($targetPath) > 0;
 }
 
 function emsUploadLimitBytes(): int

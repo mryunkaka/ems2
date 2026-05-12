@@ -415,6 +415,12 @@ function deleteOldFileIfExists($dbPath)
     }
 }
 
+function settingAkunUploadedDocWebPath(string $folderName, string $field, string $ext): string
+{
+    $suffix = date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    return 'storage/user_docs/' . $folderName . '/' . $field . '_' . $suffix . '.' . $ext;
+}
+
 $docFields = [
     'file_ktp',
     'file_sim',
@@ -462,7 +468,8 @@ foreach ($docFields as $field) {
     }
 
     $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
-    $finalPath = $uploadDir . '/' . $field . '.' . $ext;
+    $webPath = settingAkunUploadedDocWebPath($folderName, $field, $ext);
+    $finalPath = __DIR__ . '/../' . $webPath;
 
     if (!compressImageSmart($tmp, $finalPath)) {
         $_SESSION['flash_errors'][] = "Gagal memproses {$field}.";
@@ -470,8 +477,7 @@ foreach ($docFields as $field) {
         exit;
     }
 
-    $uploadedPaths[$field] =
-        'storage/user_docs/' . $folderName . '/' . $field . '.' . $ext;
+    $uploadedPaths[$field] = $webPath;
 }
 settingAkunPerfMark('process_primary_uploads');
 
@@ -546,15 +552,14 @@ for ($i = 0; $i < $max; $i++) {
             }
 
             $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
-            $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
+            $path = settingAkunUploadedDocWebPath($folderName, 'academy_' . $id, $ext);
+            $finalPath = __DIR__ . '/../' . $path;
 
             if (!compressImageSmart($fileTmp, $finalPath)) {
                 $_SESSION['flash_errors'][] = "Gagal memproses file lainnya.";
                 header('Location: setting_akun.php');
                 exit;
             }
-
-            $path = 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext;
         }
 
         $academyFinal[] = [
@@ -594,7 +599,8 @@ for ($i = 0; $i < $max; $i++) {
     }
 
     $ext = $info['mime'] === 'image/png' ? 'png' : 'jpg';
-    $finalPath = $uploadDir . '/academy_' . $id . '.' . $ext;
+    $path = settingAkunUploadedDocWebPath($folderName, 'academy_' . $id, $ext);
+    $finalPath = __DIR__ . '/../' . $path;
 
     if (!compressImageSmart($fileTmp, $finalPath)) {
         $_SESSION['flash_errors'][] = "Gagal memproses file lainnya.";
@@ -605,7 +611,7 @@ for ($i = 0; $i < $max; $i++) {
     $academyFinal[] = [
         'id' => $id,
         'name' => ($name !== '' ? $name : 'File Lainnya'),
-        'path' => 'storage/user_docs/' . $folderName . '/academy_' . $id . '.' . $ext,
+        'path' => $path,
     ];
     $seen[$id] = true;
 }

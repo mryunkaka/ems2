@@ -100,6 +100,19 @@ function settingAkunNormalizeDocName(?string $name): string
     return $value;
 }
 
+function settingAkunPreviewUrl(?string $path): string
+{
+    $cleanPath = trim((string)$path);
+    if ($cleanPath === '') {
+        return '';
+    }
+
+    $absolutePath = __DIR__ . '/../' . ltrim($cleanPath, '/');
+    $version = is_file($absolutePath) ? (string)filemtime($absolutePath) : (string)time();
+
+    return '/' . ltrim($cleanPath, '/') . '?v=' . rawurlencode($version);
+}
+
 function settingAkunDocSuggestionCachePath(): string
 {
     return __DIR__ . '/../storage/cache/setting_akun_doc_suggestions.json';
@@ -388,7 +401,7 @@ DOKUMEN PENDUKUNG
                                     <span class="badge-success-mini">Sudah diunggah</span>
                                     <a href="#"
                                         class="btn-link btn-preview-doc"
-                                        data-src="/<?= htmlspecialchars($path) ?>"
+                                        data-src="<?= htmlspecialchars(settingAkunPreviewUrl($path)) ?>"
                                         data-title="<?= htmlspecialchars($label) ?>">
                                         Lihat dokumen
                                     </a>
@@ -548,7 +561,7 @@ DOKUMEN PENDUKUNG
                                                 <span class="badge-success-mini">Sudah diunggah</span>
                                                 <a href="#"
                                                     class="btn-link btn-preview-doc"
-                                                    data-src="/<?= htmlspecialchars($ad['path'] ?? '') ?>"
+                                                    data-src="<?= htmlspecialchars(settingAkunPreviewUrl($ad['path'] ?? '')) ?>"
                                                     data-title="<?= htmlspecialchars($ad['name'] ?? 'File Lainnya') ?>">
                                                     Lihat dokumen
                                                 </a>
