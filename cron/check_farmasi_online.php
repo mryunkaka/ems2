@@ -8,6 +8,14 @@
 require __DIR__ . '/../config/database.php';
 date_default_timezone_set('Asia/Jakarta');
 
+$lockPath = __DIR__ . '/check_farmasi_online.lock';
+$lockHandle = fopen($lockPath, 'c');
+
+if (!$lockHandle || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
+    echo "CRON SKIPPED: process already running\n";
+    exit(0);
+}
+
 /* =========================================================
    0️⃣ USER MELEWATI BATAS MAX DUTY → AUTO OFFLINE
    ========================================================= */
@@ -274,3 +282,6 @@ if (!empty($usersAutoOffline) || !empty($usersMaxDutyExpired)) {
 }
 
 echo 'CRON OK';
+
+flock($lockHandle, LOCK_UN);
+fclose($lockHandle);

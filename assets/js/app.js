@@ -508,10 +508,53 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* =========================================
    HEARTBEAT — UPDATE LAST ACTIVITY
+   Hanya aktif di halaman farmasi yang relevan.
    ========================================= */
-setInterval(() => {
-  fetch("/actions/ping_farmasi_activity.php", {
-    method: "POST",
-    credentials: "same-origin",
-  }).catch(() => {});
-}, 30000); // tiap 30 detik
+document.addEventListener("DOMContentLoaded", () => {
+  const farmasiPagePattern = /\/dashboard\/rekap_farmasi(?:_v2)?\.php(?:$|\?)/;
+  const currentLocation = window.location.pathname + window.location.search;
+
+  if (!farmasiPagePattern.test(currentLocation)) {
+    return;
+  }
+
+  const statusBadge = document.getElementById("farmasiStatusBadge");
+  let inFlight = false;
+
+  const shouldPing = () => {
+    if (document.hidden) {
+      return false;
+    }
+
+    if (!statusBadge) {
+      return false;
+    }
+
+    return String(statusBadge.dataset.status || "").toLowerCase() === "online";
+  };
+
+  const sendHeartbeat = async () => {
+    if (inFlight || !shouldPing()) {
+      return;
+    }
+
+    inFlight = true;
+
+    try {
+      await fetch("/actions/ping_farmasi_activity.php", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+    } catch (e) {
+      // Diamkan: endpoint ini memang best-effort.
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  setInterval(sendHeartbeat, 120000);
+});

@@ -3,112 +3,6 @@ session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
-function autoOfflineExpiredMedics(PDO $pdo, string $effectiveUnit, bool $userHasUnitCode): void
-{
-    $stmtSettings = $pdo->prepare("
-        SELECT max_duty_minutes
-        FROM farmasi_online_settings
-        ORDER BY id ASC
-        LIMIT 1
-    ");
-    $stmtSettings->execute();
-    $maxDutyMinutes = max(0, (int)$stmtSettings->fetchColumn());
-
-    if ($maxDutyMinutes <= 0) {
-        return;
-    }
-
-    $sql = "
-        SELECT
-            ufs.user_id,
-            ur.full_name,
-            TIMESTAMPDIFF(SECOND, ufses.session_start, NOW()) AS current_session_seconds
-        FROM user_farmasi_status ufs
-        JOIN user_farmasi_sessions ufses
-            ON ufses.user_id = ufs.user_id
-           AND ufses.session_end IS NULL
-        JOIN user_rh ur
-            ON ur.id = ufs.user_id
-        WHERE ufs.status = 'online'
-    ";
-
-    $params = [];
-    if ($userHasUnitCode) {
-        $sql .= " AND COALESCE(ur.unit_code, 'roxwood') = :user_unit_code";
-        $params[':user_unit_code'] = $effectiveUnit;
-    }
-
-    $stmtExpired = $pdo->prepare($sql);
-    $stmtExpired->execute($params);
-    $expiredRows = $stmtExpired->fetchAll(PDO::FETCH_ASSOC);
-
-    $expiredUsers = [];
-    foreach ($expiredRows as $row) {
-        $currentSessionSeconds = (int)($row['current_session_seconds'] ?? 0);
-        if ($currentSessionSeconds >= ($maxDutyMinutes * 60)) {
-            $expiredUsers[] = [
-                'user_id' => (int)($row['user_id'] ?? 0),
-                'full_name' => (string)($row['full_name'] ?? 'Medis'),
-            ];
-        }
-    }
-
-    if ($expiredUsers === []) {
-        return;
-    }
-
-    $pdo->beginTransaction();
-
-    try {
-        $updateStatusStmt = $pdo->prepare("
-            UPDATE user_farmasi_status
-            SET status = 'offline',
-                auto_offline_at = NOW(),
-                current_session_number = 0,
-                updated_at = NOW()
-            WHERE user_id = ?
-        ");
-
-        $closeSessionStmt = $pdo->prepare("
-            UPDATE user_farmasi_sessions
-            SET session_end = NOW(),
-                duration_seconds = TIMESTAMPDIFF(SECOND, session_start, NOW()),
-                end_reason = 'auto_offline'
-            WHERE user_id = ?
-              AND session_end IS NULL
-        ");
-
-        $logActivityStmt = $pdo->prepare("
-            INSERT INTO farmasi_activities
-                (activity_type, medic_user_id, medic_name, description)
-            VALUES (?, ?, ?, ?)
-        ");
-
-        foreach ($expiredUsers as $expiredUser) {
-            $userId = (int)$expiredUser['user_id'];
-            if ($userId <= 0) {
-                continue;
-            }
-
-            $updateStatusStmt->execute([$userId]);
-            $closeSessionStmt->execute([$userId]);
-            $logActivityStmt->execute([
-                'auto_offline',
-                $userId,
-                $expiredUser['full_name'],
-                'Auto offline: Mencapai batas waktu jaga maksimal'
-            ]);
-        }
-
-        $pdo->commit();
-    } catch (Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-        throw $e;
-    }
-}
-
 function onlineMedicsJoinDurationText(?string $tanggalMasuk): string
 {
     if (empty($tanggalMasuk)) {
@@ -146,8 +40,6 @@ try {
     $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
     $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
     $userHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
-
-    autoOfflineExpiredMedics($pdo, $effectiveUnit, $userHasUnitCode);
 
     $sql = "
         SELECT

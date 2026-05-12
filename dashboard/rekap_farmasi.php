@@ -5148,9 +5148,9 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const medicsPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_online_medics.php'),
-                interval: 3000,
-                maxInterval: 30000,
-                timeoutMs: 6000,
+                interval: 15000,
+                maxInterval: 60000,
+                timeoutMs: 5000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
                         handleMedicsError({
@@ -5544,8 +5544,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const statusPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_farmasi_status.php'),
-            interval: 3000,
-            maxInterval: 30000,
+            interval: 15000,
+            maxInterval: 60000,
             timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.status !== 'string') {
@@ -6593,6 +6593,7 @@ include __DIR__ . '/../partials/sidebar.php';
         const onlineCooldownBox = document.getElementById('onlineCooldownNotice');
         const submitButton = document.getElementById('btnSubmit');
         let dutyCheckInterval = null;
+        let dutyRenderInterval = null;
         let hasShownMaxDutyWarning = false;
         let onlineCooldownUntilMs = 0;
 
@@ -6769,10 +6770,15 @@ include __DIR__ . '/../partials/sidebar.php';
         function startDutyCheck() {
             if (dutyCheckInterval) clearInterval(dutyCheckInterval);
             dutyCheckInterval = setInterval(function() {
+                if (document.hidden) {
+                    return;
+                }
                 renderOnlineCooldownNotice();
                 checkDutyLimits();
-            }, 5000);
-            setInterval(renderOnlineCooldownNotice, 1000);
+            }, 30000);
+            if (!dutyRenderInterval) {
+                dutyRenderInterval = setInterval(renderOnlineCooldownNotice, 1000);
+            }
             checkDutyLimits();
         }
 
@@ -6856,7 +6862,6 @@ include __DIR__ . '/../partials/sidebar.php';
 
         // Init: load settings dan start duty check
         loadSettings();
-        setInterval(loadSettings, 15000);
         startDutyCheck();
     })();
 </script>
