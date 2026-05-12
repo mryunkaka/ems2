@@ -103,7 +103,7 @@ try {
     if (isset($_FILES['ktp_file']) && $_FILES['ktp_file']['error'] === UPLOAD_ERR_OK) {
         $ktpPath = uploadAndCompressFile($_FILES['ktp_file'], 'medical_records/ktp', 300000, 5000000);
         if (!$ktpPath) {
-            throw new Exception('Gagal upload KTP. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+            throw new Exception('Gagal upload KTP. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi 5MB.');
         }
     } else {
         throw new Exception('Upload KTP wajib dilakukan.');
@@ -117,7 +117,7 @@ try {
     if (isset($_FILES['mri_file']) && $_FILES['mri_file']['error'] === UPLOAD_ERR_OK) {
         $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
         if (!$mriPath && $visibilityScope === 'forensic_private') {
-            throw new Exception('Gagal upload Foto MRI. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+            throw new Exception('Gagal upload Foto MRI. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi 5MB.');
         }
         // MRI tetap optional untuk mode standard
     } elseif ($visibilityScope === 'forensic_private') {

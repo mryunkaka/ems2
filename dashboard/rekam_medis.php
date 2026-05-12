@@ -132,7 +132,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <span class="btn-secondary btn-sm">Pilih File / Ambil Foto</span>
                                     </div>
                                 </label>
-                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, Max: 1MB per file</p>
+                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, Max: 5MB (auto compress)</p>
                             </div>
                         </div>
 
@@ -152,7 +152,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <span class="btn-secondary btn-sm">Pilih File / Ambil Foto</span>
                                     </div>
                                 </label>
-                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, Max: 1MB per file</p>
+                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, Max: 5MB (auto compress)</p>
                             </div>
                         </div>
                     </div>
@@ -449,9 +449,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         return;
                     }
 
-                    // Validate file size (1MB max)
+                    // Validate file size (5MB max)
                     if (file.size > 5 * 1024 * 1024) {
-                        alert('Ukuran file maksimal 1MB');
+                        alert('Ukuran file maksimal 5MB');
                         event.target.value = '';
                         return;
                     }

@@ -15,7 +15,6 @@ define('MIN_QUALITY', 70); // Kualitas minimum
    =============================== */
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../config/helpers.php';
 
 /* ===============================
    FUNGSI KOMPRESI
@@ -81,13 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     }
 
     $tmp = $_FILES['image']['tmp_name'];
-
-    if (emsUploadedFileExceedsLimit($_FILES['image'])) {
-        echo json_encode([
-            'error' => 'Ukuran gambar maksimal ' . emsUploadLimitLabel()
-        ]);
-        exit;
-    }
 
     if (!is_uploaded_file($tmp)) {
         echo json_encode([
@@ -1385,7 +1377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 </div>
                 <div class="upload-text-wrapper">
                     <span class="upload-text">Klik untuk memotret atau unggah</span>
-                    <div class="upload-hint">Format JPG atau PNG, maksimal 1 MB</div>
+                    <div class="upload-hint">Format JPG atau PNG, maksimal 5MB</div>
                 </div>
                 <button type="button" class="upload-button">Pilih File / Ambil Foto</button>
             </div>

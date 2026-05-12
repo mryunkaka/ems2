@@ -104,7 +104,7 @@ function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files):
         foreach (array_values($files) as $index => $file) {
             $path = uploadAndCompressFile($file, 'letters/incoming', 400000, 5000000);
             if (!$path) {
-                throw new Exception('Lampiran surat masuk gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
+                throw new Exception('Lampiran surat masuk gagal diproses. Gunakan JPG/PNG maksimal 5MB.');
             }
 
             $storedPaths[] = $path;

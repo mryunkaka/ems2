@@ -238,10 +238,6 @@ function gaInputCountExistingTransactions(PDO $pdo, int $cooperationId, string $
 
 function gaInputStoreAttachment(PDO $pdo, int $recordId, array $file, string $label, int $sortOrder): string
 {
-    if (emsUploadedFileExceedsLimit($file)) {
-        throw new RuntimeException('Ukuran file ' . $label . ' maksimal ' . emsUploadLimitLabel() . '.');
-    }
-
     $tmpPath = (string)($file['tmp_name'] ?? '');
     $info = $tmpPath !== '' ? getimagesize($tmpPath) : false;
     if (!$info || !in_array((string)($info['mime'] ?? ''), ['image/jpeg', 'image/png'], true)) {

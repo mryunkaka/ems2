@@ -222,7 +222,7 @@ function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $
         foreach (array_values($files) as $index => $file) {
             $path = uploadSecretaryAttachmentFile($file, $config['folder'], 400000, 10000000);
             if (!$path) {
-                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Hanya menerima DOC, DOCX, PDF, JPG, atau PNG dengan ukuran maksimal ' . emsUploadLimitLabel() . '.');
+                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Hanya menerima DOC, DOCX, PDF, JPG, atau PNG dengan ukuran maksimal 10MB.');
             }
 
             $storedPaths[] = $path;
