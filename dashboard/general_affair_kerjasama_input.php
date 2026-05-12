@@ -20,6 +20,8 @@ $pageTitle = 'Input Kerja Sama';
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
+$userRole = strtolower(trim((string)($_SESSION['user_rh']['role'] ?? '')));
+$userDivision = ems_normalize_division((string)($_SESSION['user_rh']['division'] ?? ''));
 
 function gaInputMarker(): string
 {
@@ -46,9 +48,29 @@ function gaInputStatusMeta(string $status): array
     return match ($status) {
         'review' => ['label' => 'VERIFIKASI', 'class' => 'badge-counter'],
         'active' => ['label' => 'AKTIF', 'class' => 'badge-success'],
+        'paid' => ['label' => 'PAID', 'class' => 'badge-success'],
         'archived' => ['label' => 'ARSIP', 'class' => 'badge-muted'],
         default => ['label' => 'PENDING', 'class' => 'badge-warning'],
     };
+}
+
+function gaInputColumnsReady(PDO $pdo): array
+{
+    return [
+        'document_time' => ems_column_exists($pdo, 'secretary_file_records', 'document_time'),
+        'paid_by' => ems_column_exists($pdo, 'secretary_file_records', 'paid_by'),
+        'paid_at' => ems_column_exists($pdo, 'secretary_file_records', 'paid_at'),
+    ];
+}
+
+function gaInputCanMarkPaid(string $userRole): bool
+{
+    return in_array($userRole, ['executive vice director', 'vice director', 'director'], true);
+}
+
+function gaInputCanDelete(string $userDivision): bool
+{
+    return in_array($userDivision, ['General Affair', 'Executive'], true);
 }
 
 function gaInputGroupAttachments(array $rows): array
@@ -137,6 +159,9 @@ function gaInputCompactMedicineLines(array $effectiveQtys): array
 
 $hasMainTable = gaInputTableExists($pdo, 'secretary_file_records');
 $hasAttachmentTable = gaInputTableExists($pdo, 'secretary_file_record_attachments');
+$columnReady = gaInputColumnsReady($pdo);
+$canMarkPaid = gaInputCanMarkPaid($userRole);
+$canDelete = gaInputCanDelete($userDivision);
 $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
 $pricePerPcs = gaCooperationRegulationPricePerPcs($pdo, $effectiveUnit);
 $rows = [];
@@ -221,10 +246,12 @@ if ($hasMainTable && $hasAttachmentTable) {
         SELECT
             sfr.*,
             creator.full_name AS created_by_name,
-            updater.full_name AS updated_by_name
+            updater.full_name AS updated_by_name" . ($columnReady['paid_by'] ? ",
+            paid_user.full_name AS paid_by_name" : "") . "
         FROM secretary_file_records sfr
         LEFT JOIN user_rh creator ON creator.id = sfr.created_by
-        LEFT JOIN user_rh updater ON updater.id = sfr.updated_by
+        LEFT JOIN user_rh updater ON updater.id = sfr.updated_by" . ($columnReady['paid_by'] ? "
+        LEFT JOIN user_rh paid_user ON paid_user.id = sfr.paid_by" : "") . "
         WHERE sfr.file_category = 'cooperation'
           AND COALESCE(sfr.keywords, '') LIKE :marker
           AND sfr.document_date BETWEEN :start_date AND :end_date
@@ -258,6 +285,8 @@ if ($hasMainTable && $hasAttachmentTable) {
             $stats['review']++;
         } elseif ($status === 'active') {
             $stats['active']++;
+        } elseif ($status === 'paid') {
+            $stats['active']++;
         } elseif ($status === 'draft') {
             $stats['pending']++;
         }
@@ -276,10 +305,30 @@ include __DIR__ . '/../partials/sidebar.php';
                     <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
                     <p class="page-subtitle"><?= htmlspecialchars($rangeLabel ?? '-', ENT_QUOTES, 'UTF-8') ?></p>
                 </div>
-                <button type="button" id="btnAddCooperationInput" class="btn-success">
-                    <?= ems_icon('plus', 'h-4 w-4') ?>
-                    <span>Input Kerja Sama</span>
-                </button>
+                <div class="inline-actions">
+                    <?php
+                    $exportParams = [];
+                    if (!empty($_GET['range'])) {
+                        $exportParams['range'] = $_GET['range'];
+                    }
+                    if (!empty($_GET['from'])) {
+                        $exportParams['from'] = $_GET['from'];
+                    }
+                    if (!empty($_GET['to'])) {
+                        $exportParams['to'] = $_GET['to'];
+                    }
+                    $exportQuery = http_build_query($exportParams);
+                    $exportUrl = ems_url('/dashboard/general_affair_kerjasama_input_export.php' . ($exportQuery ? '?' . $exportQuery : ''));
+                    ?>
+                    <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                        <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
+                        <span>Export Excel</span>
+                    </a>
+                    <button type="button" id="btnAddCooperationInput" class="btn-success">
+                        <?= ems_icon('plus', 'h-4 w-4') ?>
+                        <span>Input Kerja Sama</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -381,7 +430,9 @@ include __DIR__ . '/../partials/sidebar.php';
                             $attachments = $attachmentsMap[(int)$row['id']] ?? [];
                             $ktpAttachment = gaInputFindAttachment($attachments, 'KTP');
                             $ktaAttachment = gaInputFindAttachment($attachments, 'KTA');
-                            $docTs = strtotime((string)($row['document_date'] ?? ''));
+                            $docDate = (string)($row['document_date'] ?? '');
+                            $docTime = $columnReady['document_time'] ? (string)($row['document_time'] ?? '00:00:00') : '00:00:00';
+                            $docTs = strtotime(trim($docDate . ' ' . $docTime));
                             $keywordMeta = gaInputParseKeywordMeta((string)($row['keywords'] ?? ''));
                             $selectedSetting = $cooperationSettingsMap[(int)$keywordMeta['cooperation_id']] ?? null;
                             $packageSummaryLines = $selectedSetting['medicine_summary_lines'] ?? [];
@@ -393,7 +444,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td data-order="<?= (int)$docTs ?>" style="white-space: nowrap;">
                                     <?php if ($docTs > 0): ?>
                                         <div><strong><?= htmlspecialchars(date('d M Y', $docTs), ENT_QUOTES, 'UTF-8') ?></strong></div>
-                                        <small class="meta-text-xs"><?= htmlspecialchars(date('H:i', $docTs), ENT_QUOTES, 'UTF-8') ?></small>
+                                        <small class="meta-text-xs"><?= htmlspecialchars($columnReady['document_time'] ? date('H:i', $docTs) : '-', ENT_QUOTES, 'UTF-8') ?></small>
                                     <?php else: ?>
                                         <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
@@ -454,7 +505,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <span class="muted-placeholder">-</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                <td>
+                                    <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php if (($row['status'] ?? '') === 'paid' && $columnReady['paid_by'] && !empty($row['paid_by_name'])): ?>
+                                        <div class="meta-text-xs mt-1">
+                                            Paid by: <strong><?= htmlspecialchars((string)$row['paid_by_name'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                            <?php if ($columnReady['paid_at'] && !empty($row['paid_at'])): ?>
+                                                <br><?= htmlspecialchars(date('d M Y H:i', strtotime((string)$row['paid_at'])), ENT_QUOTES, 'UTF-8') ?>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="whitespace-pre-line"><?= htmlspecialchars((string)($row['description'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>
                                     <div class="action-row-nowrap">
@@ -465,36 +526,34 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
                                                 <input type="hidden" name="status" value="review">
                                                 <input type="hidden" name="redirect_to" value="general_affair_kerjasama_input.php">
-                                                <button type="submit" class="btn-secondary btn-sm">Verifikasi</button>
+                                                <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Verifikasi">
+                                                    <?= ems_icon('check-badge', 'h-4 w-4') ?>
+                                                </button>
                                             </form>
                                         <?php endif; ?>
-                                        <?php if (($row['status'] ?? '') !== 'active'): ?>
+                                        <?php if ($canMarkPaid && $columnReady['paid_by'] && $columnReady['paid_at'] && ($row['status'] ?? '') !== 'paid' && ($row['status'] ?? '') !== 'archived'): ?>
                                             <form method="post" action="general_affair_kerjasama_input_action.php" class="inline">
                                                 <?= csrfField(); ?>
                                                 <input type="hidden" name="action" value="update_status">
                                                 <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
-                                                <input type="hidden" name="status" value="active">
+                                                <input type="hidden" name="status" value="paid">
                                                 <input type="hidden" name="redirect_to" value="general_affair_kerjasama_input.php">
-                                                <button type="submit" class="btn-success btn-sm">Aktifkan</button>
+                                                <button type="submit" class="btn-primary btn-sm action-icon-btn" title="Tandai Sudah Bayar">
+                                                    <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                                                </button>
                                             </form>
                                         <?php endif; ?>
-                                        <?php if (($row['status'] ?? '') !== 'archived'): ?>
-                                            <form method="post" action="general_affair_kerjasama_input_action.php" class="inline">
+                                        <?php if ($canDelete): ?>
+                                            <form method="post" action="general_affair_kerjasama_input_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus input kerja sama ini?">
                                                 <?= csrfField(); ?>
-                                                <input type="hidden" name="action" value="update_status">
+                                                <input type="hidden" name="action" value="delete_record">
                                                 <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
-                                                <input type="hidden" name="status" value="archived">
                                                 <input type="hidden" name="redirect_to" value="general_affair_kerjasama_input.php">
-                                                <button type="submit" class="btn-secondary btn-sm">Arsip</button>
+                                                <button type="submit" class="btn-danger btn-sm action-icon-btn" title="Hapus">
+                                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                </button>
                                             </form>
                                         <?php endif; ?>
-                                        <form method="post" action="general_affair_kerjasama_input_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus input kerja sama ini?">
-                                            <?= csrfField(); ?>
-                                            <input type="hidden" name="action" value="delete_record">
-                                            <input type="hidden" name="record_id" value="<?= (int)$row['id'] ?>">
-                                            <input type="hidden" name="redirect_to" value="general_affair_kerjasama_input.php">
-                                            <button type="submit" class="btn-danger btn-sm"><?= ems_icon('trash', 'h-4 w-4') ?></button>
-                                        </form>
                                     </div>
                                 </td>
                             </tr>

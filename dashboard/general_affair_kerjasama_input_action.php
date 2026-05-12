@@ -21,6 +21,7 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
 
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
+$userRole = strtolower(trim((string)($user['role'] ?? '')));
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $action = trim((string)($_POST['action'] ?? ''));
 
@@ -53,6 +54,33 @@ function gaInputTableExists(PDO $pdo, string $table): bool
     $cache[$table] = (bool)$stmt->fetchColumn();
 
     return $cache[$table];
+}
+
+function gaInputColumnEnumHasValue(PDO $pdo, string $table, string $column, string $expectedValue): bool
+{
+    try {
+        $stmt = $pdo->prepare('SHOW COLUMNS FROM `' . str_replace('`', '``', $table) . '` LIKE ?');
+        $stmt->execute([$column]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+
+        $type = (string)($row['Type'] ?? '');
+        return stripos($type, "'" . $expectedValue . "'") !== false;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function gaInputColumnsReady(PDO $pdo): array
+{
+    return [
+        'document_time' => ems_column_exists($pdo, 'secretary_file_records', 'document_time'),
+        'paid_by' => ems_column_exists($pdo, 'secretary_file_records', 'paid_by'),
+        'paid_at' => ems_column_exists($pdo, 'secretary_file_records', 'paid_at'),
+        'paid_status' => gaInputColumnEnumHasValue($pdo, 'secretary_file_records', 'status', 'paid'),
+    ];
 }
 
 function gaInputGenerateCode(int $userId): string
@@ -127,6 +155,17 @@ function gaInputBuildDocumentDateTime(string $documentDate, string $documentTime
     }
 
     return $dateTime->format('Y-m-d H:i:s');
+}
+
+function gaInputIsExecutiveApprover(string $userRole): bool
+{
+    return in_array($userRole, ['executive vice director', 'vice director', 'director'], true);
+}
+
+function gaInputCanDeleteByDivision(array $user): bool
+{
+    $division = ems_normalize_division((string)($user['division'] ?? ''));
+    return in_array($division, ['General Affair', 'Executive'], true);
 }
 
 function gaInputFetchCooperationConfig(PDO $pdo, int $cooperationId, string $unitCode): array
@@ -256,6 +295,8 @@ if (!gaInputTableExists($pdo, 'secretary_file_records') || !gaInputTableExists($
     gaInputRedirect();
 }
 
+$columnReady = gaInputColumnsReady($pdo);
+
 try {
     if ($action === 'create_record') {
         $cooperationId = (int)($_POST['cooperation_id'] ?? 0);
@@ -310,20 +351,24 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_file_records
                 (file_code, file_category, reference_number, title, counterparty_name,
-                 document_date, status, keywords, description, created_by)
+                 document_date" . ($columnReady['document_time'] ? ", document_time" : "") . ", status, keywords, description, created_by)
             VALUES
-                (?, 'cooperation', ?, ?, ?, ?, 'draft', ?, ?, ?)
+                (?, 'cooperation', ?, ?, ?, ?" . ($columnReady['document_time'] ? ", ?" : "") . ", 'draft', ?, ?, ?)
         ");
-        $stmt->execute([
+        $params = [
             gaInputGenerateCode($userId),
             '-',
             trim((string)($user['full_name'] ?? $user['name'] ?? 'User')),
             (string)$cooperationConfig['institution_name'],
-            $documentDateTime,
-            gaInputMarker() . ',cooperation_id:' . $cooperationId,
-            $notes !== '' ? $notes : null,
-            $userId,
-        ]);
+            substr($documentDateTime, 0, 10),
+        ];
+        if ($columnReady['document_time']) {
+            $params[] = substr($documentDateTime, 11, 8);
+        }
+        $params[] = gaInputMarker() . ',cooperation_id:' . $cooperationId;
+        $params[] = $notes !== '' ? $notes : null;
+        $params[] = $userId;
+        $stmt->execute($params);
 
         $recordId = (int)$pdo->lastInsertId();
         $storedPaths = [];
@@ -345,19 +390,43 @@ try {
         $recordId = (int)($_POST['record_id'] ?? 0);
         $status = trim((string)($_POST['status'] ?? 'draft'));
         $allowedStatuses = ['draft', 'review', 'active', 'archived'];
+        if ($columnReady['paid_status']) {
+            $allowedStatuses[] = 'paid';
+        }
 
         if ($recordId <= 0 || !in_array($status, $allowedStatuses, true)) {
             throw new RuntimeException('Status input kerja sama tidak valid.');
         }
 
-        $stmt = $pdo->prepare("
-            UPDATE secretary_file_records
-            SET status = ?, updated_by = ?
-            WHERE id = ?
-              AND file_category = 'cooperation'
-              AND COALESCE(keywords, '') LIKE ?
-        ");
-        $stmt->execute([$status, $userId, $recordId, '%' . gaInputMarker() . '%']);
+        if ($status === 'paid') {
+            if (!$columnReady['paid_status'] || !$columnReady['paid_by'] || !$columnReady['paid_at']) {
+                throw new RuntimeException('Kolom pembayaran belum tersedia. Jalankan SQL pembaruan modul kerja sama.');
+            }
+            if (!gaInputIsExecutiveApprover($userRole)) {
+                throw new RuntimeException('Hanya Executive Vice Director, Vice Director, atau Director yang bisa menandai sudah bayar.');
+            }
+        }
+
+        if ($status === 'paid') {
+            $stmt = $pdo->prepare("
+                UPDATE secretary_file_records
+                SET status = 'paid', updated_by = ?, paid_by = ?, paid_at = NOW()
+                WHERE id = ?
+                  AND file_category = 'cooperation'
+                  AND COALESCE(keywords, '') LIKE ?
+                  AND status <> 'archived'
+            ");
+            $stmt->execute([$userId, $userId, $recordId, '%' . gaInputMarker() . '%']);
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE secretary_file_records
+                SET status = ?, updated_by = ?
+                WHERE id = ?
+                  AND file_category = 'cooperation'
+                  AND COALESCE(keywords, '') LIKE ?
+            ");
+            $stmt->execute([$status, $userId, $recordId, '%' . gaInputMarker() . '%']);
+        }
 
         if ($stmt->rowCount() <= 0) {
             throw new RuntimeException('Data kerja sama tidak ditemukan.');
@@ -368,6 +437,10 @@ try {
     }
 
     if ($action === 'delete_record') {
+        if (!gaInputCanDeleteByDivision($user)) {
+            throw new RuntimeException('Hanya division General Affair dan Executive yang dapat menghapus data kerja sama.');
+        }
+
         $recordId = (int)($_POST['record_id'] ?? 0);
         if ($recordId <= 0) {
             throw new RuntimeException('Data kerja sama tidak valid.');
