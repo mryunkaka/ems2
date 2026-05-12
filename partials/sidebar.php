@@ -54,6 +54,7 @@ $groupedNav = [
     'Keuangan' => [
         sidebarItem('/dashboard/reimbursement.php', 'reimbursement.php', 'Reimbursement', 'receipt-percent'),
         sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Konsumsi Restoran', 'cake'),
+        sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office'),
     ],
     'Administrasi' => [
         sidebarItem('/dashboard/pengajuan_jabatan.php', 'pengajuan_jabatan.php', 'Pengajuan Jabatan', 'arrow-up-tray'),
@@ -111,8 +112,6 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
         sidebarItem('/dashboard/sertifikat_heli.php', 'sertifikat_heli.php', 'Sertifikat Heli Medis', 'document-text'),
         sidebarItem('/dashboard/event_manage.php', 'event_manage.php', 'Manajemen Event', 'wrench'),
         sidebarItem('/dashboard/restaurant_settings.php', 'restaurant_settings.php', 'Manajemen Konsumsi', 'cake'),
-        sidebarItem('/dashboard/general_affair_kerjasama.php', 'general_affair_kerjasama.php', 'Setting Kerjasama', 'building-office'),
-        sidebarItem('/dashboard/general_affair_kerjasama_history.php', 'general_affair_kerjasama_history.php', 'History Paket Gratis', 'clipboard-document-list'),
         sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
         sidebarItem('/dashboard/blacklist_names.php', 'blacklist_names.php', 'Blacklist Nama', 'no-symbol'),
         sidebarItem('/dashboard/general_affair_visits.php', 'general_affair_visits.php', 'General Affair Visits', 'ticket'),
@@ -120,6 +119,11 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
 
     if (!ems_is_staff_role($userRole)) {
         $groupedNav['General Affair'][] = sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group');
+    }
+
+    if ($division === 'General Affair' && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+        $groupedNav['General Affair'][] = sidebarItem('/dashboard/general_affair_kerjasama.php', 'general_affair_kerjasama.php', 'Setting Kerjasama', 'clipboard-document-list');
+        $groupedNav['General Affair'][] = sidebarItem('/dashboard/general_affair_kerjasama_history.php', 'general_affair_kerjasama_history.php', 'History Paket Gratis', 'archive-box');
     }
 }
 
@@ -177,6 +181,9 @@ if ($isAltaUnit && !$canViewAllUnits) {
             'Pengaturan' => [
                 sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
             ],
+            'Administrasi' => [
+                sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office'),
+            ],
         ];
     } else {
         $groupedNav = [
@@ -197,6 +204,8 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/regulasi_medis.php', 'regulasi_medis.php', 'Regulasi Medis', 'document-text'),
                 sidebarItem('/dashboard/regulasi_farmasi.php', 'regulasi_farmasi.php', 'Regulasi Farmasi', 'beaker'),
                 sidebarItem('/dashboard/regulasi_roxwood_hospital.php', 'regulasi_roxwood_hospital.php', 'Regulasi Roxwood Hospital', 'document-text'),
+                sidebarItem('/dashboard/restaurant_consumption.php', 'restaurant_consumption.php', 'Konsumsi Restoran', 'cake'),
+                sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office'),
                 sidebarItem('/dashboard/validasi.php', 'validasi.php', 'Validasi', 'check-circle'),
                 sidebarItem('/dashboard/blacklist_names.php', 'blacklist_names.php', 'Blacklist Nama', 'no-symbol'),
                 sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
@@ -298,6 +307,40 @@ if (!$hasSettingAkunMenu) {
     }
 
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth');
+}
+
+$hasCooperationInputMenu = false;
+foreach ($groupedNav as $items) {
+    foreach ($items as $item) {
+        if (($item['page'] ?? '') === 'general_affair_kerjasama_input.php') {
+            $hasCooperationInputMenu = true;
+            break 2;
+        }
+    }
+}
+
+if (!$hasCooperationInputMenu) {
+    if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {
+        $groupedNav['Keuangan'] = [];
+    }
+
+    $inserted = false;
+    foreach ($groupedNav['Keuangan'] as $index => $item) {
+        if (($item['page'] ?? '') === 'restaurant_consumption.php') {
+            array_splice(
+                $groupedNav['Keuangan'],
+                $index + 1,
+                0,
+                [sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office')]
+            );
+            $inserted = true;
+            break;
+        }
+    }
+
+    if (!$inserted) {
+        $groupedNav['Keuangan'][] = sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office');
+    }
 }
 
 function sidebarBuildUnitSwitchUrl(string $targetUnit): string

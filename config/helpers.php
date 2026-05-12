@@ -838,6 +838,20 @@ function ems_require_division_access(array $targetDivisions, string $redirectTo 
     exit;
 }
 
+function ems_require_general_affair_manager_access(string $redirectTo = '/dashboard/index.php'): void
+{
+    $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
+    $userRole = $_SESSION['user_rh']['role'] ?? '';
+
+    if ($userDivision === 'General Affair' && ems_is_manager_plus_role($userRole)) {
+        return;
+    }
+
+    $_SESSION['flash_errors'][] = 'Akses hanya untuk manager division General Affair.';
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
 function ems_division_allowed_dashboard_pages(?string $division): ?array
 {
     $division = ems_normalize_division($division);
@@ -854,6 +868,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'ranking.php',
             'emt_doj.php',
             'emt_doj_action.php',
+            'general_affair_kerjasama_input.php',
+            'general_affair_kerjasama_input_action.php',
             'setting_akun.php',
             'setting_akun_action.php',
             'sertifikat_heli_pendaftaran.php',
@@ -888,6 +904,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'reimbursement.php',
         'restaurant_consumption.php',
         'restaurant_consumption_action.php',
+        'general_affair_kerjasama_input.php',
+        'general_affair_kerjasama_input_action.php',
         'gaji.php',
         'rekap_gaji.php',
         'pengajuan_jabatan.php',
@@ -905,6 +923,11 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
     if ($scriptName === 'setting_akun.php' || $scriptName === 'setting_akun_action.php') {
+        return;
+    }
+
+    // Exception: input kerja sama accessible by all logged-in users
+    if ($scriptName === 'general_affair_kerjasama_input.php' || $scriptName === 'general_affair_kerjasama_input_action.php') {
         return;
     }
 

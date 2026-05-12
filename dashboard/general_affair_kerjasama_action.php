@@ -8,7 +8,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
 
-ems_require_division_access(['General Affair'], '/dashboard/index.php');
+ems_require_general_affair_manager_access('/dashboard/index.php');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -41,7 +41,8 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
     $institutionName = trim((string)($_POST['institution_name'] ?? ''));
     $periodType = trim((string)($_POST['period_type'] ?? 'daily'));
     $notes = trim((string)($_POST['notes'] ?? ''));
-    $packageIds = array_values(array_unique(array_map('intval', (array)($_POST['package_ids'] ?? []))));
+    $claimScope = trim((string)($_POST['claim_scope'] ?? 'per_person'));
+    $medicineQtys = gaCooperationNormalizeMedicineQtys((array)$_POST);
     $members = gaCooperationNormalizeMembersInput((array)($_POST['members'] ?? []));
 
     if ($institutionName === '') {
@@ -52,22 +53,16 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
         throw new InvalidArgumentException('Periode gratis tidak valid.');
     }
 
-    if ($packageIds === []) {
-        throw new InvalidArgumentException('Pilih minimal satu paket obat gratis.');
+    if (!isset(gaCooperationClaimScopeOptions()[$claimScope])) {
+        throw new InvalidArgumentException('Mode paket gratis tidak valid.');
+    }
+
+    if (!gaCooperationHasConfiguredMedicines($medicineQtys)) {
+        throw new InvalidArgumentException('Isi minimal satu jumlah obat gratis.');
     }
 
     if ($members === []) {
         throw new InvalidArgumentException('Isi minimal satu anggota kerja sama.');
-    }
-
-    $stmtPackage = $pdo->prepare("
-        SELECT COUNT(*) FROM packages
-        WHERE id IN (" . implode(',', array_fill(0, count($packageIds), '?')) . ")
-          AND COALESCE(unit_code, 'roxwood') = ?
-    ");
-    $stmtPackage->execute([...$packageIds, $unitCode]);
-    if ((int)$stmtPackage->fetchColumn() !== count($packageIds)) {
-        throw new InvalidArgumentException('Ada paket gratis yang tidak valid untuk unit aktif.');
     }
 
     foreach ($members as $member) {
@@ -98,8 +93,9 @@ function gaCooperationValidatePayload(PDO $pdo, string $unitCode, int $currentId
     return [
         'institution_name' => $institutionName,
         'period_type' => $periodType,
-        'notes' => $notes !== '' ? $notes : null,
-        'package_ids' => $packageIds,
+        'claim_scope' => $claimScope,
+        'notes' => gaCooperationComposeNotesMeta($notes, $claimScope, $medicineQtys),
+        'medicine_qtys' => $medicineQtys,
         'members' => $members,
     ];
 }
@@ -136,14 +132,6 @@ try {
         ]);
 
         $cooperationId = (int)$pdo->lastInsertId();
-
-        $stmtPackage = $pdo->prepare("
-            INSERT INTO general_affair_cooperation_packages (cooperation_id, package_id)
-            VALUES (?, ?)
-        ");
-        foreach ($payload['package_ids'] as $packageId) {
-            $stmtPackage->execute([$cooperationId, $packageId]);
-        }
 
         $stmtMember = $pdo->prepare("
             INSERT INTO general_affair_cooperation_members
@@ -201,14 +189,6 @@ try {
 
         $pdo->prepare("DELETE FROM general_affair_cooperation_packages WHERE cooperation_id = ?")->execute([$cooperationId]);
         $pdo->prepare("DELETE FROM general_affair_cooperation_members WHERE cooperation_id = ?")->execute([$cooperationId]);
-
-        $stmtPackage = $pdo->prepare("
-            INSERT INTO general_affair_cooperation_packages (cooperation_id, package_id)
-            VALUES (?, ?)
-        ");
-        foreach ($payload['package_ids'] as $packageId) {
-            $stmtPackage->execute([$cooperationId, $packageId]);
-        }
 
         $stmtMember = $pdo->prepare("
             INSERT INTO general_affair_cooperation_members
@@ -286,8 +266,11 @@ try {
     $_SESSION['flash_old'] = [
         'institution_name' => $_POST['institution_name'] ?? '',
         'period_type' => $_POST['period_type'] ?? 'daily',
+        'claim_scope' => $_POST['claim_scope'] ?? 'per_person',
         'notes' => $_POST['notes'] ?? '',
-        'package_ids' => (array)($_POST['package_ids'] ?? []),
+        'bandage_qty' => $_POST['bandage_qty'] ?? '',
+        'ifaks_qty' => $_POST['ifaks_qty'] ?? '',
+        'painkiller_qty' => $_POST['painkiller_qty'] ?? '',
         'members' => (array)($_POST['members'] ?? []),
     ];
     gaCooperationRedirect();

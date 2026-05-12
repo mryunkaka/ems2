@@ -43,6 +43,205 @@ function gaCooperationPeriodLabel(string $periodType): string
     return $options[$periodType] ?? ucfirst($periodType);
 }
 
+function gaCooperationClaimScopeOptions(): array
+{
+    return [
+        'per_person' => 'Per Orang',
+        'per_institution' => 'Per Instansi',
+    ];
+}
+
+function gaCooperationClaimScopeLabel(string $scope): string
+{
+    $options = gaCooperationClaimScopeOptions();
+    return $options[$scope] ?? 'Per Orang';
+}
+
+function gaCooperationMedicineFields(): array
+{
+    return [
+        'bandage_qty' => 'Bandage',
+        'ifaks_qty' => 'Ifaks',
+        'painkiller_qty' => 'Painkiller',
+    ];
+}
+
+function gaCooperationNormalizeMedicineQtys(array $input): array
+{
+    $result = [];
+
+    foreach (gaCooperationMedicineFields() as $field => $label) {
+        $value = $input[$field] ?? 0;
+        $value = is_numeric($value) ? (int)$value : 0;
+        $result[$field] = max(0, $value);
+    }
+
+    return $result;
+}
+
+function gaCooperationParseNotesMeta(?string $notes): array
+{
+    $raw = trim((string)$notes);
+    $meta = [
+        'claim_scope' => 'per_person',
+        'bandage_qty' => 0,
+        'ifaks_qty' => 0,
+        'painkiller_qty' => 0,
+        'notes' => $raw,
+    ];
+
+    if ($raw === '') {
+        return $meta;
+    }
+
+    $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+    $cleanLines = [];
+
+    foreach ($lines as $line) {
+        $trimmed = trim((string)$line);
+        if (preg_match('/^\[claim_scope:(per_person|per_institution)\]$/i', $trimmed, $matches)) {
+            $meta['claim_scope'] = strtolower((string)$matches[1]);
+            continue;
+        }
+        if (preg_match('/^\[(bandage_qty|ifaks_qty|painkiller_qty):(\d+)\]$/i', $trimmed, $matches)) {
+            $meta[strtolower((string)$matches[1])] = max(0, (int)$matches[2]);
+            continue;
+        }
+
+        $cleanLines[] = $line;
+    }
+
+    $meta['notes'] = trim(implode("\n", $cleanLines));
+    return $meta;
+}
+
+function gaCooperationComposeNotesMeta(?string $notes, string $claimScope, array $medicineQtys = []): ?string
+{
+    $claimScope = array_key_exists($claimScope, gaCooperationClaimScopeOptions()) ? $claimScope : 'per_person';
+    $medicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
+    $cleanNotes = trim((string)$notes);
+    $parts = [
+        '[claim_scope:' . $claimScope . ']',
+        '[bandage_qty:' . $medicineQtys['bandage_qty'] . ']',
+        '[ifaks_qty:' . $medicineQtys['ifaks_qty'] . ']',
+        '[painkiller_qty:' . $medicineQtys['painkiller_qty'] . ']',
+    ];
+
+    if ($cleanNotes !== '') {
+        $parts[] = $cleanNotes;
+    }
+
+    return implode("\n", $parts);
+}
+
+function gaCooperationMedicineQtysFromPackages(array $packages): array
+{
+    $qtys = [
+        'bandage_qty' => 0,
+        'ifaks_qty' => 0,
+        'painkiller_qty' => 0,
+    ];
+
+    foreach ($packages as $package) {
+        $qtys['bandage_qty'] += max(0, (int)($package['bandage_qty'] ?? 0));
+        $qtys['ifaks_qty'] += max(0, (int)($package['ifaks_qty'] ?? 0));
+        $qtys['painkiller_qty'] += max(0, (int)($package['painkiller_qty'] ?? 0));
+    }
+
+    return $qtys;
+}
+
+function gaCooperationHasConfiguredMedicines(array $medicineQtys): bool
+{
+    $medicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
+    return $medicineQtys['bandage_qty'] > 0
+        || $medicineQtys['ifaks_qty'] > 0
+        || $medicineQtys['painkiller_qty'] > 0;
+}
+
+function gaCooperationResolveMedicineQtys(array $notesMeta, array $packages = []): array
+{
+    $medicineQtys = gaCooperationNormalizeMedicineQtys($notesMeta);
+    if (gaCooperationHasConfiguredMedicines($medicineQtys)) {
+        return $medicineQtys;
+    }
+
+    return gaCooperationMedicineQtysFromPackages($packages);
+}
+
+function gaCooperationRegulationPricePerPcs(PDO $pdo, string $unitCode): array
+{
+    $pricePerPcs = [
+        'bandage' => 0,
+        'ifaks' => 0,
+        'painkiller' => 0,
+    ];
+
+    $stmt = $pdo->prepare("
+        SELECT price, bandage_qty, ifaks_qty, painkiller_qty
+        FROM packages
+        WHERE COALESCE(unit_code, 'roxwood') = :unit_code
+        ORDER BY id ASC
+    ");
+    $stmt->execute([':unit_code' => $unitCode]);
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $package) {
+        $bandageQty = (int)($package['bandage_qty'] ?? 0);
+        $ifaksQty = (int)($package['ifaks_qty'] ?? 0);
+        $painkillerQty = (int)($package['painkiller_qty'] ?? 0);
+        $price = (int)($package['price'] ?? 0);
+
+        if ($bandageQty > 0 && $ifaksQty === 0 && $painkillerQty === 0) {
+            $pricePerPcs['bandage'] = (int)($price / max(1, $bandageQty));
+        }
+        if ($ifaksQty > 0 && $bandageQty === 0 && $painkillerQty === 0) {
+            $pricePerPcs['ifaks'] = (int)($price / max(1, $ifaksQty));
+        }
+        if ($painkillerQty > 0 && $bandageQty === 0 && $ifaksQty === 0) {
+            $pricePerPcs['painkiller'] = (int)($price / max(1, $painkillerQty));
+        }
+    }
+
+    return $pricePerPcs;
+}
+
+function gaCooperationSummarizeMedicines(array $medicineQtys, array $pricePerPcs): array
+{
+    $medicineQtys = gaCooperationNormalizeMedicineQtys($medicineQtys);
+    $lines = [];
+    $totalPrice = 0;
+    $configuredTypes = 0;
+
+    foreach (gaCooperationMedicineFields() as $field => $label) {
+        $qty = (int)($medicineQtys[$field] ?? 0);
+        if ($qty <= 0) {
+            continue;
+        }
+
+        $priceKey = str_replace('_qty', '', $field);
+        $unitPrice = max(0, (int)($pricePerPcs[$priceKey] ?? 0));
+        $lineTotal = $qty * $unitPrice;
+        $configuredTypes++;
+        $totalPrice += $lineTotal;
+
+        $lines[] = sprintf(
+            '%s %d x $%s = $%s',
+            $label,
+            $qty,
+            number_format($unitPrice, 0, ',', '.'),
+            number_format($lineTotal, 0, ',', '.')
+        );
+    }
+
+    return [
+        'lines' => $lines,
+        'total_price' => $totalPrice,
+        'configured_types' => $configuredTypes,
+        'total_qty' => array_sum($medicineQtys),
+        'qtys' => $medicineQtys,
+    ];
+}
+
 function gaCooperationBuildPeriodMeta(string $periodType, ?DateTimeInterface $baseDate = null): array
 {
     $base = $baseDate ? DateTimeImmutable::createFromInterface($baseDate) : new DateTimeImmutable('now');
@@ -142,6 +341,9 @@ function gaCooperationResolveMember(PDO $pdo, string $citizenId, string $unitCod
         return null;
     }
 
+    $notesMeta = gaCooperationParseNotesMeta((string)($member['notes'] ?? ''));
+    $claimScope = (string)($notesMeta['claim_scope'] ?? 'per_person');
+
     $stmtPackages = $pdo->prepare("
         SELECT
             gcp.package_id,
@@ -161,25 +363,43 @@ function gaCooperationResolveMember(PDO $pdo, string $citizenId, string $unitCod
         ':unit_code' => $unitCode,
     ]);
     $packageRows = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
+    $medicineQtys = gaCooperationResolveMedicineQtys($notesMeta, $packageRows);
 
     $periodMeta = gaCooperationBuildPeriodMeta((string)$member['period_type']);
     $usedByPackage = [];
 
     if (gaCooperationSalesColumnsReady($pdo)) {
-        $stmtUsage = $pdo->prepare("
-            SELECT
-                package_id,
-                MAX(created_at) AS last_claim_at
-            FROM sales
-            WHERE cooperation_member_id = :member_id
-              AND cooperation_claimed_free = 1
-              AND cooperation_period_key = :period_key
-            GROUP BY package_id
-        ");
-        $stmtUsage->execute([
-            ':member_id' => (int)$member['member_id'],
-            ':period_key' => $periodMeta['key'],
-        ]);
+        if ($claimScope === 'per_institution') {
+            $stmtUsage = $pdo->prepare("
+                SELECT
+                    package_id,
+                    MAX(created_at) AS last_claim_at
+                FROM sales
+                WHERE cooperation_id = :cooperation_id
+                  AND cooperation_claimed_free = 1
+                  AND cooperation_period_key = :period_key
+                GROUP BY package_id
+            ");
+            $stmtUsage->execute([
+                ':cooperation_id' => (int)$member['cooperation_id'],
+                ':period_key' => $periodMeta['key'],
+            ]);
+        } else {
+            $stmtUsage = $pdo->prepare("
+                SELECT
+                    package_id,
+                    MAX(created_at) AS last_claim_at
+                FROM sales
+                WHERE cooperation_member_id = :member_id
+                  AND cooperation_claimed_free = 1
+                  AND cooperation_period_key = :period_key
+                GROUP BY package_id
+            ");
+            $stmtUsage->execute([
+                ':member_id' => (int)$member['member_id'],
+                ':period_key' => $periodMeta['key'],
+            ]);
+        }
 
         foreach ($stmtUsage->fetchAll(PDO::FETCH_ASSOC) as $usageRow) {
             $usedByPackage[(int)$usageRow['package_id']] = [
@@ -224,10 +444,13 @@ function gaCooperationResolveMember(PDO $pdo, string $citizenId, string $unitCod
         'period_type' => (string)$member['period_type'],
         'period_label' => gaCooperationPeriodLabel((string)$member['period_type']),
         'period_meta' => $periodMeta,
-        'notes' => (string)($member['notes'] ?? ''),
+        'notes' => (string)($notesMeta['notes'] ?? ''),
+        'claim_scope' => $claimScope,
+        'claim_scope_label' => gaCooperationClaimScopeLabel($claimScope),
         'member_name' => (string)($member['member_name'] ?? ''),
         'citizen_id' => (string)$member['citizen_id'],
         'unit_code' => (string)$member['unit_code'],
+        'medicine_qtys' => $medicineQtys,
         'eligible_package_ids' => array_values(array_unique($eligibleIds)),
         'used_package_ids' => array_values(array_unique($usedIds)),
         'packages' => $packages,

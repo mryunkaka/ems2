@@ -8,7 +8,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['General Affair'], '/dashboard/index.php');
+ems_require_general_affair_manager_access('/dashboard/index.php');
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 if (!isset($_GET['range'])) {

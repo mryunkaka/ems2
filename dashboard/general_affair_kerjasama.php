@@ -9,7 +9,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['General Affair'], '/dashboard/index.php');
+ems_require_general_affair_manager_access('/dashboard/index.php');
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $pageTitle = 'Setting Kerjasama Instansi';
@@ -22,25 +22,18 @@ $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
 $unitLabel = ems_unit_label($effectiveUnit);
 $tableReady = gaCooperationTablesReady($pdo);
 $periodOptions = gaCooperationPeriodOptions();
+$claimScopeOptions = gaCooperationClaimScopeOptions();
+$medicineFields = gaCooperationMedicineFields();
+$pricePerPcs = gaCooperationRegulationPricePerPcs($pdo, $effectiveUnit);
 
 $stats = [
     'institutions' => 0,
     'members' => 0,
-    'package_links' => 0,
+    'medicine_types' => 0,
 ];
 $cooperations = [];
-$packages = [];
 
 if ($tableReady) {
-    $stmtPackages = $pdo->prepare("
-        SELECT id, name, price, bandage_qty, ifaks_qty, painkiller_qty
-        FROM packages
-        WHERE COALESCE(unit_code, 'roxwood') = :unit_code
-        ORDER BY name ASC
-    ");
-    $stmtPackages->execute([':unit_code' => $effectiveUnit]);
-    $packages = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
-
     $stmt = $pdo->prepare("
         SELECT
             gc.*,
@@ -61,6 +54,9 @@ if ($tableReady) {
 
     foreach ($cooperationRows as $row) {
         $cooperationId = (int)$row['id'];
+        $notesMeta = gaCooperationParseNotesMeta((string)($row['notes'] ?? ''));
+        $row['notes'] = (string)($notesMeta['notes'] ?? '');
+        $row['claim_scope'] = (string)($notesMeta['claim_scope'] ?? 'per_person');
 
         $stmtMembers = $pdo->prepare("
             SELECT id, citizen_id, member_name, identity_id
@@ -87,18 +83,23 @@ if ($tableReady) {
         ");
         $stmtPackages->execute([':cooperation_id' => $cooperationId]);
         $packageRows = $stmtPackages->fetchAll(PDO::FETCH_ASSOC);
+        $medicineQtys = gaCooperationResolveMedicineQtys($notesMeta, $packageRows);
+        $medicineSummary = gaCooperationSummarizeMedicines($medicineQtys, $pricePerPcs);
 
         $cooperations[] = [
             'row' => $row,
             'members' => $members,
-            'packages' => $packageRows,
+            'medicine_qtys' => $medicineQtys,
+            'medicine_summary_lines' => $medicineSummary['lines'],
+            'medicine_total_price' => $medicineSummary['total_price'],
+            'configured_types' => $medicineSummary['configured_types'],
         ];
     }
 
     $stats['institutions'] = count($cooperations);
     foreach ($cooperations as $entry) {
         $stats['members'] += count($entry['members']);
-        $stats['package_links'] += count($entry['packages']);
+        $stats['medicine_types'] += (int)($entry['configured_types'] ?? 0);
     }
 }
 
@@ -110,7 +111,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="ga-coop-page-head">
             <div>
                 <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
-                <p class="page-subtitle">Kelola instansi kerja sama, anggota berdasarkan Citizen ID, dan paket obat gratis per periode untuk unit <?= htmlspecialchars($unitLabel, ENT_QUOTES, 'UTF-8') ?>.</p>
+                <p class="page-subtitle">Kelola instansi kerja sama, anggota berdasarkan Citizen ID, dan jumlah obat gratis per periode untuk unit <?= htmlspecialchars($unitLabel, ENT_QUOTES, 'UTF-8') ?>.</p>
             </div>
             <a href="<?= htmlspecialchars(ems_url('/dashboard/general_affair_kerjasama_history.php'), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
                 <?= ems_icon('clipboard-document-list', 'h-4 w-4') ?>
@@ -141,8 +142,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="text-2xl font-extrabold text-primary"><?= (int)$stats['members'] ?></div>
             </div>
             <div class="card card-section">
-                <div class="meta-text-xs">Paket Gratis</div>
-                <div class="text-2xl font-extrabold text-emerald-700"><?= (int)$stats['package_links'] ?></div>
+                <div class="meta-text-xs">Jenis Obat Diatur</div>
+                <div class="text-2xl font-extrabold text-emerald-700"><?= (int)$stats['medicine_types'] ?></div>
             </div>
             <div class="card card-section">
                 <div class="meta-text-xs">Unit Aktif</div>
@@ -169,26 +170,44 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?php endforeach; ?>
                     </select>
 
-                    <label>Paket Obat Gratis</label>
-                    <div class="ga-coop-package-grid" id="cooperationPackageGrid">
-                        <?php foreach ($packages as $package): ?>
-                            <label class="ga-coop-package-option">
-                                <input
-                                    type="checkbox"
-                                    name="package_ids[]"
-                                    value="<?= (int)$package['id'] ?>"
-                                    <?= in_array((string)$package['id'], array_map('strval', (array)($old['package_ids'] ?? [])), true) ? 'checked' : '' ?>>
-                                <span>
-                                    <strong><?= htmlspecialchars((string)$package['name'], ENT_QUOTES, 'UTF-8') ?></strong><br>
-                                    <small>
-                                        $<?= number_format((int)$package['price']) ?>
-                                        | B <?= (int)$package['bandage_qty'] ?>
-                                        | I <?= (int)$package['ifaks_qty'] ?>
-                                        | P <?= (int)$package['painkiller_qty'] ?>
-                                    </small>
-                                </span>
+                    <label>Mode Paket Gratis</label>
+                    <div class="ga-coop-claim-scope">
+                        <?php foreach ($claimScopeOptions as $value => $label): ?>
+                            <label class="ga-coop-scope-option">
+                                <input type="radio" name="claim_scope" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>"<?= (($old['claim_scope'] ?? 'per_person') === $value) ? ' checked' : '' ?>>
+                                <span><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
                             </label>
                         <?php endforeach; ?>
+                    </div>
+
+                    <label>Jumlah Obat Gratis</label>
+                    <div class="ga-coop-medicine-grid">
+                        <?php foreach ($medicineFields as $field => $label): ?>
+                            <?php
+                            $priceKey = str_replace('_qty', '', $field);
+                            $fieldValue = (string)($old[$field] ?? '');
+                            ?>
+                            <label class="ga-coop-medicine-card">
+                                <span class="ga-coop-medicine-title"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                <span class="ga-coop-medicine-price">Harga regulasi: $<?= number_format((int)($pricePerPcs[$priceKey] ?? 0), 0, ',', '.') ?>/pcs</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    name="<?= htmlspecialchars($field, ENT_QUOTES, 'UTF-8') ?>"
+                                    id="<?= htmlspecialchars($field, ENT_QUOTES, 'UTF-8') ?>"
+                                    placeholder="0"
+                                    value="<?= htmlspecialchars($fieldValue, ENT_QUOTES, 'UTF-8') ?>">
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+
+                    <div class="ga-coop-regulation-box">
+                        <div class="ga-coop-regulation-line">
+                            <span>Total harga regulasi</span>
+                            <strong id="medicineTotalPrice">$0</strong>
+                        </div>
+                        <div class="meta-text-xs" id="medicineTotalSummary">Isi jumlah obat yang diberikan. Nilai kosong atau 0 tidak dihitung.</div>
                     </div>
 
                     <label>Anggota Kerjasama</label>
@@ -238,7 +257,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <tr>
                                 <th>Instansi</th>
                                 <th>Periode</th>
-                                <th>Paket Gratis</th>
+                                <th>Obat Gratis</th>
                                 <th>Anggota</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
@@ -249,7 +268,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <?php
                                 $row = $entry['row'];
                                 $members = $entry['members'];
-                                $packageRows = $entry['packages'];
+                                $medicineQtys = $entry['medicine_qtys'];
+                                $medicineSummaryLines = $entry['medicine_summary_lines'];
                                 $isActive = (int)($row['is_active'] ?? 0) === 1;
                                 ?>
                                 <tr>
@@ -259,10 +279,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="meta-text-xs whitespace-pre-line"><?= htmlspecialchars((string)$row['notes'], ENT_QUOTES, 'UTF-8') ?></div>
                                         <?php endif; ?>
                                     </td>
-                                    <td><?= htmlspecialchars(gaCooperationPeriodLabel((string)$row['period_type']), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td>
-                                        <?php if ($packageRows): ?>
-                                            <div class="meta-text-xs"><?= htmlspecialchars(implode(', ', array_map(static fn($pkg) => (string)$pkg['name'], $packageRows)), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?= htmlspecialchars(gaCooperationPeriodLabel((string)$row['period_type']), ENT_QUOTES, 'UTF-8') ?>
+                                        <div class="meta-text-xs"><?= htmlspecialchars(gaCooperationClaimScopeLabel((string)($row['claim_scope'] ?? 'per_person')), ENT_QUOTES, 'UTF-8') ?></div>
+                                    </td>
+                                    <td>
+                                        <?php if ($medicineSummaryLines): ?>
+                                            <div class="meta-text-xs whitespace-pre-line"><?= htmlspecialchars(implode("\n", $medicineSummaryLines), ENT_QUOTES, 'UTF-8') ?></div>
+                                            <div class="meta-text-xs mt-1"><strong>Total:</strong> $<?= number_format((int)($entry['medicine_total_price'] ?? 0), 0, ',', '.') ?></div>
                                         <?php else: ?>
                                             <div class="meta-text-xs">-</div>
                                         <?php endif; ?>
@@ -292,8 +316,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 data-id="<?= (int)$row['id'] ?>"
                                                 data-institution-name="<?= htmlspecialchars((string)$row['institution_name'], ENT_QUOTES, 'UTF-8') ?>"
                                                 data-period-type="<?= htmlspecialchars((string)$row['period_type'], ENT_QUOTES, 'UTF-8') ?>"
+                                                data-claim-scope="<?= htmlspecialchars((string)($row['claim_scope'] ?? 'per_person'), ENT_QUOTES, 'UTF-8') ?>"
                                                 data-notes="<?= htmlspecialchars((string)($row['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                                                data-package-ids="<?= htmlspecialchars(json_encode(array_map(static fn($pkg) => (int)$pkg['id'], $packageRows)), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-bandage-qty="<?= (int)($medicineQtys['bandage_qty'] ?? 0) ?>"
+                                                data-ifaks-qty="<?= (int)($medicineQtys['ifaks_qty'] ?? 0) ?>"
+                                                data-painkiller-qty="<?= (int)($medicineQtys['painkiller_qty'] ?? 0) ?>"
                                                 data-members="<?= htmlspecialchars(json_encode(array_map(static fn($memberRow) => ['citizen_id' => (string)$memberRow['citizen_id'], 'member_name' => (string)($memberRow['member_name'] ?? '')], $members)), ENT_QUOTES, 'UTF-8') ?>"
                                                 title="Edit kerjasama">
                                                 <?= ems_icon('pencil-square', 'h-4 w-4') ?>
@@ -335,11 +362,14 @@ include __DIR__ . '/../partials/sidebar.php';
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const datatableLanguageUrl = '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>';
+    const pricePerPcs = <?= json_encode($pricePerPcs, JSON_NUMERIC_CHECK); ?>;
     const membersContainer = document.getElementById('membersContainer');
     const addMemberBtn = document.getElementById('addMemberBtn');
     const resetButton = document.getElementById('resetCooperationForm');
     const form = document.getElementById('cooperationForm');
     const submitLabel = document.getElementById('cooperationSubmitLabel');
+    const medicineTotalPrice = document.getElementById('medicineTotalPrice');
+    const medicineTotalSummary = document.getElementById('medicineTotalSummary');
     let memberIndex = membersContainer ? membersContainer.querySelectorAll('.ga-coop-member-row').length : 0;
 
     function escapeAttr(value) {
@@ -362,6 +392,40 @@ document.addEventListener('DOMContentLoaded', function() {
             order: [[0, 'asc']],
             language: { url: datatableLanguageUrl }
         });
+    }
+
+    function formatCurrency(value) {
+        return '$' + Number(value || 0).toLocaleString('en-US');
+    }
+
+    function updateMedicineSummary() {
+        const bandageQty = Math.max(0, parseInt(document.getElementById('bandage_qty')?.value || '0', 10) || 0);
+        const ifaksQty = Math.max(0, parseInt(document.getElementById('ifaks_qty')?.value || '0', 10) || 0);
+        const painkillerQty = Math.max(0, parseInt(document.getElementById('painkiller_qty')?.value || '0', 10) || 0);
+        const items = [];
+        let total = 0;
+
+        if (bandageQty > 0) {
+            total += bandageQty * Number(pricePerPcs.bandage || 0);
+            items.push('Bandage ' + bandageQty);
+        }
+        if (ifaksQty > 0) {
+            total += ifaksQty * Number(pricePerPcs.ifaks || 0);
+            items.push('Ifaks ' + ifaksQty);
+        }
+        if (painkillerQty > 0) {
+            total += painkillerQty * Number(pricePerPcs.painkiller || 0);
+            items.push('Painkiller ' + painkillerQty);
+        }
+
+        if (medicineTotalPrice) {
+            medicineTotalPrice.textContent = formatCurrency(total);
+        }
+        if (medicineTotalSummary) {
+            medicineTotalSummary.textContent = items.length > 0
+                ? 'Dihitung: ' + items.join(', ')
+                : 'Isi jumlah obat yang diberikan. Nilai kosong atau 0 tidak dihitung.';
+        }
     }
 
     function createMemberRow(data) {
@@ -388,6 +452,9 @@ document.addEventListener('DOMContentLoaded', function() {
         form.reset();
         document.getElementById('cooperationAction').value = 'create_cooperation';
         document.getElementById('cooperationId').value = '0';
+        document.querySelectorAll('input[name="claim_scope"]').forEach(function(radio) {
+            radio.checked = radio.value === 'per_person';
+        });
         if (submitLabel) {
             submitLabel.textContent = 'Simpan Kerjasama';
         }
@@ -396,6 +463,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         memberIndex = 0;
         ensureOneMemberRow();
+        updateMedicineSummary();
     }
 
     if (addMemberBtn) {
@@ -417,18 +485,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelectorAll('.js-edit-cooperation').forEach(function(button) {
         button.addEventListener('click', function() {
-            const packageIds = JSON.parse(button.dataset.packageIds || '[]');
             const members = JSON.parse(button.dataset.members || '[]');
 
             document.getElementById('cooperationAction').value = 'update_cooperation';
             document.getElementById('cooperationId').value = button.dataset.id || '0';
             document.getElementById('institutionName').value = button.dataset.institutionName || '';
             document.getElementById('periodType').value = button.dataset.periodType || 'daily';
-            document.getElementById('cooperationNotes').value = button.dataset.notes || '';
-
-            document.querySelectorAll('#cooperationPackageGrid input[type="checkbox"]').forEach(function(checkbox) {
-                checkbox.checked = packageIds.includes(parseInt(checkbox.value, 10));
+            document.querySelectorAll('input[name="claim_scope"]').forEach(function(radio) {
+                radio.checked = radio.value === (button.dataset.claimScope || 'per_person');
             });
+            document.getElementById('cooperationNotes').value = button.dataset.notes || '';
+            document.getElementById('bandage_qty').value = button.dataset.bandageQty || '0';
+            document.getElementById('ifaks_qty').value = button.dataset.ifaksQty || '0';
+            document.getElementById('painkiller_qty').value = button.dataset.painkillerQty || '0';
 
             if (membersContainer) {
                 membersContainer.innerHTML = '';
@@ -446,6 +515,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 submitLabel.textContent = 'Simpan Perubahan';
             }
 
+            updateMedicineSummary();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
     });
@@ -463,7 +533,15 @@ document.addEventListener('DOMContentLoaded', function() {
         resetButton.addEventListener('click', resetFormState);
     }
 
+    ['bandage_qty', 'ifaks_qty', 'painkiller_qty'].forEach(function(fieldId) {
+        const input = document.getElementById(fieldId);
+        if (input) {
+            input.addEventListener('input', updateMedicineSummary);
+        }
+    });
+
     ensureOneMemberRow();
+    updateMedicineSummary();
 });
 </script>
 
@@ -482,20 +560,63 @@ document.addEventListener('DOMContentLoaded', function() {
     gap: 1rem;
 }
 
-.ga-coop-package-grid {
+.ga-coop-medicine-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.75rem;
 }
 
-.ga-coop-package-option {
+.ga-coop-claim-scope {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
-    align-items: flex-start;
+    margin-bottom: 0.25rem;
+}
+
+.ga-coop-scope-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.ga-coop-medicine-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
     padding: 0.85rem 0.9rem;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     background: #f8fafc;
+}
+
+.ga-coop-medicine-title {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.ga-coop-medicine-price {
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.ga-coop-regulation-box {
+    margin-top: 0.75rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 12px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+}
+
+.ga-coop-regulation-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.3rem;
 }
 
 .ga-coop-member-row {
@@ -512,7 +633,13 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 @media (max-width: 900px) {
-    .ga-coop-package-grid {
+    .ga-coop-medicine-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 1200px) {
+    .ga-coop-medicine-grid {
         grid-template-columns: 1fr;
     }
 }

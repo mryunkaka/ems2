@@ -297,7 +297,6 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
-require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
@@ -336,7 +335,7 @@ $canViewFarmasiSettings = canAccessFarmasiSettingsByDivision($user['division'] ?
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
 $packagesHasUnitCode = ems_column_exists($pdo, 'packages', 'unit_code');
-$salesHasCooperationColumns = gaCooperationSalesColumnsReady($pdo);
+$salesHasCooperationColumns = false;
 
 $stmtCurrentUser = $pdo->prepare("
     SELECT tanggal_masuk, citizen_id, batch
@@ -765,20 +764,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($pkgIfaksId > 0)   $selectedIds[] = $pkgIfaksId;
                 if ($pkgPainId > 0)    $selectedIds[] = $pkgPainId;
 
-                if (empty($errors)) {
-                    $cooperationMemberStatus = gaCooperationResolveMember($pdo, $consumerName, $effectiveUnit);
+                if (empty($errors) && $salesHasCooperationColumns) {
                     $availableCooperationPackageIds = [];
-
-                    if ($cooperationMemberStatus) {
-                        $availableCooperationPackageIds = array_values(array_diff(
-                            array_map('intval', (array)($cooperationMemberStatus['eligible_package_ids'] ?? [])),
-                            array_map('intval', (array)($cooperationMemberStatus['used_package_ids'] ?? []))
-                        ));
-                    }
-
-                    if (empty($selectedIds) && !empty($availableCooperationPackageIds)) {
-                        $selectedIds = $availableCooperationPackageIds;
-                    }
                 }
 
                 if (empty($selectedIds) && empty($errors)) {
@@ -810,7 +797,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
 
-                    if (empty($errors)) {
+                    if (empty($errors) && $salesHasCooperationColumns) {
                         $cooperationPricing = gaCooperationFindPackagePricing($selectedIds, $cooperationMemberStatus);
                         foreach ($cooperationPricing as $pricingMeta) {
                             if (!empty($pricingMeta['claimed_free'])) {
@@ -3605,76 +3592,33 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function getCooperationAvailableFreePackageIds() {
-            if (!COOP_STATE.member) {
-                return [];
-            }
-
-            const eligibleIds = (COOP_STATE.member.eligible_package_ids || []).map(function(id) {
-                return parseInt(id, 10);
-            }).filter(function(id) {
-                return Number.isInteger(id) && id > 0;
-            });
-            const usedIds = new Set((COOP_STATE.member.used_package_ids || []).map(function(id) {
-                return parseInt(id, 10);
-            }));
-
-            return eligibleIds.filter(function(id) {
-                return !usedIds.has(id);
-            });
+            return [];
         }
 
         function cooperationUsesAutomaticPackages() {
-            return !!COOP_STATE.member && getCooperationAvailableFreePackageIds().length > 0;
+            return false;
         }
 
         function applyCooperationPackageState() {
-            const autoMode = cooperationUsesAutomaticPackages();
             const mainEl = document.getElementById('pkg_main');
-            const customRow = document.getElementById('customPackageRow');
-            const activeLabel = document.getElementById('activePackageLabel');
             const packageIds = ['pkg_main', 'pkg_bandage', 'pkg_ifaks', 'pkg_painkiller'];
 
             packageIds.forEach(function(id) {
                 const el = document.getElementById(id);
                 if (!el) return;
-                el.disabled = autoMode;
+                el.disabled = false;
             });
 
-            if (autoMode) {
-                packageIds.forEach(function(id) {
-                    const el = document.getElementById(id);
-                    if (el) {
-                        el.value = '';
-                    }
-                });
-
-                if (customRow) {
-                    customRow.classList.add('hidden');
-                }
-
-                if (activeLabel) {
-                    activeLabel.textContent = 'Kerja Sama Instansi';
-                }
-
-                if (mainEl) {
-                    mainEl.setAttribute('data-cooperation-disabled', '1');
-                }
-            } else {
-                if (mainEl) {
-                    mainEl.removeAttribute('data-cooperation-disabled');
-                }
-
-                applyPackageMode(inferPackageMode(), {
-                    preserveSelections: true
-                });
+            if (mainEl) {
+                mainEl.removeAttribute('data-cooperation-disabled');
             }
+
+            applyPackageMode(inferPackageMode(), {
+                preserveSelections: true
+            });
         }
 
         function getEffectivePackageIdsForCurrentSelection() {
-            if (cooperationUsesAutomaticPackages()) {
-                return getCooperationAvailableFreePackageIds();
-            }
-
             return getSelectedPackageIds();
         }
 
@@ -3685,80 +3629,16 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         function getCooperationPricingForSelection(selectedPackageIds) {
-            const result = {
+            return {
                 freeIds: [],
-                paidIds: [],
+                paidIds: selectedPackageIds.slice(),
                 totalDiscount: 0,
             };
-
-            if (!COOP_STATE.member) {
-                result.paidIds = selectedPackageIds.slice();
-                return result;
-            }
-
-            const eligibleIds = new Set((COOP_STATE.member.eligible_package_ids || []).map(function(id) {
-                return parseInt(id, 10);
-            }));
-            const usedIds = new Set((COOP_STATE.member.used_package_ids || []).map(function(id) {
-                return parseInt(id, 10);
-            }));
-            const reservedFreeIds = new Set();
-
-            selectedPackageIds.forEach(function(packageId) {
-                const pkg = PACKAGES[packageId];
-                if (!pkg) {
-                    return;
-                }
-
-                if (eligibleIds.has(packageId) && !usedIds.has(packageId) && !reservedFreeIds.has(packageId)) {
-                    reservedFreeIds.add(packageId);
-                    result.freeIds.push(packageId);
-                    result.totalDiscount += parseInt(pkg.price || 0, 10);
-                    return;
-                }
-
-                result.paidIds.push(packageId);
-            });
-
-            return result;
         }
 
         async function fetchCooperationStatus(citizenId) {
-            const normalizedId = formatConsumerName(citizenId || '');
-            const requestId = ++COOP_STATE.requestId;
-
-            if (!looksLikeCitizenId(normalizedId)) {
-                clearCooperationState();
-                recalcTotals();
-                return;
-            }
-
-            COOP_STATE.loading = true;
-            COOP_STATE.citizenId = normalizedId;
-
-            try {
-                const res = await fetch(COOP_STATUS_URL + '?citizen_id=' + encodeURIComponent(normalizedId), {
-                    credentials: 'same-origin',
-                    cache: 'no-store'
-                });
-                const payload = await res.json();
-
-                if (requestId !== COOP_STATE.requestId) {
-                    return;
-                }
-
-                COOP_STATE.loading = false;
-                COOP_STATE.citizenId = normalizedId;
-                COOP_STATE.member = payload && payload.success && payload.is_cooperation_member ? (payload.member || null) : null;
-                recalcTotals();
-            } catch (error) {
-                if (requestId !== COOP_STATE.requestId) {
-                    return;
-                }
-
-                clearCooperationState();
-                recalcTotals();
-            }
+            clearCooperationState();
+            recalcTotals();
         }
 
         function renderConsumerSummaryCards(names) {

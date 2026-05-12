@@ -14,7 +14,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-ems_require_division_access(['General Affair'], '/dashboard/index.php');
+ems_require_general_affair_manager_access('/dashboard/index.php');
 
 if (!isset($_GET['range'])) {
     $_GET['range'] = 'week4';
