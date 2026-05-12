@@ -187,6 +187,12 @@ foreach ($docFields as $field) {
         continue;
     }
 
+    if (emsUploadedFileExceedsLimit($_FILES[$field])) {
+        $_SESSION['error'] = "Ukuran {$field} maksimal " . emsUploadLimitLabel() . '.';
+        header("Location: {$loginRedirect}");
+        exit;
+    }
+
     $tmp  = $_FILES[$field]['tmp_name'];
     $info = getimagesize($tmp);
 
@@ -227,6 +233,14 @@ for ($i = 0; $i < $max; $i++) {
 
     if ($fileErr !== UPLOAD_ERR_OK || $fileTmp === '') {
         continue;
+    }
+
+    if (emsUploadedFileExceedsLimit([
+        'size' => (int)($fileBag['size'][$i] ?? 0),
+    ])) {
+        $_SESSION['error'] = 'Ukuran file lainnya maksimal ' . emsUploadLimitLabel() . '.';
+        header("Location: {$loginRedirect}");
+        exit;
     }
 
     $info = getimagesize($fileTmp);

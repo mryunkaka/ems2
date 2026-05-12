@@ -86,6 +86,10 @@ function recruitmentStoreApplicantImage(array $file, string $uploadDir, string $
         throw new Exception("Upload {$documentType} gagal");
     }
 
+    if (emsUploadedFileExceedsLimit($file)) {
+        throw new Exception("Ukuran file {$documentType} maksimal " . emsUploadLimitLabel());
+    }
+
     $imgInfo = @getimagesize($tmp);
     $allowedMimes = [
         'image/jpeg',
@@ -166,7 +170,7 @@ function recruitmentStoreApplicantImage(array $file, string $uploadDir, string $
 function recruitmentUploadErrorMessage(int $errorCode, string $documentType): string
 {
     return match ($errorCode) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => "Ukuran file {$documentType} terlalu besar untuk server. Coba upload ulang, gambar akan dikompres otomatis sebelum dikirim.",
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => "Ukuran file {$documentType} terlalu besar. Batas upload adalah " . emsUploadLimitLabel() . '.',
         UPLOAD_ERR_PARTIAL => "Upload {$documentType} terputus sebelum selesai. Silakan coba lagi.",
         UPLOAD_ERR_NO_FILE => "File {$documentType} belum dipilih.",
         UPLOAD_ERR_NO_TMP_DIR => "Server upload sementara tidak siap.",
@@ -503,7 +507,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 if (empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     http_response_code(413);
-    exit('Ukuran request terlalu besar atau upload gagal diproses server. Silakan coba lagi; gambar akan dikompres otomatis sebelum dikirim.');
+    exit('Ukuran request terlalu besar atau upload gagal diproses server. Batas upload adalah ' . emsUploadLimitLabel() . '.');
 }
 
 $requiredFields = [

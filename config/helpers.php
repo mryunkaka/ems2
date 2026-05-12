@@ -1544,6 +1544,38 @@ function compressImageSmart(
     return true;
 }
 
+function emsUploadLimitBytes(): int
+{
+    return 1024 * 1024;
+}
+
+function emsUploadLimitLabel(): string
+{
+    return '1 MB';
+}
+
+function emsResolveUploadLimit(?int $requestedMaxBytes = null): int
+{
+    $globalLimit = emsUploadLimitBytes();
+    $requested = (int)($requestedMaxBytes ?? 0);
+
+    if ($requested <= 0) {
+        return $globalLimit;
+    }
+
+    return min($requested, $globalLimit);
+}
+
+function emsUploadedFileExceedsLimit(array $file, ?int $requestedMaxBytes = null): bool
+{
+    $size = (int)($file['size'] ?? 0);
+    if ($size <= 0) {
+        return false;
+    }
+
+    return $size > emsResolveUploadLimit($requestedMaxBytes);
+}
+
 /**
  * Upload and compress file helper
  * 
@@ -1555,6 +1587,8 @@ function compressImageSmart(
  */
 function uploadAndCompressFile(array $file, string $folder, int $maxSize = 300000, int $uploadMaxSize = 5000000): ?string
 {
+    $effectiveUploadMaxSize = emsResolveUploadLimit($uploadMaxSize);
+
     // Validate error
     if ($file['error'] !== UPLOAD_ERR_OK) {
         return null;
@@ -1568,7 +1602,7 @@ function uploadAndCompressFile(array $file, string $folder, int $maxSize = 30000
     }
 
     // Validate file size
-    if ($file['size'] > $uploadMaxSize) {
+    if (emsUploadedFileExceedsLimit($file, $effectiveUploadMaxSize)) {
         return null;
     }
 
@@ -2025,11 +2059,13 @@ function emsIsAllowedSecretaryAttachment(array $file): bool
 
 function emsStoreUploadedFileOriginal(array $file, string $folder, int $uploadMaxSize = 10000000): ?string
 {
+    $effectiveUploadMaxSize = emsResolveUploadLimit($uploadMaxSize);
+
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
         return null;
     }
 
-    if ((int) ($file['size'] ?? 0) > $uploadMaxSize) {
+    if (emsUploadedFileExceedsLimit($file, $effectiveUploadMaxSize)) {
         return null;
     }
 

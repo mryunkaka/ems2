@@ -1,4 +1,152 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const GLOBAL_UPLOAD_LIMIT_BYTES = 1024 * 1024;
+  const globalUploadNotice =
+    "Maksimal ukuran upload adalah 1 MB per file. Gambar akan dicoba dikompres otomatis, sedangkan dokumen non-gambar di atas 1 MB akan ditolak.";
+
+  async function fileToImageBitmap(file) {
+    if ("createImageBitmap" in window) {
+      try {
+        return await createImageBitmap(file);
+      } catch (e) {}
+    }
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("read_failed"));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("image_failed"));
+        img.onload = () => resolve(img);
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function compressImageForUpload(file) {
+    const image = await fileToImageBitmap(file);
+    const width = image.width || 0;
+    const height = image.height || 0;
+    if (!width || !height) {
+      return file;
+    }
+
+    const maxEdge = 1600;
+    const longest = Math.max(width, height, 1);
+    const scale = longest > maxEdge ? maxEdge / longest : 1;
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) {
+      return file;
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const qualitySteps = [0.86, 0.8, 0.74, 0.68, 0.62, 0.56, 0.5];
+    let blob = null;
+
+    for (const quality of qualitySteps) {
+      blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", quality)
+      );
+      if (blob && blob.size <= GLOBAL_UPLOAD_LIMIT_BYTES) {
+        break;
+      }
+    }
+
+    if (!blob) {
+      return file;
+    }
+
+    const baseName = String(file.name || "upload").replace(/\.[^.]+$/, "");
+    return new File([blob], baseName + ".jpg", {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  }
+
+  async function normalizeFileInput(input) {
+    if (!(input instanceof HTMLInputElement) || input.type !== "file") {
+      return;
+    }
+
+    const originalFiles = Array.from(input.files || []);
+    if (!originalFiles.length) {
+      return;
+    }
+
+    const nextFiles = [];
+    let rejected = false;
+    let compressed = false;
+
+    for (const file of originalFiles) {
+      const type = String(file.type || "").toLowerCase();
+      const isImage = type.startsWith("image/");
+
+      if (file.size <= GLOBAL_UPLOAD_LIMIT_BYTES) {
+        nextFiles.push(file);
+        continue;
+      }
+
+      if (!isImage) {
+        rejected = true;
+        continue;
+      }
+
+      try {
+        const normalized = await compressImageForUpload(file);
+        if (normalized.size > GLOBAL_UPLOAD_LIMIT_BYTES) {
+          rejected = true;
+          continue;
+        }
+        compressed = true;
+        nextFiles.push(normalized);
+      } catch (e) {
+        rejected = true;
+      }
+    }
+
+    const dt = new DataTransfer();
+    nextFiles.forEach((file) => dt.items.add(file));
+    input.files = dt.files;
+
+    if (compressed) {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    if (rejected) {
+      window.alert(globalUploadNotice);
+    }
+  }
+
+  document.addEventListener(
+    "change",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.type !== "file") {
+        return;
+      }
+
+      if (target.dataset.emsUploadNormalizing === "1") {
+        target.dataset.emsUploadNormalizing = "0";
+        return;
+      }
+
+      target.dataset.emsUploadNormalizing = "1";
+      normalizeFileInput(target).finally(() => {
+        target.dataset.emsUploadNormalizing = "0";
+      });
+    },
+    true
+  );
+
   /* =========================
      SIDEBAR (HANYA JIKA ADA)
      ========================= */

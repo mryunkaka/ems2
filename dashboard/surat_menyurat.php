@@ -668,7 +668,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             </label>
                             <input type="file" id="minutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="minutesAttachments"></div>
-                            <div class="meta-text-xs mt-2">PDF maksimal 500 KB. Jika lebih besar, kompres dulu di <a href="https://www.ilovepdf.com/id/mengompres-pdf" target="_blank" rel="noopener">iLovePDF</a>.</div>
+                            <div class="meta-text-xs mt-2">PDF maksimal 1 MB per file.</div>
                             <div id="minutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
                     </div>
@@ -1370,7 +1370,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </label>
                         <input type="file" id="editMinutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
                         <div class="file-selected-name" data-for="editMinutesAttachments"></div>
-                        <div class="meta-text-xs mt-2">PDF maksimal 500 KB. Jika lebih besar, kompres dulu di <a href="https://www.ilovepdf.com/id/mengompres-pdf" target="_blank" rel="noopener">iLovePDF</a>.</div>
+                        <div class="meta-text-xs mt-2">PDF maksimal 1 MB per file.</div>
                         <div id="editMinutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                     </div>
                 </div>
