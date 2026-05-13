@@ -9,6 +9,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/recruitment_gate.php';
 
 const EMS_ASSISTANT_MANAGER_DOC_BYPASS_CITIZEN_ID = 'RH39IQLC';
 
@@ -445,6 +446,7 @@ function recruitmentFindExistingApplicant(PDO $pdo, string $citizenId, string $r
     $sql = "
         SELECT
             m.id,
+            m.citizen_id,
             m.status,
             EXISTS(
                 SELECT 1
@@ -478,7 +480,7 @@ function recruitmentRedirectToExistingApplicant(array $existingApplicant, string
 
     $applicantId = (int)($existingApplicant['id'] ?? 0);
     if ($applicantId <= 0) {
-        header('Location: recruitment_done.php');
+        header('Location: ' . ems_url('/public/recruitment_done.php'));
         exit;
     }
 
@@ -489,11 +491,25 @@ function recruitmentRedirectToExistingApplicant(array $existingApplicant, string
     $hasAiResult = (int)($existingApplicant['has_ai_result'] ?? 0) === 1;
 
     if ($status === 'ai_test' && !$hasAiResult) {
-        header('Location: ai_test.php?applicant_id=' . $applicantId . '&track=' . urlencode($recruitmentType));
+        ems_public_recruitment_gate_set([
+            'citizen_id' => ems_normalize_citizen_id($existingApplicant['citizen_id'] ?? $_POST['citizen_id'] ?? ''),
+            'applicant_id' => $applicantId,
+            'recruitment_type' => $recruitmentType,
+            'stage' => 'ai_test',
+            'updated_at' => time(),
+        ]);
+        header('Location: ' . ems_url('/public/ai_test.php?applicant_id=' . $applicantId . '&track=' . urlencode($recruitmentType)));
         exit;
     }
 
-    header('Location: recruitment_done.php');
+    ems_public_recruitment_gate_set([
+        'citizen_id' => ems_normalize_citizen_id($existingApplicant['citizen_id'] ?? $_POST['citizen_id'] ?? ''),
+        'applicant_id' => $applicantId,
+        'recruitment_type' => $recruitmentType,
+        'stage' => 'done',
+        'updated_at' => time(),
+    ]);
+    header('Location: ' . ems_url('/public/recruitment_done.php'));
     exit;
 }
 
@@ -504,6 +520,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(403);
     exit;
 }
+
+$gate = ems_public_recruitment_require_gate_stage('form');
 
 if (empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     http_response_code(413);
@@ -533,12 +551,17 @@ recruitmentRequirePostedFields($requiredFields);
    =============================== */
 $icName  = trim($_POST['ic_name']);
 $icPhone = trim($_POST['ic_phone']);
-$citizenId = trim($_POST['citizen_id'] ?? '');
+$citizenId = ems_normalize_citizen_id($_POST['citizen_id'] ?? '');
 $jenisKelamin = trim($_POST['jenis_kelamin'] ?? '');
 
 if ($citizenId === '' || $jenisKelamin === '') {
     http_response_code(400);
     exit;
+}
+
+if ($citizenId !== (string)($gate['citizen_id'] ?? '')) {
+    http_response_code(403);
+    exit('Citizen ID tidak sesuai dengan sesi verifikasi.');
 }
 
 if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
@@ -768,5 +791,12 @@ try {
 
 $_SESSION['recruitment_track_map'] = $_SESSION['recruitment_track_map'] ?? [];
 $_SESSION['recruitment_track_map'][(string)$applicantId] = $recruitmentType;
-header('Location: ai_test.php?applicant_id=' . $applicantId . '&track=' . urlencode($recruitmentType));
+ems_public_recruitment_gate_set([
+    'citizen_id' => $citizenId,
+    'applicant_id' => (int)$applicantId,
+    'recruitment_type' => $recruitmentType,
+    'stage' => 'ai_test',
+    'updated_at' => time(),
+]);
+header('Location: ' . ems_url('/public/ai_test.php?applicant_id=' . $applicantId . '&track=' . urlencode($recruitmentType)));
 exit;

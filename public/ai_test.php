@@ -3,16 +3,16 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
+require_once __DIR__ . '/recruitment_gate.php';
 
 $applicantId = (int)($_GET['applicant_id'] ?? 0);
 
 if ($applicantId <= 0) {
-    header('Location: recruitment_form.php?reset_device_flow=1');
+    header('Location: ' . ems_url('/public/index.php'));
     exit;
 }
+
+$gate = ems_public_recruitment_require_ai_test_access($applicantId);
 
 $hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recruitment_type');
 $stmt = $pdo->prepare("
@@ -24,19 +24,19 @@ $stmt->execute([$applicantId]);
 $applicant = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$applicant) {
-    header('Location: recruitment_form.php?reset_device_flow=1');
+    header('Location: ' . ems_url('/public/index.php?reset=1'));
     exit;
 }
 
 if ($applicant['status'] !== 'ai_test') {
-    header('Location: recruitment_done.php');
+    header('Location: ' . ems_url('/public/recruitment_done.php'));
     exit;
 }
 
 $stmt = $pdo->prepare("SELECT id FROM ai_test_results WHERE applicant_id = ?");
 $stmt->execute([$applicantId]);
 if ($stmt->fetch()) {
-    header('Location: recruitment_done.php');
+    header('Location: ' . ems_url('/public/recruitment_done.php'));
     exit;
 }
 

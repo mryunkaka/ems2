@@ -1,8 +1,11 @@
 ﻿<?php
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/recruitment_gate.php';
 
+$gate = ems_public_recruitment_require_gate_stage('form');
 $profile = ems_recruitment_profile('medical_candidate');
+$citizenId = (string)($gate['citizen_id'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -110,7 +113,7 @@ $profile = ems_recruitment_profile('medical_candidate');
 
                             <div class="form-group">
                                 <label for="citizen_id" class="text-sm font-semibold text-slate-900">Citizen ID</label>
-                                <input type="text" id="citizen_id" name="citizen_id" placeholder="Masukkan citizen ID" autocomplete="off" required>
+                                <input type="text" id="citizen_id" name="citizen_id" value="<?= htmlspecialchars($citizenId) ?>" placeholder="Masukkan citizen ID" autocomplete="off" required readonly>
                             </div>
                         </div>
 
@@ -404,6 +407,11 @@ $profile = ems_recruitment_profile('medical_candidate');
 
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('publicRecruitmentForm');
+            const citizenInput = document.getElementById('citizen_id');
+
+            if (citizenInput) {
+                citizenInput.value = String(citizenInput.value || '').toUpperCase();
+            }
 
             document.querySelectorAll('#publicRecruitmentForm input:not([type="file"]):not([type="hidden"]), #publicRecruitmentForm textarea, #publicRecruitmentForm select').forEach(function(field) {
                 ['paste', 'copy', 'cut', 'drop'].forEach(function(eventName) {

@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/recruitment_gate.php';
+
+ems_public_recruitment_require_gate_stage('done');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -80,7 +83,7 @@ require_once __DIR__ . '/../config/helpers.php';
                         Anda bisa memakai tombol reset device untuk menghapus state browser lokal tanpa mengulang data yang sudah tersimpan di server.
                     </p>
                     <div class="form-submit-wrapper gap-3">
-                        <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form.php'), ENT_QUOTES, 'UTF-8') ?>" id="resetRecruitmentDeviceState" class="btn-secondary w-full justify-center md:w-auto">
+                        <a href="<?= htmlspecialchars(ems_url('/public/index.php?reset=1'), ENT_QUOTES, 'UTF-8') ?>" id="resetRecruitmentDeviceState" class="btn-secondary w-full justify-center md:w-auto">
                             <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                             <span>Reset Device ke Form Awal</span>
                         </a>

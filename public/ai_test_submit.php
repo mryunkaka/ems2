@@ -20,9 +20,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/status_validator.php';
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    session_start();
-}
+require_once __DIR__ . '/recruitment_gate.php';
 
 /* =========================================================
    VALIDASI REQUEST
@@ -38,6 +36,8 @@ if ($applicantId <= 0) {
     exit('Applicant ID invalid');
 }
 
+$gate = ems_public_recruitment_require_ai_test_access($applicantId);
+
 /* =========================================================
    CEK DOUBLE SUBMIT
    ========================================================= */
@@ -45,7 +45,7 @@ $stmt = $pdo->prepare("SELECT id FROM ai_test_results WHERE applicant_id = ?");
 $stmt->execute([$applicantId]);
 if ($stmt->fetch()) {
     // Sudah pernah submit
-    header('Location: recruitment_done.php');
+    header('Location: ' . ems_url('/public/recruitment_done.php'));
     exit;
 }
 
@@ -56,6 +56,7 @@ $hasRecruitmentTypeColumn = ems_column_exists($pdo, 'medical_applicants', 'recru
 $stmt = $pdo->prepare("
     SELECT
         " . ($hasRecruitmentTypeColumn ? "recruitment_type," : "") . "
+        citizen_id,
         medical_experience,
         city_duration,
         online_schedule,
@@ -74,6 +75,11 @@ $applicant = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$applicant) {
     http_response_code(404);
     exit('Applicant not found');
+}
+
+if (ems_normalize_citizen_id($applicant['citizen_id'] ?? '') !== (string)($gate['citizen_id'] ?? '')) {
+    http_response_code(403);
+    exit('Citizen ID mismatch');
 }
 
 $sessionTrackMap = $_SESSION['recruitment_track_map'] ?? [];
@@ -226,5 +232,5 @@ try {
 /* =========================================================
    REDIRECT SELESAI
    ========================================================= */
-header('Location: recruitment_done.php');
+header('Location: ' . ems_url('/public/recruitment_done.php'));
 exit;
