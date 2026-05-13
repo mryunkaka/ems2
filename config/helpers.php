@@ -955,11 +955,9 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
             'sertifikat_heli.php',
             'event_manage.php',
             'restaurant_settings.php',
-            'general_affair_visits.php',
             'reimbursement.php',
             'restaurant_consumption.php',
             'restaurant_consumption_action.php',
-            'general_affair_visits_action.php',
         ];
 
         if (in_array($scriptName, $altaBlockedPages, true)) {

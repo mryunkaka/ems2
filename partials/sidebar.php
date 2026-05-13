@@ -114,8 +114,7 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
         sidebarItem('/dashboard/restaurant_settings.php', 'restaurant_settings.php', 'Manajemen Konsumsi', 'cake'),
         sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
         sidebarItem('/dashboard/blacklist_names.php', 'blacklist_names.php', 'Blacklist Nama', 'no-symbol'),
-        sidebarItem('/dashboard/general_affair_visits.php', 'general_affair_visits.php', 'General Affair Visits', 'ticket'),
-    ];
+            ];
 
     if (!ems_is_staff_role($userRole)) {
         $groupedNav['General Affair'][] = sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group');

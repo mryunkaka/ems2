@@ -4489,20 +4489,64 @@ include __DIR__ . '/../partials/sidebar.php';
             // Listener nama konsumen → cek limit + save state
             const consumerInput = document.querySelector('input[name="consumer_name"]');
             if (consumerInput) {
-                ['input', 'change', 'blur'].forEach(function(evt) {
-                    consumerInput.addEventListener(evt, function() {
-                        const formattedValue = formatConsumerName(consumerInput.value);
-                        if (consumerInput.value !== formattedValue) {
-                            consumerInput.value = formattedValue;
-                        }
-                        const ocrCitizenIdInput = document.getElementById('ocr_citizen_id');
-                        if (ocrCitizenIdInput && ocrCitizenIdInput.value && consumerInput.value !== ocrCitizenIdInput.value) {
-                            clearOcrIdentityPayload();
-                        }
-                        saveFormState();
-                        updateSimilarConsumerBox();
-                        recalcTotals();
-                        fetchCooperationStatus(consumerInput.value);
+                let isConsumerInputComposing = false;
+
+                function syncConsumerInputState(options) {
+                    const settings = options || {};
+                    const shouldNormalizeInput = !!settings.normalizeInput;
+                    const rawValue = consumerInput.value || '';
+                    const normalizedValue = formatConsumerName(rawValue);
+
+                    if (shouldNormalizeInput && rawValue !== normalizedValue) {
+                        consumerInput.value = normalizedValue;
+                    }
+
+                    const normalizedCurrentValue = formatConsumerName(consumerInput.value || rawValue);
+                    const ocrCitizenIdInput = document.getElementById('ocr_citizen_id');
+                    if (
+                        ocrCitizenIdInput &&
+                        ocrCitizenIdInput.value &&
+                        normalizedCurrentValue !== formatConsumerName(ocrCitizenIdInput.value)
+                    ) {
+                        clearOcrIdentityPayload();
+                    }
+
+                    saveFormState();
+                    updateSimilarConsumerBox();
+                    recalcTotals();
+                    fetchCooperationStatus(normalizedCurrentValue);
+                }
+
+                consumerInput.addEventListener('compositionstart', function() {
+                    isConsumerInputComposing = true;
+                });
+
+                consumerInput.addEventListener('compositionend', function() {
+                    isConsumerInputComposing = false;
+                    syncConsumerInputState({
+                        normalizeInput: true
+                    });
+                });
+
+                consumerInput.addEventListener('input', function() {
+                    if (isConsumerInputComposing) {
+                        return;
+                    }
+
+                    syncConsumerInputState({
+                        normalizeInput: false
+                    });
+                });
+
+                consumerInput.addEventListener('change', function() {
+                    syncConsumerInputState({
+                        normalizeInput: true
+                    });
+                });
+
+                consumerInput.addEventListener('blur', function() {
+                    syncConsumerInputState({
+                        normalizeInput: true
                     });
                 });
             }
