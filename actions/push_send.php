@@ -96,6 +96,12 @@ foreach ($usersAutoOffline as $user) {
             $url   = '/dashboard/operasi_plastik.php';
             break;
 
+        case 'medical_record_contact_incoming':
+            $title = 'Kontak Masuk Rekam Medis';
+            $body  = 'Ada rekam medis masuk yang perlu Anda cek.';
+            $url   = '/dashboard/rekam_medis_list.php';
+            break;
+
         default:
             continue 2; // skip user ini
     }

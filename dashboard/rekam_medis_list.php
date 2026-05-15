@@ -39,6 +39,11 @@ function medicalRecordValue(mixed $value, string $fallback = '-'): string
     return $value !== '' ? $value : $fallback;
 }
 
+function medicalRecordGenderBadgeClass(?string $gender): string
+{
+    return trim((string) $gender) === 'Perempuan' ? 'medical-badge-female' : 'badge-info';
+}
+
 function medicalRecordAssistantNamesMap(PDO $pdo, array $recordIds): array
 {
     $recordIds = array_values(array_unique(array_filter(array_map('intval', $recordIds), static fn (int $id): bool => $id > 0)));
@@ -88,6 +93,70 @@ function medicalRecordAssistantNamesMap(PDO $pdo, array $recordIds): array
     return $map;
 }
 
+function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJenisOperasi, bool $hasVisibilityScope, bool $isForensicPrivate): array
+{
+    $scopeWhere = '1=1';
+    if ($hasVisibilityScope) {
+        $scopeWhere .= $isForensicPrivate
+            ? " AND COALESCE(r.visibility_scope, 'standard') = 'forensic_private'"
+            : " AND COALESCE(r.visibility_scope, 'standard') = 'standard'";
+    } elseif ($isForensicPrivate) {
+        return [];
+    }
+
+    $stmt = $pdo->query("
+        SELECT
+            r.id,
+            r.patient_name,
+            r.patient_dob,
+            " . ($hasPatientCitizenId ? "COALESCE(r.patient_citizen_id, '')" : "''") . " AS patient_citizen_id,
+            r.created_at,
+            r.operasi_type,
+            " . ($hasJenisOperasi ? "COALESCE(r.jenis_operasi, '')" : "''") . " AS jenis_operasi,
+            COALESCE(r.record_code, '') AS record_code,
+            COALESCE(d.full_name, '') AS doctor_name
+        FROM medical_records r
+        LEFT JOIN user_rh d ON d.id = r.doctor_id
+        WHERE {$scopeWhere}
+        ORDER BY r.created_at DESC, r.id DESC
+    ");
+
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    $historyMap = [];
+
+    foreach ($rows as $row) {
+        $citizenId = trim((string) ($row['patient_citizen_id'] ?? ''));
+        $name = trim((string) ($row['patient_name'] ?? ''));
+        $dob = trim((string) ($row['patient_dob'] ?? ''));
+        $keys = [];
+
+        if ($citizenId !== '') {
+            $keys[] = 'cid:' . strtolower($citizenId);
+        }
+        if ($name !== '' && $dob !== '') {
+            $keys[] = 'namedob:' . strtolower($name) . '|' . $dob;
+        }
+
+        if ($keys === []) {
+            continue;
+        }
+
+        foreach ($keys as $key) {
+            $historyMap[$key] ??= [];
+            $historyMap[$key][] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'created_at' => (string) ($row['created_at'] ?? ''),
+                'doctor_name' => trim((string) ($row['doctor_name'] ?? '')) ?: '-',
+                'operasi_type' => strtolower((string) ($row['operasi_type'] ?? 'minor')) === 'major' ? 'Mayor' : 'Minor',
+                'jenis_operasi' => trim((string) ($row['jenis_operasi'] ?? '')),
+                'record_code' => trim((string) ($row['record_code'] ?? '')),
+            ];
+        }
+    }
+
+    return $historyMap;
+}
+
 // Get search keyword
 $search = trim($_GET['search'] ?? '');
 
@@ -95,6 +164,7 @@ $search = trim($_GET['search'] ?? '');
 $hasVisibilityScope = medicalRecordsHasColumn($pdo, 'visibility_scope');
 $hasRecordCode = medicalRecordsHasColumn($pdo, 'record_code');
 $hasPatientCitizenId = medicalRecordsHasColumn($pdo, 'patient_citizen_id');
+$hasJenisOperasi = medicalRecordsHasColumn($pdo, 'jenis_operasi');
 
 $whereClause = '1=1';
 $migrationMissing = false;
@@ -118,6 +188,11 @@ if ($search !== '') {
 
     if ($hasPatientCitizenId) {
         $searchParts[] = "COALESCE(r.patient_citizen_id, '') LIKE ?";
+        $params[] = "%$search%";
+    }
+
+    if ($hasJenisOperasi) {
+        $searchParts[] = "COALESCE(r.jenis_operasi, '') LIKE ?";
         $params[] = "%$search%";
     }
 
@@ -149,6 +224,8 @@ $stmt->execute($params);
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $assistantNamesMap = medicalRecordAssistantNamesMap($pdo, array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $records));
 $detailTemplates = [];
+$historyTemplates = [];
+$patientHistoryMap = medicalRecordHistoryMap($pdo, $hasPatientCitizenId, $hasJenisOperasi, $hasVisibilityScope, $isForensicPrivate);
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -190,7 +267,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card-body">
                 <form method="GET" action="" class="flex gap-2">
                     <input type="text" name="search" class="form-input flex-1" 
-                           placeholder="Cari nama pasien, citizen ID, atau no rekam medis..." 
+                           placeholder="Cari nama pasien, citizen ID, nama operasi, atau no rekam medis..." 
                            value="<?= htmlspecialchars($search) ?>" />
                     <button type="submit" class="btn-primary">
                         <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -255,46 +332,67 @@ include __DIR__ . '/../partials/sidebar.php';
                                     $assistantNames = trim((string) ($assistantNamesMap[(int) ($record['id'] ?? 0)] ?? ($record['assistant_name'] ?? '')));
                                     $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
                                     ?>
-                                    <tr class="hover:bg-gray-50">
-                                        <td data-order="<?= strtotime((string) ($record['created_at'] ?? '')) ?: 0 ?>">
+                                    <?php
+                                    $historyKey = '';
+                                    $patientCitizenIdValue = trim((string) ($record['patient_citizen_id'] ?? ''));
+                                    if ($hasPatientCitizenId && $patientCitizenIdValue !== '') {
+                                        $historyKey = 'cid:' . strtolower($patientCitizenIdValue);
+                                    } elseif (trim((string) ($record['patient_name'] ?? '')) !== '' && trim((string) ($record['patient_dob'] ?? '')) !== '') {
+                                        $historyKey = 'namedob:' . strtolower(trim((string) ($record['patient_name'] ?? ''))) . '|' . trim((string) ($record['patient_dob'] ?? ''));
+                                    }
+                                    $patientHistory = $historyKey !== '' ? ($patientHistoryMap[$historyKey] ?? []) : [];
+                                    $patientHistoryTemplateId = 'medical-record-history-' . (int) ($record['id'] ?? 0);
+                                    ?>
+                                    <tr class="hover:bg-gray-50 medical-record-row-nowrap">
+                                        <td class="medical-cell-nowrap" data-order="<?= strtotime((string) ($record['created_at'] ?? '')) ?: 0 ?>">
                                             <?= date('d/m/Y H:i', strtotime($record['created_at'])) ?>
                                         </td>
-                                        <td class="font-semibold">
+                                        <td class="font-semibold medical-cell-nowrap">
                                             <a href="<?= $isForensicPrivate ? 'forensic_medical_records_view.php' : 'rekam_medis_view.php' ?>?id=<?= (int)$record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" class="text-primary hover:underline">
                                                 <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?>
                                             </a>
                                         </td>
-                                        <td class="font-semibold">
-                                            <?= htmlspecialchars($record['patient_name']) ?>
+                                        <td class="font-semibold medical-cell-nowrap">
+                                            <button
+                                                type="button"
+                                                class="medical-patient-link btn-patient-history"
+                                                data-modal-title="<?= htmlspecialchars('Riwayat Rekam Medis Pasien', ENT_QUOTES, 'UTF-8') ?>"
+                                                data-modal-subtitle="<?= htmlspecialchars((string) ($record['patient_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>"
+                                                data-template-id="<?= htmlspecialchars($patientHistoryTemplateId, ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= htmlspecialchars($record['patient_name']) ?>
+                                            </button>
                                         </td>
-                                        <td>
+                                        <td class="medical-cell-nowrap">
                                             <?= htmlspecialchars($record['patient_occupation']) ?>
                                         </td>
-                                        <td>
+                                        <td class="medical-cell-nowrap">
                                             <?= htmlspecialchars((string)(($hasPatientCitizenId ? ($record['patient_citizen_id'] ?? null) : null) ?: '-')) ?>
                                         </td>
-                                        <td>
-                                            <span class="badge badge-<?= $record['patient_gender'] === 'Laki-laki' ? 'info' : 'pink' ?>">
+                                        <td class="medical-cell-nowrap">
+                                            <span class="<?= htmlspecialchars(medicalRecordGenderBadgeClass($record['patient_gender'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                                 <?= htmlspecialchars($record['patient_gender']) ?>
                                             </span>
                                         </td>
-                                        <td>
+                                        <td class="medical-cell-nowrap">
                                             <div class="text-sm">
                                                 <div class="font-medium"><?= htmlspecialchars($record['doctor_name'] ?? '-') ?></div>
                                                 <div class="text-gray-500 text-xs"><?= htmlspecialchars($record['doctor_position'] ?? '') ?></div>
                                             </div>
                                         </td>
-                                        <td>
+                                        <td class="medical-cell-nowrap">
                                             <?= htmlspecialchars($assistantNames !== '' ? $assistantNames : '-', ENT_QUOTES, 'UTF-8') ?>
                                         </td>
-                                        <td>
+                                        <td class="medical-cell-nowrap">
                                             <div class="font-medium"><?= htmlspecialchars((string) ($record['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
                                             <div class="text-xs text-gray-500">Input dokumen</div>
                                         </td>
-                                        <td>
-                                            <span class="badge badge-<?= $record['operasi_type'] === 'major' ? 'error' : 'warning' ?>">
+                                        <td class="medical-cell-nowrap">
+                                            <span class="<?= $record['operasi_type'] === 'major' ? 'badge-danger' : 'badge-warning' ?>">
                                                 <?= $record['operasi_type'] === 'major' ? 'Mayor' : 'Minor' ?>
                                             </span>
+                                            <?php if ($hasJenisOperasi && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
+                                                <div class="medical-operation-name"><?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?></div>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="text-center">
                                             <div class="flex justify-center gap-2">
@@ -346,7 +444,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="forensic-detail-panel">
                                                 <div class="forensic-detail-label">Tim Medis</div>
                                                 <div class="forensic-detail-badges">
-                                                    <span class="badge-info"><?= htmlspecialchars(medicalRecordValue($record['patient_gender']), ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <span class="<?= htmlspecialchars(medicalRecordGenderBadgeClass($record['patient_gender'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(medicalRecordValue($record['patient_gender']), ENT_QUOTES, 'UTF-8') ?></span>
                                                     <span class="<?= ($record['operasi_type'] ?? '') === 'major' ? 'badge-danger' : 'badge-warning' ?>">
                                                         <?= htmlspecialchars(($record['operasi_type'] ?? '') === 'major' ? 'MAYOR' : 'MINOR', ENT_QUOTES, 'UTF-8') ?>
                                                     </span>
@@ -354,6 +452,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <div class="forensic-detail-meta">
                                                     DPJP: <?= htmlspecialchars(medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
                                                     Asisten: <?= htmlspecialchars(medicalRecordValue($assistantNames), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    <?php if ($hasJenisOperasi && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
+                                                        Nama operasi: <?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?><br>
+                                                    <?php endif; ?>
                                                     Dibuat oleh: <?= htmlspecialchars(medicalRecordValue($record['created_by_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                                                 </div>
                                             </div>
@@ -425,6 +526,62 @@ include __DIR__ . '/../partials/sidebar.php';
                                         'id' => (int) $record['id'],
                                         'html' => ob_get_clean(),
                                     ];
+
+                                    ob_start();
+                                    ?>
+                                    <div class="medical-history-shell">
+                                        <div class="medical-history-summary">
+                                            <div class="medical-history-chip">
+                                                Total riwayat: <?= count($patientHistory) ?>
+                                            </div>
+                                            <div class="medical-history-chip">
+                                                Citizen ID: <?= htmlspecialchars((string)(($hasPatientCitizenId ? ($record['patient_citizen_id'] ?? null) : null) ?: '-'), ENT_QUOTES, 'UTF-8') ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($patientHistory === []): ?>
+                                            <div class="medical-history-empty">Belum ada riwayat rekam medis untuk pasien ini.</div>
+                                        <?php else: ?>
+                                            <div class="medical-history-table-wrap">
+                                                <table class="medical-history-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Tanggal</th>
+                                                            <th>No. Rekam Medis</th>
+                                                            <th>Dokter DPJP</th>
+                                                            <th>Jenis Operasi</th>
+                                                            <th>Nama / Jenis Operasi</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <?php foreach ($patientHistory as $historyItem): ?>
+                                                            <?php
+                                                            $historyRecordCode = trim((string) ($historyItem['record_code'] ?? ''));
+                                                            if ($historyRecordCode === '') {
+                                                                $historyRecordCode = 'MR-' . str_pad((string) ((int) ($historyItem['id'] ?? 0)), 6, '0', STR_PAD_LEFT);
+                                                            }
+                                                            ?>
+                                                            <tr>
+                                                                <td><?= htmlspecialchars((string) ($historyItem['created_at'] !== '' ? date('d/m/Y H:i', strtotime((string) $historyItem['created_at'])) : '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                                                                <td>
+                                                                    <a href="<?= $isForensicPrivate ? 'forensic_medical_records_view.php' : 'rekam_medis_view.php' ?>?id=<?= (int) ($historyItem['id'] ?? 0) ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" class="text-primary hover:underline">
+                                                                        <?= htmlspecialchars($historyRecordCode, ENT_QUOTES, 'UTF-8') ?>
+                                                                    </a>
+                                                                </td>
+                                                                <td><?= htmlspecialchars((string) ($historyItem['doctor_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                                                                <td><?= htmlspecialchars((string) ($historyItem['operasi_type'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                                                                <td><?= htmlspecialchars(trim((string) ($historyItem['jenis_operasi'] ?? '')) !== '' ? (string) $historyItem['jenis_operasi'] : '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                                            </tr>
+                                                        <?php endforeach; ?>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php
+                                    $historyTemplates[] = [
+                                        'id' => $patientHistoryTemplateId,
+                                        'html' => ob_get_clean(),
+                                    ];
                                     ?>
                                 <?php endforeach; ?>
                             </tbody>
@@ -440,6 +597,12 @@ include __DIR__ . '/../partials/sidebar.php';
 <?php foreach ($detailTemplates as $detailTemplate): ?>
     <template id="medical-record-detail-<?= (int) $detailTemplate['id'] ?>">
         <?= $detailTemplate['html'] ?>
+    </template>
+<?php endforeach; ?>
+
+<?php foreach ($historyTemplates as $historyTemplate): ?>
+    <template id="<?= htmlspecialchars((string) $historyTemplate['id'], ENT_QUOTES, 'UTF-8') ?>">
+        <?= $historyTemplate['html'] ?>
     </template>
 <?php endforeach; ?>
 
@@ -463,6 +626,26 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
+<div id="medicalRecordHistoryModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
+        <div class="forensic-detail-head">
+            <div class="min-w-0">
+                <div id="medicalRecordHistoryTitle" class="forensic-detail-title">Riwayat Rekam Medis Pasien</div>
+                <div id="medicalRecordHistorySubtitle" class="forensic-detail-subtitle"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-medical-history-close" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <div id="medicalRecordHistoryBody" class="forensic-detail-content"></div>
+        <div class="modal-foot">
+            <div class="modal-actions justify-end">
+                <button type="button" class="btn-secondary btn-medical-history-close">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function confirmDelete(id, name, mode) {
     if (confirm(`Apakah Anda yakin ingin menghapus rekam medis pasien "${name}"?\n\nData yang dihapus tidak dapat dikembalikan.`)) {
@@ -478,14 +661,24 @@ document.addEventListener('DOMContentLoaded', function () {
     const title = document.getElementById('medicalRecordDetailTitle');
     const subtitle = document.getElementById('medicalRecordDetailSubtitle');
     const body = document.getElementById('medicalRecordDetailBody');
+    const historyModal = document.getElementById('medicalRecordHistoryModal');
+    const historyTitle = document.getElementById('medicalRecordHistoryTitle');
+    const historySubtitle = document.getElementById('medicalRecordHistorySubtitle');
+    const historyBody = document.getElementById('medicalRecordHistoryBody');
 
-    if (!modal || !title || !subtitle || !body) {
+    if (!modal || !title || !subtitle || !body || !historyModal || !historyTitle || !historySubtitle || !historyBody) {
         return;
     }
 
     function closeModal() {
         modal.classList.add('hidden');
         body.innerHTML = '';
+        document.body.classList.remove('modal-open');
+    }
+
+    function closeHistoryModal() {
+        historyModal.classList.add('hidden');
+        historyBody.innerHTML = '';
         document.body.classList.remove('modal-open');
     }
 
@@ -505,17 +698,157 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
+        const historyTrigger = event.target.closest('.btn-patient-history');
+        if (historyTrigger) {
+            const template = document.getElementById(historyTrigger.getAttribute('data-template-id') || '');
+            if (!template) {
+                return;
+            }
+
+            historyTitle.textContent = historyTrigger.getAttribute('data-modal-title') || 'Riwayat Rekam Medis Pasien';
+            historySubtitle.textContent = historyTrigger.getAttribute('data-modal-subtitle') || '';
+            historyBody.innerHTML = template.innerHTML;
+            historyModal.classList.remove('hidden');
+            document.body.classList.add('modal-open');
+            return;
+        }
+
         if (event.target.closest('.btn-medical-record-close')) {
             closeModal();
+            return;
+        }
+
+        if (event.target.closest('.btn-medical-history-close')) {
+            closeHistoryModal();
         }
     });
 
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
             closeModal();
+            return;
+        }
+
+        if (event.key === 'Escape' && !historyModal.classList.contains('hidden')) {
+            closeHistoryModal();
         }
     });
 });
 </script>
+
+<style>
+.medical-badge-female {
+    display: inline-flex;
+    min-height: 1.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 0.75rem;
+    background: #fce7f3;
+    color: #be185d;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.medical-operation-name {
+    margin-top: 0.45rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+#medicalRecordsTable th,
+#medicalRecordsTable td,
+#medicalRecordsTable .text-sm,
+#medicalRecordsTable .text-xs,
+#medicalRecordsTable .font-medium,
+#medicalRecordsTable .font-semibold {
+    white-space: nowrap;
+}
+
+.medical-record-row-nowrap td {
+    vertical-align: middle;
+}
+
+.medical-cell-nowrap {
+    white-space: nowrap;
+}
+
+.medical-patient-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: #0284c7;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.medical-patient-link:hover {
+    color: #0369a1;
+    text-decoration: underline;
+}
+
+.medical-history-shell {
+    display: grid;
+    gap: 1rem;
+}
+
+.medical-history-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.medical-history-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.medical-history-empty {
+    padding: 1rem 1.1rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 1rem;
+    background: #f8fafc;
+    color: #64748b;
+}
+
+.medical-history-table-wrap {
+    overflow-x: auto;
+}
+
+.medical-history-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.medical-history-table th,
+.medical-history-table td {
+    padding: 0.8rem 0.9rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.medical-history-table th {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+}
+</style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

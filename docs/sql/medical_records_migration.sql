@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS `medical_records` (
   `doctor_id` int(11) NOT NULL COMMENT 'DPJP dari user_rh',
   `assistant_id` int(11) DEFAULT NULL COMMENT 'Asisten dari user_rh (opsional)',
   `operasi_type` enum('major','minor') NOT NULL COMMENT 'Jenis operasi: mayor/minor',
+  `jenis_operasi` varchar(255) DEFAULT NULL COMMENT 'Nama / deskripsi jenis operasi',
   `created_by` int(11) NOT NULL COMMENT 'User yang input data (dari user_rh)',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT 'Waktu pembuatan record',
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Waktu update terakhir',

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/inbox_helper.php';
 
 // Validate request method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -41,8 +42,10 @@ try {
     $patientGender = $_POST['patient_gender'] ?? '';
     $doctorId = (int)($_POST['doctor_id'] ?? 0);
     $operasiType = $_POST['operasi_type'] ?? 'minor';
+    $jenisOperasi = trim((string) ($_POST['jenis_operasi'] ?? ''));
     $visibilityScope = $_POST['visibility_scope'] ?? 'standard';
     $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
+    $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
     
     // Required fields validation
     if ($patientName === '') {
@@ -142,18 +145,26 @@ try {
         throw new Exception('Asisten operasi wajib diisi minimal 1 orang.');
     }
     $assistantId = $assistantIds[0] ?? null;
-    
-    $stmt = $pdo->prepare("
-        INSERT INTO medical_records 
-        (record_code, patient_name, patient_citizen_id, patient_occupation, patient_dob, patient_phone, 
-         patient_gender, patient_address, patient_status, ktp_file_path, 
-         mri_file_path, medical_result_html, doctor_id, assistant_id, 
-         operasi_type, visibility_scope, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    
-    $stmt->execute([
-        'MR-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2))),
+    $recordCode = 'MR-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
+    $columns = [
+        'record_code',
+        'patient_name',
+        'patient_citizen_id',
+        'patient_occupation',
+        'patient_dob',
+        'patient_phone',
+        'patient_gender',
+        'patient_address',
+        'patient_status',
+        'ktp_file_path',
+        'mri_file_path',
+        'medical_result_html',
+        'doctor_id',
+        'assistant_id',
+        'operasi_type',
+    ];
+    $values = [
+        $recordCode,
         $patientName,
         $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
@@ -168,12 +179,77 @@ try {
         $doctorId,
         $assistantId,
         $operasiType,
-        $visibilityScope,
-        $userId
-    ]);
+    ];
+
+    if ($hasJenisOperasiColumn) {
+        $columns[] = 'jenis_operasi';
+        $values[] = $jenisOperasi !== '' ? $jenisOperasi : null;
+    }
+
+    $columns[] = 'visibility_scope';
+    $columns[] = 'created_by';
+    $values[] = $visibilityScope;
+    $values[] = $userId;
+
+    $quotedColumns = implode(', ', array_map(static fn (string $column): string => "`{$column}`", $columns));
+    $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+
+    ems_ensure_medical_record_assistants_table($pdo);
+    $pdo->beginTransaction();
+    $stmt = $pdo->prepare("
+        INSERT INTO medical_records ({$quotedColumns})
+        VALUES ({$placeholders})
+    ");
+    $stmt->execute($values);
 
     $recordId = (int) $pdo->lastInsertId();
     ems_save_medical_record_assistants($pdo, $recordId, $assistantIds);
+
+    $notificationUserIds = ems_medical_record_notification_user_ids($doctorId, $assistantIds);
+    if ($notificationUserIds !== []) {
+        $operationTier = $operasiType === 'major' ? 'Mayor' : 'Minor';
+        $operationLabel = $jenisOperasi !== '' ? $jenisOperasi : ('Operasi ' . $operationTier);
+        $senderName = trim((string) ($user['full_name'] ?? 'System'));
+        $title = 'Kontak Masuk Rekam Medis';
+        $message = '<b>Pasien:</b> ' . htmlspecialchars($patientName, ENT_QUOTES, 'UTF-8')
+            . '<br><b>No. Rekam Medis:</b> ' . htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8')
+            . '<br><b>Jenis Operasi:</b> ' . htmlspecialchars($operationLabel, ENT_QUOTES, 'UTF-8')
+            . '<br><b>Kategori:</b> ' . htmlspecialchars($operationTier, ENT_QUOTES, 'UTF-8')
+            . '<br><b>Diinput oleh:</b> ' . htmlspecialchars($senderName, ENT_QUOTES, 'UTF-8');
+
+        foreach ($notificationUserIds as $notificationUserId) {
+            sendInbox($pdo, $notificationUserId, $title, $message, 'medical_record');
+        }
+    }
+
+    $pdo->commit();
+
+    if (!empty($notificationUserIds)) {
+        $pushUsers = [];
+        $pushStmt = $pdo->prepare("
+            SELECT id AS user_id, full_name
+            FROM user_rh
+            WHERE id = ?
+            LIMIT 1
+        ");
+        foreach ($notificationUserIds as $notificationUserId) {
+            $pushStmt->execute([$notificationUserId]);
+            $pushUser = $pushStmt->fetch(PDO::FETCH_ASSOC);
+            if ($pushUser) {
+                $pushUsers[] = $pushUser;
+            }
+        }
+
+        if ($pushUsers !== []) {
+            try {
+                $PUSH_USERS = $pushUsers;
+                $PUSH_TYPE = 'medical_record_contact_incoming';
+                require __DIR__ . '/../actions/push_send.php';
+            } catch (Throwable $pushError) {
+                error_log('[MEDICAL RECORD PUSH ERROR] ' . $pushError->getMessage());
+            }
+        }
+    }
     
     // =====================
     // 6. SUCCESS
@@ -185,6 +261,9 @@ try {
     exit;
     
 } catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $_SESSION['flash_errors'][] = $e->getMessage();
     $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
     header('Location: ' . $redirectTo);

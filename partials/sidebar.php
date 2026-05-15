@@ -35,6 +35,7 @@ function sidebarItem(string $href, string $page, string $label, string $icon): a
 $groupedNav = [
     'Utama' => [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+        sidebarItem('/dashboard/medical_roster.php', 'medical_roster.php', 'Daftar Medis Roxwood', 'user-group'),
         sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket'),
         sidebarItem('/dashboard/struktur_organisasi.php', 'struktur_organisasi.php', 'Struktur Organisasi', 'building-office-2'),
     ],
@@ -383,6 +384,13 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
     </div>
 
     <nav class="sidebar-menu">
+        <div class="sidebar-search-wrap">
+            <label for="sidebarMenuSearch" class="sidebar-search-label">Cari Menu</label>
+            <div class="sidebar-search-input-wrap">
+                <span class="sidebar-search-icon"><?= ems_icon('magnifying-glass', 'h-4 w-4') ?></span>
+                <input type="text" id="sidebarMenuSearch" class="sidebar-search-input" placeholder="Cari menu sidebar...">
+            </div>
+        </div>
         <?php foreach ($groupedNav as $groupTitle => $items): ?>
             <?php
             $visibleItems = array_values(array_filter($items, static function (array $item): bool {
@@ -390,13 +398,15 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
             }));
             ?>
             <?php if (empty($visibleItems)) continue; ?>
-            <div class="sidebar-group-title"><?= htmlspecialchars($groupTitle) ?></div>
+            <div class="sidebar-group-block" data-sidebar-group>
+            <div class="sidebar-group-title" data-sidebar-group-title><?= htmlspecialchars($groupTitle) ?></div>
             <?php foreach ($visibleItems as $item): ?>
-                <a href="<?= htmlspecialchars($item['href']) ?>" class="<?= isActive($item['page']) ?>">
+                <a href="<?= htmlspecialchars($item['href']) ?>" class="<?= isActive($item['page']) ?>" data-sidebar-link data-sidebar-label="<?= htmlspecialchars(strtolower($item['label'] . ' ' . $groupTitle), ENT_QUOTES, 'UTF-8') ?>">
                     <span class="icon"><?= ems_icon($item['icon'], 'h-5 w-5') ?></span>
                     <span class="text"><?= htmlspecialchars($item['label']) ?></span>
                 </a>
             <?php endforeach; ?>
+            </div>
         <?php endforeach; ?>
     </nav>
 
@@ -435,6 +445,61 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
         flex: 1 1 auto;
         min-height: 0;
         padding-bottom: 20px;
+    }
+
+    .sidebar-search-wrap {
+        padding: 0 3px 10px;
+        margin-bottom: 4px;
+    }
+
+    .sidebar-search-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgba(186, 230, 253, 0.82);
+    }
+
+    .sidebar-search-input-wrap {
+        position: relative;
+    }
+
+    .sidebar-search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: rgba(148, 163, 184, 0.9);
+        pointer-events: none;
+    }
+
+    .sidebar-search-input {
+        width: 100%;
+        height: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #f8fafc;
+        padding: 0 14px 0 40px;
+        outline: none;
+        transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .sidebar-search-input::placeholder {
+        color: rgba(191, 219, 254, 0.72);
+    }
+
+    .sidebar-search-input:focus {
+        border-color: rgba(125, 211, 252, 0.45);
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.12);
+    }
+
+    .sidebar-group-block.is-hidden,
+    .sidebar-menu a.is-hidden {
+        display: none;
     }
 
     .sidebar-footer {
@@ -492,4 +557,37 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
         }
     }
 </style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const searchInput = document.getElementById('sidebarMenuSearch');
+    if (!searchInput) {
+        return;
+    }
+
+    const groupBlocks = Array.from(document.querySelectorAll('[data-sidebar-group]'));
+
+    function applySidebarFilter() {
+        const keyword = String(searchInput.value || '').trim().toLowerCase();
+
+        groupBlocks.forEach(function (group) {
+            const links = Array.from(group.querySelectorAll('[data-sidebar-link]'));
+            let visibleCount = 0;
+
+            links.forEach(function (link) {
+                const label = String(link.getAttribute('data-sidebar-label') || '').toLowerCase();
+                const isVisible = keyword === '' || label.indexOf(keyword) !== -1;
+                link.classList.toggle('is-hidden', !isVisible);
+                if (isVisible) {
+                    visibleCount += 1;
+                }
+            });
+
+            group.classList.toggle('is-hidden', visibleCount === 0);
+        });
+    }
+
+    searchInput.addEventListener('input', applySidebarFilter);
+    applySidebarFilter();
+});
+</script>
 <main class="main-content">

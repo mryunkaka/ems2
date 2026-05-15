@@ -12,6 +12,7 @@ $pageTitle = 'Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $mode = $medicalRecordMode ?? trim($_GET['mode'] ?? 'standard');
 $isForensicPrivate = ($mode === 'forensic_private');
+$hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
 
 if ($isForensicPrivate) {
     ems_require_division_access(['Forensic'], '/dashboard/index.php');
@@ -203,6 +204,16 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </label>
                             </div>
                         </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Nama / Jenis Operasi</label>
+                            <input type="text" name="jenis_operasi" class="form-input"
+                                placeholder="Contoh: Open Reduction Internal Fixation (ORIF) Distal Radius-Ulna Sinistra" />
+                            <p class="text-xs text-gray-500 mt-1">
+                                Dipakai untuk nama tindakan operasi pada laporan.
+                                <?= $hasJenisOperasiColumn ? '' : ' Jalankan SQL `docs/sql/36_2026-05-15_medical_records_jenis_operasi.sql` agar field ini ikut tersimpan.' ?>
+                            </p>
+                        </div>
                     </div>
 
                     <!-- Asisten (Multiple) -->
@@ -273,6 +284,46 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<style>
+#editor-container .ql-editor {
+    min-height: 520px;
+    line-height: 1.75;
+    color: #0f172a;
+}
+
+#editor-container .ql-editor h1 {
+    margin: 0 0 1.75rem;
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 800;
+}
+
+#editor-container .ql-editor h2 {
+    margin: 2.4rem 0 0.9rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+#editor-container .ql-editor p {
+    margin: 0.45rem 0;
+}
+
+#editor-container .ql-editor p + p {
+    margin-top: 0.8rem;
+}
+
+#editor-container .ql-editor ul,
+#editor-container .ql-editor ol {
+    margin: 0.8rem 0 1rem;
+    padding-left: 1.5rem;
+}
+
+#editor-container .ql-editor li + li {
+    margin-top: 0.35rem;
+}
+</style>
+
 <!-- Quill.js CDN -->
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
@@ -280,152 +331,135 @@ include __DIR__ . '/../partials/sidebar.php';
 <script>
     // Medical template - langsung ditampilkan di editor
     const medicalTemplate = `
-<h1 style="text-align: center;"><strong>LAPORAN REKAM MEDIS</strong></h1>
+<h1 style="text-align: center;"><strong>REKAM MEDIS : [NAMA JENIS OPERASI]</strong></h1>
 
 <h2><strong>INFORMASI WAKTU</strong></h2>
+<p><strong>RUANG PERAWATAN:</strong> [ISI RUANG, contoh: IGD → Radiologi → Ruang Operasi Orthopedi → Recovery Room]</p>
 
-<p><strong>RUANG PERAWATAN:</strong> [ISI RUANG, contoh: IGD → Ruang Operasi → ICU]</p>
+<p><br></p>
 
 <h2><strong>DIAGNOSIS</strong></h2>
 <ul>
-    <li>[Diagnosis 1 - contoh: Penetrating Traumatic Brain Injury akibat luka tembak pada kepala]</li>
-    <li>[Diagnosis 2 - contoh: Intracranial Hemorrhage (perdarahan intrakranial)]</li>
-    <li>[Diagnosis 3 - contoh: Retained intracranial bullet (proyektil peluru masih tertanam pada jaringan otak)]</li>
-    <li>[Diagnosis 4 - contoh: Edema serebri berat]</li>
-    <li>[Diagnosis 5 - contoh: Peningkatan tekanan intrakranial]</li>
+    <li>[Diagnosis 1]</li>
+    <li>[Diagnosis 2]</li>
+    <li>[Diagnosis 3]</li>
+    <li>[Diagnosis 4]</li>
+    <li>[Diagnosis 5]</li>
 </ul>
+
+<p><br></p>
 
 <h2><strong>INDIKASI OPERASI</strong></h2>
 <ul>
-    <li>[Indikasi 1 - contoh: Ditemukan proyektil peluru yang masih tertanam pada jaringan otak berdasarkan CT-Scan dan MRI]</li>
-    <li>[Indikasi 2 - contoh: Terdapat perdarahan intrakranial aktif]</li>
-    <li>[Indikasi 3 - contoh: Terjadi peningkatan tekanan intrakranial]</li>
-    <li>[Indikasi 4 - contoh: Ditemukan edema serebri luas yang menekan jaringan otak]</li>
+    <li>[Indikasi 1]</li>
+    <li>[Indikasi 2]</li>
+    <li>[Indikasi 3]</li>
+    <li>[Indikasi 4]</li>
 </ul>
+<p>Berdasarkan kondisi tersebut diputuskan untuk melakukan tindakan operasi [minor/mayor] dengan supervisi dokter jaga.</p>
 
-<p>Berdasarkan kondisi tersebut diputuskan untuk melakukan tindakan bedah darurat.</p>
+<p><br></p>
 
 <h2><strong>JENIS OPERASI</strong></h2>
-<p><strong>[NAMA OPERASI, contoh: Emergency Craniotomy with Hematoma Evacuation and Bullet Extraction]</strong></p>
-<p><em>([Deskripsi singkat operasi, contoh: Tindakan pembukaan tulang kranium untuk mengakses jaringan otak, melakukan evakuasi hematoma, serta ekstraksi proyektil peluru])</em></p>
+<p><strong>[NAMA OPERASI]</strong></p>
+<p>([Deskripsi singkat tindakan operasi])</p>
+
+<p><br></p>
 
 <h2><strong>JENIS ANESTESI</strong></h2>
-<p>General Anesthesia / Local Anesthesia / Regional Anesthesia</p>
+<p>[General Anesthesia / Local Anesthesia / Regional Anesthesia]</p>
 <p><strong>Obat yang digunakan:</strong></p>
 <ul>
-    <li>[Obat 1, contoh: Propofol]</li>
-    <li>[Obat 2, contoh: Fentanyl]</li>
-    <li>[Obat 3, contoh: Rocuronium]</li>
-    <li>[Obat 4, contoh: Sevoflurane]</li>
+    <li>[Obat 1]</li>
+    <li>[Obat 2]</li>
+    <li>[Obat 3]</li>
+    <li>[Obat 4]</li>
 </ul>
+
+<p><br></p>
 
 <h2><strong>ANAMNESIS SINGKAT</strong></h2>
-<p>[Ceritakan riwayat pasien, keluhan utama, dan pemeriksaan awal. Contoh: Pasien datang ke Instalasi Gawat Darurat dengan kondisi luka tembak pada kepala. Pasien ditemukan dengan penurunan kesadaran, perdarahan pada area kepala, serta tanda trauma penetrasi kranium.]</p>
+<p>[Ceritakan riwayat pasien, keluhan utama, dan pemeriksaan awal.]</p>
+
+<p><br></p>
 
 <h2><strong>STATUS LOKALIS PRA OPERASI</strong></h2>
-<p><strong>Kepala:</strong></p>
+<p><strong>[Area Pemeriksaan Lokal]</strong></p>
 <ul>
-    <li>[Temuan 1, contoh: Luka penetrasi pada regio temporoparietal]</li>
-    <li>[Temuan 2, contoh: Perdarahan lokal]</li>
-    <li>[Temuan 3, contoh: Pembengkakan jaringan sekitar luka]</li>
-    <li>[Temuan 4, contoh: Nyeri tekan pada area trauma]</li>
+    <li>[Temuan 1]</li>
+    <li>[Temuan 2]</li>
+    <li>[Temuan 3]</li>
+    <li>[Temuan 4]</li>
 </ul>
 
-<p><strong>Status Neurologis:</strong></p>
+<p><strong>Status Neurovaskular / Neurologis:</strong></p>
 <ul>
-    <li>[Temuan neurologis 1, contoh: Penurunan kesadaran]</li>
-    <li>[Temuan neurologis 2, contoh: Respon motorik terbatas]</li>
-    <li>[Temuan neurologis 3, contoh: Refleks pupil melambat namun masih reaktif]</li>
+    <li>[Temuan 1]</li>
+    <li>[Temuan 2]</li>
+    <li>[Temuan 3]</li>
 </ul>
+
+<p><br></p>
 
 <h2><strong>TANDA TANDA VITAL (TTV) PRA OPERASI</strong></h2>
-<table border="1" cellpadding="5" style="width: 100%; border-collapse: collapse;">
-    <tr style="background-color: #f0f0f0;">
-        <td><strong>Tekanan Darah</strong></td>
-        <td>___ / ___ mmHg (Normal: 120/80 mmHg)</td>
-    </tr>
-    <tr>
-        <td><strong>Nadi</strong></td>
-        <td>___ x / menit (Normal: 60-100 x/menit)</td>
-    </tr>
-    <tr>
-        <td><strong>Respirasi</strong></td>
-        <td>___ x / menit (Normal: 12-20 x/menit)</td>
-    </tr>
-    <tr>
-        <td><strong>Suhu Tubuh</strong></td>
-        <td>___ °C (Normal: 36.5-37.5°C)</td>
-    </tr>
-    <tr>
-        <td><strong>Saturasi O₂</strong></td>
-        <td>___ % (Normal: 95-100%)</td>
-    </tr>
-    <tr>
-        <td><strong>Tinggi Badan</strong></td>
-        <td>___ cm</td>
-    </tr>
-    <tr>
-        <td><strong>Berat Badan</strong></td>
-        <td>___ kg</td>
-    </tr>
-</table>
+<p><strong>Tekanan Darah:</strong> ___ / ___ mmHg</p>
+<p><strong>Nadi:</strong> ___ x/menit</p>
+<p><strong>Respirasi:</strong> ___ x/menit</p>
+<p><strong>Suhu Tubuh:</strong> ___°C</p>
+<p><strong>Saturasi O₂:</strong> ___%</p>
+<p><strong>Tinggi Badan:</strong> ___ cm</p>
+<p><strong>Berat Badan:</strong> ___ kg</p>
+
+<p><br></p>
 
 <h2><strong>STATUS NEUROLOGIS</strong></h2>
 <p><strong>GCS (Glasgow Coma Scale):</strong> ___ (E___ V___ M___)</p>
 <ul>
-    <li><strong>E (Eye Opening):</strong> E___ - [Contoh: E2 = Membuka mata terhadap nyeri]</li>
-    <li><strong>V (Verbal Response):</strong> V___ - [Contoh: V2 = Suara tidak jelas]</li>
-    <li><strong>M (Motor Response):</strong> M___ - [Contoh: M3 = Fleksi abnormal terhadap nyeri]</li>
+    <li><strong>E:</strong> [Keterangan]</li>
+    <li><strong>V:</strong> [Keterangan]</li>
+    <li><strong>M:</strong> [Keterangan]</li>
 </ul>
 
-<h2><strong>LAPORAN TINDAKAN OPERASI</strong></h2>
+<p><br></p>
 
+<h2><strong>LAPORAN TINDAKAN OPERASI</strong></h2>
 <p><strong>A. Tahap Persiapan</strong></p>
-<p>[Deskripsikan persiapan pasien. Contoh: Pasien diposisikan supine dengan kepala difiksasi menggunakan Mayfield head fixation system. Dilakukan pencukuran area kepala, antisepsis menggunakan povidone iodine dan chlorhexidine, pemasangan draping steril.]</p>
+<p>[Deskripsikan persiapan pasien.]</p>
 
 <p><strong>B. Tahap Operasi</strong></p>
-<p>[Deskripsikan langkah-langkah operasi secara detail. Contoh: Dilakukan insisi kulit pada regio temporoparietal mengikuti jalur trauma proyektil. Lapisan yang dibuka: kulit kepala, subkutis, galea aponeurotica, periosteum. Dilakukan pembuatan burr hole menggunakan drill bedah saraf. Burr hole dihubungkan menggunakan craniotome hingga terbentuk bone flap yang kemudian diangkat untuk membuka akses ke dura mater.]</p>
+<p>[Deskripsikan langkah-langkah operasi secara detail.]</p>
 
 <p><strong>C. Hemostasis</strong></p>
-<p>[Deskripsikan kontrol perdarahan. Contoh: Dilakukan kontrol perdarahan menggunakan bipolar cautery, agen hemostatik (Surgicel dan Gelfoam).]</p>
+<p>[Deskripsikan kontrol perdarahan.]</p>
 
 <p><strong>D. Penutupan Operasi</strong></p>
-<p>[Deskripsikan penutupan luka operasi. Contoh: Setelah upaya hemostasis maksimal, dura mater dijahit kembali, bone flap dipasang kembali, tulang difiksasi menggunakan plate dan screw, jaringan lunak dan kulit dijahit bertahap. Luka operasi kemudian ditutup dengan balutan steril.]</p>
+<p>[Deskripsikan penutupan luka operasi.]</p>
+
+<p><br></p>
 
 <h2><strong>HASIL OPERASI</strong></h2>
 <ul>
-    <li>[Hasil 1, contoh: Hematoma intrakranial berhasil dievakuasi]</li>
-    <li>[Hasil 2, contoh: Proyektil peluru berhasil diangkat dari jaringan otak]</li>
-    <li>[Hasil 3, contoh: Ditemukan kerusakan jaringan otak luas akibat trauma penetrasi]</li>
-    <li>[Hasil 4, contoh: Pasien meninggal dunia akibat pendarahan massive]</li>
+    <li>[Hasil 1]</li>
+    <li>[Hasil 2]</li>
+    <li>[Hasil 3]</li>
+    <li>[Hasil 4]</li>
 </ul>
+
+<p><br></p>
 
 <h2><strong>STATUS PASCA OPERASI (IMMEDIATE POST OP)</strong></h2>
 <p><strong>Status Umum:</strong> [Baik / Cukup / Kritis / Meninggal]</p>
 
+<p><br></p>
+
 <h2><strong>TANDA TANDA VITAL PASCA OPERASI</strong></h2>
-<table border="1" cellpadding="5" style="width: 100%; border-collapse: collapse;">
-    <tr style="background-color: #f0f0f0;">
-        <td><strong>Tekanan Darah</strong></td>
-        <td>___ / ___ mmHg</td>
-    </tr>
-    <tr>
-        <td><strong>Nadi</strong></td>
-        <td>___ x / menit</td>
-    </tr>
-    <tr>
-        <td><strong>Respirasi</strong></td>
-        <td>___ x / menit</td>
-    </tr>
-    <tr>
-        <td><strong>Suhu Tubuh</strong></td>
-        <td>___ °C</td>
-    </tr>
-    <tr>
-        <td><strong>Saturasi O₂</strong></td>
-        <td>___ %</td>
-    </tr>
-</table>
+<p><strong>Tekanan Darah:</strong> ___ / ___ mmHg</p>
+<p><strong>Nadi:</strong> ___ x/menit</p>
+<p><strong>Respirasi:</strong> ___ x/menit</p>
+<p><strong>Suhu Tubuh:</strong> ___°C</p>
+<p><strong>Saturasi O₂:</strong> ___%</p>
+
+<p><br></p>
 
 <h2><strong>PROGNOSIS</strong></h2>
 <p>[Prognosis: Dubia ad bonam / Dubia ad malam / Infaust]</p>
@@ -500,6 +534,23 @@ include __DIR__ . '/../partials/sidebar.php';
         }
     }
 
+    function syncMedicalOperationTitle() {
+        const input = document.querySelector('[name="jenis_operasi"]');
+        if (!input || !window.quill) {
+            return;
+        }
+
+        const headingStrong = window.quill.root.querySelector('h1 strong');
+        if (!headingStrong) {
+            return;
+        }
+
+        const operationName = (input.value || '').trim();
+        headingStrong.textContent = operationName !== ''
+            ? `REKAM MEDIS : ${operationName}`
+            : 'REKAM MEDIS : [NAMA JENIS OPERASI]';
+    }
+
     // Remove assistant row
     function removeAssistant(button) {
         const row = button.closest('.assistant-row');
@@ -529,6 +580,7 @@ include __DIR__ . '/../partials/sidebar.php';
             doctor_id: document.querySelector('[name="doctor_id"]')?.value || '',
             doctor_name: document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]')?.value || '',
             operasi_type: document.querySelector('[name="operasi_type"]:checked')?.value || '',
+            jenis_operasi: document.querySelector('[name="jenis_operasi"]')?.value || '',
             assistant_ids: Array.from(document.querySelectorAll('[name="assistant_ids[]"]')).map(el => el.value || ''),
             assistant_names: Array.from(document.querySelectorAll('.assistant-select')).map(el => el.value || ''),
             saved_at: new Date().toISOString()
@@ -587,6 +639,9 @@ include __DIR__ . '/../partials/sidebar.php';
             if (formData.doctor_name && document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]')) {
                 document.querySelector('[data-user-autocomplete-input][placeholder*="dokter"]').value = formData.doctor_name;
             }
+            if (typeof formData.jenis_operasi === 'string' && document.querySelector('[name="jenis_operasi"]')) {
+                document.querySelector('[name="jenis_operasi"]').value = formData.jenis_operasi;
+            }
             if (Array.isArray(formData.assistant_ids)) {
                 document.querySelectorAll('[name="assistant_ids[]"]').forEach((input, index) => {
                     input.value = formData.assistant_ids[index] || '';
@@ -634,6 +689,10 @@ include __DIR__ . '/../partials/sidebar.php';
         }
     }
 
+    function clearLocalStorage() {
+        localStorage.removeItem(STORAGE_KEY);
+    }
+
     // Clear localStorage manually
     function clearLocalStorageManual() {
         if (confirm('Hapus data draft yang tersimpan?')) {
@@ -650,6 +709,7 @@ include __DIR__ . '/../partials/sidebar.php';
             document.querySelector('[name="patient_address"]').value = 'INDONESIA';
             document.querySelector('[name="patient_status"]').value = '';
             document.querySelector('[name="doctor_id"]').value = '';
+            document.querySelector('[name="jenis_operasi"]').value = '';
 
             // Reset radio buttons
             document.querySelector('[name="operasi_type"][value="minor"]').checked = true;
@@ -657,6 +717,7 @@ include __DIR__ . '/../partials/sidebar.php';
             // Reset Quill editor to template
             if (window.quill) {
                 window.quill.clipboard.dangerouslyPasteHTML(medicalTemplate);
+                syncMedicalOperationTitle();
             }
 
             // Clear assistant selections
@@ -717,6 +778,15 @@ include __DIR__ . '/../partials/sidebar.php';
 
         // Auto-load from localStorage (no confirm dialog)
         loadFromLocalStorage();
+        syncMedicalOperationTitle();
+
+        const jenisOperasiInput = document.querySelector('[name="jenis_operasi"]');
+        if (jenisOperasiInput) {
+            jenisOperasiInput.addEventListener('input', function() {
+                syncMedicalOperationTitle();
+                saveToLocalStorage();
+            });
+        }
 
         // Auto-save interval
         setInterval(saveToLocalStorage, AUTO_SAVE_INTERVAL);
@@ -732,7 +802,7 @@ include __DIR__ . '/../partials/sidebar.php';
         });
 
         // Sync content to textarea before form submit
-        document.querySelector('form').addEventListener('submit', function() {
+        document.querySelector('form').addEventListener('submit', function(event) {
             const htmlContent = window.quill.root.innerHTML;
             document.getElementById('medical_result_html').value = htmlContent;
 

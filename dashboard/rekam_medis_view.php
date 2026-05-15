@@ -13,6 +13,7 @@ $pageTitle = 'Detail Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $mode = trim($_GET['mode'] ?? 'standard');
 $isForensicPrivate = ($mode === 'forensic_private');
+$hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
 
 if ($isForensicPrivate) {
     ems_require_division_access(['Forensic'], '/dashboard/index.php');
@@ -85,8 +86,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="medical-view-kicker"><?= $isForensicPrivate ? 'Forensic Private Record' : 'Medical Record Detail' ?></div>
                     <h1 class="page-title mb-2"><?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?></h1>
                     <p class="page-subtitle mb-0">
-                        <?= htmlspecialchars((string)$record['patient_name'], ENT_QUOTES, 'UTF-8') ?> ·
-                        <?= htmlspecialchars((string)($record['patient_gender'] ?: '-'), ENT_QUOTES, 'UTF-8') ?> ·
+                        <?= htmlspecialchars((string)$record['patient_name'], ENT_QUOTES, 'UTF-8') ?> &middot;
+                        <?= htmlspecialchars((string)($record['patient_gender'] ?: '-'), ENT_QUOTES, 'UTF-8') ?> &middot;
                         <?= htmlspecialchars((string)($record['patient_occupation'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
                     </p>
                 </div>
@@ -115,6 +116,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     <span class="medical-meta-pill__label">Jenis Operasi</span>
                     <strong><?= htmlspecialchars($record['operasi_type'] === 'major' ? 'Mayor' : 'Minor', ENT_QUOTES, 'UTF-8') ?></strong>
                 </div>
+                <?php if ($hasJenisOperasiColumn && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
+                    <div class="medical-meta-pill">
+                        <span class="medical-meta-pill__label">REKAM MEDIS</span>
+                        <strong><?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?></strong>
+                    </div>
+                <?php endif; ?>
                 <div class="medical-meta-pill">
                     <span class="medical-meta-pill__label">Scope</span>
                     <strong><?= htmlspecialchars($recordScope === 'forensic_private' ? 'Forensic Private' : 'Standard', ENT_QUOTES, 'UTF-8') ?></strong>
@@ -328,13 +335,27 @@ include __DIR__ . '/../partials/sidebar.php';
     line-height: 1.72;
 }
 
-.medical-richtext h1,
+.medical-richtext h1 {
+    margin: 0 0 2rem;
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 800;
+}
+
 .medical-richtext h2,
 .medical-richtext h3,
 .medical-richtext h4 {
     color: #0f172a;
-    margin-top: 1.4rem;
+    margin-top: 2.2rem;
     margin-bottom: 0.8rem;
+}
+
+.medical-richtext p {
+    margin: 0.5rem 0;
+}
+
+.medical-richtext p + p {
+    margin-top: 0.85rem;
 }
 
 .medical-richtext table {
@@ -353,7 +374,12 @@ include __DIR__ . '/../partials/sidebar.php';
 
 .medical-richtext ul,
 .medical-richtext ol {
+    margin: 0.8rem 0 1rem;
     padding-left: 1.25rem;
+}
+
+.medical-richtext li + li {
+    margin-top: 0.35rem;
 }
 
 .medical-stack {

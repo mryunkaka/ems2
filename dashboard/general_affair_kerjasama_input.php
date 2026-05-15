@@ -115,6 +115,29 @@ function gaInputParseKeywordMeta(?string $keywords): array
     return $meta;
 }
 
+function gaInputExcerpt(?string $text, int $limit = 80): string
+{
+    $text = trim((string)$text);
+    if ($text === '') {
+        return '-';
+    }
+
+    $normalized = preg_replace('/\s+/u', ' ', $text) ?: $text;
+    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+        if (mb_strlen($normalized) <= $limit) {
+            return $normalized;
+        }
+
+        return rtrim(mb_substr($normalized, 0, $limit - 3)) . '...';
+    }
+
+    if (strlen($normalized) <= $limit) {
+        return $normalized;
+    }
+
+    return rtrim(substr($normalized, 0, $limit - 3)) . '...';
+}
+
 function gaInputTransactionQuotaLabel(string $claimScope, int $memberCount): string
 {
     if ($claimScope === 'per_institution') {
@@ -437,6 +460,8 @@ include __DIR__ . '/../partials/sidebar.php';
                             $selectedSetting = $cooperationSettingsMap[(int)$keywordMeta['cooperation_id']] ?? null;
                             $packageSummaryLines = $selectedSetting['medicine_summary_lines'] ?? [];
                             $packageTotalPrice = (int)($selectedSetting['medicine_total_price'] ?? 0);
+                            $fullDescription = trim((string)($row['description'] ?? ''));
+                            $descriptionExcerpt = gaInputExcerpt($fullDescription);
                             ?>
                             <tr>
                                 <td><?= $index + 1 ?></td>
@@ -516,7 +541,20 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </div>
                                     <?php endif; ?>
                                 </td>
-                                <td class="whitespace-pre-line"><?= htmlspecialchars((string)($row['description'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td>
+                                    <div class="ga-note-cell">
+                                        <div class="meta-text-xs ga-note-excerpt"><?= htmlspecialchars($descriptionExcerpt, ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?php if ($fullDescription !== ''): ?>
+                                            <button type="button"
+                                                    class="btn-secondary btn-sm ga-note-view-btn"
+                                                    data-note="<?= htmlspecialchars($fullDescription, ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-title="<?= htmlspecialchars((string)($row['counterparty_name'] ?? 'Catatan Kerja Sama'), ENT_QUOTES, 'UTF-8') ?>">
+                                                <?= ems_icon('eye', 'h-4 w-4') ?>
+                                                <span>View</span>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="action-row-nowrap">
                                         <?php if (($row['status'] ?? 'draft') === 'draft'): ?>
@@ -675,6 +713,30 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
+<div id="gaNoteViewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="min-w-0">
+                <div class="modal-title">Catatan Lengkap</div>
+                <div id="gaNoteViewModalMeta" class="meta-text-xs mt-1 text-slate-500"></div>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+
+        <div class="modal-content">
+            <div id="gaNoteViewModalBody" class="ga-note-modal-body"></div>
+        </div>
+
+        <div class="modal-foot">
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const rangeSelect = document.getElementById('rangeSelect');
@@ -689,6 +751,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingNotes = document.getElementById('gaSettingNotes');
     const settingPackages = document.getElementById('gaSettingPackages');
     const settingTotalPrice = document.getElementById('gaSettingTotalPrice');
+    const noteViewModal = document.getElementById('gaNoteViewModal');
+    const noteViewModalMeta = document.getElementById('gaNoteViewModalMeta');
+    const noteViewModalBody = document.getElementById('gaNoteViewModalBody');
 
     function toggleCustom() {
         customFields.forEach(function(el) {
@@ -791,12 +856,37 @@ document.addEventListener('DOMContentLoaded', function() {
             modal.style.display = 'none';
             document.body.classList.remove('modal-open');
         }
+
+        if (noteViewModal && (event.target === noteViewModal || event.target.closest('#gaNoteViewModal .btn-cancel'))) {
+            noteViewModal.classList.add('hidden');
+            noteViewModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+            return;
+        }
+
+        const noteButton = event.target.closest('.ga-note-view-btn');
+        if (noteButton && noteViewModal) {
+            if (noteViewModalMeta) {
+                noteViewModalMeta.textContent = noteButton.dataset.title || 'Catatan Kerja Sama';
+            }
+            if (noteViewModalBody) {
+                noteViewModalBody.textContent = noteButton.dataset.note || '-';
+            }
+            noteViewModal.classList.remove('hidden');
+            noteViewModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        }
     });
 
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && modal) {
             modal.classList.add('hidden');
             modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+        if (event.key === 'Escape' && noteViewModal) {
+            noteViewModal.classList.add('hidden');
+            noteViewModal.style.display = 'none';
             document.body.classList.remove('modal-open');
         }
     });
@@ -857,5 +947,28 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+<style>
+    .ga-note-cell {
+        display: grid;
+        gap: 8px;
+        align-items: start;
+    }
+
+    .ga-note-excerpt {
+        white-space: normal;
+        line-height: 1.6;
+    }
+
+    .ga-note-view-btn {
+        width: fit-content;
+    }
+
+    .ga-note-modal-body {
+        white-space: pre-line;
+        line-height: 1.8;
+        color: #334155;
+    }
+</style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

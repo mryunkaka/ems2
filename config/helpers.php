@@ -162,6 +162,24 @@ function ems_get_medical_record_assistants(PDO $pdo, int $recordId, ?int $fallba
     return $assistants;
 }
 
+function ems_medical_record_notification_user_ids(int $doctorId, array $assistantIds): array
+{
+    $userIds = [];
+
+    if ($doctorId > 0) {
+        $userIds[] = $doctorId;
+    }
+
+    foreach (ems_normalize_assistant_ids($assistantIds) as $assistantId) {
+        if ($assistantId > 0) {
+            $userIds[] = $assistantId;
+        }
+    }
+
+    $userIds = array_values(array_unique(array_map('intval', $userIds)));
+    return array_values(array_filter($userIds, static fn (int $id): bool => $id > 0));
+}
+
 function formatTanggalID($datetime)
 {
     if (!$datetime) return '-';

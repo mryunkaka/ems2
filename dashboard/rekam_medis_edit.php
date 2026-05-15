@@ -12,6 +12,7 @@ $pageTitle = 'Edit Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $mode = trim($_GET['mode'] ?? 'standard');
 $isForensicPrivate = ($mode === 'forensic_private');
+$hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
 
 if ($isForensicPrivate) {
     ems_require_division_access(['Forensic'], '/dashboard/index.php');
@@ -311,6 +312,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </label>
                             </div>
                         </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label class="form-label">Nama / Jenis Operasi</label>
+                            <input type="text" name="jenis_operasi" class="form-input"
+                                   value="<?= htmlspecialchars((string) ($record['jenis_operasi'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                   placeholder="Contoh: Open Reduction Internal Fixation (ORIF) Distal Radius-Ulna Sinistra" />
+                            <p class="text-xs text-gray-500 mt-1">
+                                Dipakai untuk nama tindakan operasi pada laporan.
+                                <?= $hasJenisOperasiColumn ? '' : ' Jalankan SQL `docs/sql/36_2026-05-15_medical_records_jenis_operasi.sql` agar field ini ikut tersimpan.' ?>
+                            </p>
+                        </div>
                     </div>
 
                     <div class="mt-4">
@@ -374,6 +386,46 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<style>
+#editor-container .ql-editor {
+    min-height: 520px;
+    line-height: 1.75;
+    color: #0f172a;
+}
+
+#editor-container .ql-editor h1 {
+    margin: 0 0 1.75rem;
+    text-align: center;
+    font-size: 2rem;
+    font-weight: 800;
+}
+
+#editor-container .ql-editor h2 {
+    margin: 2.4rem 0 0.9rem;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+#editor-container .ql-editor p {
+    margin: 0.45rem 0;
+}
+
+#editor-container .ql-editor p + p {
+    margin-top: 0.8rem;
+}
+
+#editor-container .ql-editor ul,
+#editor-container .ql-editor ol {
+    margin: 0.8rem 0 1rem;
+    padding-left: 1.5rem;
+}
+
+#editor-container .ql-editor li + li {
+    margin-top: 0.35rem;
+}
+</style>
+
 <!-- Quill.js CDN -->
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
@@ -421,6 +473,23 @@ function removeAssistant(button) {
         row.remove();
         assistantCount = container.querySelectorAll('.assistant-row').length;
     }
+}
+
+function syncMedicalOperationTitle() {
+    const input = document.querySelector('[name="jenis_operasi"]');
+    if (!input || !window.quill) {
+        return;
+    }
+
+    const headingStrong = window.quill.root.querySelector('h1 strong');
+    if (!headingStrong) {
+        return;
+    }
+
+    const operationName = (input.value || '').trim();
+    headingStrong.textContent = operationName !== ''
+        ? `REKAM MEDIS : ${operationName}`
+        : 'REKAM MEDIS : [NAMA JENIS OPERASI]';
 }
 
 // Global previewImage function for file upload preview
@@ -489,6 +558,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const existingContent = document.getElementById('medical_result_html').value;
     if (existingContent) {
         window.quill.root.innerHTML = existingContent;
+    }
+
+    syncMedicalOperationTitle();
+
+    const jenisOperasiInput = document.querySelector('[name="jenis_operasi"]');
+    if (jenisOperasiInput) {
+        jenisOperasiInput.addEventListener('input', syncMedicalOperationTitle);
     }
 
     // Sync content to textarea before form submit

@@ -69,8 +69,10 @@ try {
     $patientGender = $_POST['patient_gender'] ?? '';
     $doctorId = (int)($_POST['doctor_id'] ?? 0);
     $operasiType = $_POST['operasi_type'] ?? 'minor';
+    $jenisOperasi = trim((string) ($_POST['jenis_operasi'] ?? ''));
     $visibilityScope = $_POST['visibility_scope'] ?? ($record['visibility_scope'] ?? 'standard');
     $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis_list.php');
+    $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
     
     if ($patientName === '') {
         throw new Exception('Nama pasien wajib diisi.');
@@ -168,27 +170,22 @@ try {
     // 5. UPDATE DATABASE
     // =====================
     
-    $stmt = $pdo->prepare("
-        UPDATE medical_records 
-        SET patient_name = ?,
-            patient_citizen_id = ?,
-            patient_occupation = ?,
-            patient_dob = ?,
-            patient_phone = ?,
-            patient_gender = ?,
-            patient_address = ?,
-            patient_status = ?,
-            ktp_file_path = ?,
-            mri_file_path = ?,
-            medical_result_html = ?,
-            doctor_id = ?,
-            operasi_type = ?,
-            visibility_scope = ?,
-            updated_at = NOW()
-        WHERE id = ?
-    ");
-    
-    $stmt->execute([
+    $setParts = [
+        'patient_name = ?',
+        'patient_citizen_id = ?',
+        'patient_occupation = ?',
+        'patient_dob = ?',
+        'patient_phone = ?',
+        'patient_gender = ?',
+        'patient_address = ?',
+        'patient_status = ?',
+        'ktp_file_path = ?',
+        'mri_file_path = ?',
+        'medical_result_html = ?',
+        'doctor_id = ?',
+        'operasi_type = ?',
+    ];
+    $values = [
         $patientName,
         $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
@@ -202,9 +199,25 @@ try {
         $medicalResultHtml,
         $doctorId,
         $operasiType,
-        $visibilityScope,
-        $id
-    ]);
+    ];
+
+    if ($hasJenisOperasiColumn) {
+        $setParts[] = 'jenis_operasi = ?';
+        $values[] = $jenisOperasi !== '' ? $jenisOperasi : null;
+    }
+
+    $setParts[] = 'visibility_scope = ?';
+    $setParts[] = 'updated_at = NOW()';
+    $values[] = $visibilityScope;
+    $values[] = $id;
+
+    $stmt = $pdo->prepare("
+        UPDATE medical_records
+        SET " . implode(",\n            ", $setParts) . "
+        WHERE id = ?
+    ");
+    
+    $stmt->execute($values);
 
     ems_save_medical_record_assistants($pdo, $id, $assistantIds);
     
