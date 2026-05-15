@@ -82,6 +82,11 @@ function secretaryFileJsonAttr(array $payload): string
     return htmlspecialchars((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
 }
 
+function secretaryHiddenKeywordMarker(): string
+{
+    return 'ga_cooperation_input';
+}
+
 $summary = ['total' => 0, 'proposal' => 0, 'cooperation' => 0, 'archived' => 0];
 $rows = [];
 $attachmentsMap = [];
@@ -93,16 +98,33 @@ try {
     $hasAttachmentTable = secretaryFileTableExists($pdo, 'secretary_file_record_attachments');
 
     if ($hasMainTable) {
-        $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records")->fetchColumn();
-        $summary['proposal'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records WHERE file_category = 'proposal'")->fetchColumn();
-        $summary['cooperation'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records WHERE file_category = 'cooperation'")->fetchColumn();
-        $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records WHERE status = 'archived'")->fetchColumn();
+        $hiddenMarkerLike = '%' . secretaryHiddenKeywordMarker() . '%';
 
-        $rows = $pdo->query("
+        $summaryStmt = $pdo->prepare("
+            SELECT
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN file_category = 'proposal' THEN 1 ELSE 0 END) AS proposal_count,
+                SUM(CASE WHEN file_category = 'cooperation' THEN 1 ELSE 0 END) AS cooperation_count,
+                SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) AS archived_count
+            FROM secretary_file_records
+            WHERE COALESCE(keywords, '') NOT LIKE :hidden_marker
+        ");
+        $summaryStmt->execute([':hidden_marker' => $hiddenMarkerLike]);
+        $summaryRow = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $summary['total'] = (int) ($summaryRow['total_count'] ?? 0);
+        $summary['proposal'] = (int) ($summaryRow['proposal_count'] ?? 0);
+        $summary['cooperation'] = (int) ($summaryRow['cooperation_count'] ?? 0);
+        $summary['archived'] = (int) ($summaryRow['archived_count'] ?? 0);
+
+        $rowStmt = $pdo->prepare("
             SELECT *
             FROM secretary_file_records
+            WHERE COALESCE(keywords, '') NOT LIKE :hidden_marker
             ORDER BY document_date DESC, id DESC
-        ")->fetchAll(PDO::FETCH_ASSOC);
+        ");
+        $rowStmt->execute([':hidden_marker' => $hiddenMarkerLike]);
+        $rows = $rowStmt->fetchAll(PDO::FETCH_ASSOC);
 
         if ($hasAttachmentTable && !empty($rows)) {
             $recordIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $rows)));
