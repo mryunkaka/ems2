@@ -11,6 +11,8 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
+ems_public_recruitment_require_portal_open();
+
 const EMS_ASSISTANT_MANAGER_DOC_BYPASS_CITIZEN_ID = 'RH39IQLC';
 
 /* ===============================

@@ -8,6 +8,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../config/recruitment_settings.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 
 $user = $_SESSION['user_rh'] ?? [];
@@ -26,6 +27,16 @@ $pageTitle = 'Calon Kandidat';
 function candidateCanHardDelete(array $user, string $userDivision): bool
 {
     if (in_array($userDivision, ['Human Capital', 'Human Resource', 'Executive'], true)) {
+        return true;
+    }
+
+    $name = (string)($user['full_name'] ?? $user['name'] ?? '');
+    return ems_is_programmer_roxwood_name($name);
+}
+
+function candidateCanManageRecruitmentSettings(array $user, string $userDivision): bool
+{
+    if (in_array($userDivision, ['Human Resource', 'Executive'], true)) {
         return true;
     }
 
@@ -348,6 +359,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_candidate_perm
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_recruitment_portal_settings'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    if (!candidateCanManageRecruitmentSettings($user, $userDivision)) {
+        exit('Akses setting rekrutmen ditolak');
+    }
+
+    $portalStatus = strtolower(trim((string)($_POST['portal_status'] ?? 'open')));
+    $isOpen = $portalStatus !== 'close';
+    $closedMessage = trim((string)($_POST['closed_message'] ?? ''));
+
+    ems_recruitment_save_settings(
+        $pdo,
+        $isOpen,
+        $closedMessage,
+        (int)($user['id'] ?? 0)
+    );
+
+    header('Location: candidates.php?recruitment_settings_saved=1');
+    exit;
+}
+
 $candidateSql = "
     SELECT
         m.id,
@@ -397,6 +432,10 @@ $candidateSql .= " ORDER BY m.created_at DESC";
 $stmt = $pdo->prepare($candidateSql);
 $stmt->execute($candidateParams);
 $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$recruitmentPortalSettings = ems_recruitment_get_settings($pdo);
+$recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 1) === 1;
+$recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
+$canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $userDivision);
 
 ?>
 
@@ -405,12 +444,21 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <section class="content">
     <div class="page page-shell-md">
-        <div class="flex justify-between items-center mb-4">
+            <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title">Daftar Calon Kandidat</h1>
                 <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
             </div>
             <div class="flex items-center gap-2">
+                <span class="<?= $recruitmentPortalIsOpen ? 'badge-success' : 'badge-danger' ?>">
+                    <?= $recruitmentPortalIsOpen ? 'Rekrutmen Open' : 'Rekrutmen Close' ?>
+                </span>
+                <?php if ($canManageRecruitmentSettings): ?>
+                    <button type="button" id="openRecruitmentSettingsModal" class="btn-secondary btn-sm">
+                        <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?>
+                        <span>Setting Rekrutmen</span>
+                    </button>
+                <?php endif; ?>
                 <a href="<?= htmlspecialchars(ems_url('/dashboard/candidates_export.php'), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary btn-sm">
                     <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
                     <span>Export Excel</span>
@@ -434,6 +482,12 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <?php if (isset($_GET['delete_error']) && $_GET['delete_error'] === '1'): ?>
                 <div class="alert alert-danger mb-4">
                     Gagal menghapus permanen data kandidat.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['recruitment_settings_saved']) && $_GET['recruitment_settings_saved'] === '1'): ?>
+                <div class="alert alert-success mb-4">
+                    Setting open/close rekrutmen berhasil disimpan.
                 </div>
             <?php endif; ?>
 
@@ -586,6 +640,53 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </section>
 
+<?php if ($canManageRecruitmentSettings): ?>
+    <div id="recruitmentSettingsModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div>
+                    <div class="modal-title">Setting Open / Close Rekrutmen</div>
+                    <div class="meta-text mt-1">Status ini akan berlaku untuk semua halaman di folder `public`.</div>
+                </div>
+                <button type="button" class="modal-close-btn" data-close-recruitment-modal aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+
+            <form method="post" class="modal-form">
+                <?php echo csrfField(); ?>
+                <input type="hidden" name="save_recruitment_portal_settings" value="1">
+
+                <div class="modal-content">
+                    <div class="space-y-5">
+                        <div class="form-group">
+                            <label for="portal_status" class="text-sm font-semibold text-slate-900">Status Rekrutmen</label>
+                            <select id="portal_status" name="portal_status" class="w-full" required>
+                                <option value="open" <?= $recruitmentPortalIsOpen ? 'selected' : '' ?>>Open</option>
+                                <option value="close" <?= !$recruitmentPortalIsOpen ? 'selected' : '' ?>>Close</option>
+                            </select>
+                            <small class="hint-info">Jika `close`, semua halaman publik rekrutmen akan diarahkan ke halaman pemberitahuan.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="closed_message" class="text-sm font-semibold text-slate-900">Pesan Saat Close</label>
+                            <textarea id="closed_message" name="closed_message" rows="5" placeholder="Tulis pesan penutupan rekrutmen"><?= htmlspecialchars($recruitmentPortalClosedMessage) ?></textarea>
+                            <small class="hint-info">Contoh: Pendaftaran Medis Roxwood saat ini belum dibuka. Silakan menunggu informasi selanjutnya.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-foot">
+                    <div class="modal-actions">
+                        <button type="button" class="btn-secondary" data-close-recruitment-modal>Batal</button>
+                        <button type="submit" class="btn-primary">Simpan</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif; ?>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         document.addEventListener('submit', function(e) {
@@ -617,6 +718,54 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const modal = document.getElementById('recruitmentSettingsModal');
+        const openButton = document.getElementById('openRecruitmentSettingsModal');
+        const closeButtons = document.querySelectorAll('[data-close-recruitment-modal]');
+        const statusField = document.getElementById('portal_status');
+        const messageField = document.getElementById('closed_message');
+
+        function toggleMessageFieldState() {
+            if (!statusField || !messageField) return;
+            const isOpen = statusField.value === 'open';
+            messageField.readOnly = isOpen;
+            messageField.classList.toggle('opacity-60', isOpen);
+        }
+
+        function openModal() {
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+            toggleMessageFieldState();
+        }
+
+        function closeModal() {
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+
+        openButton?.addEventListener('click', openModal);
+        closeButtons.forEach(function(button) {
+            button.addEventListener('click', closeModal);
+        });
+
+        modal?.addEventListener('click', function(event) {
+            if (event.target === modal) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+
+        statusField?.addEventListener('change', toggleMessageFieldState);
+        toggleMessageFieldState();
+
         if (window.jQuery && jQuery.fn.DataTable) {
             jQuery('#candidateTable').DataTable({
                 pageLength: 10,

@@ -3,6 +3,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
+ems_public_recruitment_require_portal_open();
 $gate = ems_public_recruitment_require_gate_stage('form');
 $profile = ems_recruitment_profile('medical_candidate');
 $citizenId = (string)($gate['citizen_id'] ?? '');

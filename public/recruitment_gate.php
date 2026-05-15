@@ -2,8 +2,10 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../config/recruitment_settings.php';
 
 const EMS_PUBLIC_RECRUITMENT_GATE_SESSION = 'ems_public_recruitment_gate';
+const EMS_PUBLIC_RECRUITMENT_CLOSED_PATH = '/public/recruitment_closed.php';
 
 function ems_public_recruitment_start_session(): void
 {
@@ -29,6 +31,25 @@ function ems_public_recruitment_gate_set(array $gate): void
 {
     ems_public_recruitment_start_session();
     $_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION] = $gate;
+}
+
+function ems_public_recruitment_closed_url(): string
+{
+    return ems_url(EMS_PUBLIC_RECRUITMENT_CLOSED_PATH);
+}
+
+function ems_public_recruitment_require_portal_open(): array
+{
+    global $pdo;
+
+    $settings = ems_recruitment_get_settings($pdo);
+    if ((int)($settings['is_open'] ?? 1) !== 1) {
+        ems_public_recruitment_gate_clear();
+        header('Location: ' . ems_public_recruitment_closed_url());
+        exit;
+    }
+
+    return $settings;
 }
 
 function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?array

@@ -3,6 +3,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
+ems_public_recruitment_require_portal_open();
 ems_public_recruitment_require_gate_stage('done');
 ?>
 <!DOCTYPE html>
