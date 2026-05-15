@@ -75,31 +75,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $cashMaxAmount = $hasCashMaxAmount ? max(0, (int) ($_POST['cash_max_amount'] ?? 0)) : 0;
             $billingAmount = $hasBillingAmount ? max(0, (int) ($_POST['billing_amount'] ?? 0)) : 0;
             $billingMaxAmount = $hasBillingMaxAmount ? max(0, (int) ($_POST['billing_max_amount'] ?? 0)) : 0;
+            $legacyCashAmount = max(0, (int) ($_POST['cash_amount'] ?? 0));
+            $legacyCashMaxAmount = max(0, (int) ($_POST['cash_max_amount'] ?? 0));
+            $legacyBillingAmount = max(0, (int) ($_POST['billing_amount'] ?? 0));
+            $legacyBillingMaxAmount = max(0, (int) ($_POST['billing_max_amount'] ?? 0));
+            $effectiveCashAmount = $hasCashAmount ? $cashAmount : $legacyCashAmount;
+            $effectiveCashMaxAmount = $hasCashMaxAmount ? $cashMaxAmount : $legacyCashMaxAmount;
+            $effectiveBillingAmount = $hasBillingAmount ? $billingAmount : $legacyBillingAmount;
+            $effectiveBillingMaxAmount = $hasBillingMaxAmount ? $billingMaxAmount : $legacyBillingMaxAmount;
             $paymentType = 'CASH';
-            $priceType = ($cashMaxAmount > 0 || $billingMaxAmount > 0) ? 'RANGE' : 'FIXED';
-            $priceMin = $cashAmount + $billingAmount;
+            $priceType = ($effectiveCashMaxAmount > 0 || $effectiveBillingMaxAmount > 0) ? 'RANGE' : 'FIXED';
+            $priceMin = $effectiveCashAmount + $effectiveBillingAmount;
             $priceMax = 0;
 
             if ($priceType === 'RANGE') {
-                if ($cashAmount > 0 && $cashMaxAmount === 0) {
-                    $cashMaxAmount = $cashAmount;
+                if ($effectiveCashAmount > 0 && $effectiveCashMaxAmount === 0) {
+                    $effectiveCashMaxAmount = $effectiveCashAmount;
+                    if ($hasCashMaxAmount) {
+                        $cashMaxAmount = $effectiveCashMaxAmount;
+                    }
                 }
-                if ($billingAmount > 0 && $billingMaxAmount === 0) {
-                    $billingMaxAmount = $billingAmount;
+                if ($effectiveBillingAmount > 0 && $effectiveBillingMaxAmount === 0) {
+                    $effectiveBillingMaxAmount = $effectiveBillingAmount;
+                    if ($hasBillingMaxAmount) {
+                        $billingMaxAmount = $effectiveBillingMaxAmount;
+                    }
                 }
-                if ($cashMaxAmount > 0 && $cashMaxAmount < $cashAmount) {
+                if ($effectiveCashMaxAmount > 0 && $effectiveCashMaxAmount < $effectiveCashAmount) {
                     throw new RuntimeException('Harga max cash tidak boleh lebih kecil dari harga min cash.');
                 }
-                if ($billingMaxAmount > 0 && $billingMaxAmount < $billingAmount) {
+                if ($effectiveBillingMaxAmount > 0 && $effectiveBillingMaxAmount < $effectiveBillingAmount) {
                     throw new RuntimeException('Harga max billing tidak boleh lebih kecil dari harga min billing.');
                 }
-                $priceMax = $cashMaxAmount + $billingMaxAmount;
+                $priceMax = $effectiveCashMaxAmount + $effectiveBillingMaxAmount;
             } else {
                 $cashMaxAmount = 0;
                 $billingMaxAmount = 0;
+                $effectiveCashMaxAmount = 0;
+                $effectiveBillingMaxAmount = 0;
             }
 
-            $paymentType = ($billingAmount > 0 || $billingMaxAmount > 0) ? 'BILLING' : 'CASH';
+            $paymentType = ($effectiveBillingAmount > 0 || $effectiveBillingMaxAmount > 0) ? 'BILLING' : 'CASH';
 
             $stmt = $pdo->prepare("
                 UPDATE medical_regulations
@@ -152,9 +168,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $cashMaxAmount = $hasCashMaxAmount ? max(0, (int) ($_POST['cash_max_amount'] ?? 0)) : 0;
             $billingAmount = $hasBillingAmount ? max(0, (int) ($_POST['billing_amount'] ?? 0)) : 0;
             $billingMaxAmount = $hasBillingMaxAmount ? max(0, (int) ($_POST['billing_max_amount'] ?? 0)) : 0;
+            $legacyCashAmount = max(0, (int) ($_POST['cash_amount'] ?? 0));
+            $legacyCashMaxAmount = max(0, (int) ($_POST['cash_max_amount'] ?? 0));
+            $legacyBillingAmount = max(0, (int) ($_POST['billing_amount'] ?? 0));
+            $legacyBillingMaxAmount = max(0, (int) ($_POST['billing_max_amount'] ?? 0));
+            $effectiveCashAmount = $hasCashAmount ? $cashAmount : $legacyCashAmount;
+            $effectiveCashMaxAmount = $hasCashMaxAmount ? $cashMaxAmount : $legacyCashMaxAmount;
+            $effectiveBillingAmount = $hasBillingAmount ? $billingAmount : $legacyBillingAmount;
+            $effectiveBillingMaxAmount = $hasBillingMaxAmount ? $billingMaxAmount : $legacyBillingMaxAmount;
             $paymentType = 'CASH';
-            $priceType = ($cashMaxAmount > 0 || $billingMaxAmount > 0) ? 'RANGE' : 'FIXED';
-            $priceMin = $cashAmount + $billingAmount;
+            $priceType = ($effectiveCashMaxAmount > 0 || $effectiveBillingMaxAmount > 0) ? 'RANGE' : 'FIXED';
+            $priceMin = $effectiveCashAmount + $effectiveBillingAmount;
             $priceMax = 0;
             $durationMinutes = trim((string) ($_POST['duration_minutes'] ?? ''));
             $notes = trim((string) ($_POST['notes'] ?? ''));
@@ -169,25 +193,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             if ($priceType === 'RANGE') {
-                if ($cashAmount > 0 && $cashMaxAmount === 0) {
-                    $cashMaxAmount = $cashAmount;
+                if ($effectiveCashAmount > 0 && $effectiveCashMaxAmount === 0) {
+                    $effectiveCashMaxAmount = $effectiveCashAmount;
+                    if ($hasCashMaxAmount) {
+                        $cashMaxAmount = $effectiveCashMaxAmount;
+                    }
                 }
-                if ($billingAmount > 0 && $billingMaxAmount === 0) {
-                    $billingMaxAmount = $billingAmount;
+                if ($effectiveBillingAmount > 0 && $effectiveBillingMaxAmount === 0) {
+                    $effectiveBillingMaxAmount = $effectiveBillingAmount;
+                    if ($hasBillingMaxAmount) {
+                        $billingMaxAmount = $effectiveBillingMaxAmount;
+                    }
                 }
-                if ($cashMaxAmount > 0 && $cashMaxAmount < $cashAmount) {
+                if ($effectiveCashMaxAmount > 0 && $effectiveCashMaxAmount < $effectiveCashAmount) {
                     throw new RuntimeException('Harga max cash tidak boleh lebih kecil dari harga min cash.');
                 }
-                if ($billingMaxAmount > 0 && $billingMaxAmount < $billingAmount) {
+                if ($effectiveBillingMaxAmount > 0 && $effectiveBillingMaxAmount < $effectiveBillingAmount) {
                     throw new RuntimeException('Harga max billing tidak boleh lebih kecil dari harga min billing.');
                 }
-                $priceMax = $cashMaxAmount + $billingMaxAmount;
+                $priceMax = $effectiveCashMaxAmount + $effectiveBillingMaxAmount;
             } else {
                 $cashMaxAmount = 0;
                 $billingMaxAmount = 0;
+                $effectiveCashMaxAmount = 0;
+                $effectiveBillingMaxAmount = 0;
             }
 
-            $paymentType = ($billingAmount > 0 || $billingMaxAmount > 0) ? 'BILLING' : 'CASH';
+            $paymentType = ($effectiveBillingAmount > 0 || $effectiveBillingMaxAmount > 0) ? 'BILLING' : 'CASH';
 
             $existsStmt = $pdo->prepare("SELECT COUNT(*) FROM medical_regulations WHERE code = ?");
             $existsStmt->execute([$code]);
@@ -195,27 +227,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 throw new RuntimeException('Kode regulasi sudah digunakan.');
             }
 
-            $stmt = $pdo->prepare("
-                INSERT INTO medical_regulations (
-                    category,
-                    code,
-                    name,
-                    location,
-                    price_type,
-                    price_min,
-                    price_max,
-                    " . ($hasCashAmount ? "cash_amount," : "") . "
-                    " . ($hasCashMaxAmount ? "cash_max_amount," : "") . "
-                    " . ($hasBillingAmount ? "billing_amount," : "") . "
-                    " . ($hasBillingMaxAmount ? "billing_max_amount," : "") . "
-                    payment_type,
-                    duration_minutes,
-                    notes,
-                    is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, " . ($hasCashAmount ? "?," : "") . ($hasBillingAmount ? "?," : "") . " ?, ?, ?, ?)
-            ");
-
-            $stmt->execute([
+            $insertColumns = [
+                'category',
+                'code',
+                'name',
+                'location',
+                'price_type',
+                'price_min',
+                'price_max',
+            ];
+            $insertValues = [
                 $category,
                 $code,
                 $name,
@@ -223,15 +244,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $priceType,
                 $priceMin,
                 $priceMax,
-                ...($hasCashAmount ? [$cashAmount] : []),
-                ...($hasCashMaxAmount ? [$cashMaxAmount] : []),
-                ...($hasBillingAmount ? [$billingAmount] : []),
-                ...($hasBillingMaxAmount ? [$billingMaxAmount] : []),
+            ];
+
+            if ($hasCashAmount) {
+                $insertColumns[] = 'cash_amount';
+                $insertValues[] = $cashAmount;
+            }
+            if ($hasCashMaxAmount) {
+                $insertColumns[] = 'cash_max_amount';
+                $insertValues[] = $cashMaxAmount;
+            }
+            if ($hasBillingAmount) {
+                $insertColumns[] = 'billing_amount';
+                $insertValues[] = $billingAmount;
+            }
+            if ($hasBillingMaxAmount) {
+                $insertColumns[] = 'billing_max_amount';
+                $insertValues[] = $billingMaxAmount;
+            }
+
+            $insertColumns = array_merge($insertColumns, [
+                'payment_type',
+                'duration_minutes',
+                'notes',
+                'is_active',
+            ]);
+            $insertValues = array_merge($insertValues, [
                 $paymentType,
                 $durationMinutes !== '' ? (int) $durationMinutes : null,
                 $notes !== '' ? $notes : null,
                 $isActive,
             ]);
+
+            $placeholders = implode(', ', array_fill(0, count($insertColumns), '?'));
+            $stmt = $pdo->prepare("
+                INSERT INTO medical_regulations (" . implode(', ', $insertColumns) . ")
+                VALUES (" . $placeholders . ")
+            ");
+
+            $stmt->execute($insertValues);
 
             echo json_encode([
                 'success' => true,
@@ -244,10 +295,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'price_type' => $priceType,
                     'price_min' => $priceMin,
                     'price_max' => $priceMax,
-                    'cash_amount' => $cashAmount,
-                    'cash_max_amount' => $cashMaxAmount,
-                    'billing_amount' => $billingAmount,
-                    'billing_max_amount' => $billingMaxAmount,
+                    'cash_amount' => $effectiveCashAmount,
+                    'cash_max_amount' => $effectiveCashMaxAmount,
+                    'billing_amount' => $effectiveBillingAmount,
+                    'billing_max_amount' => $effectiveBillingMaxAmount,
                     'payment_type' => $paymentType,
                     'duration_minutes' => $durationMinutes,
                     'notes' => $notes,
@@ -517,14 +568,17 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        if (!(window.jQuery && jQuery.fn.DataTable)) return;
-
-        const regTable = jQuery('#regTable').DataTable({
-            pageLength: 10,
-            language: {
-                url: '/assets/design/js/datatables-id.json'
-            }
-        });
+        const hasDataTable = !!(window.jQuery && jQuery.fn && typeof jQuery.fn.DataTable === 'function');
+        const regTable = hasDataTable
+            ? jQuery('#regTable').DataTable({
+                pageLength: 10,
+                language: {
+                    url: '/assets/design/js/datatables-id.json'
+                }
+            })
+            : null;
+        const regTableBody = document.querySelector('#regTable tbody');
+        const requestUrl = window.emsUrl ? window.emsUrl('/dashboard/regulasi_medis.php') : 'regulasi_medis.php';
 
         const editRegModal = document.getElementById('editRegModal');
         const editRegForm = document.getElementById('editRegForm');
@@ -563,6 +617,7 @@ include __DIR__ . '/../partials/sidebar.php';
         const newRegActive = document.getElementById('newRegActive');
 
         let activeRow = null;
+        let activeRowElement = null;
         let newRegCodeManual = false;
 
         function openModal(modal) {
@@ -674,6 +729,72 @@ include __DIR__ . '/../partials/sidebar.php';
             return { cashMin, cashMax, billingMin, billingMax };
         }
 
+        function updateRenderedRow(row, values) {
+            if (!row) return;
+
+            row.dataset.category = values.category;
+            row.dataset.name = values.name;
+            row.dataset.location = values.location;
+            row.dataset.price_type = values.priceType;
+            row.dataset.min = values.totalMin;
+            row.dataset.max = values.totalMax;
+            row.dataset.cash = values.cashMin;
+            row.dataset.cashMax = values.cashMax;
+            row.dataset.billing = values.billingMin;
+            row.dataset.billingMax = values.billingMax;
+            row.dataset.payment = values.paymentType;
+            row.dataset.duration = values.duration;
+            row.dataset.notes = values.notes;
+            row.dataset.active = values.isActive ? '1' : '0';
+
+            const cells = row.cells;
+            if (cells.length >= 5) {
+                cells[0].textContent = values.category;
+                if (cells.length >= 3) {
+                    cells[2].textContent = values.name;
+                }
+                if (cells.length >= 4) {
+                    cells[3].textContent = values.priceLabel;
+                }
+                if (cells.length >= 5) {
+                    cells[4].textContent = values.isActive ? 'Aktif' : 'Nonaktif';
+                }
+            }
+        }
+
+        function createActionButtonHtml() {
+            return '<button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Ubah regulasi medis" aria-label="Ubah regulasi medis"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>';
+        }
+
+        function appendRenderedRow(item, priceLabel) {
+            if (hasDataTable) {
+                const rowNode = regTable.row.add([
+                    item.category,
+                    item.code,
+                    item.name,
+                    priceLabel,
+                    item.is_active == 1 ? 'Aktif' : 'Nonaktif',
+                    createActionButtonHtml()
+                ]).draw(false).node();
+
+                return rowNode;
+            }
+
+            if (!regTableBody) return null;
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${item.category || ''}</td>
+                <td>${item.code || ''}</td>
+                <td>${item.name || ''}</td>
+                <td>${priceLabel}</td>
+                <td>${item.is_active == 1 ? 'Aktif' : 'Nonaktif'}</td>
+                <td>${createActionButtonHtml()}</td>
+            `;
+            regTableBody.appendChild(row);
+            return row;
+        }
+
         editRegModal.querySelectorAll('.btn-cancel, .modal-close-btn').forEach(btn => {
             btn.addEventListener('click', () => closeModal(editRegModal));
         });
@@ -687,7 +808,8 @@ include __DIR__ . '/../partials/sidebar.php';
             if (!btn) return;
 
             const row = btn.closest('tr');
-            activeRow = regTable.row(row);
+            activeRowElement = row;
+            activeRow = hasDataTable ? regTable.row(row) : null;
 
             regId.value = row.dataset.id;
             regCategory.value = row.dataset.category;
@@ -712,7 +834,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             syncDerivedPrice(regPriceType, regMin, regMax, regCashAmount, regCashMaxAmount, regBillingAmount, regBillingMaxAmount);
 
-            fetch('regulasi_medis.php', {
+            fetch(requestUrl, {
                     method: 'POST',
                     body: new FormData(this)
                 })
@@ -722,24 +844,6 @@ include __DIR__ . '/../partials/sidebar.php';
                         showAlert('error', r.message || 'Gagal menyimpan data');
                         return;
                     }
-
-                    const node = activeRow.node();
-                    const currentData = activeRow.data();
-
-                    node.dataset.category = regCategory.value;
-                    node.dataset.name = regName.value;
-                    node.dataset.location = regLocation.value;
-                    node.dataset.price_type = regPriceType.value;
-                    node.dataset.min = regMin.value;
-                    node.dataset.max = regMax.value;
-                    node.dataset.cash = regCashAmount.value || '0';
-                    node.dataset.cashMax = regCashMaxAmount.value || '0';
-                    node.dataset.billing = regBillingAmount.value || '0';
-                    node.dataset.billingMax = regBillingMaxAmount.value || '0';
-                    node.dataset.payment = Number(regBillingAmount.value || 0) > 0 ? 'BILLING' : 'CASH';
-                    node.dataset.duration = regDuration.value;
-                    node.dataset.notes = regNotes.value;
-                    node.dataset.active = regActive.checked ? '1' : '0';
 
                     const harga = buildPriceLabel({
                         priceType: regPriceType.value,
@@ -751,14 +855,37 @@ include __DIR__ . '/../partials/sidebar.php';
                         totalMax: regMax.value
                     });
 
-                    activeRow.data([
-                        regCategory.value,
-                        currentData[1],
-                        regName.value,
-                        harga,
-                        regActive.checked ? 'Aktif' : 'Nonaktif',
-                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Ubah regulasi medis" aria-label="Ubah regulasi medis"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
-                    ]).draw(false);
+                    const currentCode = activeRowElement?.cells?.[1]?.textContent || '';
+                    const paymentType = Number(regBillingAmount.value || 0) > 0 || Number(regBillingMaxAmount.value || 0) > 0 ? 'BILLING' : 'CASH';
+
+                    updateRenderedRow(activeRowElement, {
+                        category: regCategory.value,
+                        name: regName.value,
+                        location: regLocation.value,
+                        priceType: regPriceType.value,
+                        totalMin: regMin.value || '0',
+                        totalMax: regMax.value || '0',
+                        cashMin: regCashAmount.value || '0',
+                        cashMax: regCashMaxAmount.value || '0',
+                        billingMin: regBillingAmount.value || '0',
+                        billingMax: regBillingMaxAmount.value || '0',
+                        paymentType,
+                        duration: regDuration.value,
+                        notes: regNotes.value,
+                        isActive: regActive.checked,
+                        priceLabel: harga
+                    });
+
+                    if (hasDataTable && activeRow) {
+                        activeRow.data([
+                            regCategory.value,
+                            currentCode,
+                            regName.value,
+                            harga,
+                            regActive.checked ? 'Aktif' : 'Nonaktif',
+                            createActionButtonHtml()
+                        ]).draw(false);
+                    }
 
                     showAlert('success', 'Data regulasi berhasil diperbarui');
                     closeModal(editRegModal);
@@ -816,7 +943,7 @@ include __DIR__ . '/../partials/sidebar.php';
             newRegCode.value = (newRegCode.value || '').trim().toUpperCase();
             syncDerivedPrice(newRegPriceType, newRegMin, newRegMax, newRegCashAmount, newRegCashMaxAmount, newRegBillingAmount, newRegBillingMaxAmount);
 
-            fetch('regulasi_medis.php', {
+            fetch(requestUrl, {
                     method: 'POST',
                     body: new FormData(this)
                 })
@@ -837,30 +964,25 @@ include __DIR__ . '/../partials/sidebar.php';
                         totalMin: item.price_min,
                         totalMax: item.price_max
                     });
-                    const rowNode = regTable.row.add([
-                        item.category,
-                        item.code,
-                        item.name,
-                        harga,
-                        item.is_active == 1 ? 'Aktif' : 'Nonaktif',
-                        '<button type="button" class="btn-secondary action-icon-btn btn-edit-reg" title="Ubah regulasi medis" aria-label="Ubah regulasi medis"><?= ems_icon("pencil-square", "h-4 w-4") ?></button>'
-                    ]).draw(false).node();
+                    const rowNode = appendRenderedRow(item, harga);
 
-                    rowNode.dataset.id = item.id;
-                    rowNode.dataset.category = item.category || '';
-                    rowNode.dataset.name = item.name || '';
-                    rowNode.dataset.location = item.location || '';
-                    rowNode.dataset.price_type = item.price_type || 'FIXED';
-                    rowNode.dataset.min = item.price_min || 0;
-                    rowNode.dataset.max = item.price_max || 0;
-                    rowNode.dataset.cash = item.cash_amount || 0;
-                    rowNode.dataset.cashMax = item.cash_max_amount || 0;
-                    rowNode.dataset.billing = item.billing_amount || 0;
-                    rowNode.dataset.billingMax = item.billing_max_amount || 0;
-                    rowNode.dataset.payment = item.payment_type || 'CASH';
-                    rowNode.dataset.duration = item.duration_minutes || '';
-                    rowNode.dataset.notes = item.notes || '';
-                    rowNode.dataset.active = item.is_active == 1 ? '1' : '0';
+                    if (rowNode) {
+                        rowNode.dataset.id = item.id;
+                        rowNode.dataset.category = item.category || '';
+                        rowNode.dataset.name = item.name || '';
+                        rowNode.dataset.location = item.location || '';
+                        rowNode.dataset.price_type = item.price_type || 'FIXED';
+                        rowNode.dataset.min = item.price_min || 0;
+                        rowNode.dataset.max = item.price_max || 0;
+                        rowNode.dataset.cash = item.cash_amount || 0;
+                        rowNode.dataset.cashMax = item.cash_max_amount || 0;
+                        rowNode.dataset.billing = item.billing_amount || 0;
+                        rowNode.dataset.billingMax = item.billing_max_amount || 0;
+                        rowNode.dataset.payment = item.payment_type || 'CASH';
+                        rowNode.dataset.duration = item.duration_minutes || '';
+                        rowNode.dataset.notes = item.notes || '';
+                        rowNode.dataset.active = item.is_active == 1 ? '1' : '0';
+                    }
 
                     showAlert('success', 'Regulasi medis baru berhasil ditambahkan');
                     closeModal(addRegModal);
