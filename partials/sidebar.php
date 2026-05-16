@@ -399,6 +399,7 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
                 <input type="text" id="sidebarMenuSearch" class="sidebar-search-input" placeholder="Cari menu sidebar...">
             </div>
         </div>
+        <div class="sidebar-menu-scroll">
         <?php foreach ($groupedNav as $groupTitle => $items): ?>
             <?php
             $visibleItems = array_values(array_filter($items, static function (array $item): bool {
@@ -416,6 +417,7 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
             <?php endforeach; ?>
             </div>
         <?php endforeach; ?>
+        </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -452,12 +454,27 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
     .sidebar-menu {
         flex: 1 1 auto;
         min-height: 0;
-        padding-bottom: 20px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .sidebar-menu-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0 0 20px;
     }
 
     .sidebar-search-wrap {
+        flex: 0 0 auto;
         padding: 0 3px 10px;
         margin-bottom: 4px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: transparent;
+        backdrop-filter: none;
     }
 
     .sidebar-search-label {
@@ -561,6 +578,10 @@ function sidebarBuildUnitSwitchUrl(string $targetUnit): string
         }
 
         .sidebar-menu {
+            min-height: 0;
+        }
+
+        .sidebar-menu-scroll {
             padding-bottom: 12px;
         }
     }

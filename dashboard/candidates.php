@@ -1277,6 +1277,27 @@ $candidateExportQuery = http_build_query(array_filter([
     </div>
 </section>
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var rangeSelect = document.getElementById('candidateRangeSelect');
+    var customGroups = document.querySelectorAll('#candidateFilterForm .filter-custom');
+
+    if (!rangeSelect || !customGroups.length) {
+        return;
+    }
+
+    function syncCandidateRangeFilter() {
+        var isCustom = rangeSelect.value === 'custom';
+        customGroups.forEach(function (group) {
+            group.style.display = isCustom ? '' : 'none';
+        });
+    }
+
+    rangeSelect.addEventListener('change', syncCandidateRangeFilter);
+    syncCandidateRangeFilter();
+});
+</script>
+
 <div id="overrideRejectedCandidateModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-md">
         <div class="modal-head">
