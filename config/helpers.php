@@ -881,6 +881,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
     if (!$canViewAllUnits && $unitCode === 'alta' && $division === 'Medis' && ems_is_medical_position($position)) {
         return [
             'index.php',
+            'farmasi_billing_audit.php',
             'rekap_farmasi.php',
             'konsumen.php',
             'ranking.php',
@@ -900,6 +901,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
     return [
         'index.php',
+        'farmasi_billing_audit.php',
         'events.php',
         'struktur_organisasi.php',
         'event_participants.php',

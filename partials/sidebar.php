@@ -68,6 +68,7 @@ $groupedNav = [
 
 if (!ems_is_staff_role($userRole)) {
     $groupedNav['Utama'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
+    $groupedNav['Utama'][] = sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle');
 }
 
 if ($division !== 'General Affair') {
@@ -189,6 +190,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
         $groupedNav = [
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+                sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle'),
             ],
             'Medis' => [
                 sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
