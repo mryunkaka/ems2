@@ -882,6 +882,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         return [
             'index.php',
             'farmasi_billing_audit.php',
+            'user_availability.php',
+            'training_group_generator.php',
             'rekap_farmasi.php',
             'konsumen.php',
             'ranking.php',
@@ -902,6 +904,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
     return [
         'index.php',
         'farmasi_billing_audit.php',
+        'user_availability.php',
+        'training_group_generator.php',
         'events.php',
         'struktur_organisasi.php',
         'event_participants.php',

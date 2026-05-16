@@ -2,11 +2,16 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
+if (!isset($_GET['range'])) {
+    $_GET['range'] = 'week4';
+}
+
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/date_range.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/recruitment_settings.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
@@ -956,10 +961,19 @@ if ($hasDecisionLinkedUserId) {
 }
 
 $candidateParams = [];
+$candidateWhere = [];
 
 if (ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
-    $candidateSql .= " WHERE COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = ?";
+    $candidateWhere[] = "COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = ?";
     $candidateParams[] = $listRecruitmentType;
+}
+
+$candidateWhere[] = "m.created_at BETWEEN ? AND ?";
+$candidateParams[] = $rangeStart;
+$candidateParams[] = $rangeEnd;
+
+if ($candidateWhere !== []) {
+    $candidateSql .= " WHERE " . implode(' AND ', $candidateWhere);
 }
 
 $candidateSql .= " ORDER BY m.created_at DESC";
@@ -971,6 +985,11 @@ $recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 1) ===
 $recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
 $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $userDivision);
 $canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
+$candidateExportQuery = http_build_query(array_filter([
+    'range' => $_GET['range'] ?? 'week4',
+    'from' => $_GET['from'] ?? '',
+    'to' => $_GET['to'] ?? '',
+], static fn($value): bool => $value !== ''));
 
 ?>
 
@@ -982,7 +1001,7 @@ $canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
             <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title">Daftar Calon Kandidat</h1>
-                <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI</p>
+                <p class="page-subtitle">Monitoring hasil rekrutmen dan penilaian AI • <?= htmlspecialchars($rangeLabel, ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <div class="flex items-center gap-2">
                 <span class="<?= $recruitmentPortalIsOpen ? 'badge-success' : 'badge-danger' ?>">
@@ -994,7 +1013,7 @@ $canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
                         <span>Setting Rekrutmen</span>
                     </button>
                 <?php endif; ?>
-                <a href="<?= htmlspecialchars(ems_url('/dashboard/candidates_export.php'), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary btn-sm">
+                <a href="<?= htmlspecialchars(ems_url('/dashboard/candidates_export.php') . ($candidateExportQuery !== '' ? '?' . $candidateExportQuery : ''), ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary btn-sm">
                     <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
                     <span>Export Excel</span>
                 </a>
@@ -1002,6 +1021,35 @@ $canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
                     <?= ems_icon('plus', 'h-4 w-4') ?>
                     <span>Kandidat Baru</span>
                 </a>
+            </div>
+        </div>
+
+        <div class="card card-section mb-4">
+            <div class="card-header">Filter Rentang Tanggal</div>
+            <div class="card-body">
+                <form method="GET" id="candidateFilterForm" class="filter-bar">
+                    <div class="filter-group">
+                        <label>Rentang</label>
+                        <select name="range" id="candidateRangeSelect" class="form-control">
+                            <option value="week1" <?= ($_GET['range'] ?? '') === 'week1' ? 'selected' : '' ?>>3 Minggu Lalu</option>
+                            <option value="week2" <?= ($_GET['range'] ?? '') === 'week2' ? 'selected' : '' ?>>2 Minggu Lalu</option>
+                            <option value="week3" <?= ($_GET['range'] ?? '') === 'week3' ? 'selected' : '' ?>>Minggu Lalu</option>
+                            <option value="week4" <?= ($_GET['range'] ?? 'week4') === 'week4' ? 'selected' : '' ?>>Minggu Ini</option>
+                            <option value="custom" <?= ($_GET['range'] ?? '') === 'custom' ? 'selected' : '' ?>>Custom</option>
+                        </select>
+                    </div>
+                    <div class="filter-group filter-custom">
+                        <label>Tanggal Awal</label>
+                        <input type="date" name="from" value="<?= htmlspecialchars((string)($_GET['from'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" class="form-control">
+                    </div>
+                    <div class="filter-group filter-custom">
+                        <label>Tanggal Akhir</label>
+                        <input type="date" name="to" value="<?= htmlspecialchars((string)($_GET['to'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" class="form-control">
+                    </div>
+                    <div class="filter-group filter-action-end">
+                        <button type="submit" class="btn btn-primary">Terapkan</button>
+                    </div>
+                </form>
             </div>
         </div>
 
