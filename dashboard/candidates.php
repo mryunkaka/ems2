@@ -44,6 +44,16 @@ function candidateCanManageRecruitmentSettings(array $user, string $userDivision
     return ems_is_programmer_roxwood_name($name);
 }
 
+function candidateCanEditFinalDecision(array $user, string $userDivision): bool
+{
+    if (in_array($userDivision, ['Human Resource', 'Human Capital', 'Executive'], true)) {
+        return true;
+    }
+
+    $name = (string)($user['full_name'] ?? $user['name'] ?? '');
+    return ems_is_programmer_roxwood_name($name);
+}
+
 function candidateDecisionActorName(array $user): string
 {
     $fullName = trim((string)($user['full_name'] ?? ''));
@@ -675,6 +685,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['override_rejected_can
         exit('Invalid CSRF token');
     }
 
+    if (!candidateCanEditFinalDecision($user, $userDivision)) {
+        exit('Akses edit hasil kandidat ditolak');
+    }
+
     $applicantId = (int)($_POST['applicant_id'] ?? 0);
     $targetFinalResult = trim((string)($_POST['target_final_result'] ?? ''));
     $overrideReason = trim((string)($_POST['override_reason'] ?? ''));
@@ -956,6 +970,7 @@ $recruitmentPortalSettings = ems_recruitment_get_settings($pdo);
 $recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 1) === 1;
 $recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
 $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $userDivision);
+$canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
 
 ?>
 
@@ -1174,7 +1189,7 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
                                         </a>
                                     <?php endif; ?>
 
-                                    <?php if (in_array((string)($c['final_result'] ?? ''), ['lolos', 'tidak_lolos'], true)): ?>
+                                    <?php if ($canEditFinalDecision && in_array((string)($c['final_result'] ?? ''), ['lolos', 'tidak_lolos'], true)): ?>
                                         <button
                                             type="button"
                                             class="btn-warning btn-sm action-icon-btn candidate-action-btn open-override-modal"
