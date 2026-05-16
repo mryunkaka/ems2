@@ -573,6 +573,14 @@ if (
                     WHERE id = ?
                 ")->execute($updateParams);
             }
+
+            if (ems_column_exists($pdo, 'applicant_final_decisions', 'linked_user_id')) {
+                $pdo->prepare("
+                    UPDATE applicant_final_decisions
+                    SET linked_user_id = ?
+                    WHERE applicant_id = ?
+                ")->execute([$newUserId, $applicantId]);
+            }
         }
 
         $newStatus = $finalResult === 'lolos' ? 'accepted' : 'rejected';

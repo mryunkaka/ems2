@@ -44,6 +44,260 @@ function candidateCanManageRecruitmentSettings(array $user, string $userDivision
     return ems_is_programmer_roxwood_name($name);
 }
 
+function candidateDecisionActorName(array $user): string
+{
+    $fullName = trim((string)($user['full_name'] ?? ''));
+    if ($fullName !== '') {
+        return $fullName;
+    }
+
+    $name = trim((string)($user['name'] ?? ''));
+    if ($name !== '') {
+        return $name;
+    }
+
+    return 'Manager';
+}
+
+function candidateGenerateMedicalCode(int $userId, string $fullName, int $batch): string
+{
+    if ($batch < 1 || $batch > 26) {
+        throw new Exception('Batch tidak valid untuk generate kode medis.');
+    }
+
+    $batchCode = chr(64 + $batch);
+    $idPart = str_pad((string)$userId, 2, '0', STR_PAD_LEFT);
+    $parts = preg_split('/\s+/', strtoupper(trim($fullName)));
+    $firstName = $parts[0] ?? '';
+    $lastName = $parts[count($parts) - 1] ?? '';
+    $letters = substr($firstName, 0, 2) . substr($lastName, 0, 2);
+
+    $numberPart = '';
+    foreach (str_split($letters) as $char) {
+        if ($char >= 'A' && $char <= 'Z') {
+            $numberPart .= str_pad((string)(ord($char) - 64), 2, '0', STR_PAD_LEFT);
+        }
+    }
+
+    return 'RH' . $batchCode . '-' . $idPart . $numberPart;
+}
+
+function candidateGenerateUserFolder(int $userId, ?string $kodeNomorIndukRs = null): string
+{
+    $suffix = $kodeNomorIndukRs ? '-' . strtolower($kodeNomorIndukRs) : '';
+    return 'user_' . $userId . $suffix;
+}
+
+function candidateCopyApplicantDocsToUser(PDO $pdo, int $applicantId, int $userId, ?string $kodeNomorIndukRs = null): array
+{
+    $stmt = $pdo->prepare("
+        SELECT document_type, file_path
+        FROM applicant_documents
+        WHERE applicant_id = ?
+    ");
+    $stmt->execute([$applicantId]);
+    $documents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$documents) {
+        return [];
+    }
+
+    $folderName = candidateGenerateUserFolder($userId, $kodeNomorIndukRs);
+    $baseDir = __DIR__ . '/../storage/user_docs/';
+    $uploadDir = $baseDir . $folderName;
+
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
+        throw new Exception('Gagal membuat folder dokumen user.');
+    }
+
+    $columnMap = [
+        'ktp_ic' => 'file_ktp',
+        'skb' => 'file_skb',
+        'sim' => 'file_sim',
+    ];
+
+    $copied = [];
+    foreach ($documents as $document) {
+        $type = (string)($document['document_type'] ?? '');
+        $relativePath = trim((string)($document['file_path'] ?? ''));
+        if ($relativePath === '' || !isset($columnMap[$type])) {
+            continue;
+        }
+
+        $sourcePath = realpath(__DIR__ . '/../' . ltrim($relativePath, '/'));
+        if ($sourcePath === false || !is_file($sourcePath)) {
+            continue;
+        }
+
+        $extension = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION)) ?: 'jpg';
+        $destinationName = $columnMap[$type] . '.' . $extension;
+        $destinationPath = $uploadDir . '/' . $destinationName;
+
+        if (!copy($sourcePath, $destinationPath)) {
+            throw new Exception('Gagal menyalin dokumen pelamar ke user.');
+        }
+
+        $copied[$columnMap[$type]] = 'storage/user_docs/' . $folderName . '/' . $destinationName;
+    }
+
+    return $copied;
+}
+
+function candidateCreateUserFromApplicant(PDO $pdo, array $candidate, string $recommendedPosition, int $batch): int
+{
+    $fullName = trim((string)($candidate['ic_name'] ?? ''));
+    $citizenId = trim((string)($candidate['citizen_id'] ?? ''));
+    $jenisKelamin = trim((string)($candidate['jenis_kelamin'] ?? ''));
+    if ($fullName === '') {
+        throw new Exception('Nama kandidat tidak valid untuk pembuatan user.');
+    }
+
+    $check = $pdo->prepare("SELECT id FROM user_rh WHERE full_name = ? LIMIT 1");
+    $check->execute([$fullName]);
+    if ($check->fetchColumn()) {
+        throw new Exception('Akun user_rh dengan nama tersebut sudah ada.');
+    }
+
+    if ($citizenId !== '') {
+        $checkCitizen = $pdo->prepare("SELECT id FROM user_rh WHERE citizen_id = ? LIMIT 1");
+        $checkCitizen->execute([$citizenId]);
+        if ($checkCitizen->fetchColumn()) {
+            throw new Exception('Akun user_rh dengan citizen ID tersebut sudah ada.');
+        }
+    }
+
+    if (!in_array($jenisKelamin, ['Laki-laki', 'Perempuan'], true)) {
+        $jenisKelamin = null;
+    }
+
+    if ($batch < 1 || $batch > 26) {
+        throw new Exception('Batch wajib diisi dan harus di antara 1 sampai 26.');
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO user_rh (
+            full_name,
+            citizen_id,
+            jenis_kelamin,
+            no_hp_ic,
+            pin,
+            role,
+            division,
+            position,
+            batch,
+            tanggal_masuk,
+            is_verified,
+            is_active
+        ) VALUES (?, ?, ?, ?, ?, 'Staff', 'Medis', ?, ?, CURDATE(), 1, 1)
+    ");
+    $stmt->execute([
+        $fullName,
+        $citizenId !== '' ? $citizenId : null,
+        $jenisKelamin,
+        trim((string)($candidate['ic_phone'] ?? '')) ?: null,
+        password_hash('0000', PASSWORD_BCRYPT),
+        $recommendedPosition,
+        $batch,
+    ]);
+
+    $newUserId = (int)$pdo->lastInsertId();
+
+    $generatedKode = candidateGenerateMedicalCode($newUserId, $fullName, $batch);
+    $pdo->prepare("
+        UPDATE user_rh
+        SET kode_nomor_induk_rs = ?
+        WHERE id = ?
+    ")->execute([$generatedKode, $newUserId]);
+
+    return $newUserId;
+}
+
+function candidateDeleteLinkedUser(PDO $pdo, int $userId): array
+{
+    if ($userId <= 0) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT file_ktp, file_skb, file_sim
+        FROM user_rh
+        WHERE id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$userId]);
+    $linkedUser = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$linkedUser) {
+        return [];
+    }
+
+    $userFilePaths = [];
+    foreach (['file_ktp', 'file_skb', 'file_sim'] as $column) {
+        $userFilePaths[] = (string)($linkedUser[$column] ?? '');
+    }
+
+    $deleteStmt = $pdo->prepare("DELETE FROM user_rh WHERE id = ?");
+    $deleteStmt->execute([$userId]);
+
+    if ((int)$deleteStmt->rowCount() < 1) {
+        throw new Exception('Gagal menghapus user hasil pelolosan kandidat.');
+    }
+
+    return $userFilePaths;
+}
+
+function candidateResolveLinkedUserId(PDO $pdo, array $candidate, ?int $existingLinkedUserId = null): int
+{
+    $existingLinkedUserId = (int)($existingLinkedUserId ?? 0);
+    if ($existingLinkedUserId > 0) {
+        return $existingLinkedUserId;
+    }
+
+    $citizenId = ems_normalize_citizen_id((string)($candidate['citizen_id'] ?? ''));
+    if ($citizenId !== '') {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM user_rh
+            WHERE citizen_id = ?
+            ORDER BY id DESC
+            LIMIT 2
+        ");
+        $stmt->execute([$citizenId]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (count($rows) === 1) {
+            return (int)($rows[0]['id'] ?? 0);
+        }
+
+        if (count($rows) > 1) {
+            throw new Exception('Ditemukan lebih dari satu user_rh dengan citizen ID yang sama. Tentukan user kandidat secara manual.');
+        }
+    }
+
+    $fullName = trim((string)($candidate['ic_name'] ?? ''));
+    if ($fullName !== '') {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM user_rh
+            WHERE full_name = ?
+            ORDER BY id DESC
+            LIMIT 2
+        ");
+        $stmt->execute([$fullName]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        if (count($rows) === 1) {
+            return (int)($rows[0]['id'] ?? 0);
+        }
+
+        if (count($rows) > 1) {
+            throw new Exception('Ditemukan lebih dari satu user_rh dengan nama yang sama. Tentukan user kandidat secara manual.');
+        }
+    }
+
+    return 0;
+}
+
 function candidateDeleteCleanupFilePaths(array $relativePaths): void
 {
     $directories = [];
@@ -83,6 +337,9 @@ function candidateDeleteCleanupFilePaths(array $relativePaths): void
 function candidateDeletePermanently(PDO $pdo, int $applicantId): array
 {
     $filePaths = [];
+    $linkedUserId = 0;
+    $linkedUserFilePaths = [];
+    $existingFinalResult = '';
 
     if (ems_table_exists($pdo, 'applicant_documents')) {
         $stmt = $pdo->prepare("
@@ -97,9 +354,38 @@ function candidateDeletePermanently(PDO $pdo, int $applicantId): array
         );
     }
 
+    if (ems_column_exists($pdo, 'applicant_final_decisions', 'linked_user_id')) {
+        $stmt = $pdo->prepare("
+            SELECT fd.linked_user_id, fd.final_result, m.citizen_id, m.ic_name
+            FROM applicant_final_decisions fd
+            INNER JOIN medical_applicants m ON m.id = fd.applicant_id
+            WHERE applicant_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$applicantId]);
+        $decisionRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $linkedUserId = candidateResolveLinkedUserId(
+            $pdo,
+            [
+                'citizen_id' => (string)($decisionRow['citizen_id'] ?? ''),
+                'ic_name' => (string)($decisionRow['ic_name'] ?? ''),
+            ],
+            (int)($decisionRow['linked_user_id'] ?? 0)
+        );
+        $existingFinalResult = (string)($decisionRow['final_result'] ?? '');
+    }
+
     $pdo->beginTransaction();
 
     try {
+        if ($existingFinalResult === 'lolos' && $linkedUserId <= 0) {
+            throw new Exception('User kandidat lolos belum terhubung. Jalankan migration terbaru dan simpan ulang keputusan kandidat ini terlebih dahulu.');
+        }
+
+        if ($linkedUserId > 0) {
+            $linkedUserFilePaths = candidateDeleteLinkedUser($pdo, $linkedUserId);
+        }
+
         foreach ([
             'applicant_interview_question_responses',
             'applicant_interview_question_packs',
@@ -130,10 +416,11 @@ function candidateDeletePermanently(PDO $pdo, int $applicantId): array
     }
 
     candidateDeleteCleanupFilePaths($filePaths);
+    candidateDeleteCleanupFilePaths($linkedUserFilePaths);
 
     return [
         'deleted_applicants' => $deletedApplicants,
-        'deleted_files' => count(array_filter(array_map('trim', $filePaths))),
+        'deleted_files' => count(array_filter(array_map('trim', array_merge($filePaths, $linkedUserFilePaths)))),
     ];
 }
 
@@ -383,6 +670,220 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_recruitment_port
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['override_rejected_candidate'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    $applicantId = (int)($_POST['applicant_id'] ?? 0);
+    $targetFinalResult = trim((string)($_POST['target_final_result'] ?? ''));
+    $overrideReason = trim((string)($_POST['override_reason'] ?? ''));
+    $recommendedPosition = ems_normalize_position($_POST['recommended_position'] ?? '');
+    $recommendedBatch = (int)($_POST['recommended_batch'] ?? 0);
+
+    if ($applicantId <= 0) {
+        exit('Invalid applicant');
+    }
+
+    if (!in_array($targetFinalResult, ['lolos', 'tidak_lolos'], true)) {
+        header('Location: candidates.php?override_error=target');
+        exit;
+    }
+
+    if ($overrideReason === '') {
+        header('Location: candidates.php?override_error=reason');
+        exit;
+    }
+
+    if ($targetFinalResult === 'lolos' && !ems_is_valid_position($recommendedPosition)) {
+        header('Location: candidates.php?override_error=position');
+        exit;
+    }
+
+    if ($targetFinalResult === 'lolos' && ($recommendedBatch < 1 || $recommendedBatch > 26)) {
+        header('Location: candidates.php?override_error=batch');
+        exit;
+    }
+
+    $hasDecisionLinkedUserId = ems_column_exists($pdo, 'applicant_final_decisions', 'linked_user_id');
+
+    $candidateOverrideColumns = [
+        'm.id',
+        'm.ic_name',
+        'm.ic_phone',
+        'm.citizen_id',
+        'm.jenis_kelamin',
+        'm.status',
+        'fd.id AS decision_id',
+        'fd.system_result',
+        'fd.final_result',
+        'fd.recommended_position',
+        'fd.recommended_batch',
+    ];
+
+    if ($hasDecisionLinkedUserId) {
+        $candidateOverrideColumns[] = 'fd.linked_user_id';
+    }
+
+    if (ems_column_exists($pdo, 'applicant_final_decisions', 'revised_by')) {
+        $candidateOverrideColumns[] = 'fd.revised_by';
+    }
+
+    if (ems_column_exists($pdo, 'applicant_final_decisions', 'revised_at')) {
+        $candidateOverrideColumns[] = 'fd.revised_at';
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT " . implode(",\n        ", $candidateOverrideColumns) . "
+        FROM medical_applicants m
+        INNER JOIN applicant_final_decisions fd ON fd.applicant_id = m.id
+        WHERE m.id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$applicantId]);
+    $candidateOverride = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$candidateOverride) {
+        header('Location: candidates.php?override_error=missing');
+        exit;
+    }
+
+    $currentFinalResult = (string)($candidateOverride['final_result'] ?? '');
+    if (!in_array($currentFinalResult, ['lolos', 'tidak_lolos'], true)) {
+        header('Location: candidates.php?override_error=state');
+        exit;
+    }
+
+    if ($currentFinalResult === $targetFinalResult) {
+        header('Location: candidates.php?override_error=state');
+        exit;
+    }
+
+    $pdo->beginTransaction();
+    $linkedUserFilePaths = [];
+
+    try {
+        $lockDecisionColumns = ['id', 'final_result'];
+        if ($hasDecisionLinkedUserId) {
+            $lockDecisionColumns[] = 'linked_user_id';
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT " . implode(', ', $lockDecisionColumns) . "
+            FROM applicant_final_decisions
+            WHERE applicant_id = ?
+            FOR UPDATE
+        ");
+        $stmt->execute([$applicantId]);
+        $lockedDecision = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$lockedDecision || (string)($lockedDecision['final_result'] ?? '') !== $currentFinalResult) {
+            throw new Exception('Status kandidat sudah berubah. Refresh halaman lalu coba lagi.');
+        }
+
+        $actorName = candidateDecisionActorName($user);
+        $lockedLinkedUserId = candidateResolveLinkedUserId(
+            $pdo,
+            $candidateOverride,
+            (int)($lockedDecision['linked_user_id'] ?? 0)
+        );
+
+        if ($targetFinalResult === 'lolos') {
+            $newUserId = candidateCreateUserFromApplicant($pdo, $candidateOverride, $recommendedPosition, $recommendedBatch);
+            $copiedDocuments = candidateCopyApplicantDocsToUser($pdo, $applicantId, $newUserId);
+
+            if ($copiedDocuments) {
+                $updateUserFields = [];
+                $updateUserParams = [];
+                foreach ($copiedDocuments as $column => $path) {
+                    $updateUserFields[] = "{$column} = ?";
+                    $updateUserParams[] = $path;
+                }
+                $updateUserParams[] = $newUserId;
+
+                $pdo->prepare("
+                    UPDATE user_rh
+                    SET " . implode(', ', $updateUserFields) . "
+                    WHERE id = ?
+                ")->execute($updateUserParams);
+            }
+        } else {
+            if ($lockedLinkedUserId <= 0) {
+                throw new Exception('User hasil pelolosan kandidat tidak ditemukan. Pastikan kandidat lolos ini memang sudah dibuatkan user_rh.');
+            }
+
+            $linkedUserFilePaths = candidateDeleteLinkedUser($pdo, $lockedLinkedUserId);
+            $newUserId = null;
+            $recommendedPosition = '';
+            $recommendedBatch = 0;
+        }
+
+        $updateFields = [
+            "overridden = 1",
+            "override_reason = ?",
+            "final_result = ?",
+            "recommended_position = ?",
+            "recommended_batch = ?",
+            "decided_by = ?",
+            "decided_at = NOW()",
+        ];
+        $updateParams = [
+            $overrideReason,
+            $targetFinalResult,
+            $targetFinalResult === 'lolos' ? $recommendedPosition : null,
+            $targetFinalResult === 'lolos' ? $recommendedBatch : null,
+            $actorName,
+        ];
+
+        if ($hasDecisionLinkedUserId) {
+            $updateFields[] = "linked_user_id = ?";
+            $updateParams[] = $targetFinalResult === 'lolos' ? $newUserId : null;
+        }
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'revised_by')) {
+            $updateFields[] = "revised_by = ?";
+            $updateParams[] = $actorName;
+        }
+
+        if (ems_column_exists($pdo, 'applicant_final_decisions', 'revised_at')) {
+            $updateFields[] = "revised_at = NOW()";
+        }
+
+        $updateParams[] = $applicantId;
+
+        $stmt = $pdo->prepare("
+            UPDATE applicant_final_decisions
+            SET " . implode(",\n                ", $updateFields) . "
+            WHERE applicant_id = ?
+        ");
+        $stmt->execute($updateParams);
+
+        $stmt = $pdo->prepare("
+            UPDATE medical_applicants
+            SET status = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            $targetFinalResult === 'lolos' ? 'accepted' : 'rejected',
+            $applicantId
+        ]);
+
+        $pdo->commit();
+        if ($linkedUserFilePaths !== []) {
+            candidateDeleteCleanupFilePaths($linkedUserFilePaths);
+        }
+        header('Location: candidates.php?override_success=1');
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        header('Location: candidates.php?override_error=' . urlencode($e->getMessage()));
+        exit;
+    }
+}
+
 $candidateSql = "
     SELECT
         m.id,
@@ -402,6 +903,9 @@ $candidateSql = "
         ir.ml_confidence   AS confidence,
         ir.is_locked       AS interview_locked,
         fd.final_result,
+        fd.override_reason,
+        fd.decided_by,
+        fd.decided_at,
         (
             SELECT COUNT(DISTINCT s.hr_id)
             FROM applicant_interview_scores s
@@ -421,6 +925,22 @@ $candidateSql = "
     LEFT JOIN applicant_final_decisions fd
         ON fd.applicant_id = m.id
 ";
+$hasDecisionRevisedBy = ems_column_exists($pdo, 'applicant_final_decisions', 'revised_by');
+$hasDecisionRevisedAt = ems_column_exists($pdo, 'applicant_final_decisions', 'revised_at');
+$hasDecisionLinkedUserId = ems_column_exists($pdo, 'applicant_final_decisions', 'linked_user_id');
+
+if ($hasDecisionRevisedBy) {
+    $candidateSql = str_replace('fd.decided_at,', "fd.decided_at,\n        fd.revised_by,\n", $candidateSql);
+}
+
+if ($hasDecisionRevisedAt) {
+    $candidateSql = str_replace('fd.decided_at,', "fd.decided_at,\n        fd.revised_at,\n", $candidateSql);
+}
+
+if ($hasDecisionLinkedUserId) {
+    $candidateSql = str_replace('fd.decided_at,', "fd.decided_at,\n        fd.linked_user_id,\n", $candidateSql);
+}
+
 $candidateParams = [];
 
 if (ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
@@ -488,6 +1008,29 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
             <?php if (isset($_GET['recruitment_settings_saved']) && $_GET['recruitment_settings_saved'] === '1'): ?>
                 <div class="alert alert-success mb-4">
                     Setting open/close rekrutmen berhasil disimpan.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['override_success']) && $_GET['override_success'] === '1'): ?>
+                <div class="alert alert-success mb-4">
+                    Kandidat berhasil diubah dari tidak lolos menjadi lolos.
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_GET['override_error'])): ?>
+                <div class="alert alert-danger mb-4">
+                    <?php
+                    $overrideError = (string)$_GET['override_error'];
+                    echo match ($overrideError) {
+                        'reason' => 'Alasan perubahan wajib diisi.',
+                        'target' => 'Target hasil perubahan tidak valid.',
+                        'position' => 'Posisi rekomendasi wajib dipilih.',
+                        'batch' => 'Batch wajib diisi dengan angka 1 sampai 26.',
+                        'missing' => 'Data keputusan kandidat tidak ditemukan.',
+                        'state' => 'Status kandidat tidak valid untuk diubah.',
+                        default => htmlspecialchars(urldecode($overrideError), ENT_QUOTES, 'UTF-8'),
+                    };
+                    ?>
                 </div>
             <?php endif; ?>
 
@@ -563,6 +1106,23 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
                                         <span class="<?= htmlspecialchars($finalDecisionMeta['class']) ?>">
                                             <?= htmlspecialchars($finalDecisionMeta['label']) ?>
                                         </span>
+                                        <?php
+                                        $revisionActor = (string)($c['revised_by'] ?? '');
+                                        $revisionAt = (string)($c['revised_at'] ?? '');
+                                        $decisionActor = (string)($c['decided_by'] ?? '');
+                                        $decisionAt = (string)($c['decided_at'] ?? '');
+                                        ?>
+                                        <?php if ($revisionActor !== '' && $revisionAt !== ''): ?>
+                                            <div class="meta-text mt-1">
+                                                Diubah oleh <?= htmlspecialchars($revisionActor) ?>
+                                                pada <?= htmlspecialchars(date('d M Y H:i', strtotime($revisionAt))) ?>
+                                            </div>
+                                        <?php elseif ($decisionActor !== '' && $decisionAt !== '' && ($c['override_reason'] ?? '') !== '' && $c['final_result'] === 'lolos'): ?>
+                                            <div class="meta-text mt-1">
+                                                Diputuskan oleh <?= htmlspecialchars($decisionActor) ?>
+                                                pada <?= htmlspecialchars(date('d M Y H:i', strtotime($decisionAt))) ?>
+                                            </div>
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span class="<?= htmlspecialchars($aiDecisionMeta['class']) ?>">
                                             <?= htmlspecialchars($aiDecisionMeta['label']) ?>
@@ -614,6 +1174,20 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
                                         </a>
                                     <?php endif; ?>
 
+                                    <?php if (in_array((string)($c['final_result'] ?? ''), ['lolos', 'tidak_lolos'], true)): ?>
+                                        <button
+                                            type="button"
+                                            class="btn-warning btn-sm action-icon-btn candidate-action-btn open-override-modal"
+                                            data-applicant-id="<?= (int)$c['id'] ?>"
+                                            data-applicant-name="<?= htmlspecialchars($c['ic_name'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-current-final-result="<?= htmlspecialchars((string)($c['final_result'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-override-reason="<?= htmlspecialchars((string)($c['override_reason'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                            title="Edit hasil kandidat"
+                                            aria-label="Edit hasil kandidat">
+                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                        </button>
+                                    <?php endif; ?>
+
                                     <?php if ($canHardDelete): ?>
                                         <form method="post">
                                             <?php echo csrfField(); ?>
@@ -639,6 +1213,70 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
         </div>
     </div>
 </section>
+
+<div id="overrideRejectedCandidateModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div>
+                <div class="modal-title">Ubah Tidak Lolos Menjadi Lolos</div>
+                <div class="meta-text mt-1">Tombol edit bisa dipakai dua arah dan akan menyimpan alasan perubahan, siapa yang mengubah, dan waktu perubahan.</div>
+            </div>
+            <button type="button" class="modal-close-btn" data-close-override-modal aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+
+        <form method="post" class="modal-form">
+            <?php echo csrfField(); ?>
+            <input type="hidden" name="override_rejected_candidate" value="1">
+            <input type="hidden" name="applicant_id" id="overrideApplicantId" value="">
+            <input type="hidden" name="target_final_result" id="overrideTargetFinalResult" value="lolos">
+
+            <div class="modal-content">
+                <div class="space-y-5">
+                    <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        Kandidat: <strong id="overrideApplicantName">-</strong>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                        Perubahan hasil: <strong id="overrideChangeDirection">-</strong>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="override_reason" id="overrideReasonLabel" class="text-sm font-semibold text-slate-900">Alasan Perubahan <span class="required">*</span></label>
+                        <textarea id="override_reason" name="override_reason" rows="4" placeholder="Jelaskan alasan perubahan hasil kandidat." required></textarea>
+                    </div>
+
+                    <div id="overridePassFields">
+                    <div class="form-group">
+                        <label for="override_recommended_position" class="text-sm font-semibold text-slate-900">Posisi yang Direkomendasikan <span class="required">*</span></label>
+                        <select id="override_recommended_position" name="recommended_position" required>
+                            <option value="">-- Pilih Posisi --</option>
+                            <?php foreach (ems_position_options() as $positionOption): ?>
+                                <option value="<?= htmlspecialchars($positionOption['value']) ?>">
+                                    <?= htmlspecialchars($positionOption['label']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="override_recommended_batch" class="text-sm font-semibold text-slate-900">Batch Pelamar <span class="required">*</span></label>
+                        <input type="number" id="override_recommended_batch" name="recommended_batch" min="1" max="26" placeholder="Contoh: 7" required>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" data-close-override-modal>Batal</button>
+                    <button type="submit" class="btn-primary">Simpan Perubahan</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <?php if ($canManageRecruitmentSettings): ?>
     <div id="recruitmentSettingsModal" class="modal-overlay hidden">
@@ -689,6 +1327,85 @@ $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $us
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const overrideModal = document.getElementById('overrideRejectedCandidateModal');
+        const overrideApplicantId = document.getElementById('overrideApplicantId');
+        const overrideTargetFinalResult = document.getElementById('overrideTargetFinalResult');
+        const overrideApplicantName = document.getElementById('overrideApplicantName');
+        const overrideChangeDirection = document.getElementById('overrideChangeDirection');
+        const overrideReasonLabel = document.getElementById('overrideReasonLabel');
+        const overrideReason = document.getElementById('override_reason');
+        const overridePosition = document.getElementById('override_recommended_position');
+        const overrideBatch = document.getElementById('override_recommended_batch');
+        const overridePassFields = document.getElementById('overridePassFields');
+        const overrideOpenButtons = document.querySelectorAll('.open-override-modal');
+        const overrideCloseButtons = document.querySelectorAll('[data-close-override-modal]');
+
+        function openOverrideModal(button) {
+            if (!overrideModal) return;
+
+            const currentFinalResult = button.dataset.currentFinalResult || '';
+            const targetFinalResult = currentFinalResult === 'lolos' ? 'tidak_lolos' : 'lolos';
+
+            overrideApplicantId.value = button.dataset.applicantId || '';
+            overrideTargetFinalResult.value = targetFinalResult;
+            overrideApplicantName.textContent = button.dataset.applicantName || '-';
+            overrideReason.value = button.dataset.overrideReason || '';
+            overrideChangeDirection.textContent = currentFinalResult === 'lolos'
+                ? 'Lolos -> Tidak Lolos'
+                : 'Tidak Lolos -> Lolos';
+
+            if (targetFinalResult === 'lolos') {
+                overrideReasonLabel.innerHTML = 'Alasan Meloloskan <span class="required">*</span>';
+                overrideReason.placeholder = 'Jelaskan alasan kenapa kandidat yang sebelumnya tidak lolos sekarang diloloskan.';
+                overridePassFields.classList.remove('hidden');
+                overridePosition.required = true;
+                overrideBatch.required = true;
+                overridePosition.value = '';
+                overrideBatch.value = '';
+            } else {
+                overrideReasonLabel.innerHTML = 'Alasan Menggagalkan <span class="required">*</span>';
+                overrideReason.placeholder = 'Jelaskan alasan kenapa kandidat yang sebelumnya lolos sekarang dikembalikan menjadi tidak lolos.';
+                overridePassFields.classList.add('hidden');
+                overridePosition.required = false;
+                overrideBatch.required = false;
+                overridePosition.value = '';
+                overrideBatch.value = '';
+            }
+
+            overrideModal.classList.remove('hidden');
+            overrideModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        }
+
+        function closeOverrideModal() {
+            if (!overrideModal) return;
+            overrideModal.classList.add('hidden');
+            overrideModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+
+        overrideOpenButtons.forEach(function(button) {
+            button.addEventListener('click', function() {
+                openOverrideModal(button);
+            });
+        });
+
+        overrideCloseButtons.forEach(function(button) {
+            button.addEventListener('click', closeOverrideModal);
+        });
+
+        overrideModal?.addEventListener('click', function(event) {
+            if (event.target === overrideModal) {
+                closeOverrideModal();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && overrideModal && !overrideModal.classList.contains('hidden')) {
+                closeOverrideModal();
+            }
+        });
+
         document.addEventListener('submit', function(e) {
             const form = e.target;
             const button = form.querySelector('.btn-finish-interview');
