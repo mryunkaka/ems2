@@ -28,6 +28,27 @@ function ems_training_valid_batch($value): ?int
     return ($batch >= 1 && $batch <= 26) ? $batch : null;
 }
 
+function ems_training_assignment_meta(?string $assignmentSource): array
+{
+    return match ((string)$assignmentSource) {
+        'auto_online_fill' => [
+            'card' => 'rounded-2xl border border-emerald-200 bg-emerald-50 p-3 mb-2',
+            'badge' => 'badge-success',
+            'label' => 'Baru Masuk Online',
+        ],
+        'manual_manager' => [
+            'card' => 'rounded-2xl border border-sky-200 bg-sky-50 p-3 mb-2',
+            'badge' => 'badge-info',
+            'label' => 'Manager Pilihan',
+        ],
+        default => [
+            'card' => 'rounded-2xl bg-white p-3 border border-slate-200 mb-2',
+            'badge' => 'badge-secondary',
+            'label' => 'Generate Awal',
+        ],
+    };
+}
+
 function ems_training_group_export_rows(array $groups): array
 {
     $rows = [];
@@ -400,8 +421,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <div class="text-sm text-slate-500">Belum ada mentor aktif.</div>
                                                 <?php else: ?>
                                                     <?php foreach ($group['mentors'] as $mentor): ?>
-                                                        <div class="rounded-2xl bg-white p-3 border border-slate-200 mb-2">
-                                                            <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$mentor['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                        <?php $mentorMeta = ems_training_assignment_meta($mentor['assignment_source'] ?? null); ?>
+                                                        <div class="<?= htmlspecialchars($mentorMeta['card'], ENT_QUOTES, 'UTF-8') ?>">
+                                                            <div class="flex items-start justify-between gap-2">
+                                                                <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$mentor['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                                <span class="<?= htmlspecialchars($mentorMeta['badge'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($mentorMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                            </div>
                                                             <div class="meta-text"><?= htmlspecialchars(ems_role_label($mentor['role'] ?? ''), ENT_QUOTES, 'UTF-8') ?> • <?= htmlspecialchars(ems_position_label($mentor['position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
                                                         </div>
                                                     <?php endforeach; ?>
@@ -413,8 +438,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <div class="text-sm text-slate-500">Belum ada anggota medis aktif.</div>
                                                 <?php else: ?>
                                                     <?php foreach ($group['trainees'] as $member): ?>
-                                                        <div class="rounded-2xl bg-white p-3 border border-slate-200 mb-2">
-                                                            <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$member['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                        <?php $memberMeta = ems_training_assignment_meta($member['assignment_source'] ?? null); ?>
+                                                        <div class="<?= htmlspecialchars($memberMeta['card'], ENT_QUOTES, 'UTF-8') ?>">
+                                                            <div class="flex items-start justify-between gap-2">
+                                                                <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$member['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                                <span class="<?= htmlspecialchars($memberMeta['badge'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($memberMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                            </div>
                                                             <div class="meta-text">Batch <?= (int)$member['batch'] ?> • <?= htmlspecialchars(ems_position_label($member['position'] ?? ''), ENT_QUOTES, 'UTF-8') ?> • <?= htmlspecialchars((string)($member['jenis_kelamin'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
                                                         </div>
                                                     <?php endforeach; ?>
