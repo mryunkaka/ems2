@@ -232,6 +232,19 @@ if ($action === 'add_user') {
         exit;
     }
 
+    $stmtDuplicateName = $pdo->prepare("
+        SELECT id
+        FROM user_rh
+        WHERE full_name = ?
+        LIMIT 1
+    ");
+    $stmtDuplicateName->execute([$name]);
+    if ($stmtDuplicateName->fetchColumn()) {
+        $_SESSION['flash_errors'][] = 'Nama sudah ada yang sama. Gunakan nama yang berbeda.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
     // ===============================
     // 🔐 PIN DEFAULT
     // ===============================
@@ -275,7 +288,17 @@ if ($action === 'add_user') {
             (" . implode(', ', $placeholders) . ")
     ");
 
-    $stmt->execute($params);
+    try {
+        $stmt->execute($params);
+    } catch (PDOException $e) {
+        if (($e->errorInfo[1] ?? null) === 1062 && str_contains(strtolower($e->getMessage()), 'uniq_user_name')) {
+            $_SESSION['flash_errors'][] = 'Nama sudah ada yang sama. Gunakan nama yang berbeda.';
+            header('Location: manage_users.php');
+            exit;
+        }
+
+        throw $e;
+    }
 
     $newUserId = (int)$pdo->lastInsertId();
 

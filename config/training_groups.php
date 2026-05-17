@@ -142,6 +142,44 @@ function ems_training_fetch_registered_batch_member_count(PDO $pdo, string $unit
     return (int)$stmt->fetchColumn();
 }
 
+function ems_training_fetch_batch_members(PDO $pdo, string $unitCode, int $batch): array
+{
+    $positions = ems_training_member_positions();
+    $placeholders = implode(',', array_fill(0, count($positions), '?'));
+    $params = array_merge([$unitCode, $batch], $positions);
+
+    $availabilityJoin = ems_training_availability_tables_ready($pdo)
+        ? "LEFT JOIN training_user_availability tua ON tua.user_id = ur.id"
+        : "";
+
+    $availabilitySelect = ems_training_availability_tables_ready($pdo)
+        ? "COALESCE(tua.status, 'offline') AS availability_status"
+        : "'offline' AS availability_status";
+
+    $stmt = $pdo->prepare("
+        SELECT
+            ur.id,
+            ur.full_name,
+            ur.batch,
+            ur.position,
+            ur.role,
+            ur.division,
+            ur.jenis_kelamin,
+            {$availabilitySelect}
+        FROM user_rh ur
+        {$availabilityJoin}
+        WHERE ur.is_active = 1
+          AND ur.role = 'Staff'
+          AND COALESCE(ur.unit_code, 'roxwood') = ?
+          AND ur.batch = ?
+          AND ur.position IN ($placeholders)
+        ORDER BY ur.full_name ASC
+    ");
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
 function ems_training_fetch_online_trainees(PDO $pdo, string $unitCode, int $batch): array
 {
     if (!ems_training_availability_tables_ready($pdo)) {

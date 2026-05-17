@@ -210,6 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['close_training_groups
 
 $activeGroups = [];
 $onlineMembers = [];
+$offlineMembers = [];
 $onlineManagers = [];
 $registeredBatchCount = 0;
 $autoFillSummary = ['trainees_assigned' => 0, 'mentors_assigned' => 0];
@@ -225,6 +226,10 @@ if ($tablesReady && $availabilityTablesReady && $selectedBatch !== null) {
     }
 
     $onlineMembers = ems_training_fetch_online_trainees($pdo, $currentUnit, $selectedBatch);
+    $batchMembers = ems_training_fetch_batch_members($pdo, $currentUnit, $selectedBatch);
+    $offlineMembers = array_values(array_filter($batchMembers, static function (array $member): bool {
+        return ($member['availability_status'] ?? 'offline') !== 'online';
+    }));
     $onlineManagers = ems_training_fetch_online_managers($pdo, $currentUnit);
     $registeredBatchCount = ems_training_fetch_registered_batch_member_count($pdo, $currentUnit, $selectedBatch);
     $activeGroups = ems_training_attach_group_members($pdo, ems_training_fetch_active_groups($pdo, $currentUnit, $selectedBatch));
@@ -322,6 +327,50 @@ include __DIR__ . '/../partials/sidebar.php';
 
             <div class="grid gap-4 lg:grid-cols-[410px_minmax(0,1fr)]">
                 <div class="space-y-4">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <?= ems_icon('signal', 'h-5 w-5') ?>
+                                <span>Online Batch <?= $selectedBatch ?> (<?= count($onlineMembers) ?>)</span>
+                            </div>
+                            <div class="space-y-2" style="max-height: 360px; overflow-y: auto; padding-right: 4px;">
+                                <?php if ($onlineMembers === []): ?>
+                                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                                        Belum ada medis batch ini yang online.
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($onlineMembers as $member): ?>
+                                        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                                            <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$member['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                            <div class="meta-text">Batch <?= (int)$member['batch'] ?> • <?= htmlspecialchars(ems_position_label($member['position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <?= ems_icon('pause-circle', 'h-5 w-5') ?>
+                                <span>Belum Online Batch <?= $selectedBatch ?> (<?= count($offlineMembers) ?>)</span>
+                            </div>
+                            <div class="space-y-2" style="max-height: 360px; overflow-y: auto; padding-right: 4px;">
+                                <?php if ($offlineMembers === []): ?>
+                                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                                        Semua medis batch ini sudah online.
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($offlineMembers as $member): ?>
+                                        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                            <div class="font-semibold text-slate-900"><?= htmlspecialchars((string)$member['full_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                            <div class="meta-text">Batch <?= (int)$member['batch'] ?> • <?= htmlspecialchars(ems_position_label($member['position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="card-header">
                             <?= ems_icon('users', 'h-5 w-5') ?>
