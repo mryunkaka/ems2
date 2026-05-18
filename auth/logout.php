@@ -25,15 +25,21 @@ function logoutRememberLoginCookieOptions(int $expires): array
 }
 
 $logoutUnit = $_SESSION['ems_active_unit'] ?? ($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
+$logoutUserId = isset($_SESSION['user_rh']['id']) ? (int) $_SESSION['user_rh']['id'] : null;
 
 // -----------------------------------------------------
 // Hapus token dari database
 // -----------------------------------------------------
-if (!empty($_COOKIE['remember_login'])) {
-    [$userId] = explode(':', $_COOKIE['remember_login'], 2);
-
+if ($logoutUserId !== null && $logoutUserId > 0) {
     $stmt = $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?");
-    $stmt->execute([$userId]);
+    $stmt->execute([$logoutUserId]);
+} elseif (!empty($_COOKIE['remember_login'])) {
+    $cookieParts = explode(':', (string) $_COOKIE['remember_login'], 2);
+
+    if (count($cookieParts) === 2 && ctype_digit($cookieParts[0])) {
+        $stmt = $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?");
+        $stmt->execute([(int) $cookieParts[0]]);
+    }
 }
 
 // -----------------------------------------------------
