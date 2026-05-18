@@ -113,18 +113,27 @@ try {
     }
     
     // =====================
-    // 3. FILE UPLOAD MRI
+    // 3. FILE UPLOAD FOTO PENDUKUNG
     // =====================
-    
+
+    $supportingImageFiles = ems_normalize_uploaded_files_array($_FILES['supporting_image_files'] ?? []);
     $mriPath = null;
-    if (isset($_FILES['mri_file']) && $_FILES['mri_file']['error'] === UPLOAD_ERR_OK) {
-        $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
-        if (!$mriPath && $visibilityScope === 'forensic_private') {
-            throw new Exception('Gagal upload Foto MRI. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+    $additionalSupportingImageFiles = [];
+
+    if ($supportingImageFiles !== []) {
+        $mriPath = uploadAndCompressFile(array_shift($supportingImageFiles), 'medical_records/mri', 500000, 5000000);
+        if (!$mriPath) {
+            throw new Exception('Gagal upload foto pendukung utama. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
         }
-        // MRI tetap optional untuk mode standard
+
+        $additionalSupportingImageFiles = $supportingImageFiles;
+    } elseif (isset($_FILES['mri_file']) && ($_FILES['mri_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+        $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
+        if (!$mriPath) {
+            throw new Exception('Gagal upload foto pendukung utama. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+        }
     } elseif ($visibilityScope === 'forensic_private') {
-        throw new Exception('Upload Foto MRI wajib dilakukan.');
+        throw new Exception('Upload foto pendukung wajib dilakukan minimal 1 file.');
     }
     
     // =====================
@@ -195,6 +204,7 @@ try {
     $placeholders = implode(', ', array_fill(0, count($columns), '?'));
 
     ems_ensure_medical_record_assistants_table($pdo);
+    ems_ensure_medical_record_supporting_images_table($pdo);
     $pdo->beginTransaction();
     $stmt = $pdo->prepare("
         INSERT INTO medical_records ({$quotedColumns})
@@ -204,6 +214,7 @@ try {
 
     $recordId = (int) $pdo->lastInsertId();
     ems_save_medical_record_assistants($pdo, $recordId, $assistantIds);
+    ems_store_medical_record_supporting_images($pdo, $recordId, $additionalSupportingImageFiles);
 
     $notificationUserIds = ems_medical_record_notification_user_ids($doctorId, $assistantIds);
     if ($notificationUserIds !== []) {

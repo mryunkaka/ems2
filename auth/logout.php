@@ -9,6 +9,21 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config/database.php';
 
+function logoutRememberLoginCookieOptions(int $expires): array
+{
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+        || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+
+    return [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
 $logoutUnit = $_SESSION['ems_active_unit'] ?? ($_SESSION['user_rh']['unit_code'] ?? 'roxwood');
 
 // -----------------------------------------------------
@@ -24,7 +39,7 @@ if (!empty($_COOKIE['remember_login'])) {
 // -----------------------------------------------------
 // Hapus cookie
 // -----------------------------------------------------
-setcookie('remember_login', '', time() - 3600, '/');
+setcookie('remember_login', '', logoutRememberLoginCookieOptions(time() - 3600));
 
 // -----------------------------------------------------
 // Destroy session

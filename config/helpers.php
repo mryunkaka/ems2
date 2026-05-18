@@ -162,6 +162,147 @@ function ems_get_medical_record_assistants(PDO $pdo, int $recordId, ?int $fallba
     return $assistants;
 }
 
+function ems_ensure_medical_record_supporting_images_table(PDO $pdo): void
+{
+    static $ensured = false;
+
+    if ($ensured) {
+        return;
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS medical_record_supporting_images (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            medical_record_id INT(11) NOT NULL,
+            file_path VARCHAR(255) NOT NULL,
+            sort_order INT(11) NOT NULL DEFAULT 1,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_mrsi_record_id (medical_record_id),
+            KEY idx_mrsi_sort_order (sort_order),
+            CONSTRAINT fk_mrsi_record FOREIGN KEY (medical_record_id) REFERENCES medical_records(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+    ");
+
+    $ensured = true;
+}
+
+function ems_normalize_uploaded_files_array(array $fileBag): array
+{
+    if (!isset($fileBag['name'])) {
+        return [];
+    }
+
+    if (!is_array($fileBag['name'])) {
+        return isset($fileBag['error']) && (int)$fileBag['error'] === UPLOAD_ERR_OK ? [$fileBag] : [];
+    }
+
+    $files = [];
+    $count = count($fileBag['name']);
+    for ($i = 0; $i < $count; $i++) {
+        $error = (int)($fileBag['error'][$i] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+
+        $files[] = [
+            'name' => $fileBag['name'][$i] ?? '',
+            'type' => $fileBag['type'][$i] ?? '',
+            'tmp_name' => $fileBag['tmp_name'][$i] ?? '',
+            'error' => $error,
+            'size' => (int)($fileBag['size'][$i] ?? 0),
+        ];
+    }
+
+    return $files;
+}
+
+function ems_store_medical_record_supporting_images(PDO $pdo, int $recordId, array $files): array
+{
+    if ($recordId <= 0 || $files === []) {
+        return [];
+    }
+
+    ems_ensure_medical_record_supporting_images_table($pdo);
+
+    $existingCountStmt = $pdo->prepare('SELECT COUNT(*) FROM medical_record_supporting_images WHERE medical_record_id = ?');
+    $existingCountStmt->execute([$recordId]);
+    $sortOrder = (int)$existingCountStmt->fetchColumn();
+
+    $insertStmt = $pdo->prepare("
+        INSERT INTO medical_record_supporting_images (medical_record_id, file_path, sort_order)
+        VALUES (?, ?, ?)
+    ");
+
+    $storedPaths = [];
+    foreach ($files as $file) {
+        $path = uploadAndCompressFile($file, 'medical_records/mri', 500000, 5000000);
+        if (!$path) {
+            throw new RuntimeException('Gagal upload lampiran foto pendukung. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+        }
+
+        $sortOrder++;
+        $insertStmt->execute([$recordId, $path, $sortOrder]);
+        $storedPaths[] = $path;
+    }
+
+    return $storedPaths;
+}
+
+function ems_get_medical_record_supporting_images(PDO $pdo, int $recordId, ?string $legacyPath = null): array
+{
+    $attachments = [];
+
+    $legacyPath = trim((string)$legacyPath);
+    if ($legacyPath !== '') {
+        $attachments[] = [
+            'id' => 0,
+            'file_path' => $legacyPath,
+            'sort_order' => 0,
+            'is_legacy' => true,
+        ];
+    }
+
+    if ($recordId > 0 && ems_table_exists($pdo, 'medical_record_supporting_images')) {
+        $stmt = $pdo->prepare("
+            SELECT id, file_path, sort_order
+            FROM medical_record_supporting_images
+            WHERE medical_record_id = ?
+            ORDER BY sort_order ASC, id ASC
+        ");
+        $stmt->execute([$recordId]);
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
+            $attachments[] = [
+                'id' => (int)($row['id'] ?? 0),
+                'file_path' => (string)($row['file_path'] ?? ''),
+                'sort_order' => (int)($row['sort_order'] ?? 0),
+                'is_legacy' => false,
+            ];
+        }
+    }
+
+    return array_values(array_filter($attachments, static function (array $item): bool {
+        return trim((string)($item['file_path'] ?? '')) !== '';
+    }));
+}
+
+function ems_delete_medical_record_supporting_images(PDO $pdo, int $recordId): array
+{
+    if ($recordId <= 0 || !ems_table_exists($pdo, 'medical_record_supporting_images')) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare('SELECT file_path FROM medical_record_supporting_images WHERE medical_record_id = ?');
+    $stmt->execute([$recordId]);
+    $paths = array_values(array_filter(array_map('strval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [], 'file_path'))));
+
+    $deleteStmt = $pdo->prepare('DELETE FROM medical_record_supporting_images WHERE medical_record_id = ?');
+    $deleteStmt->execute([$recordId]);
+
+    return $paths;
+}
+
 function ems_medical_record_notification_user_ids(int $doctorId, array $assistantIds): array
 {
     $userIds = [];

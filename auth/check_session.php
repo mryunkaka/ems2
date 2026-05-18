@@ -4,17 +4,44 @@ require __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json');
 
-// Jika tidak ada session login → anggap logout
-if (!isset($_SESSION['user_rh'], $_COOKIE['remember_login'])) {
+function checkSessionRememberLoginCookieOptions(int $expires): array
+{
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+        || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+
+    return [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
+$hasSession = isset($_SESSION['user_rh']);
+$rememberCookie = $_COOKIE['remember_login'] ?? '';
+
+if (!$hasSession && $rememberCookie === '') {
     echo json_encode(['valid' => false]);
     exit;
 }
 
-[$userId, $token] = explode(':', $_COOKIE['remember_login'], 2);
+if ($rememberCookie === '') {
+    echo json_encode(['valid' => true]);
+    exit;
+}
 
-// Cari token di DB
+$cookieParts = explode(':', $rememberCookie, 2);
+if (count($cookieParts) !== 2 || $cookieParts[0] === '' || $cookieParts[1] === '') {
+    echo json_encode(['valid' => $hasSession]);
+    exit;
+}
+
+[$userId, $token] = $cookieParts;
+
 $stmt = $pdo->prepare("
-    SELECT token_hash 
+    SELECT token_hash
     FROM remember_tokens
     WHERE user_id = ?
       AND expired_at > NOW()
@@ -22,7 +49,6 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Cocokkan token
 foreach ($tokens as $row) {
     if (password_verify($token, $row['token_hash'])) {
         echo json_encode(['valid' => true]);
@@ -30,9 +56,8 @@ foreach ($tokens as $row) {
     }
 }
 
-// Token tidak ditemukan → SESSION DICABUT
 session_destroy();
-setcookie('remember_login', '', time() - 3600, '/');
+setcookie('remember_login', '', checkSessionRememberLoginCookieOptions(time() - 3600));
 
 echo json_encode(['valid' => false]);
 exit;

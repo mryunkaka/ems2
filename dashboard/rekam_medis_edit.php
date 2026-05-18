@@ -72,6 +72,7 @@ if (!empty($record['doctor_id'])) {
 }
 
 $assistants = ems_get_medical_record_assistants($pdo, (int) $record['id'], isset($record['assistant_id']) ? (int) $record['assistant_id'] : null);
+$supportingImages = ems_get_medical_record_supporting_images($pdo, (int)$record['id'], (string)($record['mri_file_path'] ?? ''));
 if ($assistants === []) {
     $assistants = [
         ['id' => 0, 'full_name' => '', 'position' => ''],
@@ -229,37 +230,44 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                         </div>
                         
-                        <!-- MRI (OPSIONAL) -->
+                        <!-- FOTO PENDUKUNG -->
                         <div>
-                            <label class="form-label">Foto MRI (Opsional)</label>
-                            <?php if ($record['mri_file_path'] && file_exists(__DIR__ . '/../' . $record['mri_file_path'])): ?>
-                                <div class="mb-2">
-                                    <img src="<?= htmlspecialchars(ems_asset($record['mri_file_path'])) ?>"
-                                         alt="MRI" class="max-h-48 rounded border" />
-                                    <p class="text-xs text-gray-500 mt-1">File saat ini</p>
-                                </div>
-                            <?php elseif ($record['mri_file_path']): ?>
-                                <div class="mb-2 p-4 bg-yellow-50 border border-yellow-200 rounded">
-                                    <p class="text-sm text-yellow-800">
-                                        <strong>File tidak ditemukan:</strong> <?= htmlspecialchars($record['mri_file_path']) ?>
-                                    </p>
-                                    <p class="text-xs text-yellow-600 mt-1">Silakan upload file baru</p>
+                            <label class="form-label">Foto MRI/CT Scan/USG/Dll (Opsional)</label>
+                            <?php if ($supportingImages !== []): ?>
+                                <div class="mb-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    <?php foreach ($supportingImages as $image): ?>
+                                        <?php $imagePath = trim((string)($image['file_path'] ?? '')); ?>
+                                        <?php if ($imagePath === '') continue; ?>
+                                        <div class="rounded border border-slate-200 bg-white p-2">
+                                            <?php if (file_exists(__DIR__ . '/../' . ltrim($imagePath, '/'))): ?>
+                                                <img src="<?= htmlspecialchars(ems_asset($imagePath)) ?>"
+                                                     alt="Foto pendukung" class="h-32 w-full rounded object-cover" />
+                                                <p class="text-xs text-gray-500 mt-2">
+                                                    <?= !empty($image['is_legacy']) ? 'File utama lama' : 'Lampiran tambahan' ?>
+                                                </p>
+                                            <?php else: ?>
+                                                <div class="p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                                                    File tidak ditemukan: <?= htmlspecialchars($imagePath) ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
                                 </div>
                             <?php endif; ?>
                             <div class="file-upload-wrapper">
-                                <input type="file" id="mri_file" name="mri_file" 
-                                       accept="image/png,image/jpeg" hidden 
-                                       @change="previewImage($event, 'mri_preview')" />
-                                <label for="mri_file" class="file-upload-label">
-                                    <div class="preview-container h-48 flex items-center justify-center bg-gray-50 rounded border border-gray-200" 
-                                         id="mri_preview">
-                                        <span class="text-gray-400 text-sm">Klik untuk upload file baru</span>
+                                <input type="file" id="supporting_image_files" name="supporting_image_files[]"
+                                       accept="image/png,image/jpeg" hidden multiple
+                                       @change="previewMultipleImages($event, 'supporting_images_preview')" />
+                                <label for="supporting_image_files" class="file-upload-label">
+                                    <div class="preview-container min-h-48 p-3 flex items-center justify-center bg-gray-50 rounded border border-gray-200" 
+                                         id="supporting_images_preview">
+                                        <span class="text-gray-400 text-sm">Klik untuk upload file tambahan</span>
                                     </div>
                                     <div class="mt-2 text-center">
-                                        <span class="btn-secondary btn-sm">Upload File Baru</span>
+                                        <span class="btn-secondary btn-sm">Upload File Tambahan</span>
                                     </div>
                                 </label>
-                                <p class="text-xs text-gray-500 mt-1">Kosongkan jika tidak ingin mengganti file</p>
+                                <p class="text-xs text-gray-500 mt-1">Bisa pilih banyak file. File lama tetap dipertahankan, upload baru akan ditambahkan sebagai lampiran baru.</p>
                             </div>
                         </div>
                     </div>
@@ -517,6 +525,63 @@ window.previewImage = function(event, previewId) {
     }
 };
 
+window.previewMultipleImages = function(event, previewId) {
+    const files = Array.from(event.target.files || []);
+    const previewEl = document.getElementById(previewId);
+    if (!previewEl) {
+        return;
+    }
+
+    if (files.length === 0) {
+        previewEl.innerHTML = '<span class="text-gray-400 text-sm">Klik untuk upload file tambahan</span>';
+        return;
+    }
+
+    for (const file of files) {
+        if (!file.type.startsWith('image/')) {
+            alert('Semua file harus berupa gambar (JPG/PNG)');
+            event.target.value = '';
+            previewEl.innerHTML = '<span class="text-gray-400 text-sm">Klik untuk upload file tambahan</span>';
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Ukuran file maksimal 1MB');
+            event.target.value = '';
+            previewEl.innerHTML = '<span class="text-gray-400 text-sm">Klik untuk upload file tambahan</span>';
+            return;
+        }
+    }
+
+    previewEl.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 md:grid-cols-3 gap-3 w-full';
+
+    files.forEach((file) => {
+        const item = document.createElement('div');
+        item.className = 'rounded border border-gray-200 bg-white p-2';
+
+        const image = document.createElement('img');
+        image.className = 'h-28 w-full rounded object-cover';
+
+        const caption = document.createElement('div');
+        caption.className = 'mt-2 text-xs text-slate-600 break-words';
+        caption.textContent = file.name;
+
+        item.appendChild(image);
+        item.appendChild(caption);
+        grid.appendChild(item);
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            image.src = String(e.target.result || '');
+        };
+        reader.readAsDataURL(file);
+    });
+
+    previewEl.appendChild(grid);
+};
+
 // Alpine.js component untuk form handling
 window.medicalForm = function() {
     return {
@@ -526,6 +591,10 @@ window.medicalForm = function() {
 
         previewImage(event, previewId) {
             window.previewImage(event, previewId);
+        },
+
+        previewMultipleImages(event, previewId) {
+            window.previewMultipleImages(event, previewId);
         }
     }
 };

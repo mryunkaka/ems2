@@ -518,6 +518,65 @@ if ($action === 'update_case_status') {
     disciplinaryRedirect($redirectTo);
 }
 
+if ($action === 'delete_case') {
+    $caseId = (int)($_POST['id'] ?? 0);
+
+    if ($caseId <= 0) {
+        $_SESSION['flash_errors'][] = 'Data kasus tidak valid.';
+        disciplinaryRedirect($redirectTo);
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $caseStmt = $pdo->prepare("
+            SELECT id, case_code, case_name
+            FROM disciplinary_cases
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $caseStmt->execute([$caseId]);
+        $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$case) {
+            throw new RuntimeException('Kasus tidak ditemukan.');
+        }
+
+        $attachmentPaths = [];
+        if (ems_table_exists($pdo, 'disciplinary_case_attachments')) {
+            $attachmentStmt = $pdo->prepare("
+                SELECT file_path
+                FROM disciplinary_case_attachments
+                WHERE case_id = ?
+            ");
+            $attachmentStmt->execute([$caseId]);
+            $attachmentPaths = array_column($attachmentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [], 'file_path');
+        }
+
+        $delete = $pdo->prepare("
+            DELETE FROM disciplinary_cases
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $delete->execute([$caseId]);
+
+        if ($delete->rowCount() < 1) {
+            throw new RuntimeException('Kasus gagal dihapus.');
+        }
+
+        $pdo->commit();
+        disciplinaryDeleteStoredFiles($attachmentPaths);
+        $_SESSION['flash_messages'][] = 'Kasus ' . (string)($case['case_code'] ?: $case['case_name']) . ' berhasil dihapus.';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['flash_errors'][] = 'Gagal menghapus kasus: ' . $e->getMessage();
+    }
+
+    disciplinaryRedirect($redirectTo);
+}
+
 if ($action === 'save_point_reduction') {
     $subjectUserId = (int)($_POST['subject_user_id'] ?? 0);
     $relatedCaseId = (int)($_POST['related_case_id'] ?? 0);
@@ -594,6 +653,48 @@ if ($action === 'save_point_reduction') {
         $_SESSION['flash_messages'][] = 'Pengurangan poin berhasil dicatat.';
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Gagal mencatat pengurangan poin: ' . $e->getMessage();
+    }
+
+    disciplinaryRedirect($redirectTo);
+}
+
+if ($action === 'delete_point_reduction') {
+    $reductionId = (int)($_POST['id'] ?? 0);
+
+    if ($reductionId <= 0) {
+        $_SESSION['flash_errors'][] = 'Data pengurangan poin tidak valid.';
+        disciplinaryRedirect($redirectTo);
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, reduction_type, reduction_points
+            FROM disciplinary_point_reductions
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$reductionId]);
+        $reduction = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$reduction) {
+            throw new RuntimeException('Riwayat pengurangan poin tidak ditemukan.');
+        }
+
+        $delete = $pdo->prepare("
+            DELETE FROM disciplinary_point_reductions
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $delete->execute([$reductionId]);
+
+        if ($delete->rowCount() < 1) {
+            throw new RuntimeException('Riwayat pengurangan poin gagal dihapus.');
+        }
+
+        $reductionLabel = ems_disciplinary_point_reduction_label((string)($reduction['reduction_type'] ?? ''));
+        $_SESSION['flash_messages'][] = 'Riwayat pengurangan poin ' . $reductionLabel . ' (-' . number_format((int)($reduction['reduction_points'] ?? 0), 0, ',', '.') . ' poin) berhasil dihapus.';
+    } catch (Throwable $e) {
+        $_SESSION['flash_errors'][] = 'Gagal menghapus riwayat pengurangan poin: ' . $e->getMessage();
     }
 
     disciplinaryRedirect($redirectTo);

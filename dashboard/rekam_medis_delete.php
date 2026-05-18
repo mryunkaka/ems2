@@ -67,6 +67,13 @@ try {
     if ($record['mri_file_path'] && file_exists(__DIR__ . '/../' . $record['mri_file_path'])) {
         unlink(__DIR__ . '/../' . $record['mri_file_path']);
     }
+
+    foreach (ems_delete_medical_record_supporting_images($pdo, $id) as $attachmentPath) {
+        $fullPath = __DIR__ . '/../' . ltrim((string)$attachmentPath, '/');
+        if (is_file($fullPath)) {
+            @unlink($fullPath);
+        }
+    }
     
     // Delete record
     $stmt = $pdo->prepare("DELETE FROM medical_records WHERE id = ?");

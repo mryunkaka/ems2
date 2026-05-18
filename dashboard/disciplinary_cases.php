@@ -464,6 +464,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Poin</th>
                                 <th>Toleransi</th>
                                 <th>Lampiran</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -485,6 +486,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><?= htmlspecialchars(disciplinaryToleranceSummaryLabel((string)$case['tolerance_summary']), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= disciplinaryAttachmentLinksHtml($attachmentsMap[(int)$case['id']] ?? []) ?></td>
+                                    <td class="table-actions">
+                                        <form method="POST" action="disciplinary_committee_action.php" class="inline js-delete-case" data-confirm="Yakin ingin menghapus kasus ini? Surat peringatan terkait akan ikut terhapus, dan relasi pengurangan poin akan dilepas dari kasus ini.">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="delete_case">
+                                            <input type="hidden" name="redirect_to" value="disciplinary_cases.php">
+                                            <input type="hidden" name="id" value="<?= (int)$case['id'] ?>">
+                                            <button type="submit" class="btn-danger action-icon-btn" title="Hapus kasus" aria-label="Hapus kasus">
+                                                <?= ems_icon('trash', 'h-4 w-4') ?>
+                                            </button>
+                                        </form>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -508,6 +520,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Kasus Terkait</th>
                                 <th>Catatan</th>
                                 <th>Dicatat Oleh</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -528,6 +541,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td>
                                         <?= htmlspecialchars((string)$reduction['created_by_name'], ENT_QUOTES, 'UTF-8') ?>
                                         <div class="meta-text-xs"><?= htmlspecialchars(formatTanggalID((string)$reduction['created_at']), ENT_QUOTES, 'UTF-8') ?></div>
+                                    </td>
+                                    <td class="table-actions">
+                                        <form method="POST" action="disciplinary_committee_action.php" class="inline js-delete-reduction" data-confirm="Yakin ingin menghapus riwayat pengurangan poin ini? Total poin aktif medis akan otomatis kembali bertambah.">
+                                            <?= csrfField(); ?>
+                                            <input type="hidden" name="action" value="delete_point_reduction">
+                                            <input type="hidden" name="redirect_to" value="disciplinary_cases.php">
+                                            <input type="hidden" name="id" value="<?= (int)$reduction['id'] ?>">
+                                            <button type="submit" class="btn-danger action-icon-btn" title="Hapus pengurangan poin" aria-label="Hapus pengurangan poin">
+                                                <?= ems_icon('trash', 'h-4 w-4') ?>
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -1175,6 +1199,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (event.target.closest('.btn-close-attachment-preview')) {
             closePreviewModal();
+            return;
+        }
+
+        const deleteCaseForm = event.target.closest('.js-delete-case');
+        if (deleteCaseForm) {
+            const message = deleteCaseForm.dataset.confirm || 'Yakin ingin menghapus kasus ini?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
+            return;
+        }
+
+        const deleteReductionForm = event.target.closest('.js-delete-reduction');
+        if (deleteReductionForm) {
+            const message = deleteReductionForm.dataset.confirm || 'Yakin ingin menghapus riwayat pengurangan poin ini?';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
             return;
         }
 

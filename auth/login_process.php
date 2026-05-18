@@ -10,6 +10,21 @@ if (session_status() === PHP_SESSION_NONE) {
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+function buildRememberLoginCookieOptions(int $expires): array
+{
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+        || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+
+    return [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
 $requestedLoginUnit = ems_normalize_unit_code($_POST['login_unit'] ?? $_GET['unit'] ?? 'roxwood');
 $requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
 
@@ -122,6 +137,8 @@ $pdo->prepare("DELETE FROM remember_tokens WHERE user_id = ?")
 // =====================================================
 // SET SESSION LOGIN
 // =====================================================
+session_regenerate_id(true);
+
 $_SESSION['user_rh'] = [
     'id'       => $user['id'],
     'name'     => $user['full_name'],
@@ -149,11 +166,7 @@ $stmt->execute([$user['id'], $hash, $exp]);
 setcookie(
     'remember_login',
     $user['id'] . ':' . $token,
-    time() + (86400 * 365),
-    '/',
-    '',
-    false,
-    true // HttpOnly
+    buildRememberLoginCookieOptions(time() + (86400 * 365))
 );
 
 // =====================================================

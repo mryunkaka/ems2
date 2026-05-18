@@ -142,17 +142,24 @@ try {
     }
     
     // =====================
-    // 3. FILE UPLOAD MRI (OPTIONAL - REPLACE)
+    // 3. FILE UPLOAD FOTO PENDUKUNG
     // =====================
-    
-    $mriPath = $record['mri_file_path']; // Keep existing
-    if (isset($_FILES['mri_file']) && $_FILES['mri_file']['error'] === UPLOAD_ERR_OK) {
-        // Delete old file if exists
-        if ($mriPath && file_exists(__DIR__ . '/../' . $mriPath)) {
-            unlink(__DIR__ . '/../' . $mriPath);
+
+    $mriPath = $record['mri_file_path']; // Keep existing legacy image
+    $supportingImageFiles = ems_normalize_uploaded_files_array($_FILES['supporting_image_files'] ?? []);
+
+    if ($mriPath === null || $mriPath === '') {
+        if (isset($_FILES['mri_file']) && ($_FILES['mri_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
+            if (!$mriPath) {
+                throw new Exception('Gagal upload foto pendukung utama.');
+            }
+        } elseif ($supportingImageFiles !== []) {
+            $mriPath = uploadAndCompressFile(array_shift($supportingImageFiles), 'medical_records/mri', 500000, 5000000);
+            if (!$mriPath) {
+                throw new Exception('Gagal upload foto pendukung utama.');
+            }
         }
-        
-        $mriPath = uploadAndCompressFile($_FILES['mri_file'], 'medical_records/mri', 500000, 5000000);
     }
     
     // =====================
@@ -211,6 +218,9 @@ try {
     $values[] = $visibilityScope;
     $values[] = $id;
 
+    ems_ensure_medical_record_supporting_images_table($pdo);
+    $pdo->beginTransaction();
+
     $stmt = $pdo->prepare("
         UPDATE medical_records
         SET " . implode(",\n            ", $setParts) . "
@@ -220,12 +230,17 @@ try {
     $stmt->execute($values);
 
     ems_save_medical_record_assistants($pdo, $id, $assistantIds);
+    ems_store_medical_record_supporting_images($pdo, $id, $supportingImageFiles);
+    $pdo->commit();
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil diupdate.';
     header('Location: ' . $redirectTo);
     exit;
     
 } catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
     $_SESSION['flash_errors'][] = $e->getMessage();
     $mode = trim($_POST['mode'] ?? '');
     $suffix = $mode !== '' ? '&mode=' . urlencode($mode) : '';

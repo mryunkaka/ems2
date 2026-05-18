@@ -6,6 +6,21 @@ if (session_status() === PHP_SESSION_NONE) {
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+function authGuardRememberLoginCookieOptions(int $expires): array
+{
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+        || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https');
+
+    return [
+        'expires' => $expires,
+        'path' => '/',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ];
+}
+
 function authGuardUserRhHasColumn(PDO $pdo, string $column): bool
 {
     static $cache = [];
@@ -33,8 +48,8 @@ if (isset($_SESSION['user_rh'])) {
             $canViewAllUnitsSelect = $hasCanViewAllUnitsColumn ? ', can_view_all_units' : '';
             $stmt = $pdo->prepare("
                 SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}
-                FROM user_rh 
-                WHERE id = ? 
+                FROM user_rh
+                WHERE id = ?
                 LIMIT 1
             ");
             $stmt->execute([$uid]);
@@ -53,17 +68,14 @@ if (isset($_SESSION['user_rh'])) {
                 $_SESSION['user_rh']['can_view_all_units'] = isset($row['can_view_all_units'])
                     ? ((int)$row['can_view_all_units'] === 1 ? 1 : 0)
                     : ($_SESSION['user_rh']['can_view_all_units'] ?? 0);
-                // Keep backward-compatible name keys in sync
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
                     $_SESSION['user_rh']['full_name'] = $row['full_name'];
                 }
             } else {
-                // User deleted
                 unset($_SESSION['user_rh']);
             }
         } catch (Throwable $e) {
-            // Soft-fail: still normalize whatever is in session
             $_SESSION['user_rh']['position'] = ems_normalize_position($_SESSION['user_rh']['position'] ?? '');
         }
     } else {
@@ -73,7 +85,6 @@ if (isset($_SESSION['user_rh'])) {
     $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
     $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
     if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
-        // Exception: sertifikat_heli pages allow all logged-in users
         if ($currentScript !== 'sertifikat_heli_pendaftaran.php' && $currentScript !== 'sertifikat_heli_action.php') {
             ems_enforce_dashboard_page_access(
                 $_SESSION['user_rh']['division'] ?? '',
@@ -87,44 +98,48 @@ if (isset($_SESSION['user_rh'])) {
 }
 
 if (!empty($_COOKIE['remember_login'])) {
+    $cookieParts = explode(':', $_COOKIE['remember_login'], 2);
 
-    [$userId, $token] = explode(':', $_COOKIE['remember_login'], 2);
+    if (count($cookieParts) === 2 && $cookieParts[0] !== '' && $cookieParts[1] !== '') {
+        [$userId, $token] = $cookieParts;
 
-    $stmt = $pdo->prepare("
-        SELECT * FROM remember_tokens
-        WHERE user_id = ?
-          AND expired_at > NOW()
-    ");
-    $stmt->execute([$userId]);
-    $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM remember_tokens
+            WHERE user_id = ?
+              AND expired_at > NOW()
+        ");
+        $stmt->execute([$userId]);
+        $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    foreach ($tokens as $row) {
-        if (password_verify($token, $row['token_hash'])) {
+        foreach ($tokens as $row) {
+            if (!password_verify($token, $row['token_hash'])) {
+                continue;
+            }
 
             $stmt = $pdo->prepare("SELECT * FROM user_rh WHERE id = ? LIMIT 1");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($user) {
-        $_SESSION['user_rh'] = [
-            'id'       => $user['id'],
-            'name'     => $user['full_name'],
-            'role'     => $user['role'],
-            'position' => ems_normalize_position($user['position'] ?? ''),
-            'division' => ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? ''),
-            'unit_code' => ems_normalize_unit_code($user['unit_code'] ?? 'roxwood'),
-            'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
-            'cuti_status' => $user['cuti_status'] ?? null,
-            'cuti_start_date' => $user['cuti_start_date'] ?? null,
-            'cuti_end_date' => $user['cuti_end_date'] ?? null
-        ];
+                $_SESSION['user_rh'] = [
+                    'id'       => $user['id'],
+                    'name'     => $user['full_name'],
+                    'role'     => $user['role'],
+                    'position' => ems_normalize_position($user['position'] ?? ''),
+                    'division' => ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? ''),
+                    'unit_code' => ems_normalize_unit_code($user['unit_code'] ?? 'roxwood'),
+                    'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
+                    'cuti_status' => $user['cuti_status'] ?? null,
+                    'cuti_start_date' => $user['cuti_start_date'] ?? null,
+                    'cuti_end_date' => $user['cuti_end_date'] ?? null
+                ];
                 return;
             }
         }
     }
 }
 
-// Cookie invalid → hapus
-setcookie('remember_login', '', time() - 3600, '/');
+setcookie('remember_login', '', authGuardRememberLoginCookieOptions(time() - 3600));
 header("Location: /auth/login.php");
 exit;

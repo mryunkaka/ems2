@@ -137,23 +137,23 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                         </div>
 
-                        <!-- MRI -->
+                        <!-- FOTO PENDUKUNG -->
                         <div>
-                            <label class="form-label">Foto MRI<?= $isForensicPrivate ? '' : ' (Opsional)' ?><?= $isForensicPrivate ? ' <span class="text-danger">*</span>' : '' ?></label>
+                            <label class="form-label">Foto MRI/CT Scan/USG/Dll<?= $isForensicPrivate ? '' : ' (Opsional)' ?><?= $isForensicPrivate ? ' <span class="text-danger">*</span>' : '' ?></label>
                             <div class="file-upload-wrapper">
-                                <input type="file" id="mri_file" name="mri_file"
-                                    accept="image/png,image/jpeg" hidden <?= $isForensicPrivate ? 'required' : '' ?>
-                                    @change="previewImage($event, 'mri_preview')" />
-                                <label for="mri_file" class="file-upload-label">
-                                    <div class="preview-container h-48 flex items-center justify-center bg-gray-50 rounded border border-gray-200"
-                                        id="mri_preview">
+                                <input type="file" id="supporting_image_files" name="supporting_image_files[]"
+                                    accept="image/png,image/jpeg" hidden multiple <?= $isForensicPrivate ? 'required' : '' ?>
+                                    @change="previewMultipleImages($event, 'supporting_images_preview')" />
+                                <label for="supporting_image_files" class="file-upload-label">
+                                    <div class="preview-container min-h-48 p-3 flex items-center justify-center bg-gray-50 rounded border border-gray-200"
+                                        id="supporting_images_preview">
                                         <span class="text-gray-400 text-sm">Belum ada file</span>
                                     </div>
                                     <div class="mt-2 text-center">
-                                        <span class="btn-secondary btn-sm">Pilih File / Ambil Foto</span>
+                                        <span class="btn-secondary btn-sm">Pilih Beberapa File / Ambil Foto</span>
                                     </div>
                                 </label>
-                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, Max: 1MB per file</p>
+                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, bisa pilih banyak file, max <?= htmlspecialchars(emsUploadLimitLabel(), ENT_QUOTES, 'UTF-8') ?> per file</p>
                             </div>
                         </div>
                     </div>
@@ -499,6 +499,63 @@ include __DIR__ . '/../partials/sidebar.php';
                     };
                     reader.readAsDataURL(file);
                 }
+            },
+
+            previewMultipleImages(event, previewId) {
+                const files = Array.from(event.target.files || []);
+                const previewEl = document.getElementById(previewId);
+                if (!previewEl) {
+                    return;
+                }
+
+                if (files.length === 0) {
+                    previewEl.innerHTML = '<span class="text-gray-400 text-sm">Belum ada file</span>';
+                    return;
+                }
+
+                for (const file of files) {
+                    if (!file.type.startsWith('image/')) {
+                        alert('Semua file harus berupa gambar (JPG/PNG)');
+                        event.target.value = '';
+                        previewEl.innerHTML = '<span class="text-gray-400 text-sm">Belum ada file</span>';
+                        return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert('Ukuran file maksimal 1MB');
+                        event.target.value = '';
+                        previewEl.innerHTML = '<span class="text-gray-400 text-sm">Belum ada file</span>';
+                        return;
+                    }
+                }
+
+                previewEl.innerHTML = '';
+                const grid = document.createElement('div');
+                grid.className = 'grid grid-cols-2 md:grid-cols-3 gap-3 w-full';
+
+                files.forEach((file) => {
+                    const item = document.createElement('div');
+                    item.className = 'rounded border border-gray-200 bg-white p-2';
+
+                    const image = document.createElement('img');
+                    image.className = 'h-28 w-full rounded object-cover';
+
+                    const caption = document.createElement('div');
+                    caption.className = 'mt-2 text-xs text-slate-600 break-words';
+                    caption.textContent = file.name;
+
+                    item.appendChild(image);
+                    item.appendChild(caption);
+                    grid.appendChild(item);
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        image.src = String(e.target.result || '');
+                    };
+                    reader.readAsDataURL(file);
+                });
+
+                previewEl.appendChild(grid);
             }
         }
     };

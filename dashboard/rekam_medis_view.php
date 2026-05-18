@@ -67,6 +67,7 @@ $recordCode = (string)(($record['record_code'] ?? null) ?: ('MR-' . str_pad((str
 $backUrl = $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php';
 $editUrl = 'rekam_medis_edit.php?id=' . (int)$record['id'] . ($isForensicPrivate ? '&mode=forensic_private' : '');
 $assistants = ems_get_medical_record_assistants($pdo, (int) $record['id'], isset($record['assistant_id']) ? (int) $record['assistant_id'] : null);
+$supportingImages = ems_get_medical_record_supporting_images($pdo, (int)$record['id'], (string)($record['mri_file_path'] ?? ''));
 $canEditRecord = $recordScope === 'forensic_private'
     ? ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')
     : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
@@ -233,15 +234,20 @@ include __DIR__ . '/../partials/sidebar.php';
 
                             <div class="medical-document-card">
                                 <div class="medical-document-card__head">
-                                    <span class="medical-side-card__label">Foto MRI</span>
-                                    <?php if (!empty($record['mri_file_path'])): ?>
-                                        <a href="<?= htmlspecialchars(ems_asset((string)$record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka</a>
-                                    <?php endif; ?>
+                                    <span class="medical-side-card__label">Foto MRI/CT Scan/USG/Dll</span>
                                 </div>
-                                <?php if (!empty($record['mri_file_path'])): ?>
-                                    <img src="<?= htmlspecialchars(ems_asset((string)$record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="MRI" class="medical-document-card__image">
+                                <?php if ($supportingImages !== []): ?>
+                                    <div class="medical-document-gallery">
+                                        <?php foreach ($supportingImages as $image): ?>
+                                            <?php $imagePath = trim((string)($image['file_path'] ?? '')); ?>
+                                            <?php if ($imagePath === '') continue; ?>
+                                            <a href="<?= htmlspecialchars(ems_asset($imagePath), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="medical-document-gallery__item">
+                                                <img src="<?= htmlspecialchars(ems_asset($imagePath), ENT_QUOTES, 'UTF-8') ?>" alt="Foto pendukung" class="medical-document-card__image">
+                                            </a>
+                                        <?php endforeach; ?>
+                                    </div>
                                 <?php else: ?>
-                                    <div class="medical-document-card__empty">Foto MRI belum tersedia.</div>
+                                    <div class="medical-document-card__empty">Foto MRI/CT Scan/USG/Dll belum tersedia.</div>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -407,6 +413,16 @@ include __DIR__ . '/../partials/sidebar.php';
     object-fit: cover;
     border-radius: 0.9rem;
     border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.medical-document-gallery {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.medical-document-gallery__item {
+    display: block;
 }
 
 .medical-document-card__empty {
