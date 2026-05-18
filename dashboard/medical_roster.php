@@ -304,6 +304,8 @@ $summary = [
     'paramedics' => 0,
     'co_asst' => 0,
     'trainees' => 0,
+    'medics_with_cases' => 0,
+    'disciplinary_cases' => 0,
 ];
 $medics = [];
 $historyTemplates = [];
@@ -519,6 +521,12 @@ try {
         } elseif ($position === 'trainee') {
             $summary['trainees']++;
         }
+
+        $disciplinaryCaseCount = (int)($medic['disciplinary_case_count'] ?? 0);
+        if ($disciplinaryCaseCount > 0) {
+            $summary['medics_with_cases']++;
+            $summary['disciplinary_cases'] += $disciplinaryCaseCount;
+        }
     }
     unset($medic);
 } catch (Throwable $e) {
@@ -532,7 +540,7 @@ include __DIR__ . '/../partials/sidebar.php';
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title">Daftar Medis Roxwood</h1>
-        <p class="page-subtitle">Ringkasan lengkap tenaga medis Roxwood Hospital, transaksi, sertifikat, cuti, dan pelanggaran.</p>
+        <p class="page-subtitle">Ringkasan lengkap tenaga medis Roxwood Hospital, transaksi, sertifikat, cuti, dan statistik kasus Komdis secara global.</p>
 
         <?php foreach ($messages as $message): ?>
             <div class="alert alert-info"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
@@ -549,6 +557,8 @@ include __DIR__ . '/../partials/sidebar.php';
             ems_component('ui/statistic-card', ['label' => 'Paramedic', 'value' => $summary['paramedics'], 'icon' => 'shield-check', 'tone' => 'primary']);
             ems_component('ui/statistic-card', ['label' => 'Co. Asst', 'value' => $summary['co_asst'], 'icon' => 'clipboard-document-list', 'tone' => 'success']);
             ems_component('ui/statistic-card', ['label' => 'Trainee', 'value' => $summary['trainees'], 'icon' => 'clipboard-document-list', 'tone' => 'muted']);
+            ems_component('ui/statistic-card', ['label' => 'Medis Pelanggar', 'value' => $summary['medics_with_cases'], 'icon' => 'exclamation-triangle', 'tone' => 'warning']);
+            ems_component('ui/statistic-card', ['label' => 'Total Kasus Komdis', 'value' => $summary['disciplinary_cases'], 'icon' => 'clipboard-document-list', 'tone' => 'danger']);
             ?>
         </div>
 
@@ -574,7 +584,6 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Class Co. Asst</th>
                             <th>Sertifikat Heli</th>
                             <th>Total Pengajuan Cuti</th>
-                            <th>Point Pelanggaran</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -623,10 +632,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td>
                                     <div><strong><?= number_format((int)($medic['total_leave_requests'] ?? 0), 0, ',', '.') ?></strong> pengajuan</div>
                                     <div class="meta-text-xs">Approved <?= number_format((int)($medic['approved_leave_requests'] ?? 0), 0, ',', '.') ?> | Pending <?= number_format((int)($medic['pending_leave_requests'] ?? 0), 0, ',', '.') ?></div>
-                                </td>
-                                <td>
-                                    <div><strong><?= number_format((int)($medic['disciplinary_total_points'] ?? 0), 0, ',', '.') ?></strong> poin</div>
-                                    <div class="meta-text-xs"><?= number_format((int)($medic['disciplinary_case_count'] ?? 0), 0, ',', '.') ?> kasus</div>
                                 </td>
                             </tr>
                             <?php

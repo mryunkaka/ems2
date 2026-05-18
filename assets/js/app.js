@@ -168,12 +168,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const isMobile = () => !isDesktop();
 
     const scrollMenuToActive = (behavior = "smooth") => {
-      const menu = sidebar.querySelector(".sidebar-menu");
+      const menu = sidebar.querySelector(".sidebar-menu-scroll");
       const active = sidebar.querySelector(".sidebar-menu a.active");
       if (!menu || !active) return;
 
+      const menuRect = menu.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      const relativeTop = activeRect.top - menuRect.top + menu.scrollTop;
       const targetTop =
-        active.offsetTop - menu.clientHeight / 2 + active.clientHeight / 2;
+        relativeTop - menu.clientHeight / 2 + activeRect.height / 2;
 
       try {
         menu.scrollTo({

@@ -453,7 +453,7 @@ try {
     if ($action === 'save_internal_coordination') {
         $requestedCoordinationCode = trim((string) ($_POST['coordination_code'] ?? ''));
         $title = trim((string) ($_POST['title'] ?? ''));
-        $divisionScope = trim((string) ($_POST['division_scope'] ?? ''));
+        $divisionScope = ems_normalize_division_scope($_POST['division_scope'] ?? '');
         $hostUserId = (int) ($_POST['host_user_id'] ?? 0);
         $coordinationDate = secretaryDate(trim((string) ($_POST['coordination_date'] ?? '')), 'Tanggal koordinasi tidak valid.');
         $startTime = secretaryTime(trim((string) ($_POST['start_time'] ?? '')), 'Jam koordinasi tidak valid.');
@@ -519,7 +519,7 @@ try {
         $coordinationId = (int) ($_POST['coordination_id'] ?? 0);
         $requestedCoordinationCode = trim((string) ($_POST['coordination_code'] ?? ''));
         $title = trim((string) ($_POST['title'] ?? ''));
-        $divisionScope = trim((string) ($_POST['division_scope'] ?? ''));
+        $divisionScope = ems_normalize_division_scope($_POST['division_scope'] ?? '');
         $hostUserId = (int) ($_POST['host_user_id'] ?? 0);
         $coordinationDate = secretaryDate(trim((string) ($_POST['coordination_date'] ?? '')), 'Tanggal koordinasi tidak valid.');
         $startTime = secretaryTime(trim((string) ($_POST['start_time'] ?? '')), 'Jam koordinasi tidak valid.');

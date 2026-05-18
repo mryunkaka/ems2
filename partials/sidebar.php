@@ -73,6 +73,7 @@ if (!ems_is_staff_role($userRole)) {
 }
 
 $groupedNav['Utama'][] = sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal');
+$groupedNav['Utama'][] = sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation');
 
 if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
@@ -173,6 +174,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
                 sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
+                sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Medis' => [
                 sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
@@ -197,6 +199,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle'),
                 sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles'),
                 sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
+                sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Medis' => [
                 sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
@@ -277,6 +280,7 @@ if (ems_current_user_is_programmer_roxwood()) {
     }
 
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/ai_settings.php', 'ai_settings.php', 'Setting AI', 'cog-6-tooth');
+    $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/storage_audit.php', 'storage_audit.php', 'Audit Storage', 'circle-stack');
 }
 
 if ($canAccessOcrApiStatus) {

@@ -172,17 +172,22 @@ $summary = [
     'incoming' => 0,
     'outgoing' => 0,
     'minutes' => 0,
+    'file_records' => 0,
+    'coordinations' => 0,
     'priority' => 0,
 ];
 $incomingRows = [];
 $outgoingRows = [];
 $minutesRows = [];
 $coordinationRows = [];
+$fileRecordRows = [];
 $timelineItems = [];
 $hasMinutesCodeColumn = false;
 $incomingAttachmentsMap = [];
 $outgoingAttachmentsMap = [];
 $minutesAttachmentsMap = [];
+$fileRecordAttachmentsMap = [];
+$coordinationAttachmentsMap = [];
 
 try {
     $hasIncomingDivisionScope = surat_monitoring_table_has_column($pdo, 'incoming_letters', 'division_scope');
@@ -206,6 +211,31 @@ try {
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM meeting_minutes m {$minutesFilter}");
     $stmt->execute($hasMinutesDivisionScope ? ['scope' => $scopeLabel] : []);
     $summary['minutes'] = (int) $stmt->fetchColumn();
+
+    if (surat_monitoring_table_exists($pdo, 'secretary_file_records')) {
+        $summary['file_records'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records")->fetchColumn();
+
+        $stmt = $pdo->query("
+            SELECT id, file_code, file_category, reference_number, title, counterparty_name, document_date, status, description
+            FROM secretary_file_records
+            ORDER BY document_date DESC, id DESC
+            LIMIT 6
+        ");
+        $fileRecordRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $fileRecordIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $fileRecordRows)));
+        if ($fileRecordIds && surat_monitoring_table_exists($pdo, 'secretary_file_record_attachments')) {
+            $placeholders = implode(',', array_fill(0, count($fileRecordIds), '?'));
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM secretary_file_record_attachments
+                WHERE record_id IN ($placeholders)
+                ORDER BY record_id ASC, sort_order ASC, id ASC
+            ");
+            $stmt->execute($fileRecordIds);
+            $fileRecordAttachmentsMap = surat_monitoring_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'record_id');
+        }
+    }
 
     $stmt = $pdo->prepare("
         SELECT
@@ -317,18 +347,30 @@ try {
         $stmt = $pdo->prepare("
             SELECT id, title, division_scope, coordination_date, start_time, status, summary_notes, follow_up_notes
             FROM secretary_internal_coordinations
-            WHERE division_scope = 'All Divisi'
-               " . (ems_is_management_division($scopeLabel) ? "OR division_scope = 'All Divisi Manajemen'" : "") . "
-               OR division_scope = ?
+            WHERE division_scope = ?
             ORDER BY coordination_date DESC, start_time DESC, id DESC
             LIMIT 6
         ");
         $stmt->execute([$scopeLabel]);
         $coordinationRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $coordinationIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $coordinationRows)));
+        if ($coordinationIds && surat_monitoring_table_exists($pdo, 'secretary_internal_coordination_attachments')) {
+            $placeholders = implode(',', array_fill(0, count($coordinationIds), '?'));
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM secretary_internal_coordination_attachments
+                WHERE coordination_id IN ($placeholders)
+                ORDER BY coordination_id ASC, sort_order ASC, id ASC
+            ");
+            $stmt->execute($coordinationIds);
+            $coordinationAttachmentsMap = surat_monitoring_group_attachments($stmt->fetchAll(PDO::FETCH_ASSOC), 'coordination_id');
+        }
     } catch (Throwable $e) {
         $coordinationRows = [];
     }
 
+    $summary['coordinations'] = count($coordinationRows);
     $summary['priority'] = count(array_filter($incomingRows, static fn($row) => ($row['status'] ?? '') === 'unread')) + count($minutesRows) + count($coordinationRows);
 
     foreach ($incomingRows as $row) {
@@ -358,7 +400,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div>
                 <div class="surat-focus-kicker">Monitoring Khusus Divisi</div>
                 <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
-                <p class="page-subtitle">Halaman ini hanya menampilkan surat masuk, surat keluar, notulen, dan koordinasi yang relevan untuk divisi <strong><?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
+                <p class="page-subtitle">Halaman ini menampilkan surat masuk, surat keluar, notulen, data file divisi, dan koordinasi internal yang relevan untuk divisi <strong><?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></strong>.</p>
             </div>
             <div class="surat-scope-card">
                 <div class="surat-scope-label">Scope Aktif</div>
@@ -379,6 +421,23 @@ include __DIR__ . '/../partials/sidebar.php';
             <?php ems_component('ui/statistic-card', ['label' => 'Surat Keluar Relevan', 'value' => $summary['outgoing'], 'icon' => 'paper-airplane', 'tone' => 'primary']); ?>
             <?php ems_component('ui/statistic-card', ['label' => 'Notulen Relevan', 'value' => $summary['minutes'], 'icon' => 'clipboard-document-list', 'tone' => 'success']); ?>
             <?php ems_component('ui/statistic-card', ['label' => 'Item Prioritas', 'value' => $summary['priority'], 'icon' => 'exclamation-triangle', 'tone' => 'danger']); ?>
+        </div>
+
+        <div class="surat-module-grid">
+            <a href="<?= htmlspecialchars(ems_url('/dashboard/secretary_file_registry.php'), ENT_QUOTES, 'UTF-8') ?>" class="surat-module-card">
+                <div class="surat-module-icon"><?= ems_icon('archive-box', 'h-5 w-5') ?></div>
+                <div>
+                    <div class="surat-module-title">Data File Divisi</div>
+                    <div class="surat-module-meta"><?= number_format((int) $summary['file_records'], 0, ',', '.') ?> data file terdaftar</div>
+                </div>
+            </a>
+            <a href="<?= htmlspecialchars(ems_url('/dashboard/secretary_internal_coordination.php'), ENT_QUOTES, 'UTF-8') ?>" class="surat-module-card">
+                <div class="surat-module-icon"><?= ems_icon('user-group', 'h-5 w-5') ?></div>
+                <div>
+                    <div class="surat-module-title">Koordinasi Internal Divisi</div>
+                    <div class="surat-module-meta"><?= number_format((int) $summary['coordinations'], 0, ',', '.') ?> koordinasi untuk <?= htmlspecialchars($scopeLabel, ENT_QUOTES, 'UTF-8') ?></div>
+                </div>
+            </a>
         </div>
 
         <div class="card surat-search-card">
@@ -486,6 +545,31 @@ include __DIR__ . '/../partials/sidebar.php';
             <aside class="surat-focus-side">
                 <div class="card surat-focus-card">
                     <div class="surat-card-head">
+                        <div class="card-header">Data File Divisi</div>
+                        <span class="badge-muted"><?= count($fileRecordRows) ?> item</span>
+                    </div>
+                        <div class="surat-mini-list">
+                        <?php if ($fileRecordRows): ?>
+                            <?php foreach ($fileRecordRows as $row): $statusMeta = surat_monitoring_status_meta((string) ($row['status'] ?? 'draft')); ?>
+                                <?php $attachments = $fileRecordAttachmentsMap[(int) ($row['id'] ?? 0)] ?? []; ?>
+                                <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['title'] ?? '') . ' ' . ($row['reference_number'] ?? '') . ' ' . ($row['description'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="surat-mini-top">
+                                        <h3><?= htmlspecialchars((string) ($row['title'] ?: 'Data File Divisi'), ENT_QUOTES, 'UTF-8') ?></h3>
+                                        <span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                    </div>
+                                    <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['description'] ?? ''), 90), ENT_QUOTES, 'UTF-8') ?></p>
+                                    <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['reference_number'] ?: ($row['file_code'] ?: '-')), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['document_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <button type="button" class="btn-secondary btn-view-file-record-monitor" data-title="<?= htmlspecialchars((string) ($row['title'] ?: 'Data File Divisi'), ENT_QUOTES, 'UTF-8') ?>" data-code="<?= htmlspecialchars((string) ($row['reference_number'] ?: ($row['file_code'] ?: '-')), ENT_QUOTES, 'UTF-8') ?>" data-category="<?= htmlspecialchars((string) ($row['file_category'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-party="<?= htmlspecialchars((string) ($row['counterparty_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['document_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-status="<?= htmlspecialchars((string) ($row['status'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-description="<?= htmlspecialchars((string) ($row['description'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-attachments="<?= htmlspecialchars(json_encode(surat_monitoring_attachment_payload($attachments, 'Lampiran file divisi'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>">Lihat Berkas</button>
+                                </article>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="empty-state">Belum ada data file divisi yang tercatat.</div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="card surat-focus-card">
+                    <div class="surat-card-head">
                         <div class="card-header">Notulen Yang Di-tag ke Divisi Ini</div>
                         <span class="badge-muted"><?= count($minutesRows) ?> item</span>
                     </div>
@@ -520,6 +604,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="surat-mini-list">
                         <?php if ($coordinationRows): ?>
                             <?php foreach ($coordinationRows as $row): $statusMeta = surat_monitoring_status_meta((string) ($row['status'] ?? 'draft')); ?>
+                                <?php $attachments = $coordinationAttachmentsMap[(int) ($row['id'] ?? 0)] ?? []; ?>
                                 <article class="surat-mini-card surat-search-item" data-search-scope="<?= htmlspecialchars(strtolower(($row['title'] ?? '') . ' ' . ($row['summary_notes'] ?? '') . ' ' . ($row['follow_up_notes'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="surat-mini-top">
                                         <h3><?= htmlspecialchars((string) ($row['title'] ?: 'Koordinasi'), ENT_QUOTES, 'UTF-8') ?></h3>
@@ -527,6 +612,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </div>
                                     <p><?= htmlspecialchars(surat_monitoring_excerpt((string) ($row['summary_notes'] ?? ''), 90), ENT_QUOTES, 'UTF-8') ?></p>
                                     <div class="surat-mini-meta"><?= htmlspecialchars((string) ($row['division_scope'] ?: 'All Divisi'), ENT_QUOTES, 'UTF-8') ?> | <?= htmlspecialchars(surat_monitoring_when($row['coordination_date'] ?? '', $row['start_time'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <button type="button" class="btn-secondary btn-view-coordination-monitor" data-title="<?= htmlspecialchars((string) ($row['title'] ?: 'Koordinasi'), ENT_QUOTES, 'UTF-8') ?>" data-scope="<?= htmlspecialchars((string) ($row['division_scope'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-date="<?= htmlspecialchars((string) ($row['coordination_date'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-time="<?= htmlspecialchars(substr((string) ($row['start_time'] ?: ''), 0, 5), ENT_QUOTES, 'UTF-8') ?>" data-status="<?= htmlspecialchars((string) ($row['status'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-summary="<?= htmlspecialchars((string) ($row['summary_notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-follow-up="<?= htmlspecialchars((string) ($row['follow_up_notes'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>" data-attachments="<?= htmlspecialchars(json_encode(surat_monitoring_attachment_payload($attachments, 'Lampiran koordinasi'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '[]', ENT_QUOTES, 'UTF-8') ?>">Lihat Berkas</button>
                                 </article>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -599,10 +685,68 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
+<div id="fileRecordViewModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg surat-modal-box">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('archive-box', 'h-5 w-5 text-primary') ?>
+                <span id="fileRecordModalTitle">Detail Data File Divisi</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal"><?= ems_icon('x-mark', 'h-5 w-5') ?></button>
+        </div>
+        <div class="modal-content">
+            <div class="surat-modal-grid">
+                <div class="card"><div class="meta-text-xs">Kode</div><div id="fileRecordModalCode" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Kategori</div><div id="fileRecordModalCategory" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Status</div><div id="fileRecordModalStatus" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Pihak Terkait</div><div id="fileRecordModalParty" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Tanggal Dokumen</div><div id="fileRecordModalDate" class="font-semibold text-slate-800">-</div></div>
+            </div>
+            <div class="card mt-4">
+                <div class="meta-text-xs mb-2">Deskripsi</div>
+                <div id="fileRecordModalDescription" class="whitespace-pre-line text-sm text-slate-700">-</div>
+            </div>
+            <div class="card mt-3">
+                <div class="meta-text-xs mb-2">Berkas</div>
+                <div id="fileRecordModalAttachments" class="surat-attachment-grid"><div class="empty-state">Tidak ada lampiran.</div></div>
+            </div>
+        </div>
+        <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
+    </div>
+</div>
+
+<div id="coordinationViewMonitorModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-lg surat-modal-box">
+        <div class="modal-head">
+            <div class="modal-title inline-flex items-center gap-2">
+                <?= ems_icon('user-group', 'h-5 w-5 text-primary') ?>
+                <span id="coordinationMonitorModalTitle">Detail Koordinasi Internal</span>
+            </div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal"><?= ems_icon('x-mark', 'h-5 w-5') ?></button>
+        </div>
+        <div class="modal-content">
+            <div class="surat-modal-grid">
+                <div class="card"><div class="meta-text-xs">Divisi</div><div id="coordinationMonitorModalScope" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Tanggal</div><div id="coordinationMonitorModalDate" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Jam</div><div id="coordinationMonitorModalTime" class="font-semibold text-slate-800">-</div></div>
+                <div class="card"><div class="meta-text-xs">Status</div><div id="coordinationMonitorModalStatus" class="font-semibold text-slate-800">-</div></div>
+            </div>
+            <div class="card mt-4"><div class="meta-text-xs mb-2">Ringkasan</div><div id="coordinationMonitorModalSummary" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Tindak Lanjut</div><div id="coordinationMonitorModalFollowUp" class="whitespace-pre-line text-sm text-slate-700">-</div></div>
+            <div class="card mt-3"><div class="meta-text-xs mb-2">Lampiran</div><div id="coordinationMonitorModalAttachments" class="surat-attachment-grid"><div class="empty-state">Tidak ada lampiran.</div></div></div>
+        </div>
+        <div class="modal-foot"><div class="modal-actions justify-end"><button type="button" class="btn-secondary btn-cancel">Tutup</button></div></div>
+    </div>
+ </div>
+
 <style>
 .surat-monitor-page{padding-bottom:2rem}.surat-monitor-shell{display:grid;gap:1.25rem}.surat-focus-hero{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(280px,.9fr);gap:1rem;padding:1.5rem;border-radius:28px;background:linear-gradient(135deg,#eff8ff 0%,#ffffff 52%,#f0fdf4 100%);border:1px solid rgba(148,163,184,.22);box-shadow:0 24px 48px rgba(15,23,42,.08)}.surat-focus-kicker{display:inline-flex;align-items:center;gap:.4rem;margin-bottom:.6rem;padding:.35rem .75rem;border-radius:999px;background:#083344;color:#ecfeff;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.surat-scope-card{padding:1.1rem 1.15rem;border-radius:24px;background:linear-gradient(180deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0}.surat-scope-label{font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8}.surat-scope-value{margin-top:.35rem;font-size:1.45rem;font-weight:800;color:#fff}.surat-scope-note{margin-top:.55rem;font-size:.92rem;color:#cbd5e1}.surat-stat-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.surat-search-card{padding:1rem 1.15rem}.surat-search-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.surat-search-input{display:flex;align-items:center;gap:.65rem;min-width:min(100%,360px);padding:.8rem 1rem;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#475569}.surat-search-input input{width:100%;border:0;outline:0;background:transparent}.surat-focus-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.95fr);gap:1rem}.surat-focus-grid,.surat-focus-side{display:grid;gap:1rem}.surat-focus-card{border-radius:26px;padding:1.15rem;box-shadow:0 20px 40px rgba(15,23,42,.06)}.surat-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}.surat-spotlight-list,.surat-capsule-list,.surat-mini-list{display:grid;gap:.85rem}.surat-spotlight-item,.surat-capsule,.surat-mini-card{border:1px solid #dbeafe;background:#fff;border-radius:22px;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.surat-spotlight-item:hover,.surat-capsule:hover,.surat-mini-card:hover{transform:translateY(-2px);box-shadow:0 18px 30px rgba(14,116,144,.08);border-color:#7dd3fc}.surat-spotlight-item{display:grid;grid-template-columns:52px minmax(0,1fr);gap:1rem;padding:1rem}.surat-spotlight-icon{display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff}.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}.surat-spotlight-body h3,.surat-mini-top h3,.surat-capsule-title{margin:0;font-size:1.05rem;font-weight:800;color:#1e293b}.surat-spotlight-body p,.surat-mini-card p,.surat-capsule-text{margin:.4rem 0 0;color:#64748b;line-height:1.55}.surat-spotlight-meta,.surat-mini-meta,.surat-capsule-meta{margin-top:.6rem;font-size:.82rem;font-weight:700;color:#0f766e}.surat-feed-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.surat-capsule{padding:1rem 1rem 1.05rem;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)}.surat-capsule-subtitle{margin-top:.25rem;font-size:.88rem;color:#64748b}.surat-capsule .btn-secondary,.surat-mini-card .btn-secondary{margin-top:.8rem}.surat-mini-card{padding:1rem;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%)}.surat-modal-box{max-width:860px}.surat-modal-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem}.surat-search-item.is-hidden{display:none!important}.empty-state{padding:1rem 1.1rem;border:1px dashed #cbd5e1;border-radius:18px;background:#f8fafc;color:#64748b}.badge-muted,.badge-counter,.badge-success,.badge-danger{white-space:nowrap}.surat-attachment-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.85rem}.surat-attachment-card{border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(180deg,#fff 0%,#f8fbff 100%);padding:.75rem}.surat-attachment-thumb{display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;border:1px solid #dbeafe;background:#e2e8f0}.surat-attachment-frame{width:100%;height:180px;border:1px solid #dbeafe;border-radius:14px;background:#fff}.surat-attachment-name{margin-top:.65rem;font-size:.85rem;font-weight:700;color:#334155;word-break:break-word}.surat-attachment-link{margin-top:.45rem;display:inline-flex;align-items:center;gap:.45rem;color:#0369a1;font-size:.82rem;font-weight:700}
 @media (max-width:1200px){.surat-stat-grid,.surat-feed-grid,.surat-modal-grid,.surat-focus-layout,.surat-focus-hero{grid-template-columns:1fr}}
 @media (max-width:720px){.surat-search-header,.surat-card-head,.surat-spotlight-top,.surat-mini-top,.surat-capsule-top{flex-direction:column;align-items:flex-start}.surat-focus-card{padding:1rem}.surat-search-input{min-width:100%}}
+</style>
+<style>
+.surat-module-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.surat-module-card{display:flex;align-items:center;gap:1rem;padding:1rem 1.15rem;border:1px solid #dbeafe;border-radius:22px;background:linear-gradient(135deg,#ffffff 0%,#f8fbff 100%);text-decoration:none;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.surat-module-card:hover{transform:translateY(-2px);box-shadow:0 18px 30px rgba(14,116,144,.08);border-color:#7dd3fc}.surat-module-icon{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,#0ea5e9,#22c55e);color:#fff;flex:0 0 auto}.surat-module-title{font-size:1rem;font-weight:800;color:#0f172a}.surat-module-meta{margin-top:.2rem;font-size:.88rem;color:#475569}
+@media (max-width:1200px){.surat-module-grid{grid-template-columns:1fr}}
 </style>
 
 <script>
@@ -611,18 +755,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const filterItems = document.querySelectorAll('.surat-search-item');
     const letterModal = document.getElementById('letterDetailModal');
     const minutesModal = document.getElementById('minutesViewModal');
+    const fileRecordModal = document.getElementById('fileRecordViewModal');
+    const coordinationMonitorModal = document.getElementById('coordinationViewMonitorModal');
     const letterAttachmentContainer = document.getElementById('letterModalAttachments');
     const minutesAttachmentContainer = document.getElementById('minutesModalAttachments');
+    const fileRecordAttachmentContainer = document.getElementById('fileRecordModalAttachments');
+    const coordinationAttachmentContainer = document.getElementById('coordinationMonitorModalAttachments');
     function openModal(modal){if(!modal)return;modal.classList.remove('hidden');document.body.classList.add('overflow-hidden')}
     function closeModal(modal){if(!modal)return;modal.classList.add('hidden');document.body.classList.remove('overflow-hidden')}
     document.querySelectorAll('.modal-overlay').forEach(function(modal){modal.addEventListener('click',function(event){if(event.target.closest('.btn-cancel')||event.target.closest('.modal-close-btn')){closeModal(modal)}})});
-    document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeModal(letterModal);closeModal(minutesModal)}});
+    document.addEventListener('keydown',function(event){if(event.key==='Escape'){closeModal(letterModal);closeModal(minutesModal);closeModal(fileRecordModal);closeModal(coordinationMonitorModal)}});
     if(searchInput){searchInput.addEventListener('input',function(){const keyword=searchInput.value.trim().toLowerCase();filterItems.forEach(function(item){const haystack=item.dataset.searchScope||'';item.classList.toggle('is-hidden',keyword!==''&&!haystack.includes(keyword))})})}
     function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,function(match){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[match]})}
-    function renderLetterAttachments(rawAttachments){if(!letterAttachmentContainer)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){letterAttachmentContainer.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}letterAttachmentContainer.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;letterAttachmentContainer.appendChild(card)})}
-    function renderMinutesAttachments(rawAttachments){if(!minutesAttachmentContainer)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){minutesAttachmentContainer.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}minutesAttachmentContainer.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;minutesAttachmentContainer.appendChild(card)})}
-    document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';renderLetterAttachments(button.dataset.attachments||'[]');openModal(letterModal)})});
-    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';renderMinutesAttachments(button.dataset.attachments||'[]');openModal(minutesModal)})});
+    function renderAttachmentCards(container, rawAttachments){if(!container)return;let attachments=[];try{attachments=JSON.parse(rawAttachments||'[]')}catch(_){attachments=[]}if(!Array.isArray(attachments)||!attachments.length){container.innerHTML='<div class="empty-state">Tidak ada lampiran.</div>';return}container.innerHTML='';attachments.forEach(function(attachment){const src=attachment&&attachment.src?String(attachment.src):'';const name=attachment&&attachment.name?String(attachment.name):'Lampiran';const isImage=Boolean(attachment&&attachment.is_image);const isPdf=Boolean(attachment&&attachment.is_pdf);const card=document.createElement('div');card.className='surat-attachment-card';let previewHtml='';if(src!==''&&isImage){previewHtml=`<a href="${escapeHtml(src)}" target="_blank" rel="noopener"><img src="${escapeHtml(src)}" alt="${escapeHtml(name)}" class="surat-attachment-thumb"></a>`}else if(src!==''&&isPdf){previewHtml=`<iframe src="${escapeHtml(src)}" class="surat-attachment-frame" loading="lazy" title="${escapeHtml(name)}"></iframe>`}else{previewHtml='<div class="empty-state">Preview tidak tersedia untuk file ini. Gunakan tombol buka file.</div>'}card.innerHTML=`${previewHtml}<div class="surat-attachment-name">${escapeHtml(name)}</div>${src!==''?`<a href="${escapeHtml(src)}" target="_blank" rel="noopener" class="surat-attachment-link">Buka lampiran</a>`:''}`;container.appendChild(card)})}
+    document.querySelectorAll('.btn-open-letter-modal').forEach(function(button){button.addEventListener('click',function(){document.getElementById('letterModalType').textContent=button.dataset.letterType||'Detail Surat';document.getElementById('letterModalTitle').textContent=button.dataset.title||'-';document.getElementById('letterModalCode').textContent=button.dataset.code||'-';document.getElementById('letterModalScope').textContent=button.dataset.scope||'-';document.getElementById('letterModalParty').textContent=button.dataset.party||'-';document.getElementById('letterModalContact').textContent=button.dataset.contact||'-';document.getElementById('letterModalWhen').textContent=button.dataset.when||'-';document.getElementById('letterModalBody').textContent=button.dataset.body||'-';renderAttachmentCards(letterAttachmentContainer,button.dataset.attachments||'[]');openModal(letterModal)})});
+    document.querySelectorAll('.btn-view-minutes').forEach(function(button){button.addEventListener('click',function(){document.getElementById('minutesModalTitle').textContent=button.dataset.title||'Detail Notulen';document.getElementById('minutesModalCode').textContent=button.dataset.code||'-';document.getElementById('minutesModalDate').textContent=button.dataset.date||'-';document.getElementById('minutesModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('minutesModalScope').textContent=button.dataset.scope||'-';document.getElementById('minutesModalRevision').textContent=button.dataset.revision||'-';document.getElementById('minutesModalParticipants').textContent=button.dataset.participants||'-';document.getElementById('minutesModalSummary').textContent=button.dataset.summary||'-';document.getElementById('minutesModalDecisions').textContent=button.dataset.decisions||'-';document.getElementById('minutesModalFollowUp').textContent=button.dataset.followUp||'-';renderAttachmentCards(minutesAttachmentContainer,button.dataset.attachments||'[]');openModal(minutesModal)})});
+    document.querySelectorAll('.btn-view-file-record-monitor').forEach(function(button){button.addEventListener('click',function(){document.getElementById('fileRecordModalTitle').textContent=button.dataset.title||'Detail Data File Divisi';document.getElementById('fileRecordModalCode').textContent=button.dataset.code||'-';document.getElementById('fileRecordModalCategory').textContent=button.dataset.category||'-';document.getElementById('fileRecordModalStatus').textContent=button.dataset.status||'-';document.getElementById('fileRecordModalParty').textContent=button.dataset.party||'-';document.getElementById('fileRecordModalDate').textContent=button.dataset.date||'-';document.getElementById('fileRecordModalDescription').textContent=button.dataset.description||'-';renderAttachmentCards(fileRecordAttachmentContainer,button.dataset.attachments||'[]');openModal(fileRecordModal)})});
+    document.querySelectorAll('.btn-view-coordination-monitor').forEach(function(button){button.addEventListener('click',function(){document.getElementById('coordinationMonitorModalTitle').textContent=button.dataset.title||'Detail Koordinasi Internal';document.getElementById('coordinationMonitorModalScope').textContent=button.dataset.scope||'-';document.getElementById('coordinationMonitorModalDate').textContent=button.dataset.date||'-';document.getElementById('coordinationMonitorModalTime').textContent=button.dataset.time?button.dataset.time+' WIB':'-';document.getElementById('coordinationMonitorModalStatus').textContent=button.dataset.status||'-';document.getElementById('coordinationMonitorModalSummary').textContent=button.dataset.summary||'-';document.getElementById('coordinationMonitorModalFollowUp').textContent=button.dataset.followUp||'-';renderAttachmentCards(coordinationAttachmentContainer,button.dataset.attachments||'[]');openModal(coordinationMonitorModal)})});
 });
 </script>
 

@@ -970,6 +970,11 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Exception: monitoring point pelanggaran personal accessible by all logged-in users
+    if ($scriptName === 'disciplinary_points_monitor.php') {
+        return;
+    }
+
     $sessionUser = $_SESSION['user_rh'] ?? [];
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
@@ -1005,26 +1010,16 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
 function ems_disciplinary_tolerance_options(): array
 {
     return [
-        'tolerable' => 'Tolerable',
-        'non_tolerable' => 'Non Tolerable',
+        'tolerable' => 'Masih Ditoleransi',
+        'non_tolerable' => 'Tidak Ditoleransi',
     ];
 }
 
 function ems_disciplinary_recommendation_from_points(int $totalPoints, bool $hasNonTolerable): string
 {
-    if ($hasNonTolerable) {
-        return match (true) {
-            $totalPoints >= 80 => 'termination_review',
-            $totalPoints >= 60 => 'final_warning',
-            $totalPoints >= 35 => 'written_warning_2',
-            default => 'written_warning_1',
-        };
-    }
-
     return match (true) {
-        $totalPoints >= 100 => 'termination_review',
-        $totalPoints >= 80 => 'final_warning',
-        $totalPoints >= 60 => 'written_warning_2',
+        $totalPoints >= 100 => 'final_warning',
+        $totalPoints >= 70 => 'written_warning_2',
         $totalPoints >= 40 => 'written_warning_1',
         $totalPoints >= 20 => 'verbal_warning',
         default => 'coaching',
@@ -1034,14 +1029,31 @@ function ems_disciplinary_recommendation_from_points(int $totalPoints, bool $has
 function ems_disciplinary_recommendation_label(string $recommendation): string
 {
     return match ($recommendation) {
-        'coaching' => 'Coaching',
-        'verbal_warning' => 'Verbal Warning',
-        'written_warning_1' => 'Written Warning 1',
-        'written_warning_2' => 'Written Warning 2',
-        'final_warning' => 'Final Warning',
-        'termination_review' => 'Termination Review',
+        'coaching' => 'Pembinaan',
+        'verbal_warning' => 'Teguran Lisan',
+        'written_warning_1' => 'SP 1 - Peringatan Pertama',
+        'written_warning_2' => 'SP 2 - Peringatan Keras',
+        'final_warning' => 'SP 3 - Kritis',
+        'termination_review' => 'Rekomendasi Pemecatan',
         default => ucwords(str_replace('_', ' ', $recommendation)),
     };
+}
+
+function ems_disciplinary_point_reduction_options(): array
+{
+    return [
+        'social_service' => ['label' => 'Kegiatan sosial', 'points' => 2],
+        'assistant_minor' => ['label' => 'Asisten tindakan minor', 'points' => 4],
+        'assistant_major' => ['label' => 'Asisten tindakan mayor', 'points' => 6],
+        'dpjp_minor' => ['label' => 'DPJP operasi minor', 'points' => 8],
+        'dpjp_major' => ['label' => 'DPJP operasi mayor', 'points' => 10],
+    ];
+}
+
+function ems_disciplinary_point_reduction_label(string $reductionType): string
+{
+    $options = ems_disciplinary_point_reduction_options();
+    return $options[$reductionType]['label'] ?? ucwords(str_replace('_', ' ', $reductionType));
 }
 
 function ems_is_letter_receiver_role(?string $role): bool
@@ -2146,4 +2158,38 @@ function uploadSecretaryAttachmentFile(array $file, string $folder, int $imageMa
     }
 
     return emsStoreUploadedFileOriginal($file, $folder, $uploadMaxSize);
+}
+
+function emsDisciplinaryAttachmentMaxBytes(): int
+{
+    return 500 * 1024;
+}
+
+function emsDisciplinaryAttachmentMaxLabel(): string
+{
+    return '500 KB';
+}
+
+function uploadDisciplinaryAttachmentFile(array $file, string $folder): ?string
+{
+    if (!emsIsAllowedSecretaryAttachment($file)) {
+        return null;
+    }
+
+    $maxBytes = emsDisciplinaryAttachmentMaxBytes();
+    $extension = emsUploadedFileExtension($file);
+
+    if (in_array($extension, ['jpg', 'jpeg', 'png'], true)) {
+        return uploadAndCompressFile($file, $folder, $maxBytes, 1024 * 1024);
+    }
+
+    if ($extension === 'pdf') {
+        if (emsUploadedFileExceedsLimit($file, $maxBytes)) {
+            return null;
+        }
+
+        return emsStoreUploadedFileOriginal($file, $folder, $maxBytes);
+    }
+
+    return null;
 }

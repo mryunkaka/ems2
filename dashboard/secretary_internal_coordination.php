@@ -11,6 +11,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 ems_require_division_access(['Secretary'], '/dashboard/index.php');
 
 $pageTitle = 'Koordinasi Internal Divisi';
+$divisionScopeOptions = ems_division_scope_options();
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
@@ -171,7 +172,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input type="text" name="title" required>
 
                     <label>Divisi Terkait</label>
-                    <input type="text" name="division_scope" id="addCoordinationDivisionScope" required>
+                    <select name="division_scope" id="addCoordinationDivisionScope" required>
+                        <option value="">Pilih divisi terkait</option>
+                        <?php foreach ($divisionScopeOptions as $divisionOption): ?>
+                            <option value="<?= htmlspecialchars((string) $divisionOption['value'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $divisionOption['label'], ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
 
                     <label>Host / Penanggung Jawab</label>
                     <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
@@ -401,7 +407,12 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="text" name="title" id="editCoordinationTitle" required>
 
                 <label>Divisi Terkait</label>
-                <input type="text" name="division_scope" id="editCoordinationDivisionScope" required>
+                <select name="division_scope" id="editCoordinationDivisionScope" required>
+                    <option value="">Pilih divisi terkait</option>
+                    <?php foreach ($divisionScopeOptions as $divisionOption): ?>
+                        <option value="<?= htmlspecialchars((string) $divisionOption['value'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $divisionOption['label'], ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
 
                 <label>Host / Penanggung Jawab</label>
                 <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-scope="all" data-autocomplete-required>
