@@ -3,14 +3,14 @@
  * TEST CRON PUSH — DEBUG VERSION (FIXED)
  */
 
-ini_set('display_errors', 1);
-ini_set('log_errors', 1);
+require_once __DIR__ . '/../config/runtime.php';
+emsApplyProductionPhpIni(emsRuntimeLogPath('cron_push.log'));
 error_reporting(E_ALL);
 
 /* ======================================================
    LOG SETUP
    ====================================================== */
-$logFile = __DIR__ . '/../storage/cron_push.log';
+$logFile = emsRuntimeLogPath('cron_push.log');
 
 function cron_log($msg)
 {

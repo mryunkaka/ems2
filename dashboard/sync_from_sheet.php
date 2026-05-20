@@ -4,11 +4,12 @@
 // =====================================================
 
 date_default_timezone_set('Asia/Jakarta');
+require_once __DIR__ . '/../config/runtime.php';
 
 // -----------------------------------------------------
 // LOG FILE (KHUSUS CRON)
 // -----------------------------------------------------
-$logFile = __DIR__ . '/../storage/cron_sync.log';
+$logFile = emsRuntimeLogPath('cron_sync.log');
 
 function cronLog($msg)
 {

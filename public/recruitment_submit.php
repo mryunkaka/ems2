@@ -8,6 +8,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/runtime.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
@@ -783,9 +784,9 @@ try {
 } catch (Exception $e) {
     $pdo->rollBack();
     file_put_contents(
-        __DIR__ . '/../storage/recruitment_error.log',
+        emsRuntimeLogPath('recruitment_error.log'),
         '[' . date('Y-m-d H:i:s') . '] ' . $e->getMessage() . PHP_EOL,
-        FILE_APPEND
+        FILE_APPEND | LOCK_EX
     );
     http_response_code(500);
     exit($e->getMessage());

@@ -4,3 +4,13 @@
 <IfModule !mod_authz_core.c>
     Deny from all
 </IfModule>
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_mime.c>
+    RemoveHandler .php .phtml .phar .php3 .php4 .php5 .php7 .php8
+    RemoveType .php .phtml .phar .php3 .php4 .php5 .php7 .php8
+</IfModule>
+<FilesMatch "(?i)\.(php|phtml|phar|php\d*)$">
+    Require all denied
+</FilesMatch>

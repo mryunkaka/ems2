@@ -10,6 +10,7 @@ Options -Indexes
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule ^(?:storage|backup|logs|docs|migrations|vendor|node_modules|private_artifacts|\.git)(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:storage|backup|logs)/.*\.(?:php|phtml|phar|php\d*)$ - [F,L,NC]
 </IfModule>
 
 <FilesMatch "(?i)\.(sql|zip|bak|env|ini|log|md|lock)$">

@@ -1,18 +1,19 @@
 <?php
 
+require_once __DIR__ . '/runtime.php';
+
 function logRecruitmentError(string $context, Exception $e): void
 {
-    $logFile = __DIR__ . '/../storage/recruitment_error.log';
-    $message = sprintf(
-        "[%s] [%s] %s in %s:%d\nStack: %s\n%s\n",
-        date('Y-m-d H:i:s'),
-        $context,
-        $e->getMessage(),
-        $e->getFile(),
-        $e->getLine(),
-        $e->getTraceAsString(),
-        str_repeat('=', 80)
-    );
+    $message = '[' . $context . '] ' . $e->getMessage();
 
-    file_put_contents($logFile, $message, FILE_APPEND | LOCK_EX);
+    if (!emsRuntimeIsProduction()) {
+        $message .= sprintf(
+            ' in %s:%d | Stack: %s',
+            $e->getFile(),
+            $e->getLine(),
+            $e->getTraceAsString()
+        );
+    }
+
+    emsAppendLog('recruitment_error.log', $message);
 }

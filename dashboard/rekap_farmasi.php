@@ -1,14 +1,10 @@
-﻿<?php
+<?php
 session_start();
+require_once __DIR__ . '/../config/runtime.php';
 // =======================================
 // ERROR LOG CONFIG (PRODUCTION SAFE)
 // =======================================
-ini_set('log_errors', 1);
-ini_set('display_errors', 0); // JANGAN tampilkan ke user
-ini_set(
-    'error_log',
-    __DIR__ . '/../storage/error_log.txt'
-);
+emsApplyProductionPhpIni(emsRuntimeLogPath('app_runtime.log'));
 
 function formatDuration($seconds)
 {
@@ -57,8 +53,7 @@ function formatJoinDurationDetailed(?string $tanggalMasuk): string
 // Helper log function
 function app_log($message)
 {
-    $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
-    error_log($line, 3, __DIR__ . '/../storage/error_log.txt');
+    emsAppendLog('app_runtime.log', (string)$message);
 }
 
 function farmasiConsumerNameComparable(string $name): string
