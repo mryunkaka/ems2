@@ -35,6 +35,11 @@ function storageAuditFormatBytes(int $bytes): string
 
 function storageAuditCollectReferencedPaths(PDO $pdo): array
 {
+    return array_keys(storageAuditCollectReferencedFileDetails($pdo));
+}
+
+function storageAuditCollectReferencedFileDetails(PDO $pdo): array
+{
     $columnsStmt = $pdo->query("
         SELECT TABLE_NAME, COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
@@ -73,7 +78,17 @@ function storageAuditCollectReferencedPaths(PDO $pdo): array
 
                 $normalized = str_replace('\\', '/', ltrim($value, '/'));
                 if (str_starts_with($normalized, 'storage/')) {
-                    $paths[$normalized] = true;
+                    if (!isset($paths[$normalized])) {
+                        $paths[$normalized] = [
+                            'relative_path' => $normalized,
+                            'sources' => [],
+                        ];
+                    }
+
+                    $sourceLabel = $table . '.' . $field;
+                    if (!in_array($sourceLabel, $paths[$normalized]['sources'], true)) {
+                        $paths[$normalized]['sources'][] = $sourceLabel;
+                    }
                 }
             }
         } catch (Throwable $e) {
@@ -81,7 +96,7 @@ function storageAuditCollectReferencedPaths(PDO $pdo): array
         }
     }
 
-    return array_keys($paths);
+    return $paths;
 }
 
 function storageAuditResolveStoragePath(string $relativePath): ?string
@@ -196,6 +211,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $storagePath = realpath(__DIR__ . '/../storage') ?: (__DIR__ . '/../storage');
 $storagePathDisplay = str_replace('/', '\\', (string)$storagePath);
 $storageRows = [];
+$referencedFileRows = [];
 $orphanRows = [];
 $referencedPaths = [];
 $summary = [
@@ -207,7 +223,8 @@ $summary = [
 ];
 
 try {
-    $referencedPaths = storageAuditCollectReferencedPaths($pdo);
+    $referencedDetails = storageAuditCollectReferencedFileDetails($pdo);
+    $referencedPaths = array_keys($referencedDetails);
     $referencedMap = array_fill_keys($referencedPaths, true);
     $summary['referenced_file_count'] = count($referencedPaths);
 
@@ -249,11 +266,31 @@ try {
             }
         }
     }
+
+    foreach ($referencedDetails as $relativePath => $detail) {
+        $resolvedPath = storageAuditResolveStoragePath($relativePath);
+        $exists = $resolvedPath !== null && is_file($resolvedPath);
+        $size = $exists ? (int)filesize($resolvedPath) : 0;
+        $modifiedAt = $exists ? date('Y-m-d H:i:s', (int)filemtime($resolvedPath)) : '-';
+
+        $referencedFileRows[] = [
+            'relative_path' => $relativePath,
+            'absolute_path' => $exists ? $resolvedPath : '-',
+            'size' => $size,
+            'modified_at' => $modifiedAt,
+            'exists' => $exists,
+            'sources' => $detail['sources'] ?? [],
+        ];
+    }
 } catch (Throwable $e) {
     $errors[] = 'Gagal memindai storage: ' . $e->getMessage();
 }
 
 usort($orphanRows, static function (array $a, array $b): int {
+    return $b['size'] <=> $a['size'];
+});
+
+usort($referencedFileRows, static function (array $a, array $b): int {
     return $b['size'] <=> $a['size'];
 });
 
@@ -361,6 +398,48 @@ include __DIR__ . '/../partials/sidebar.php';
                 <?php endif; ?>
             </div>
         </div>
+
+        <div class="card mt-4">
+            <div class="card-header">Daftar File Yang Ada di Database</div>
+            <div class="meta-text-xs px-4 pt-2">Diurutkan dari ukuran file terbesar. Kolom sumber menunjukkan tabel dan field database yang mereferensikan file tersebut.</div>
+            <div class="table-wrapper">
+                <table id="storageReferencedTable" class="table-custom">
+                    <thead>
+                        <tr>
+                            <th>Path Relatif</th>
+                            <th>Ukuran</th>
+                            <th>Terakhir Diubah</th>
+                            <th>Status File</th>
+                            <th>Sumber Database</th>
+                            <th>Path Absolut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($referencedFileRows as $row): ?>
+                            <tr>
+                                <td><code><?= htmlspecialchars((string)$row['relative_path'], ENT_QUOTES, 'UTF-8') ?></code></td>
+                                <td data-order="<?= (int)$row['size'] ?>"><?= htmlspecialchars(storageAuditFormatBytes((int)$row['size']), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars((string)$row['modified_at'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td>
+                                    <span class="badge-counter<?= !empty($row['exists']) ? '' : ' badge-muted' ?>">
+                                        <?= !empty($row['exists']) ? 'Ada di storage' : 'Path tercatat, file hilang' ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <?php foreach (($row['sources'] ?? []) as $source): ?>
+                                        <div><code><?= htmlspecialchars((string)$source, ENT_QUOTES, 'UTF-8') ?></code></div>
+                                    <?php endforeach; ?>
+                                </td>
+                                <td><code><?= htmlspecialchars(!empty($row['exists']) ? str_replace('/', '\\', (string)$row['absolute_path']) : '-', ENT_QUOTES, 'UTF-8') ?></code></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php if ($referencedFileRows === []): ?>
+                    <div class="muted-placeholder p-4">Belum ada file storage yang tercatat di database.</div>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -368,6 +447,16 @@ include __DIR__ . '/../partials/sidebar.php';
 document.addEventListener('DOMContentLoaded', function() {
     if (window.jQuery && jQuery.fn.DataTable) {
         jQuery('#storageAuditTable').DataTable({
+            pageLength: 25,
+            scrollX: true,
+            autoWidth: false,
+            order: [[1, 'desc']],
+            language: {
+                url: '<?= htmlspecialchars(ems_asset('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>'
+            }
+        });
+
+        jQuery('#storageReferencedTable').DataTable({
             pageLength: 25,
             scrollX: true,
             autoWidth: false,
