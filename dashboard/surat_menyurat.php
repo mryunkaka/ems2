@@ -91,7 +91,8 @@ function surat_revision_badge(?string $label): string
 function surat_attachment_payload(array $attachments, string $fallbackName): array
 {
     return array_map(static function (array $attachment) use ($fallbackName): array {
-        $filePath = '/' . ltrim((string)($attachment['file_path'] ?? ''), '/');
+        $rawFilePath = trim((string)($attachment['file_path'] ?? ''));
+        $filePath = $rawFilePath !== '' ? ems_secure_file_url($rawFilePath) : '';
         $fileName = trim((string)($attachment['file_name'] ?? ''));
         $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
         $extension = strtolower((string)pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));

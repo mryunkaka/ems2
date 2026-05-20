@@ -142,27 +142,34 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
-    $isForensic = $userDivision === 'Forensic';
+    $canAccessForensicMedicalRecord = ems_can_access_division_menu($userDivision, 'Forensic');
+    $allowed = false;
+
     $stmt = $pdo->prepare("
-        SELECT 1
+        SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope
         FROM medical_records mr
         WHERE (mr.ktp_file_path = ? OR mr.mri_file_path = ?)
-          AND (? = 1 OR mr.created_by = ?)
         LIMIT 1
     ");
-    $stmt->execute([$relativePath, $relativePath, $isForensic ? 1 : 0, $userId]);
-    $allowed = (bool)$stmt->fetchColumn();
+    $stmt->execute([$relativePath, $relativePath]);
+    $scope = (string)($stmt->fetchColumn() ?: '');
+    if ($scope !== '') {
+        $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $canAccessForensicMedicalRecord);
+    }
+
     if (!$allowed && ems_table_exists($pdo, 'medical_record_supporting_images')) {
         $stmt = $pdo->prepare("
-            SELECT 1
+            SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope
             FROM medical_record_supporting_images si
             INNER JOIN medical_records mr ON mr.id = si.medical_record_id
             WHERE si.file_path = ?
-              AND (? = 1 OR mr.created_by = ?)
             LIMIT 1
         ");
-        $stmt->execute([$relativePath, $isForensic ? 1 : 0, $userId]);
-        $allowed = (bool)$stmt->fetchColumn();
+        $stmt->execute([$relativePath]);
+        $scope = (string)($stmt->fetchColumn() ?: '');
+        if ($scope !== '') {
+            $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $canAccessForensicMedicalRecord);
+        }
     }
     if (!$allowed) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
