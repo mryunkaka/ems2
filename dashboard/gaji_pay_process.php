@@ -2,12 +2,14 @@
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/position_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json');
 
 ems_require_not_trainee_json('Pembayaran Gaji');
+ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'gaji.php', '/dashboard/index.php');
 
 // Cek apakah user memiliki akses
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
@@ -21,6 +23,11 @@ if ($userRole === 'staff') {
 // Parse JSON input
 $inputJSON = file_get_contents('php://input');
 $input = json_decode($inputJSON, true);
+
+if (!validateCsrfToken((string)($input['csrf_token'] ?? ''))) {
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+    exit;
+}
 
 $salaryId = (int)($input['salary_id'] ?? 0);
 $payMethod = $input['pay_method'] ?? 'direct';

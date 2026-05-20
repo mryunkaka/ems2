@@ -2,10 +2,12 @@
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/position_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
 ems_require_not_trainee_html('Aksi Gaji');
+ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'gaji.php', '/dashboard/index.php');
 
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
@@ -15,7 +17,17 @@ if ($userRole === 'staff') {
     exit('Akses ditolak');
 }
 
-$id = (int)($_GET['id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit('Invalid method');
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
+}
+
+$id = (int)($_POST['id'] ?? 0);
 $paidBy = $_SESSION['user_rh']['name'] ?? 'System';
 
 $stmt = $pdo->prepare("

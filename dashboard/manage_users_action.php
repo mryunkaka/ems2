@@ -3,15 +3,28 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
 $sessionUser = $_SESSION['user_rh'] ?? [];
 $sessionRole = $sessionUser['role'] ?? '';
 $effectiveUnit = ems_effective_unit($pdo, $sessionUser);
+ems_enforce_dashboard_page_access($sessionUser['division'] ?? '', 'manage_users.php', '/dashboard/index.php');
 
 if (ems_is_staff_role($sessionRole)) {
     $_SESSION['flash_errors'][] = 'Akses ditolak.';
+    header('Location: manage_users.php');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    exit('Invalid method');
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    $_SESSION['flash_errors'][] = 'Invalid CSRF token.';
     header('Location: manage_users.php');
     exit;
 }

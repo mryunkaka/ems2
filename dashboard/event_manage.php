@@ -233,6 +233,7 @@ function formatTanggalHari(string $tanggal): string
                 }
 
                 add('event_id', b.dataset.id || '');
+                add('csrf_token', String(window.EMS_CSRF_TOKEN || ''));
 
                 document.body.appendChild(form);
                 form.submit();

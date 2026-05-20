@@ -517,7 +517,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: 'code=' + encodeURIComponent(code)
+            body: 'code=' + encodeURIComponent(code) + '&csrf_token=' + encodeURIComponent(<?= json_encode(generateCsrfToken(), JSON_UNESCAPED_SLASHES) ?>)
         }).then(() => location.reload());
     }
 </script>

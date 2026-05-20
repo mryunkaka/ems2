@@ -629,7 +629,8 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const submitData = {
                 salary_id: salaryId,
                 pay_method: method,
-                titip_to: selectedUserId || null
+                titip_to: selectedUserId || null,
+                csrf_token: String(window.EMS_CSRF_TOKEN || '')
             };
 
             fetch('gaji_pay_process.php', {

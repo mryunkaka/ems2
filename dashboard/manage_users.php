@@ -1236,6 +1236,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
+            <?= csrfField() ?>
             <input type="hidden" name="action" value="resign">
             <input type="hidden" name="user_id" id="resignUserId">
 
@@ -1269,6 +1270,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
+            <?= csrfField() ?>
             <input type="hidden" name="action" value="reactivate">
             <input type="hidden" name="user_id" id="reactivateUserId">
 
@@ -1303,7 +1305,8 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
-                <input type="hidden" name="user_id" id="editUserId">
+                  <?= csrfField() ?>
+                  <input type="hidden" name="user_id" id="editUserId">
 
                 <div class="edit-user-grid">
                     <div class="edit-user-section">
@@ -1507,6 +1510,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
+            <?= csrfField() ?>
             <input type="hidden" name="action" value="delete">
             <input type="hidden" name="user_id" id="deleteUserId">
 
@@ -1537,6 +1541,7 @@ uksort($usersByBatch, function ($a, $b) {
 
         <form method="POST" action="manage_users_action.php" class="form modal-form">
             <div class="modal-content">
+            <?= csrfField() ?>
             <input type="hidden" name="action" value="add_user">
 
 	            <label for="addFullName">Nama Lengkap</label>
@@ -1983,7 +1988,8 @@ uksort($usersByBatch, function ($a, $b) {
                 },
                 body: new URLSearchParams({
                     action: 'delete_kode_medis',
-                    user_id: userId
+                    user_id: userId,
+                    csrf_token: String(window.EMS_CSRF_TOKEN || '')
                 })
             })
             .then(res => res.json())

@@ -8,6 +8,7 @@ session_start();
 |--------------------------------------------------------------------------
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 
 /*
@@ -18,12 +19,18 @@ require_once __DIR__ . '/../config/database.php';
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $role   = strtolower(trim($user['role'] ?? ''));
+ems_enforce_dashboard_page_access($user['division'] ?? '', 'reimbursement.php', '/dashboard/index.php');
 
 $allowedRoles = ['manager', 'director', 'vice director'];
 
 if ($userId <= 0 || !in_array($role, $allowedRoles, true)) {
     http_response_code(403);
     exit('Akses ditolak');
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
 }
 
 /*

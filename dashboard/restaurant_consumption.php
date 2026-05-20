@@ -496,7 +496,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: 'id=' + encodeURIComponent(id)
+                body: 'id=' + encodeURIComponent(id) + '&csrf_token=' + encodeURIComponent(window.EMS_CSRF_TOKEN || '')
             })
             .then(parseActionJson)
             .then(data => {
@@ -520,7 +520,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: 'id=' + encodeURIComponent(id)
+                body: 'id=' + encodeURIComponent(id) + '&csrf_token=' + encodeURIComponent(window.EMS_CSRF_TOKEN || '')
             })
             .then(parseActionJson)
             .then(data => {
@@ -544,7 +544,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: 'id=' + encodeURIComponent(id)
+                body: 'id=' + encodeURIComponent(id) + '&csrf_token=' + encodeURIComponent(window.EMS_CSRF_TOKEN || '')
             })
             .then(parseActionJson)
             .then(data => {
@@ -649,7 +649,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                     fetch('restaurant_consumption_action.php?action=paid', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'id=' + encodeURIComponent(id)
+                        body: 'id=' + encodeURIComponent(id) + '&csrf_token=' + encodeURIComponent(window.EMS_CSRF_TOKEN || '')
                     }).then(parseActionJson).then(result => {
                         if (result.success) successCount++;
                         else failCount++;
@@ -676,7 +676,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                     fetch('restaurant_consumption_action.php?action=delete', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: 'id=' + encodeURIComponent(id)
+                        body: 'id=' + encodeURIComponent(id) + '&csrf_token=' + encodeURIComponent(window.EMS_CSRF_TOKEN || '')
                     }).then(parseActionJson).then(result => {
                         if (result.success) successCount++;
                         else failCount++;
@@ -1012,9 +1012,9 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             submitBtn.disabled = true;
             submitBtn.textContent = 'Menyimpan...';
 
-            fetch('restaurant_consumption_action.php?action=create', {
+        fetch('restaurant_consumption_action.php?action=create', {
                     method: 'POST',
-                    body: formData
+                    body: (() => { formData.append('csrf_token', String(window.EMS_CSRF_TOKEN || '')); return formData; })()
                 })
                 .then(parseActionJson)
                 .then(data => {

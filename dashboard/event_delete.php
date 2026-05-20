@@ -3,11 +3,13 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 
 // ===============================
 // ROLE GUARD (MANAGER ONLY)
 // ===============================
+ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'event_manage.php', '/dashboard/index.php');
 $role = strtolower($_SESSION['user_rh']['role'] ?? '');
 if ($role === 'staff') {
     header('Location: events.php');
@@ -15,6 +17,12 @@ if ($role === 'staff') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: event_manage.php');
+    exit;
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    $_SESSION['flash_errors'][] = 'Invalid CSRF token.';
     header('Location: event_manage.php');
     exit;
 }
@@ -74,4 +82,3 @@ try {
 
 header('Location: event_manage.php');
 exit;
-

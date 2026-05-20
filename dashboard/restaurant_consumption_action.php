@@ -7,6 +7,7 @@
 
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json');
@@ -65,11 +66,20 @@ function compressRestaurantKtpImage(
 $action = $_GET['action'] ?? '';
 $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
+ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'restaurant_consumption.php', '/dashboard/index.php');
 
 if ($userId <= 0) {
     echo json_encode([
         'success' => false,
         'message' => 'Unauthorized'
+    ]);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Invalid CSRF token'
     ]);
     exit;
 }
