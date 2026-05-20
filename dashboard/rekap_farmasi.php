@@ -6620,6 +6620,9 @@ include __DIR__ . '/../partials/sidebar.php';
             maxDutyMinutes: 0,
             cooldownMinutes: 0
         };
+        const fetchJson = window.EMSRealtime && typeof window.EMSRealtime.safeFetchJSON === 'function'
+            ? window.EMSRealtime.safeFetchJSON
+            : null;
 
         const onlineCooldownBox = document.getElementById('onlineCooldownNotice');
         const submitButton = document.getElementById('btnSubmit');
@@ -6692,29 +6695,59 @@ include __DIR__ . '/../partials/sidebar.php';
 
         window.getFarmasiOnlineCooldownRemaining = getOnlineCooldownRemainingSeconds;
 
+        function resolveFarmasiSettingsError(result, fallbackMessage) {
+            if (!result || result.ok !== false) {
+                return fallbackMessage;
+            }
+
+            if (result.reason === 'timeout') {
+                return 'Server terlalu lama merespons. Coba lagi.';
+            }
+
+            if (result.reason === 'network') {
+                return 'Koneksi ke server gagal.';
+            }
+
+            if (result.reason === 'http') {
+                if (result.status === 401) {
+                    return 'Sesi login berakhir. Muat ulang halaman lalu coba lagi.';
+                }
+
+                if (result.status === 403) {
+                    return 'Akses ditolak atau token keamanan tidak valid.';
+                }
+            }
+
+            return fallbackMessage;
+        }
+
         // Load settings dari server
         async function loadSettings() {
-            try {
-                const res = await fetch(window.emsUrl('/actions/get_farmasi_settings.php'), {
-                    cache: 'no-store'
-                });
-                const json = await res.json();
-                if (json.success && json.settings) {
-                    FARMASI_SETTINGS.maxOnlineMedics = parseInt(json.settings.max_online_medics || 0, 10);
-                    FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings.max_duty_minutes || 0, 10);
-                    FARMASI_SETTINGS.cooldownMinutes = parseInt(json.settings.cooldown_minutes || 0, 10);
+            if (!fetchJson) {
+                console.error('EMSRealtime.safeFetchJSON tidak tersedia untuk load settings farmasi.');
+                return;
+            }
 
-                    // Update form values
-                    const maxMedicsEl = document.getElementById('settingMaxMedics');
-                    const maxDutyEl = document.getElementById('settingMaxDuty');
-                    const cooldownEl = document.getElementById('settingCooldown');
+            const result = await fetchJson(window.emsUrl('/actions/get_farmasi_settings.php'));
+            if (!result || !result.ok) {
+                console.error('Gagal memuat settings farmasi:', result);
+                return;
+            }
 
-                    if (maxMedicsEl) maxMedicsEl.value = FARMASI_SETTINGS.maxOnlineMedics;
-                    if (maxDutyEl) maxDutyEl.value = json.settings.max_duty_duration || '';
-                    if (cooldownEl) cooldownEl.value = FARMASI_SETTINGS.cooldownMinutes;
-                }
-            } catch (e) {
-                console.error('Gagal memuat settings:', e);
+            const json = result.data || {};
+            if (json.success && json.settings) {
+                FARMASI_SETTINGS.maxOnlineMedics = parseInt(json.settings.max_online_medics || 0, 10);
+                FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings.max_duty_minutes || 0, 10);
+                FARMASI_SETTINGS.cooldownMinutes = parseInt(json.settings.cooldown_minutes || 0, 10);
+
+                // Update form values
+                const maxMedicsEl = document.getElementById('settingMaxMedics');
+                const maxDutyEl = document.getElementById('settingMaxDuty');
+                const cooldownEl = document.getElementById('settingCooldown');
+
+                if (maxMedicsEl) maxMedicsEl.value = FARMASI_SETTINGS.maxOnlineMedics;
+                if (maxDutyEl) maxDutyEl.value = json.settings.max_duty_duration || '';
+                if (cooldownEl) cooldownEl.value = FARMASI_SETTINGS.cooldownMinutes;
             }
         }
 
@@ -6726,10 +6759,16 @@ include __DIR__ . '/../partials/sidebar.php';
             }
 
             try {
-                const res = await fetch(window.emsUrl('/actions/check_farmasi_duty_limits.php'), {
-                    cache: 'no-store'
-                });
-                const json = await res.json();
+                if (!fetchJson) {
+                    return;
+                }
+
+                const result = await fetchJson(window.emsUrl('/actions/check_farmasi_duty_limits.php'));
+                if (!result || !result.ok) {
+                    return;
+                }
+
+                const json = result.data || {};
 
                 if (json.success) {
                     applyOnlineCooldown(parseInt(json.cooldown_remaining_seconds || 0, 10));
@@ -6853,10 +6892,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 const cooldown = parseInt(document.getElementById('settingCooldown').value || 0, 10);
 
                 try {
-                    const res = await fetch(window.emsUrl('/actions/save_farmasi_settings.php'), {
+                    if (!fetchJson) {
+                        alert('Komponen request halaman belum siap. Muat ulang halaman lalu coba lagi.');
+                        return;
+                    }
+
+                    const result = await fetchJson(window.emsUrl('/actions/save_farmasi_settings.php'), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                         },
                         body: JSON.stringify({
@@ -6864,9 +6909,17 @@ include __DIR__ . '/../partials/sidebar.php';
                             max_duty_duration: maxDuty,
                             cooldown_minutes: cooldown
                         })
+                    }, {
+                        timeoutMs: 10000
                     });
 
-                    const json = await res.json();
+                    if (!result || !result.ok) {
+                        console.error('Gagal menyimpan settings farmasi:', result);
+                        alert(resolveFarmasiSettingsError(result, 'Server gagal memproses setting Medis Online.'));
+                        return;
+                    }
+
+                    const json = result.data || {};
                     if (json.success) {
                         alert('Settings berhasil disimpan!');
                         closeFarmasiSettingsModal();
@@ -6883,7 +6936,8 @@ include __DIR__ . '/../partials/sidebar.php';
                         alert(json.message || 'Gagal menyimpan settings');
                     }
                 } catch (e) {
-                    alert('Koneksi server gagal');
+                    console.error('Error saat menyimpan settings farmasi:', e);
+                    alert('Koneksi ke server gagal.');
                 } finally {
                     if (btnSave) {
                         btnSave.textContent = 'Simpan Setting';

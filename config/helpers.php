@@ -321,6 +321,136 @@ function ems_medical_record_notification_user_ids(int $doctorId, array $assistan
     return array_values(array_filter($userIds, static fn (int $id): bool => $id > 0));
 }
 
+function ems_farmasi_max_duty_minutes(PDO $pdo): int
+{
+    static $cached = null;
+
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT max_duty_minutes
+            FROM farmasi_online_settings
+            ORDER BY id ASC
+            LIMIT 1
+        ");
+        $stmt->execute();
+        $cached = max(0, (int)$stmt->fetchColumn());
+    } catch (Throwable $e) {
+        $cached = 0;
+    }
+
+    return $cached;
+}
+
+function ems_auto_offline_expired_farmasi_sessions(PDO $pdo, ?int $userId = null): array
+{
+    $maxDutyMinutes = ems_farmasi_max_duty_minutes($pdo);
+    if ($maxDutyMinutes <= 0) {
+        return [];
+    }
+
+    $thresholdSeconds = $maxDutyMinutes * 60;
+    $params = [$thresholdSeconds];
+    $userFilterSql = '';
+
+    if ($userId !== null && $userId > 0) {
+        $userFilterSql = ' AND s.user_id = ?';
+        $params[] = $userId;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT
+            s.user_id,
+            COALESCE(ur.full_name, 'Unknown') AS medic_name
+        FROM user_farmasi_sessions s
+        INNER JOIN user_farmasi_status fs
+            ON fs.user_id = s.user_id
+           AND fs.status = 'online'
+        LEFT JOIN user_rh ur
+            ON ur.id = s.user_id
+        WHERE s.session_end IS NULL
+          AND TIMESTAMPDIFF(SECOND, s.session_start, NOW()) >= ?
+          {$userFilterSql}
+        GROUP BY s.user_id, ur.full_name
+    ");
+    $stmt->execute($params);
+    $expiredUsers = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    if ($expiredUsers === []) {
+        return [];
+    }
+
+    $expiredIds = array_values(array_unique(array_map(static function (array $row): int {
+        return (int)($row['user_id'] ?? 0);
+    }, $expiredUsers)));
+    $expiredIds = array_values(array_filter($expiredIds, static fn(int $id): bool => $id > 0));
+
+    if ($expiredIds === []) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($expiredIds), '?'));
+
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+
+    try {
+        $statusStmt = $pdo->prepare("
+            UPDATE user_farmasi_status
+            SET status = 'offline',
+                auto_offline_at = NOW(),
+                current_session_number = 0,
+                updated_at = NOW()
+            WHERE user_id IN ({$placeholders})
+        ");
+        $statusStmt->execute($expiredIds);
+
+        $sessionStmt = $pdo->prepare("
+            UPDATE user_farmasi_sessions
+            SET session_end = NOW(),
+                duration_seconds = TIMESTAMPDIFF(SECOND, session_start, NOW()),
+                end_reason = 'auto_offline'
+            WHERE user_id IN ({$placeholders})
+              AND session_end IS NULL
+        ");
+        $sessionStmt->execute($expiredIds);
+
+        $logStmt = $pdo->prepare("
+            INSERT INTO farmasi_activities
+                (activity_type, medic_user_id, medic_name, description)
+            VALUES ('auto_offline', ?, ?, 'Auto offline: Mencapai batas waktu jaga maksimal')
+        ");
+
+        foreach ($expiredUsers as $row) {
+            $expiredUserId = (int)($row['user_id'] ?? 0);
+            if ($expiredUserId <= 0) {
+                continue;
+            }
+
+            $logStmt->execute([
+                $expiredUserId,
+                (string)($row['medic_name'] ?? 'Unknown'),
+            ]);
+        }
+
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+
+    return $expiredIds;
+}
+
 function formatTanggalID($datetime)
 {
     if (!$datetime) return '-';

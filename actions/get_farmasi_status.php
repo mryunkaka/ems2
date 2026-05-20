@@ -2,13 +2,18 @@
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require __DIR__ . '/../config/database.php';
-require __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 try {
     $medicName = $_SESSION['user_rh']['name'] ?? '';
+    $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
 
     if ($medicName === '') {
         ems_json_response(['status' => 'offline']);
+    }
+
+    if ($userId > 0) {
+        ems_auto_offline_expired_farmasi_sessions($pdo, $userId);
     }
 
     $stmt = $pdo->prepare("
@@ -17,7 +22,7 @@ try {
         WHERE user_id = ?
         LIMIT 1
     ");
-    $stmt->execute([$_SESSION['user_rh']['id']]);
+    $stmt->execute([$userId]);
 
     $status = $stmt->fetchColumn() ?: 'offline';
     ems_json_response(['status' => $status]);

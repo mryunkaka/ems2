@@ -2,7 +2,7 @@
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require __DIR__ . '/../config/database.php';
-require __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json');
 
@@ -16,6 +16,8 @@ if (!$user || empty($user['id'])) {
 $userId = (int)$user['id'];
 
 try {
+    ems_auto_offline_expired_farmasi_sessions($pdo, $userId);
+
     // Ambil settings
     $stmtSettings = $pdo->prepare("SELECT max_duty_minutes, cooldown_minutes FROM farmasi_online_settings LIMIT 1");
     $stmtSettings->execute();
