@@ -58,6 +58,16 @@ function personalDisciplinaryAttachmentLinksHtml(array $attachments): string
     return $html;
 }
 
+function personalDisciplinaryDescriptionHtml(?string $description): string
+{
+    $description = trim((string)$description);
+    if ($description === '') {
+        return '<span class="text-muted">Deskripsi belum tersedia.</span>';
+    }
+
+    return nl2br(htmlspecialchars($description, ENT_QUOTES, 'UTF-8'));
+}
+
 $summary = [
     'case_count' => 0,
     'case_points' => 0,
@@ -72,6 +82,7 @@ $warningLetterRows = [];
 $caseAttachmentsMap = [];
 $warningAttachmentsMap = [];
 $caseItemsMap = [];
+$disciplinaryIndications = [];
 
 try {
     $hasPointReductionTable = ems_table_exists($pdo, 'disciplinary_point_reductions');
@@ -166,6 +177,23 @@ try {
 
     $summary['warning_letters'] = count($warningLetterRows);
     $summary['active_points'] = max(0, $summary['case_points'] - $summary['reduction_points']);
+
+    if (ems_table_exists($pdo, 'disciplinary_indications')) {
+        $stmt = $pdo->query("
+            SELECT
+                id,
+                code,
+                name,
+                description,
+                default_points,
+                tolerance_type,
+                is_active
+            FROM disciplinary_indications
+            WHERE is_active = 1
+            ORDER BY default_points DESC, name ASC
+        ");
+        $disciplinaryIndications = $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
 
     $caseIds = array_values(array_filter(array_map(static fn(array $row): int => (int)($row['id'] ?? 0), $caseRows)));
     if ($caseIds !== []) {
@@ -264,6 +292,34 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="text-2xl font-extrabold text-rose-700"><?= number_format((int)$summary['active_points'], 0, ',', '.') ?></div>
                 <div class="meta-text-xs mt-1"><?= htmlspecialchars(ems_disciplinary_recommendation_label(ems_disciplinary_recommendation_from_points((int)$summary['active_points'], false)), ENT_QUOTES, 'UTF-8') ?></div>
             </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">Daftar Poin Pelanggaran</div>
+            <div class="meta-text-xs px-4 pt-2">Data ini diambil langsung dari master database Komdis agar transparan untuk seluruh medis yang sedang login.</div>
+            <?php if ($disciplinaryIndications === []): ?>
+                <div class="muted-placeholder p-4">Master poin pelanggaran belum tersedia.</div>
+            <?php else: ?>
+                <div class="disciplinary-master-grid">
+                    <?php foreach ($disciplinaryIndications as $indication): ?>
+                        <div class="disciplinary-master-card">
+                            <div class="disciplinary-master-head">
+                                <div>
+                                    <div class="disciplinary-master-name"><?= htmlspecialchars((string)$indication['name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php if (!empty($indication['code'])): ?>
+                                        <div class="meta-text-xs mt-1"><?= htmlspecialchars((string)$indication['code'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="disciplinary-master-points"><?= (int)($indication['default_points'] ?? 0) ?> poin</div>
+                            </div>
+                            <div class="disciplinary-master-body"><?= personalDisciplinaryDescriptionHtml($indication['description'] ?? '') ?></div>
+                            <div class="disciplinary-master-foot">
+                                <span class="doc-badge"><?= htmlspecialchars(personalDisciplinaryToleranceLabel((string)($indication['tolerance_type'] ?? '')), ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="card mb-4">
@@ -534,8 +590,67 @@ include __DIR__ . '/../partials/sidebar.php';
         background: #fff;
     }
 
+    .disciplinary-master-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        padding: 16px;
+    }
+
+    .disciplinary-master-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 18px;
+        border-radius: 22px;
+        border: 1px solid rgba(148, 163, 184, .22);
+        background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.96));
+        box-shadow: 0 16px 36px rgba(15, 23, 42, .06);
+    }
+
+    .disciplinary-master-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .disciplinary-master-name {
+        font-size: 15px;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.5;
+    }
+
+    .disciplinary-master-points {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(251, 191, 36, .14);
+        color: #92400e;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .disciplinary-master-body {
+        color: #334155;
+        font-size: 13px;
+        line-height: 1.75;
+        white-space: normal;
+    }
+
+    .disciplinary-master-foot {
+        display: flex;
+        justify-content: flex-start;
+    }
+
     @media (max-width: 1200px) {
         .disciplinary-personal-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .disciplinary-master-grid {
             grid-template-columns: 1fr;
         }
     }

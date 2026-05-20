@@ -152,6 +152,36 @@ document.addEventListener("DOMContentLoaded", () => {
       node.remove();
     });
 
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const overlay = target.closest(
+        ".modal-overlay, .inbox-modal-overlay, .ems-modal-overlay"
+      );
+      if (!overlay || target !== overlay) {
+        return;
+      }
+
+      if (
+        target.closest(".modal-close-btn, .btn-cancel, .btn-secondary, [data-close-modal]")
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") {
+        event.stopImmediatePropagation();
+      }
+    },
+    true
+  );
+
   async function fileToImageBitmap(file) {
     if ("createImageBitmap" in window) {
       try {

@@ -38,6 +38,9 @@ $items = array_map(static function (array $row): array {
         'position' => ems_position_label((string)($row['position'] ?? '')),
         'division' => ems_normalize_division((string)($row['division'] ?? '')) ?: '-',
         'zodiac' => ems_birthday_zodiac_label($row['tanggal_lahir_ic'] ?? null),
+        'birthday_label' => ems_birthday_format_long($row['tanggal_lahir_ic'] ?? null),
+        'age' => ems_birthday_current_age($row['tanggal_lahir_ic'] ?? null),
+        'turning_age' => ems_birthday_turning_age($row['tanggal_lahir_ic'] ?? null),
     ];
 }, $celebrants);
 

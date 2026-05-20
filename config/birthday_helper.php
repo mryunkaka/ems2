@@ -30,6 +30,98 @@ function ems_birthday_format(?string $value): string
     }
 }
 
+function ems_birthday_weekday_label(?string $value): string
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '-';
+    }
+
+    try {
+        $date = new DateTimeImmutable($value);
+    } catch (Throwable $e) {
+        return '-';
+    }
+
+    $labels = [
+        'Sunday' => 'Minggu',
+        'Monday' => 'Senin',
+        'Tuesday' => 'Selasa',
+        'Wednesday' => 'Rabu',
+        'Thursday' => 'Kamis',
+        'Friday' => 'Jumat',
+        'Saturday' => 'Sabtu',
+    ];
+
+    return $labels[$date->format('l')] ?? $date->format('l');
+}
+
+function ems_birthday_format_long(?string $value): string
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '-';
+    }
+
+    try {
+        $date = new DateTimeImmutable($value);
+    } catch (Throwable $e) {
+        return $value;
+    }
+
+    $months = [
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
+    ];
+
+    return ems_birthday_weekday_label($value)
+        . ', '
+        . (int)$date->format('d')
+        . ' '
+        . ($months[(int)$date->format('n')] ?? $date->format('M'))
+        . ' '
+        . $date->format('Y');
+}
+
+function ems_birthday_current_age(?string $value, ?DateTimeImmutable $today = null): ?int
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return null;
+    }
+
+    try {
+        $birthDate = new DateTimeImmutable($value);
+    } catch (Throwable $e) {
+        return null;
+    }
+
+    $today = $today ?: new DateTimeImmutable('today');
+    return $birthDate->diff($today)->y;
+}
+
+function ems_birthday_turning_age(?string $value, ?DateTimeImmutable $today = null): ?int
+{
+    $currentAge = ems_birthday_current_age($value, $today);
+    $daysUntil = ems_birthday_days_until($value, $today);
+
+    if ($currentAge === null || $daysUntil === null) {
+        return null;
+    }
+
+    return $daysUntil === 0 ? $currentAge : $currentAge + 1;
+}
+
 function ems_birthday_days_until(?string $value, ?DateTimeImmutable $today = null): ?int
 {
     $value = trim((string)$value);
@@ -65,11 +157,17 @@ function ems_birthday_countdown_label(?string $value, ?DateTimeImmutable $today 
         return '-';
     }
 
+    $turningAge = ems_birthday_turning_age($value, $today);
+
     if ($days === 0) {
-        return 'Ulang tahun hari ini';
+        return $turningAge !== null
+            ? 'Ulang tahun ke-' . $turningAge . ' hari ini'
+            : 'Ulang tahun hari ini';
     }
 
-    return 'Sisa ' . $days . ' hari';
+    return $turningAge !== null
+        ? 'Sisa ' . $days . ' hari menuju ulang tahun ke-' . $turningAge
+        : 'Sisa ' . $days . ' hari';
 }
 
 function ems_birthday_zodiac_label(?string $value): string
@@ -184,25 +282,88 @@ function ems_birthday_activity_summary(array $profile): string
     return 'aktivitas web farmasinya cenderung tenang namun tetap terhubung dengan tim';
 }
 
+function ems_birthday_day_character(?string $value): string
+{
+    return match (ems_birthday_weekday_label($value)) {
+        'Senin' => 'rapi memulai, cepat menata arah, dan cocok jadi penggerak awal',
+        'Selasa' => 'tegas, berani ambil langkah, dan kuat saat ritme kerja padat',
+        'Rabu' => 'adaptif, komunikatif, dan enak diajak menyambung banyak hal',
+        'Kamis' => 'tenang, dewasa, dan biasanya kuat menjaga stabilitas tim',
+        'Jumat' => 'hangat, reflektif, dan mudah membuat suasana kerja lebih manusiawi',
+        'Sabtu' => 'ulet, tahan proses, dan tidak mudah goyah saat target panjang',
+        'Minggu' => 'cerah, membawa energi sosial, dan gampang membuat orang nyaman',
+        default => 'punya ritme yang unik dan tidak kaku',
+    };
+}
+
+function ems_birthday_extract_last_name(string $fullName): string
+{
+    $parts = preg_split('/\s+/', trim($fullName)) ?: [];
+    if (!$parts) {
+        return '';
+    }
+
+    return (string)end($parts);
+}
+
+function ems_birthday_family_reading(string $fullName): string
+{
+    $lastName = ems_birthday_extract_last_name($fullName);
+    if ($lastName === '') {
+        return 'Nama kamu memberi kesan sederhana, membumi, dan mudah dipercaya.';
+    }
+
+    $lastNameLower = strtolower($lastName);
+    $length = function_exists('mb_strlen') ? mb_strlen($lastNameLower) : strlen($lastNameLower);
+    $lastChar = function_exists('mb_substr') ? mb_substr($lastNameLower, -1) : substr($lastNameLower, -1);
+
+    if ($length >= 8) {
+        return 'Nama belakang ' . $lastName . ' memberi kesan teliti, tahan proses, dan kuat memegang tanggung jawab yang panjang.';
+    }
+
+    return match ($lastChar) {
+        'a' => 'Nama belakang ' . $lastName . ' memberi nuansa hangat, terbuka, dan mudah mengikat pertemanan.',
+        'i' => 'Nama belakang ' . $lastName . ' memberi kesan sigap, praktis, dan cepat menangkap inti masalah.',
+        'u' => 'Nama belakang ' . $lastName . ' terasa tenang, setia proses, dan tidak gampang terpancing.',
+        'n' => 'Nama belakang ' . $lastName . ' memberi kesan stabil, bisa diandalkan, dan cocok menjaga ritme tim.',
+        'r' => 'Nama belakang ' . $lastName . ' terasa tegas, lurus, dan kuat saat harus menjaga standar kerja.',
+        default => 'Nama belakang ' . $lastName . ' memberi kesan khas: kalem di luar, tapi kuat saat sudah memegang komitmen.',
+    };
+}
+
 function ems_birthday_fallback_message(string $fullName, string $zodiac, array $profile): string
 {
     $activitySummary = ems_birthday_activity_summary($profile);
-    $disciplinePoints = (int)($profile['discipline_points'] ?? 0);
-    $disciplineLine = $disciplinePoints > 0
-        ? ' Semoga tahun ini juga makin ringan langkahnya, makin rapi ritmenya, dan makin bijak menjaga diri dalam kerja.'
-        : ' Semoga ritme kerja, tenaga, dan fokusnya tetap terjaga dengan baik di tahun yang baru ini.';
+    $turningAge = (int)($profile['turning_age'] ?? 0);
+    $birthDate = (string)($profile['birth_date'] ?? '');
+    $weekday = (string)($profile['weekday'] ?? ems_birthday_weekday_label($birthDate));
+    $dayCharacter = ems_birthday_day_character($birthDate);
+    $familyReading = ems_birthday_family_reading($fullName);
+    $agePhrase = $turningAge > 0 ? 'ke-' . $turningAge : 'tahun ini';
+    $lifeLine = $zodiac === 'Tidak diketahui'
+        ? 'Semoga hidupmu ke depan makin jernih arahnya, makin tenang menjalaninya, dan tetap kuat menjaga energi baik di tengah tekanan apa pun.'
+        : 'Semoga di usia ini langkah hidupmu makin matang, hati tetap tenang, dan nuansa ' . $zodiac . ' yang hangat serta tekun terus membawa kamu ke keputusan-keputusan yang baik.';
 
     return trim(
-        'Selamat ulang tahun, ' . $fullName . '. Aura ' . $zodiac . ' kamu hari ini terasa cocok dengan cara kamu bekerja yang ' . $activitySummary . '.'
-        . ' Terima kasih karena sudah tetap hadir, jalan pelan tapi pasti, dan menjaga kualitas di momen-momen penting.' . $disciplineLine
+        'Selamat ulang tahun ' . $agePhrase . ', ' . $fullName . '. '
+        . 'Terima kasih karena selama ini kamu terlihat ' . $activitySummary . ', karena konsistensi yang tenang sering justru jadi fondasi paling kuat dalam tim. '
+        . $lifeLine . ' '
+        . 'Lahir di hari ' . $weekday . ' biasanya membawa karakter yang ' . $dayCharacter . ', dan itu terasa sejalan dengan caramu hadir untuk pekerjaan dan orang-orang di sekitarmu. '
+        . $familyReading
     );
 }
 
 function ems_birthday_generate_message(PDO $pdo, array $userRow): string
 {
     $fullName = trim((string)($userRow['full_name'] ?? 'Medis'));
-    $zodiac = ems_birthday_zodiac_label($userRow['tanggal_lahir_ic'] ?? null);
+    $birthDate = trim((string)($userRow['tanggal_lahir_ic'] ?? ''));
+    $zodiac = ems_birthday_zodiac_label($birthDate);
+    $weekday = ems_birthday_weekday_label($birthDate);
+    $turningAge = ems_birthday_turning_age($birthDate) ?? 0;
     $profile = ems_birthday_activity_profile($pdo, (int)($userRow['id'] ?? 0));
+    $profile['birth_date'] = $birthDate;
+    $profile['weekday'] = $weekday;
+    $profile['turning_age'] = $turningAge;
     $fallback = ems_birthday_fallback_message($fullName, $zodiac, $profile);
 
     try {
@@ -213,27 +374,34 @@ function ems_birthday_generate_message(PDO $pdo, array $userRow): string
 
         $activitySummary = ems_birthday_activity_summary($profile);
         $disciplinePoints = (int)($profile['discipline_points'] ?? 0);
+        $familyReading = ems_birthday_family_reading($fullName);
+        $dayCharacter = ems_birthday_day_character($birthDate);
         $prompt = <<<TEXT
 Tulis 1 pesan ulang tahun dalam bahasa Indonesia untuk medis internal rumah sakit.
 
 Aturan:
 - Nada hangat, realistis, profesional, tidak lebay, tidak halu.
-- Maksimal 90 kata.
+- Buat 3 sampai 4 kalimat yang mengalir natural.
 - Jangan pakai emoji.
-- Jangan terdengar seperti ramalan.
-- Zodiak hanya dipakai sebagai nuansa karakter ringan, bukan mistis.
+- Boleh ada bacaan ringan karakter, tapi jangan mistis, jangan menyeramkan, jangan sok tahu.
+- Wajib memuat semangat kerja dan semangat hidup.
 - Sertakan apresiasi berdasarkan aktivitas nyata.
 - Hindari kalimat klise berlebihan.
+- Jangan terlalu pendek, jangan terasa generik, dan jangan terdengar seperti puisi kosong.
 - Balas JSON valid dengan format {"message":"..."} saja.
 
 Data:
 - Nama: {$fullName}
+- Ulang tahun ke: {$turningAge}
+- Hari lahir: {$weekday}
 - Zodiak: {$zodiac}
 - Ringkasan aktivitas: {$activitySummary}
 - Total transaksi farmasi 90 hari: {$profile['sales_count_90d']}
 - Hari aktif farmasi 90 hari: {$profile['sales_days_90d']}
 - Status farmasi saat ini: {$profile['farmasi_status']}
 - Poin disiplin tercatat: {$disciplinePoints}
+- Kesan hari lahir: {$dayCharacter}
+- Bacaan nama belakang: {$familyReading}
 TEXT;
 
         $response = ems_gemini_generate_content(
@@ -306,6 +474,16 @@ function ems_birthday_fetch_today_celebrants(PDO $pdo, int $viewerUserId = 0): a
     return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
 
+function ems_birthday_inbox_title(array $userRow): string
+{
+    $turningAge = ems_birthday_turning_age($userRow['tanggal_lahir_ic'] ?? null);
+    if ($turningAge !== null && $turningAge > 0) {
+        return 'Ucapan Ulang Tahun ke-' . $turningAge;
+    }
+
+    return 'Ucapan Ulang Tahun';
+}
+
 function ems_birthday_evening_inbox_exists(PDO $pdo, int $userId): bool
 {
     $stmt = $pdo->prepare("
@@ -347,6 +525,6 @@ function ems_birthday_ensure_evening_inbox(PDO $pdo): void
         }
 
         $message = ems_birthday_generate_message($pdo, $birthdayUser);
-        sendInbox($pdo, $userId, 'Ucapan Ulang Tahun', $message, 'birthday_evening');
+        sendInbox($pdo, $userId, ems_birthday_inbox_title($birthdayUser), $message, 'birthday_evening');
     }
 }

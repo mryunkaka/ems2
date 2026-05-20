@@ -315,12 +315,14 @@ function formatDurasiMedis(?string $tanggalMasuk): string
 
 function manageUsersFormatBirthdayCell(?string $tanggalLahirIc): array
 {
-    $dateLabel = ems_birthday_format($tanggalLahirIc);
+    $dateLabel = ems_birthday_format_long($tanggalLahirIc);
     $countdown = ems_birthday_countdown_label($tanggalLahirIc);
+    $age = ems_birthday_current_age($tanggalLahirIc);
 
     return [
         'date' => $dateLabel,
         'countdown' => $countdown,
+        'age' => $age !== null ? 'Usia ' . $age . ' tahun' : '-',
     ];
 }
 
@@ -873,6 +875,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <td>
                                                     <?php if (!empty($u['tanggal_lahir_ic'])): ?>
                                                         <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
+                                                        <small class="meta-text"><?= htmlspecialchars($birthdayCell['age']) ?></small><br>
                                                         <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
                                                     <?php else: ?>
                                                         <span class="muted-placeholder">-</span>
@@ -1148,6 +1151,7 @@ uksort($usersByBatch, function ($a, $b) {
                                             <td>
                                                 <?php if (!empty($u['tanggal_lahir_ic'])): ?>
                                                     <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
+                                                    <small class="meta-text"><?= htmlspecialchars($birthdayCell['age']) ?></small><br>
                                                     <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
                                                 <?php else: ?>
                                                     <span class="muted-placeholder">-</span>

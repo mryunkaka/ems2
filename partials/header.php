@@ -560,11 +560,18 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                     const position = String(item.position || '-');
                     const division = String(item.division || '-');
                     const zodiac = String(item.zodiac || '-');
+                    const birthdayLabel = String(item.birthday_label || '-');
+                    const age = Number(item.age || 0);
+                    const turningAge = Number(item.turning_age || 0);
+                    const ageLine = turningAge > 0
+                        ? `Hari ini ulang tahun ke-${turningAge}.`
+                        : (age > 0 ? `Usia saat ini ${age} tahun.` : 'Hari ini sedang berulang tahun.');
                     return `
                         <div class="card">
                             <div class="text-sm font-semibold text-slate-800">${name}</div>
                             <div class="meta-text-xs mt-1 text-slate-500">${position} • ${division}</div>
-                            <div class="mt-2 text-sm text-slate-700">Hari ini sedang berulang tahun. Nuansa zodiaknya ${zodiac}.</div>
+                            <div class="mt-2 text-sm text-slate-700">${birthdayLabel}</div>
+                            <div class="mt-1 text-sm text-slate-700">${ageLine} Nuansa zodiaknya ${zodiac}.</div>
                         </div>
                     `;
                 }).join('');
