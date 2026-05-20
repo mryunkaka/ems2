@@ -1,5 +1,8 @@
 <?php
+session_start();
+require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $id = (int)($_GET['id'] ?? 0);
@@ -216,11 +219,11 @@ function identityImageUrl(?string $path): ?string
 
     // Jika DB sudah menyimpan "storage/identity/..."
     if (strpos($path, 'storage/identity/') === 0) {
-        return '/' . $path;
+        return '/ajax/secure_file.php?path=' . rawurlencode($path);
     }
 
     // Jika DB hanya menyimpan "Y8TNU04H/v1.jpg"
-    return '/storage/identity/' . $path;
+    return '/ajax/secure_file.php?path=' . rawurlencode('storage/identity/' . $path);
 }
 
 ?>

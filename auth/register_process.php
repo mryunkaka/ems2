@@ -90,8 +90,8 @@ if ($check->fetch()) {
     exit;
 }
 
-$is_verified = 1;
-$is_active = 1;
+$is_verified = 0;
+$is_active = 0;
 
 $insertColumns = [
     'full_name',
@@ -290,6 +290,6 @@ $params[] = $userId;
 
 $pdo->prepare($sql)->execute($params);
 
-$_SESSION['success'] = 'Registrasi berhasil. Akun sudah aktif dan bisa langsung login.';
+$_SESSION['success'] = 'Registrasi berhasil. Akun menunggu verifikasi dan aktivasi manager sebelum bisa login.';
 header("Location: {$loginRedirect}");
 exit;

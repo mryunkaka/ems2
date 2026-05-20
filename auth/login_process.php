@@ -25,6 +25,99 @@ function buildRememberLoginCookieOptions(int $expires): array
     ];
 }
 
+function loginRateLimitDir(): string
+{
+    return __DIR__ . '/../storage/cache/login_rate_limit';
+}
+
+function loginRateLimitEnsureDir(): void
+{
+    $dir = loginRateLimitDir();
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+}
+
+function loginRateLimitPath(string $scope, string $identifier): string
+{
+    return loginRateLimitDir() . '/' . hash('sha256', $scope . '|' . trim(strtolower($identifier))) . '.json';
+}
+
+function loginRateLimitRead(string $scope, string $identifier): array
+{
+    loginRateLimitEnsureDir();
+    $path = loginRateLimitPath($scope, $identifier);
+    if (!is_file($path)) {
+        return ['attempts' => [], 'blocked_until' => 0];
+    }
+
+    $raw = @file_get_contents($path);
+    $data = json_decode((string)$raw, true);
+    if (!is_array($data)) {
+        return ['attempts' => [], 'blocked_until' => 0];
+    }
+
+    return [
+        'attempts' => array_values(array_filter(array_map('intval', $data['attempts'] ?? []))),
+        'blocked_until' => (int)($data['blocked_until'] ?? 0),
+    ];
+}
+
+function loginRateLimitWrite(string $scope, string $identifier, array $data): void
+{
+    loginRateLimitEnsureDir();
+    @file_put_contents(
+        loginRateLimitPath($scope, $identifier),
+        json_encode($data, JSON_UNESCAPED_SLASHES),
+        LOCK_EX
+    );
+}
+
+function loginRateLimitPrune(array $attempts, int $windowSeconds, int $now): array
+{
+    return array_values(array_filter($attempts, static function (int $timestamp) use ($windowSeconds, $now): bool {
+        return $timestamp > ($now - $windowSeconds);
+    }));
+}
+
+function loginRateLimitBlocked(string $scope, string $identifier, int $now): bool
+{
+    $state = loginRateLimitRead($scope, $identifier);
+    if ((int)$state['blocked_until'] > $now) {
+        return true;
+    }
+
+    $attempts = loginRateLimitPrune($state['attempts'], 900, $now);
+    if ($attempts !== $state['attempts']) {
+        loginRateLimitWrite($scope, $identifier, [
+            'attempts' => $attempts,
+            'blocked_until' => 0,
+        ]);
+    }
+
+    return false;
+}
+
+function loginRateLimitRegisterFailure(string $scope, string $identifier, int $now): void
+{
+    $state = loginRateLimitRead($scope, $identifier);
+    $attempts = loginRateLimitPrune($state['attempts'], 900, $now);
+    $attempts[] = $now;
+
+    loginRateLimitWrite($scope, $identifier, [
+        'attempts' => $attempts,
+        'blocked_until' => count($attempts) >= 5 ? ($now + 900) : 0,
+    ]);
+}
+
+function loginRateLimitClear(string $scope, string $identifier): void
+{
+    $path = loginRateLimitPath($scope, $identifier);
+    if (is_file($path)) {
+        @unlink($path);
+    }
+}
+
 $requestedLoginUnit = ems_normalize_unit_code($_POST['login_unit'] ?? $_GET['unit'] ?? 'roxwood');
 $requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
 
@@ -54,6 +147,16 @@ if ($full_name === '' || $pin === '') {
     exit;
 }
 
+$remoteIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+$now = time();
+$nameRateKey = $full_name !== '' ? $full_name : 'unknown';
+
+if (loginRateLimitBlocked('ip', $remoteIp, $now) || loginRateLimitBlocked('name_ip', $remoteIp . '|' . $nameRateKey, $now)) {
+    $_SESSION['error'] = 'Terlalu banyak percobaan login. Coba lagi 15 menit lagi.';
+    header('Location: ' . $requestedLoginUrl);
+    exit;
+}
+
 // =====================================================
 // CARI USER
 // =====================================================
@@ -62,6 +165,8 @@ $stmt->execute([$full_name]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$user || !password_verify($pin, $user['pin'])) {
+    loginRateLimitRegisterFailure('ip', $remoteIp, $now);
+    loginRateLimitRegisterFailure('name_ip', $remoteIp . '|' . $nameRateKey, $now);
     $_SESSION['error'] = 'Nama atau PIN salah';
     header('Location: ' . $requestedLoginUrl);
     exit;
@@ -69,6 +174,9 @@ if (!$user || !password_verify($pin, $user['pin'])) {
 
 $userLoginUnit = ems_normalize_unit_code($user['unit_code'] ?? $requestedLoginUnit);
 $userLoginUrl = 'login.php?unit=' . urlencode($userLoginUnit);
+
+loginRateLimitClear('ip', $remoteIp);
+loginRateLimitClear('name_ip', $remoteIp . '|' . $nameRateKey);
 
 // =====================================================
 // CEK VERIFIKASI AKUN

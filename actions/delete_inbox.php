@@ -1,6 +1,7 @@
 <?php
 session_start();
 
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -63,6 +64,12 @@ $userDivision = ems_normalize_division($user['division'] ?? '');
 
 if ($userId <= 0) {
     echo json_encode(['success' => false]);
+    exit;
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Invalid CSRF token.']);
     exit;
 }
 

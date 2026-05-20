@@ -1,10 +1,25 @@
 <?php
 date_default_timezone_set('Asia/Jakarta');
+session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/surat_code_helper.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json; charset=utf-8');
+
+$user = $_SESSION['user_rh'] ?? [];
+$userRole = $user['role'] ?? '';
+$userDivision = ems_normalize_division($user['division'] ?? '');
+if (!ems_is_letter_receiver_role($userRole) && $userDivision !== 'Secretary') {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Akses ditolak.',
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 try {
     $type = strtolower(trim((string)($_GET['type'] ?? $_POST['type'] ?? '')));

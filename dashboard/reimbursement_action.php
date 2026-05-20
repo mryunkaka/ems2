@@ -8,6 +8,7 @@ session_start();
 |--------------------------------------------------------------------------
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -22,6 +23,11 @@ $userId = (int)($user['id'] ?? 0);
 if ($userId <= 0) {
     http_response_code(403);
     exit('Session tidak valid');
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    exit('Invalid CSRF token');
 }
 
 /*

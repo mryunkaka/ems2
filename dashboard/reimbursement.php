@@ -8,6 +8,7 @@ session_start();
 |--------------------------------------------------------------------------
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
@@ -225,7 +226,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <?php if (!empty($r['receipt_file'])): ?>
                                         <a href="#"
                                             class="doc-badge btn-preview-doc"
-                                            data-src="/<?= htmlspecialchars($r['receipt_file']) ?>"
+                                            data-src="/ajax/secure_file.php?path=<?= rawurlencode((string)$r['receipt_file']) ?>"
                                             data-title="Bukti Pembayaran <?= htmlspecialchars($r['reimbursement_code']) ?>">
                                             <?= ems_icon('document-text', 'h-4 w-4') ?>
                                             <span>Bukti</span>
@@ -302,7 +303,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                body: 'code=' + encodeURIComponent(code)
+                body: 'code=' + encodeURIComponent(code) + '&csrf_token=' + encodeURIComponent(<?= json_encode(generateCsrfToken(), JSON_UNESCAPED_SLASHES) ?>)
             });
 
             const result = await response.json().catch(() => null);
@@ -336,6 +337,8 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             enctype="multipart/form-data">
 
             <div class="modal-content">
+
+            <?= csrfField(); ?>
 
             <input type="hidden"
                 name="reimbursement_code"

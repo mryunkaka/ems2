@@ -1,0 +1,21 @@
+Options -Indexes
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:backup|logs|docs|migrations|vendor|node_modules|\.git)(?:/|$) - [F,L,NC]
+</IfModule>
+
+<FilesMatch "(?i)\.(sql|zip|bak|env|ini|log|md|lock)$">
+    Require all denied
+</FilesMatch>
+
+<FilesMatch "(?i)^(composer\.(json|lock)|package(-lock)?\.json|deploy\.sh|deploy-cron\.php|backfill_operations\.php|flush_setting_akun_cache\.php)$">
+    Require all denied
+</FilesMatch>

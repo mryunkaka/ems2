@@ -35,13 +35,6 @@ function validate_api_request(PDO $pdo)
     $token    = trim(str_replace('Bearer', '', $headers['authorization']));
     $clientId = trim($headers['x-client-id']);
 
-    // DEBUG (AMAN)
-    file_put_contents(
-        __DIR__ . '/../logs/php_error.log',
-        "RECV TOKEN=[$token] | CLIENT=[$clientId]\n",
-        FILE_APPEND
-    );
-
     $stmt = $pdo->prepare("
         SELECT id FROM api_tokens
         WHERE TRIM(token) = ?

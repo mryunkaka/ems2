@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -16,6 +17,15 @@ if (!ems_is_director_role($userRole)) {
     echo json_encode([
         'success' => false,
         'message' => 'Hanya Director dan Vice Director yang dapat menghapus reimbursement.'
+    ]);
+    exit;
+}
+
+if (!validateCsrfToken((string)($_POST['csrf_token'] ?? ''))) {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Invalid CSRF token.'
     ]);
     exit;
 }

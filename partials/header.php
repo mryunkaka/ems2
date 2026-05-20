@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
@@ -19,6 +20,7 @@ $currentSystemName = ems_unit_system_name($currentUnit);
 $medicName    = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '-');
 $medicRole    = $user['role'] ?? null;
+$csrfToken = function_exists('generateCsrfToken') ? generateCsrfToken() : '';
 
 $avatarInitials = initialsFromName($medicName);
 $avatarColor    = avatarColorFromName($medicName);
@@ -78,6 +80,7 @@ if ($userId && !$hideAltaTopbarUtilities) {
     <?php endif; ?>
     <script>
         window.EMS_BASE_URL = <?= json_encode(ems_base_path(), JSON_UNESCAPED_SLASHES) ?>;
+        window.EMS_CSRF_TOKEN = <?= json_encode($csrfToken, JSON_UNESCAPED_SLASHES) ?>;
         window.emsUrl = window.emsUrl || function(path) {
             const normalized = '/' + String(path || '').replace(/^\/+/, '');
             if (!window.EMS_BASE_URL) {
@@ -607,7 +610,8 @@ if ($userId && !$hideAltaTopbarUtilities) {
                     method: 'POST',
                     body: new URLSearchParams({
                         item_id: String(item.item_id || item.id || ''),
-                        source_type: String(item.source_type || 'user_inbox')
+                        source_type: String(item.source_type || 'user_inbox'),
+                        csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
                 });
 
@@ -631,7 +635,8 @@ if ($userId && !$hideAltaTopbarUtilities) {
                     method: 'POST',
                     body: new URLSearchParams({
                         item_id: String(currentInboxId),
-                        source_type: String(currentInboxType || 'user_inbox')
+                        source_type: String(currentInboxType || 'user_inbox'),
+                        csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
                 }).then(() => {
                     closeInboxModal();
@@ -643,7 +648,8 @@ if ($userId && !$hideAltaTopbarUtilities) {
                 fetch(window.emsUrl('/actions/read_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
-                        bulk_action: 'mark_all'
+                        bulk_action: 'mark_all',
+                        csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
                 }).then(() => {
                     loadInbox();
@@ -658,7 +664,8 @@ if ($userId && !$hideAltaTopbarUtilities) {
                 fetch(window.emsUrl('/actions/delete_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
-                        bulk_action: 'delete_all'
+                        bulk_action: 'delete_all',
+                        csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
                 }).then(() => {
                     closeInboxModal();

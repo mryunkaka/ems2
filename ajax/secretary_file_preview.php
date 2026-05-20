@@ -52,7 +52,7 @@ if (!is_file($fullPath)) {
 $name = trim((string) ($_GET['name'] ?? '')) ?: basename($fullPath);
 $extension = strtolower((string) pathinfo($fullPath, PATHINFO_EXTENSION));
 $mime = strtolower((string) (@mime_content_type($fullPath) ?: ''));
-$publicSrc = '/' . ltrim($relativePath, '/');
+$publicSrc = '/ajax/secure_file.php?path=' . rawurlencode($relativePath);
 
 if (in_array($extension, ['jpg', 'jpeg', 'png'], true) || str_starts_with($mime, 'image/')) {
     secretaryPreviewJson([

@@ -1,7 +1,15 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/recruitment_settings.php';
 
 header('Content-Type: application/json; charset=utf-8');
+
+$settings = ems_recruitment_get_settings($pdo);
+if ((int)($settings['is_open'] ?? 1) !== 1) {
+    echo json_encode(['items' => []], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 function recruitmentFormatJoinDuration(?string $tanggalMasuk): string
 {
@@ -210,8 +218,8 @@ function recruitmentBuildOnlineSummary(PDO $pdo, int $userId): array
     ];
 }
 
-$query = strtoupper(trim((string)($_GET['q'] ?? '')));
-if ($query === '') {
+$query = ems_normalize_citizen_id($_GET['q'] ?? '');
+if ($query === '' || strlen($query) < 6 || strlen($query) > 20) {
     echo json_encode(['items' => []], JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -233,11 +241,10 @@ $stmt = $pdo->prepare("
         file_sim,
         file_kta
     FROM user_rh
-    WHERE citizen_id LIKE ?
-    ORDER BY citizen_id ASC
-    LIMIT 10
+    WHERE UPPER(TRIM(citizen_id)) = ?
+    LIMIT 1
 ");
-$stmt->execute([$query . '%']);
+$stmt->execute([$query]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $items = [];
@@ -268,16 +275,21 @@ foreach ($rows as $row) {
         'full_name' => (string)($row['full_name'] ?? ''),
         'no_hp_ic' => (string)($row['no_hp_ic'] ?? ''),
         'jenis_kelamin' => (string)($row['jenis_kelamin'] ?? ''),
-        'division' => (string)($row['division'] ?? ''),
-        'role' => (string)($row['role'] ?? ''),
-        'position' => (string)($row['position'] ?? ''),
+        'division' => '',
+        'role' => '',
+        'position' => '',
         'batch' => isset($row['batch']) && $row['batch'] !== null && $row['batch'] !== '' ? 'Batch ' . (int)$row['batch'] : 'Tanpa Batch',
         'tanggal_masuk' => (string)($row['tanggal_masuk'] ?? ''),
         'city_duration' => recruitmentFormatJoinDuration($row['tanggal_masuk'] ?? null),
         'online_schedule' => $onlineSummary['online_schedule'],
         'duty_duration' => $onlineSummary['duty_duration'],
         'active_day_count' => (int)$onlineSummary['active_day_count'],
-        'documents' => $documents,
+        'documents' => [
+            'ktp_ic' => trim($documents['ktp_ic']) !== '',
+            'skb' => trim($documents['skb']) !== '',
+            'sim' => trim($documents['sim']) !== '',
+            'kta' => trim($documents['kta']) !== '',
+        ],
         'missing_documents' => $missingDocuments,
         'documents_complete' => $missingDocuments === [],
         'settings_url' => '/dashboard/setting_akun.php',
