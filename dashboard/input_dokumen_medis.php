@@ -279,7 +279,7 @@ include __DIR__ . '/../partials/sidebar.php';
             if (!empty($path)) {
                 $uploadedDocs[] = [
                     'label' => $label,
-                    'path' => (string)$path,
+                    'url' => ems_secure_file_url((string)$path),
                 ];
             } else {
                 $missingDocs[] = $label;
@@ -290,7 +290,7 @@ include __DIR__ . '/../partials/sidebar.php';
             foreach ($otherDocs as $otherDoc) {
                 $uploadedDocs[] = [
                     'label' => (string)($otherDoc['name'] ?? 'File Lainnya'),
-                    'path' => (string)($otherDoc['path'] ?? ''),
+                    'url' => ems_secure_file_url((string)($otherDoc['path'] ?? '')),
                 ];
             }
         } else {
@@ -390,7 +390,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 const anchor = document.createElement('a');
                 anchor.href = '#';
                 anchor.className = 'doc-badge btn-preview-doc';
-                anchor.dataset.src = '/' + String(doc.path || '').replace(/^\/+/, '');
+                anchor.dataset.src = String(doc.url || '');
                 anchor.dataset.title = doc.label || 'Dokumen';
                 anchor.textContent = doc.label || 'Dokumen';
                 uploadedDocsEl.appendChild(anchor);
@@ -539,4 +539,3 @@ include __DIR__ . '/../partials/sidebar.php';
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
-

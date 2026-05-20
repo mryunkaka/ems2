@@ -378,14 +378,13 @@ function candidateDisplayLabel(?string $value): string
 
                         <?php foreach ($documents as $label => $filePath): ?>
                             <?php
-                            $docUrl = trim((string)$filePath) !== '' ? $uploadBase . ltrim((string)$filePath, '/') : '';
+                            $docUrl = trim((string)$filePath) !== '' ? ems_secure_file_url((string)$filePath) : '';
                             ?>
 	                            <tr>
 	                                <td class="w-56"><strong><?= $label ?></strong></td>
 	                                <td>
 	                                    <?php if ($docUrl !== ''): ?>
-	                                        <a href="<?= htmlspecialchars($docUrl) ?>"
-	                                            target="_blank"
+	                                        <a href="#"
 	                                            class="doc-badge btn-preview-doc"
 	                                            data-src="<?= htmlspecialchars($docUrl) ?>"
 	                                            data-title="<?= htmlspecialchars($label) ?>"

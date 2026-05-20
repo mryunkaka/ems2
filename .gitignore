@@ -1,6 +1,7 @@
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # Runtime / generated
 storage/
@@ -19,7 +20,6 @@ error_log
 !docs/sql/*.sql
 cron/error_log
 actions/error_log
-config/database.php
 vendor
 
 # IDE / OS

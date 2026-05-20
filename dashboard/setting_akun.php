@@ -109,15 +109,7 @@ function settingAkunNormalizeDocName(?string $name): string
 
 function settingAkunPreviewUrl(?string $path): string
 {
-    $cleanPath = trim((string)$path);
-    if ($cleanPath === '') {
-        return '';
-    }
-
-    $absolutePath = __DIR__ . '/../' . ltrim($cleanPath, '/');
-    $version = is_file($absolutePath) ? (string)filemtime($absolutePath) : (string)time();
-
-    return '/' . ltrim($cleanPath, '/') . '?v=' . rawurlencode($version);
+    return ems_secure_file_url($path);
 }
 
 function settingAkunDocSuggestionCachePath(): string

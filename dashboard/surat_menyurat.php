@@ -425,9 +425,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php if (!empty($incomingAttachments)): ?>
                                             <div class="flex flex-wrap gap-2">
                                                 <?php foreach ($incomingAttachments as $attachment): ?>
-                                                    <a href="#"
+                                                        <a href="#"
                                                         class="doc-badge btn-preview-doc"
-                                                        data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-src="<?= htmlspecialchars(ems_secure_file_url((string)$attachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
                                                         data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: ('Lampiran ' . $row['letter_code'])), ENT_QUOTES, 'UTF-8') ?>">
                                                         <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                         <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
@@ -728,9 +728,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($outgoingAttachments)): ?>
                                                 <div class="flex flex-wrap gap-2">
                                                     <?php foreach ($outgoingAttachments as $attachment): ?>
-                                                        <a href="#"
+                                                            <a href="#"
                                                             class="doc-badge btn-preview-doc"
-                                                            data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                            data-src="<?= htmlspecialchars(ems_secure_file_url((string)$attachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
                                                             data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: ('Lampiran ' . $row['outgoing_code'])), ENT_QUOTES, 'UTF-8') ?>">
                                                             <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                             <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
@@ -852,10 +852,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($minutesAttachments)): ?>
                                                 <div class="flex flex-wrap gap-2">
                                                     <?php foreach ($minutesAttachments as $attachment): ?>
-                                                        <a href="#"
-                                                            class="doc-badge btn-preview-doc"
-                                                            data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
-                                                            data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
+                                                         <a href="#"
+                                                             class="doc-badge btn-preview-doc"
+                                                             data-src="<?= htmlspecialchars(ems_secure_file_url((string)$attachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
+                                                             data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
                                                             <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                             <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
                                                         </a>
@@ -980,10 +980,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($minutesAttachments)): ?>
                                                 <div class="flex flex-wrap gap-2">
                                                     <?php foreach ($minutesAttachments as $attachment): ?>
-                                                        <a href="#"
-                                                            class="doc-badge btn-preview-doc"
-                                                            data-src="/<?= htmlspecialchars(ltrim((string)$attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
-                                                            data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
+                                                         <a href="#"
+                                                             class="doc-badge btn-preview-doc"
+                                                             data-src="<?= htmlspecialchars(ems_secure_file_url((string)$attachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
+                                                             data-title="<?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran notulen'), ENT_QUOTES, 'UTF-8') ?>">
                                                             <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                             <span><?= htmlspecialchars((string)($attachment['file_name'] ?: 'Lampiran')) ?></span>
                                                         </a>

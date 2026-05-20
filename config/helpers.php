@@ -1207,6 +1207,11 @@ function ems_asset(string $path): string
     $path = (string)$path;
     if ($path === '') return '';
 
+    $cleanPath = ltrim(explode('?', $path, 2)[0], '/');
+    if (str_starts_with(str_replace('\\', '/', $cleanPath), 'storage/')) {
+        return ems_secure_file_url($cleanPath);
+    }
+
     // Keep existing query string, append v= if possible.
     $parts = explode('?', $path, 2);
     $pathOnly = '/' . ltrim($parts[0], '/');
@@ -2333,4 +2338,18 @@ function uploadDisciplinaryAttachmentFile(array $file, string $folder): ?string
     }
 
     return null;
+}
+
+function ems_secure_file_url(?string $path): string
+{
+    $cleanPath = ltrim(str_replace('\\', '/', trim((string)$path)), '/');
+    if ($cleanPath === '') {
+        return '';
+    }
+
+    if (!str_starts_with($cleanPath, 'storage/')) {
+        return ems_url('/' . $cleanPath);
+    }
+
+    return ems_url('/ajax/secure_file.php?path=' . rawurlencode($cleanPath));
 }

@@ -742,9 +742,8 @@ $pageTitle = 'Interview ' . ems_recruitment_type_label($recruitmentType);
                                 </div>
 
                                 <?php if ($document): ?>
-                                    <?php $documentUrl = '../' . $document['file_path']; ?>
-                                    <a href="<?= htmlspecialchars($documentUrl) ?>"
-                                        target="_blank"
+                                    <?php $documentUrl = ems_secure_file_url((string)$document['file_path']); ?>
+                                    <a href="#"
                                         class="doc-badge btn-preview-doc"
                                         data-src="<?= htmlspecialchars($documentUrl) ?>"
                                         data-title="<?= htmlspecialchars($documentLabel) ?>">

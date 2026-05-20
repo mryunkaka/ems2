@@ -50,6 +50,7 @@ if ($storageRoot === false || !secureFileIsInside($fullPath, $storageRoot)) {
 
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
+$userRole = strtolower(trim((string)($user['role'] ?? '')));
 $userDivision = ems_normalize_division($user['division'] ?? '');
 if ($userId <= 0) {
     secureFileAbort(401, 'Session user tidak valid.');
@@ -93,6 +94,77 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/file_records/')) {
     if ($userDivision !== 'Secretary') {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/user_docs/')) {
+    $stmt = $pdo->prepare("
+        SELECT id
+        FROM user_rh
+        WHERE file_ktp = ?
+           OR file_sim = ?
+           OR file_kta = ?
+           OR file_skb = ?
+           OR sertifikat_heli = ?
+           OR sertifikat_operasi = ?
+           OR COALESCE(dokumen_lainnya, '') LIKE ?
+        LIMIT 1
+    ");
+    $likePath = '%' . $relativePath . '%';
+    $stmt->execute([$relativePath, $relativePath, $relativePath, $relativePath, $relativePath, $relativePath, $likePath]);
+    $ownerId = (int)$stmt->fetchColumn();
+    if ($ownerId <= 0 || ($ownerId !== $userId && ems_is_staff_role($userRole))) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/applicants/')) {
+    $stmt = $pdo->prepare("SELECT 1 FROM applicant_documents WHERE file_path = ? LIMIT 1");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn() || ems_is_staff_role($userRole)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/restaurant_ktp/')) {
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM restaurant_consumptions
+        WHERE ktp_file = ?
+          AND (recipient_user_id = ? OR created_by = ? OR ? = 1)
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath, $userId, $userId, ems_is_staff_role($userRole) ? 0 : 1]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/letters/')) {
+    if (!ems_is_letter_receiver_role((string)($user['role'] ?? '')) && !in_array($userDivision, ['Secretary', 'General Affair', 'Executive'], true)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/general_affair/cooperation_inputs/')) {
+    if (!in_array($userDivision, ['General Affair', 'Executive', 'Secretary'], true)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
+    $isForensic = $userDivision === 'Forensic';
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM medical_records mr
+        WHERE (mr.ktp_file_path = ? OR mr.mri_file_path = ?)
+          AND (? = 1 OR mr.created_by = ?)
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath, $relativePath, $isForensic ? 1 : 0, $userId]);
+    $allowed = (bool)$stmt->fetchColumn();
+    if (!$allowed && ems_table_exists($pdo, 'medical_record_supporting_images')) {
+        $stmt = $pdo->prepare("
+            SELECT 1
+            FROM medical_record_supporting_images si
+            INNER JOIN medical_records mr ON mr.id = si.medical_record_id
+            WHERE si.file_path = ?
+              AND (? = 1 OR mr.created_by = ?)
+            LIMIT 1
+        ");
+        $stmt->execute([$relativePath, $isForensic ? 1 : 0, $userId]);
+        $allowed = (bool)$stmt->fetchColumn();
+    }
+    if (!$allowed) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } else {

@@ -860,7 +860,7 @@ uksort($usersByBatch, function ($a, $b) {
 	                                                ?>
                                                         <a href="#"
                                                             class="doc-badge btn-preview-doc"
-                                                            data-src="/<?= htmlspecialchars($path) ?>"
+                                                            data-src="<?= htmlspecialchars(ems_secure_file_url($path)) ?>"
                                                             data-title="<?= htmlspecialchars($label) ?>"
                                                             title="Lihat <?= htmlspecialchars($label) ?>">
                                                             <?= $label ?>
@@ -1124,7 +1124,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 ?>
                                                         <a href="#"
                                                             class="doc-badge btn-preview-doc"
-                                                            data-src="/<?= htmlspecialchars($path) ?>"
+                                                            data-src="<?= htmlspecialchars(ems_secure_file_url($path)) ?>"
                                                             data-title="<?= htmlspecialchars($label) ?>"
                                                             title="Lihat <?= htmlspecialchars($label) ?>">
                                                             <?= $label ?>

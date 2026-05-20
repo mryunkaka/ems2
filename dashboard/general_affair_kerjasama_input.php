@@ -506,9 +506,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </td>
                                 <td>
                                     <?php if ($ktpAttachment): ?>
-                                        <a href="#"
+                                         <a href="#"
                                            class="doc-badge btn-preview-doc"
-                                           data-src="/<?= htmlspecialchars(ltrim((string)$ktpAttachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                           data-src="<?= htmlspecialchars(ems_secure_file_url((string)$ktpAttachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
                                            data-title="KTP - <?= htmlspecialchars((string)($row['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                             <?= ems_icon('document-text', 'h-4 w-4') ?>
                                             <span>Lihat</span>
@@ -519,9 +519,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </td>
                                 <td>
                                     <?php if ($ktaAttachment): ?>
-                                        <a href="#"
+                                         <a href="#"
                                            class="doc-badge btn-preview-doc"
-                                           data-src="/<?= htmlspecialchars(ltrim((string)$ktaAttachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                           data-src="<?= htmlspecialchars(ems_secure_file_url((string)$ktaAttachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
                                            data-title="KTA - <?= htmlspecialchars((string)($row['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
                                             <?= ems_icon('document-text', 'h-4 w-4') ?>
                                             <span>Lihat</span>

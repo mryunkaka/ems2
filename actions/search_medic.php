@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 
 if (!isset($_SESSION['user_rh'])) {

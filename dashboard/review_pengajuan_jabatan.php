@@ -312,14 +312,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <div class="forensic-detail-label">Lampiran KTP</div>
                                         <div class="forensic-detail-value">
                                             <?php if (!empty($mr['ktp_file_path'])): ?>
-                                                <a href="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
+                                                <a href="<?= htmlspecialchars(ems_secure_file_url((string)$mr['ktp_file_path'])) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
                                             <?php else: ?>
                                                 <div class="is-muted">Lampiran KTP belum tersedia.</div>
                                             <?php endif; ?>
                                         </div>
                                         <?php if (!empty($mr['ktp_file_path'])): ?>
                                         <div class="mt-3">
-                                            <img src="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                            <img src="<?= htmlspecialchars(ems_secure_file_url((string)$mr['ktp_file_path'])) ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -328,14 +328,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <div class="forensic-detail-label">Lampiran MRI</div>
                                         <div class="forensic-detail-value">
                                             <?php if (!empty($mr['mri_file_path'])): ?>
-                                                <a href="/<?= htmlspecialchars($mr['mri_file_path']) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
+                                                <a href="<?= htmlspecialchars(ems_secure_file_url((string)$mr['mri_file_path'])) ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
                                             <?php else: ?>
                                                 <div class="is-muted">Lampiran MRI belum tersedia.</div>
                                             <?php endif; ?>
                                         </div>
                                         <?php if (!empty($mr['mri_file_path'])): ?>
                                         <div class="mt-3">
-                                            <img src="/<?= htmlspecialchars($mr['mri_file_path']) ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                            <img src="<?= htmlspecialchars(ems_secure_file_url((string)$mr['mri_file_path'])) ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
                                         </div>
                                         <?php endif; ?>
                                     </div>
@@ -394,12 +394,12 @@ include __DIR__ . '/../partials/sidebar.php';
 	                                                        <?= ems_icon('eye', 'h-4 w-4') ?>
 	                                                    </button>
 	                                                    <?php if (!empty($mr['ktp_file_path'])): ?>
-	                                                        <a href="/<?= htmlspecialchars($mr['ktp_file_path']) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat KTP">
+	                                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string)$mr['ktp_file_path'])) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat KTP">
 	                                                            <?= ems_icon('document', 'h-4 w-4') ?> KTP
 	                                                        </a>
 	                                                    <?php endif; ?>
 	                                                    <?php if (!empty($mr['mri_file_path'])): ?>
-	                                                        <a href="/<?= htmlspecialchars($mr['mri_file_path']) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat MRI">
+	                                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string)$mr['mri_file_path'])) ?>" target="_blank" class="btn-secondary action-icon-btn" title="Lihat MRI">
 	                                                            <?= ems_icon('document', 'h-4 w-4') ?> MRI
 	                                                        </a>
 	                                                    <?php endif; ?>

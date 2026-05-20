@@ -1,6 +1,7 @@
 <?php
 session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -99,7 +100,7 @@ function inboxGroupAttachments(array $rows, string $foreignKey): array
 function inboxAttachmentPayload(array $attachments, string $fallbackName): array
 {
     return array_map(static function (array $attachment) use ($fallbackName): array {
-        $filePath = '/' . ltrim((string)($attachment['file_path'] ?? ''), '/');
+        $filePath = ems_secure_file_url((string)($attachment['file_path'] ?? ''));
         $fileName = trim((string)($attachment['file_name'] ?? ''));
         $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
         $extension = strtolower((string)pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));

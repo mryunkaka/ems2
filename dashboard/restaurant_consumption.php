@@ -392,7 +392,7 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                     <?php if (!empty($r['ktp_file'])): ?>
                                         <a href="#"
                                             class="doc-badge btn-preview-doc"
-                                            data-src="/<?= htmlspecialchars($r['ktp_file']) ?>"
+                                            data-src="<?= htmlspecialchars(ems_secure_file_url((string)$r['ktp_file'])) ?>"
                                             data-title="KTP - <?= htmlspecialchars($r['restaurant_name']) ?>">
                                             <?= ems_icon('document-text', 'h-4 w-4') ?>
                                             <span>Lihat</span>
