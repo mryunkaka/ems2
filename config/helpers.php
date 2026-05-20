@@ -2382,15 +2382,25 @@ function ems_render_toast_script(string $message, string $type = 'info', ?string
     }
 
     return '<script>'
-        . 'document.addEventListener("DOMContentLoaded",function(){'
+        . '(function(){'
+        . 'var attempts=0;'
+        . 'var payload={title:' . json_encode($safeTitle, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        . ',duration:' . max(2200, $duration) . '};'
+        . 'function emit(){'
         . 'if(typeof window.emsToast==="function"){'
         . 'window.emsToast('
         . json_encode($safeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ','
-        . json_encode($safeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ','
-        . '{title:' . json_encode($safeTitle, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-        . ',duration:' . max(2200, $duration) . '}'
-        . ');'
+        . json_encode($safeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ',payload);'
+        . 'return;'
         . '}'
-        . '});'
+        . 'attempts+=1;'
+        . 'if(attempts<40){window.setTimeout(emit,80);}'
+        . '}'
+        . 'if(document.readyState==="loading"){'
+        . 'document.addEventListener("DOMContentLoaded",emit,{once:true});'
+        . '}else{'
+        . 'emit();'
+        . '}'
+        . '})();'
         . '</script>';
 }
