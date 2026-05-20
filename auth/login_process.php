@@ -255,6 +255,7 @@ $_SESSION['user_rh'] = [
     'division' => ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? ''),
     'unit_code' => $userLoginUnit,
     'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
+    'tanggal_lahir_ic' => $user['tanggal_lahir_ic'] ?? null,
 ];
 $_SESSION['ems_active_unit'] = $userLoginUnit;
 
@@ -289,5 +290,12 @@ if ($position === 'trainee') {
 }
 
 // selain trainee → rekap farmasi
+$requiresTanggalLahirIc = ems_column_exists($pdo, 'user_rh', 'tanggal_lahir_ic');
+if ($requiresTanggalLahirIc && trim((string)($user['tanggal_lahir_ic'] ?? '')) === '') {
+    $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi dulu sebelum akses jualan farmasi.';
+    header("Location: /dashboard/setting_akun.php");
+    exit;
+}
+
 header("Location: /dashboard/rekap_farmasi.php");
 exit;

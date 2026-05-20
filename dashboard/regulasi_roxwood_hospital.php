@@ -831,3 +831,5 @@ include __DIR__ . '/../partials/sidebar.php';
         }
     }
 </style>
+
+<?php include __DIR__ . '/../partials/footer.php'; ?>

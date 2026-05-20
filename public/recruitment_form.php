@@ -38,12 +38,16 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                     <?= htmlspecialchars($profile['description']) ?>
                 </p>
 
-                <div class="alert alert-info mt-5 mb-0 border-white/15 bg-white/10 text-slate-100">
+                <div class="card mt-5 mb-0 border-white/15 bg-white/10 text-white shadow-none">
+                    <div class="card-section">
                     Pastikan dokumen yang diunggah terbaca dengan jelas dan menggunakan format gambar yang didukung.
+                    </div>
                 </div>
 
-                <div class="alert alert-info mt-3 mb-0 border-white/15 bg-white/10 text-slate-100">
+                <div class="card mt-3 mb-0 border-white/15 bg-white/10 text-white shadow-none">
+                    <div class="card-section">
                     File gambar besar akan dikompres otomatis sebelum dikirim agar upload tetap lancar dan hasil di storage tetap tajam saat di-zoom.
+                    </div>
                 </div>
 
                 <div class="card mt-5 mb-0 border-white/10 bg-white/10 text-white shadow-none">

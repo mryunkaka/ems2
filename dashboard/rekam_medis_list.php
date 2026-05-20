@@ -256,10 +256,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <!-- Flash Messages -->
         <?php foreach ($messages as $message): ?>
-            <div class="alert alert-info"><?= htmlspecialchars($message) ?></div>
+            <?= ems_render_toast_script((string)$message, 'info', 'Rekam Medis') ?>
         <?php endforeach; ?>
         <?php foreach ($errors as $error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
+            <?= ems_render_toast_script((string)$error, 'error', 'Rekam Medis', 6800) ?>
         <?php endforeach; ?>
 
         <!-- Search -->

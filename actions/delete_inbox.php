@@ -51,6 +51,15 @@ function inboxTableHasColumn(PDO $pdo, string $table, string $column): bool
     return $cache[$key];
 }
 
+function inboxProtectedUserInboxTypes(): array
+{
+    return [
+        'disciplinary_case',
+        'disciplinary_reduction',
+        'disciplinary_warning_letter',
+    ];
+}
+
 $user = $_SESSION['user_rh'] ?? null;
 if (!$user) {
     echo json_encode(['success' => false]);
@@ -104,7 +113,7 @@ if ($bulkAction === 'delete_all') {
             ON DUPLICATE KEY UPDATE
                 is_read = 1,
                 is_deleted = 1,
-                read_at = COALESCE(read_at, NOW()),
+                read_at = COALESCE(user_inbox_state.read_at, NOW()),
                 deleted_at = NOW()
         ");
         $stmt->execute(array_merge([$userId], $incomingParams));
@@ -121,7 +130,7 @@ if ($bulkAction === 'delete_all') {
                 ON DUPLICATE KEY UPDATE
                     is_read = 1,
                     is_deleted = 1,
-                    read_at = COALESCE(read_at, NOW()),
+                    read_at = COALESCE(user_inbox_state.read_at, NOW()),
                     deleted_at = NOW()
             ");
             $stmt->execute([$userId, $userDivision !== '' ? $userDivision : 'All Divisi']);

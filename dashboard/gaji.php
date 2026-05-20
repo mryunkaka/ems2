@@ -294,14 +294,9 @@ $salary = $stmt->fetchAll(PDO::FETCH_ASSOC);
         ?>
 
         <?php if (isset($_GET['generated'])): ?>
-            <div class="alert alert-success" id="autoAlert">
-                Generate gaji manual selesai.
-                Periode baru dibuat: <strong><?= (int)$_GET['generated'] ?></strong>
-            </div>
+            <?= ems_render_toast_script('Generate gaji manual selesai. Periode baru dibuat: ' . (int)$_GET['generated'], 'success', 'Gaji') ?>
         <?php elseif (($_GET['msg'] ?? '') === 'nosales'): ?>
-            <div class="alert alert-warning" id="autoAlert">
-                Tidak ada data sales untuk dihitung.
-            </div>
+            <?= ems_render_toast_script('Tidak ada data sales untuk dihitung.', 'warning', 'Gaji') ?>
         <?php endif; ?>
 
         <?php if ($userRole === 'staff'): ?>

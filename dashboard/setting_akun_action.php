@@ -156,6 +156,7 @@ $newPin     = $_POST['new_pin'] ?? '';
 $confirmPin = $_POST['confirm_pin'] ?? '';
 $batch = $batchFromDb > 0 ? $batchFromDb : intval($_POST['batch'] ?? 0);
 $tanggalMasuk = $_POST['tanggal_masuk'] ?? null;
+$tanggalLahirIc = trim((string)($_POST['tanggal_lahir_ic'] ?? ''));
 
 if (empty($tanggalMasuk)) {
     $_SESSION['flash_errors'][] = 'Tanggal masuk wajib diisi.';
@@ -329,6 +330,9 @@ $settingAkunSelectColumns = [
     'dokumen_lainnya',
 ];
 $userRhColumns = settingAkunActionUserRhColumns($pdo);
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    $settingAkunSelectColumns[] = 'tanggal_lahir_ic';
+}
 foreach (array_merge($settingAkunExtraDocFields, $settingAkunIssuedDateFields, $settingAkunDateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $settingAkunSelectColumns[] = $optionalColumn;
@@ -344,6 +348,20 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 settingAkunPerfMark('load_user_files');
+
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    if ($tanggalLahirIc === '') {
+        $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalLahirIc)) {
+        $_SESSION['flash_errors'][] = 'Format tanggal lahir IC tidak valid.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+}
 
 $requiredDocFields = [
     'file_ktp' => 'Upload KTP wajib diunggah.',
@@ -801,6 +819,11 @@ $params = [
     $jenisKelamin,
     $noHpIc
 ];
+
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    $sql .= ", tanggal_lahir_ic = ?";
+    $params[] = $tanggalLahirIc;
+}
 
 // File lainnya (JSON)
 $sql .= ", dokumen_lainnya = ?";

@@ -610,15 +610,14 @@ include __DIR__ . '/../partials/sidebar.php';
             Input penjualan Bandage / IFAKS / Painkiller dengan batas harian per konsumen.
         </p>
 
-        <!-- NOTIFIKASI -->
         <?php foreach ($messages as $m): ?>
-            <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>
+            <?= ems_render_toast_script((string)$m, 'info', 'Rekap Farmasi v2') ?>
         <?php endforeach; ?>
         <?php foreach ($warnings as $w): ?>
-            <div class="alert alert-warning"><?= htmlspecialchars($w) ?></div>
+            <?= ems_render_toast_script((string)$w, 'warning', 'Rekap Farmasi v2') ?>
         <?php endforeach; ?>
         <?php foreach ($errors as $e): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
+            <?= ems_render_toast_script((string)$e, 'error', 'Rekap Farmasi v2', 6800) ?>
         <?php endforeach; ?>
 
         <!-- Card Petugas Medis (hanya muncul jika BELUM ada petugas) -->
@@ -1690,19 +1689,6 @@ include __DIR__ . '/../partials/sidebar.php';
             updateCustomDateVisibility();
             recalcTotals(); // hitung awal berdasarkan form yang dipulihkan
             renderPricePerPcs();
-
-            // ===== Auto hide alert setelah 5 detik =====
-            setTimeout(function() {
-                document.querySelectorAll('.alert-warning, .alert-error, .alert-info').forEach(function(el) {
-                    el.style.transition = 'opacity 0.5s';
-                    el.style.opacity = '0';
-                    setTimeout(function() {
-                        if (el.parentNode) {
-                            el.parentNode.removeChild(el);
-                        }
-                    }, 600);
-                });
-            }, 5000);
 
             // ===== Inisialisasi DataTables untuk tabel transaksi =====
             if (window.jQuery && jQuery.fn.DataTable) {

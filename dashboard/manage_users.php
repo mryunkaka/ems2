@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/birthday_helper.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -149,12 +150,14 @@ $hasCanViewAllUnitsColumn = manageUsersHasColumn($pdo, 'can_view_all_units');
 $hasCitizenIdColumn = manageUsersHasColumn($pdo, 'citizen_id');
 $hasNoHpIcColumn = manageUsersHasColumn($pdo, 'no_hp_ic');
 $hasJenisKelaminColumn = manageUsersHasColumn($pdo, 'jenis_kelamin');
+$hasTanggalLahirIcColumn = manageUsersHasColumn($pdo, 'tanggal_lahir_ic');
 $divisionSelect = $hasDivisionColumn ? "u.division," : "NULL AS division,";
 $unitSelect = $hasUnitCodeColumn ? "u.unit_code," : "'roxwood' AS unit_code,";
 $allUnitsSelect = $hasCanViewAllUnitsColumn ? "u.can_view_all_units," : "NULL AS can_view_all_units,";
 $citizenIdSelect = $hasCitizenIdColumn ? "u.citizen_id," : "NULL AS citizen_id,";
 $noHpIcSelect = $hasNoHpIcColumn ? "u.no_hp_ic," : "NULL AS no_hp_ic,";
 $jenisKelaminSelect = $hasJenisKelaminColumn ? "u.jenis_kelamin," : "NULL AS jenis_kelamin,";
+$tanggalLahirIcSelect = $hasTanggalLahirIcColumn ? "u.tanggal_lahir_ic," : "NULL AS tanggal_lahir_ic,";
 $optionalSelectParts = [];
 foreach ($editOptionalColumns as $optionalColumn) {
     $optionalSelectParts[] = manageUsersHasColumn($pdo, $optionalColumn)
@@ -178,6 +181,7 @@ $stmtUsers = $pdo->prepare("
         {$citizenIdSelect}
         {$noHpIcSelect}
         {$jenisKelaminSelect}
+        {$tanggalLahirIcSelect}
         u.is_active,
         u.tanggal_masuk,
         u.cuti_start_date,
@@ -307,6 +311,17 @@ function formatDurasiMedis(?string $tanggalMasuk): string
     }
 
     return $days . ' hari';
+}
+
+function manageUsersFormatBirthdayCell(?string $tanggalLahirIc): array
+{
+    $dateLabel = ems_birthday_format($tanggalLahirIc);
+    $countdown = ems_birthday_countdown_label($tanggalLahirIc);
+
+    return [
+        'date' => $dateLabel,
+        'countdown' => $countdown,
+    ];
 }
 
 foreach ($users as $u) {
@@ -536,11 +551,11 @@ uksort($usersByBatch, function ($a, $b) {
         <p class="page-subtitle">Kelola akun, jabatan, role, dan PIN pengguna</p>
 
         <?php foreach ($messages as $m): ?>
-            <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>
+            <?= ems_render_toast_script((string)$m, 'info', 'Manajemen User') ?>
         <?php endforeach; ?>
 
         <?php foreach ($errors as $e): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
+            <?= ems_render_toast_script((string)$e, 'error', 'Manajemen User', 6800) ?>
         <?php endforeach; ?>
 
         <div class="card account-update-history-card">
@@ -725,6 +740,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Unit</th>
                                         <th>Tanggal Join</th>
+                                        <th>Tanggal Lahir IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
                                     </tr>
@@ -768,6 +784,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                                $joinSearch = strtolower((string)$u['tanggal_masuk']);
 		                                            }
 		                                        }
+                                                        $birthdayCell = manageUsersFormatBirthdayCell($u['tanggal_lahir_ic'] ?? null);
 
 		                                        $allSearch = trim(implode(' ', array_filter([
 		                                            strtolower((string)$u['full_name']),
@@ -853,6 +870,14 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
 	                                            </td>
+                                                <td>
+                                                    <?php if (!empty($u['tanggal_lahir_ic'])): ?>
+                                                        <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
+                                                        <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
+                                                    <?php else: ?>
+                                                        <span class="muted-placeholder">-</span>
+                                                    <?php endif; ?>
+                                                </td>
 	                                            <td>
 	                                                <?php
 	                                                foreach ($docs as $label => $path):
@@ -893,6 +918,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                             data-citizen-id="<?= htmlspecialchars((string)($u['citizen_id'] ?? ''), ENT_QUOTES) ?>"
                                                             data-no-hp-ic="<?= htmlspecialchars((string)($u['no_hp_ic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-jenis-kelamin="<?= htmlspecialchars((string)($u['jenis_kelamin'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-lahir-ic="<?= htmlspecialchars((string)($u['tanggal_lahir_ic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-masuk="<?= htmlspecialchars((string)($u['tanggal_masuk'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-naik-paramedic="<?= htmlspecialchars((string)($u['tanggal_naik_paramedic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-naik-co-asst="<?= htmlspecialchars((string)($u['tanggal_naik_co_asst'] ?? ''), ENT_QUOTES) ?>"
@@ -980,6 +1006,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Unit</th>
                                         <th>Tanggal Join</th>
+                                        <th>Tanggal Lahir IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
                                     </tr>
@@ -1024,6 +1051,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 $joinSearch = strtolower((string)$u['tanggal_masuk']);
                                             }
                                         }
+                                        $birthdayCell = manageUsersFormatBirthdayCell($u['tanggal_lahir_ic'] ?? null);
 
                                         $allSearch = trim(implode(' ', array_filter([
                                             strtolower((string)$u['full_name']),
@@ -1093,8 +1121,8 @@ uksort($usersByBatch, function ($a, $b) {
                                                         Resign: <?= (new DateTime($u['resigned_at']))->format('d M Y') ?>
                                                     </div>
                                                 <?php endif; ?>
-                                            </td>
-                                            <td>
+	                                            </td>
+	                                            <td>
                                                 <?php if (!empty($u['batch'])): ?>
                                                     <span class="badge badge-primary">Batch <?= (int)$u['batch'] ?></span>
                                                 <?php else: ?>
@@ -1113,6 +1141,14 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <small class="meta-text">
                                                         <?= formatDurasiMedis($u['tanggal_masuk']) ?>
                                                     </small>
+                                                <?php else: ?>
+                                                    <span class="muted-placeholder">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <?php if (!empty($u['tanggal_lahir_ic'])): ?>
+                                                    <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
+                                                    <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
                                                 <?php else: ?>
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
@@ -1157,6 +1193,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                             data-citizen-id="<?= htmlspecialchars((string)($u['citizen_id'] ?? ''), ENT_QUOTES) ?>"
                                                             data-no-hp-ic="<?= htmlspecialchars((string)($u['no_hp_ic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-jenis-kelamin="<?= htmlspecialchars((string)($u['jenis_kelamin'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-tanggal-lahir-ic="<?= htmlspecialchars((string)($u['tanggal_lahir_ic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-masuk="<?= htmlspecialchars((string)($u['tanggal_masuk'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-naik-paramedic="<?= htmlspecialchars((string)($u['tanggal_naik_paramedic'] ?? ''), ENT_QUOTES) ?>"
                                                             data-tanggal-naik-co-asst="<?= htmlspecialchars((string)($u['tanggal_naik_co_asst'] ?? ''), ENT_QUOTES) ?>"
@@ -1363,6 +1400,12 @@ uksort($usersByBatch, function ($a, $b) {
                                 title="Hanya huruf besar dan angka, tanpa spasi"
                                 class="uppercase">
                             <small class="edit-user-help">Gunakan huruf besar atau kombinasi huruf besar dan angka tanpa spasi.</small>
+                        <?php endif; ?>
+
+                        <?php if ($hasTanggalLahirIcColumn): ?>
+                            <label for="editTanggalLahirIc">Tanggal Lahir IC</label>
+                            <input type="date" id="editTanggalLahirIc" name="tanggal_lahir_ic">
+                            <small class="edit-user-help">Dipakai untuk countdown ulang tahun dan notifikasi ulang tahun.</small>
                         <?php endif; ?>
 
                         <div class="row-form-2">
@@ -1585,6 +1628,11 @@ uksort($usersByBatch, function ($a, $b) {
                     </select>
                 <?php endif; ?>
 
+                <?php if ($hasTanggalLahirIcColumn): ?>
+                    <label for="addTanggalLahirIc">Tanggal Lahir IC <small>(opsional)</small></label>
+                    <input type="date" id="addTanggalLahirIc" name="tanggal_lahir_ic">
+                <?php endif; ?>
+
                 <?php if ($hasCanViewAllUnitsColumn && ems_is_director_role($role)): ?>
                     <label class="inline-flex items-center gap-2 mt-2">
                         <input type="checkbox" name="can_view_all_units" id="addCanViewAllUnits" value="1">
@@ -1707,6 +1755,11 @@ uksort($usersByBatch, function ($a, $b) {
             const editNoHpIcEl = document.getElementById('editNoHpIc');
             if (editNoHpIcEl) {
                 editNoHpIcEl.value = btn.dataset.noHpIc || '';
+            }
+
+            const editTanggalLahirIcEl = document.getElementById('editTanggalLahirIc');
+            if (editTanggalLahirIcEl) {
+                editTanggalLahirIcEl.value = btn.dataset.tanggalLahirIc || '';
             }
 
             document.getElementById('editBatch').value = btn.dataset.batch || '';

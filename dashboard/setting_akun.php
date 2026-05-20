@@ -40,6 +40,7 @@ $baseSelectColumns = [
 ];
 
 $optionalSettingAkunColumns = [
+    'tanggal_lahir_ic',
     'sertifikat_operasi_plastik',
     'sertifikat_operasi_kecil',
     'sertifikat_operasi_besar',
@@ -170,6 +171,7 @@ function settingAkunLoadDocSuggestions(PDO $pdo): array
 $otherDocSuggestions = settingAkunLoadDocSuggestions($pdo);
 
 $citizenId    = $userDb['citizen_id'] ?? '';
+$tanggalLahirIc = $userDb['tanggal_lahir_ic'] ?? '';
 $jenisKelamin = $userDb['jenis_kelamin'] ?? '';
 $noHpIc = $userDb['no_hp_ic'] ?? '';
 
@@ -245,19 +247,19 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
              NOTIFIKASI (SAMA DENGAN REKAP FARMASI)
              =============================== -->
         <?php foreach ($messages as $m): ?>
-            <div class="alert alert-info"><?= htmlspecialchars($m) ?></div>
+            <?= ems_render_toast_script((string)$m, 'info', 'Setting Akun') ?>
         <?php endforeach; ?>
 
         <?php foreach ($warnings as $w): ?>
-            <div class="alert alert-warning"><?= htmlspecialchars($w) ?></div>
+            <?= ems_render_toast_script((string)$w, 'warning', 'Setting Akun') ?>
         <?php endforeach; ?>
 
         <?php foreach ($errors as $e): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
+            <?= ems_render_toast_script((string)$e, 'error', 'Setting Akun', 6800) ?>
         <?php endforeach; ?>
 
         <?php if (ems_current_user_is_programmer_roxwood() && is_array($settingAkunPerf)): ?>
-            <div class="alert alert-info">
+            <div class="card card-section" style="margin-bottom:16px;border:1px solid rgba(125,211,252,0.8);background:linear-gradient(135deg,rgba(224,242,254,0.92),rgba(255,255,255,0.98));">
                 Debug simpan server: total <?= htmlspecialchars(number_format(((int)($settingAkunPerf['total_ms'] ?? 0)) / 1000, 2)) ?> detik
                 <?php if (!empty($settingAkunPerf['captured_at'])): ?>
                     pada <?= htmlspecialchars((string)$settingAkunPerf['captured_at']) ?>
@@ -379,6 +381,19 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
                     </small>
                 </div>
 
+                <?php if (array_key_exists('tanggal_lahir_ic', $userDb)): ?>
+                    <div class="row-form-1">
+                        <label>Tanggal Lahir IC Sesuai KTP <span class="required">*</span></label>
+                        <input type="date"
+                            name="tanggal_lahir_ic"
+                            required
+                            value="<?= htmlspecialchars((string)$tanggalLahirIc) ?>">
+                        <small class="hint-info">
+                            Wajib diisi sesuai tanggal lahir pada KTP. Tanpa ini akses jualan farmasi akan diarahkan ke Setting Akun.
+                        </small>
+                    </div>
+                <?php endif; ?>
+
                 <!-- ===============================
 DOKUMEN PENDUKUNG
 =============================== -->
@@ -493,29 +508,31 @@ DOKUMEN PENDUKUNG
                 <h3 class="section-form-title">Dokumen Pendukung</h3>
                 <p class="text-muted">Unggah dokumen pendukung (PNG / JPG)</p>
 
-                <?php
-                renderDocInput('Upload KTP', 'file_ktp', $userDb['file_ktp'], true);
-                renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb'], true);
-                renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
-                renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
-                renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
-                renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
-                if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_plastik', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_plastik'] ?? '');
-                }
-                if (array_key_exists('sertifikat_operasi_kecil', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', $userDb['sertifikat_operasi_kecil'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_kecil', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_kecil' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_kecil'] ?? '');
-                }
-                if (array_key_exists('sertifikat_operasi_besar', $userDb)) {
-                    renderDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', $userDb['sertifikat_operasi_besar'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_besar', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_besar' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_besar'] ?? '');
-                }
-                if (array_key_exists('sertifikat_class_co_asst', $userDb)) {
-                    renderDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', $userDb['sertifikat_class_co_asst'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_co_asst', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_co_asst' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_co_asst'] ?? '');
-                }
-                if (array_key_exists('sertifikat_class_paramedic', $userDb)) {
-                    renderDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', $userDb['sertifikat_class_paramedic'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_paramedic', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_paramedic' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_paramedic'] ?? '');
-                }
-                ?>
+                <div class="doc-upload-grid">
+                    <?php
+                    renderDocInput('Upload KTP', 'file_ktp', $userDb['file_ktp'], true);
+                    renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb'], true);
+                    renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
+                    renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
+                    renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
+                    renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
+                    if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
+                        renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_plastik', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_plastik'] ?? '');
+                    }
+                    if (array_key_exists('sertifikat_operasi_kecil', $userDb)) {
+                        renderDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', $userDb['sertifikat_operasi_kecil'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_kecil', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_kecil' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_kecil'] ?? '');
+                    }
+                    if (array_key_exists('sertifikat_operasi_besar', $userDb)) {
+                        renderDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', $userDb['sertifikat_operasi_besar'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_besar', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_besar' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_besar'] ?? '');
+                    }
+                    if (array_key_exists('sertifikat_class_co_asst', $userDb)) {
+                        renderDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', $userDb['sertifikat_class_co_asst'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_co_asst', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_co_asst' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_co_asst'] ?? '');
+                    }
+                    if (array_key_exists('sertifikat_class_paramedic', $userDb)) {
+                        renderDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', $userDb['sertifikat_class_paramedic'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_class_paramedic', $userDb) ? 'tanggal_dikeluarkan_sertifikat_class_paramedic' : null, $userDb['tanggal_dikeluarkan_sertifikat_class_paramedic'] ?? '');
+                    }
+                    ?>
+                </div>
 
                 <?php if (!empty($visiblePromotionDateFields)): ?>
                     <hr class="section-divider">
@@ -528,120 +545,6 @@ DOKUMEN PENDUKUNG
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-
-                <div class="doc-upload-wrapper doc-upload-dashed">
-                    <div class="doc-upload-header doc-upload-header-stack">
-                        <label class="doc-label">File Lainnya</label>
-                        <small class="text-muted doc-upload-meta">
-                            Nama dokumen diisi sendiri. Bisa upload banyak file tambahan sesuai kebutuhan.
-                        </small>
-                    </div>
-
-                    <div id="academyDocsContainer" class="academy-list">
-                        <datalist id="academyDocNameSuggestions">
-                            <?php foreach ($otherDocSuggestions as $suggestedDocName): ?>
-                                <option value="<?= htmlspecialchars($suggestedDocName) ?>"></option>
-                            <?php endforeach; ?>
-                        </datalist>
-                        <?php if (empty($otherDocs)): ?>
-                            <div class="academy-doc-row" data-row="academy">
-                                <input type="hidden" name="academy_doc_id[]" value="">
-                                <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
-
-                                <div class="row-form-2 academy-grid">
-                                    <div>
-                                        <label>Nama File Lainnya</label>
-                                        <input type="text"
-                                            name="academy_doc_name[]"
-                                            list="academyDocNameSuggestions"
-                                            autocomplete="off"
-                                            placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
-                                    </div>
-                                    <div>
-                                        <label>File</label>
-                                        <div class="doc-upload-input doc-upload-input-reset">
-                                            <label for="academy_file_new_0" class="file-upload-label">
-                                                <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                                <span class="file-text">
-                                                    <strong>Pilih file</strong>
-                                                    <small>PNG atau JPG</small>
-                                                </span>
-                                            </label>
-                                            <input type="file"
-                                                id="academy_file_new_0"
-                                                name="academy_doc_file[]"
-                                                accept="image/png,image/jpeg"
-                                                class="sr-only">
-                                            <div class="file-selected-name" data-for="academy_file_new_0"></div>
-                                        </div>
-                                        <div class="action-row-end academy-doc-actions">
-                                            <button type="button" class="btn-secondary button-compact" data-academy-delete>Hapus Baris</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php else: ?>
-                            <?php foreach ($otherDocs as $idx => $ad): ?>
-                                <div class="academy-doc-row" data-row="academy">
-                                    <input type="hidden" name="academy_doc_id[]" value="<?= htmlspecialchars($ad['id'] ?? '') ?>">
-                                    <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
-
-                                    <div class="row-form-2 academy-grid">
-                                        <div>
-                                            <label>Nama File Lainnya</label>
-                                            <input type="text"
-                                                name="academy_doc_name[]"
-                                                list="academyDocNameSuggestions"
-                                                autocomplete="off"
-                                                value="<?= htmlspecialchars($ad['name'] ?? '') ?>"
-                                                placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
-                                            <div class="academy-doc-preview">
-                                                <span class="badge-success-mini">Sudah diunggah</span>
-                                                <a href="#"
-                                                    class="btn-link btn-preview-doc btn-doc-pill"
-                                                    data-src="<?= htmlspecialchars(settingAkunPreviewUrl($ad['path'] ?? '')) ?>"
-                                                    data-title="<?= htmlspecialchars($ad['name'] ?? 'File Lainnya') ?>">
-                                                    Lihat dokumen
-                                                </a>
-                                                <button type="button"
-                                                    class="btn-danger button-compact btn-delete-academy-doc btn-doc-pill"
-                                                    data-academy-delete>
-                                                    Hapus
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label>Ganti File (opsional)</label>
-                                            <div class="doc-upload-input doc-upload-input-reset">
-                                                <label for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>" class="file-upload-label">
-                                                    <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                                    <span class="file-text">
-                                                        <strong>Pilih file</strong>
-                                                        <small>PNG atau JPG</small>
-                                                    </span>
-                                                </label>
-                                                <input type="file"
-                                                    id="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"
-                                                    name="academy_doc_file[]"
-                                                    accept="image/png,image/jpeg"
-                                                    class="sr-only">
-                                                <div class="file-selected-name" data-for="academy_file_<?= htmlspecialchars($ad['id'] ?? ('idx_' . $idx)) ?>"></div>
-                                            </div>
-                                            <small class="doc-hint">Upload ulang akan menggantikan file sebelumnya</small>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-
-                    <div class="action-row-end">
-                        <button type="button" id="btnAddAcademyDoc" class="btn-secondary button-compact">
-                            <?= ems_icon('plus', 'h-4 w-4') ?> Tambah File Lainnya
-                        </button>
-                    </div>
-                </div>
 
                 <!-- (sisanya tetap sama sampai bagian PIN) -->
 
@@ -728,86 +631,7 @@ DOKUMEN PENDUKUNG
         });
     </script>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const btn = document.getElementById('btnAddAcademyDoc');
-            const container = document.getElementById('academyDocsContainer');
-            if (!btn || !container) return;
-
-            let newIndex = 1;
-
-            btn.addEventListener('click', function() {
-                const id = 'academy_file_new_' + newIndex++;
-                const row = document.createElement('div');
-                row.className = 'academy-doc-row';
-                row.setAttribute('data-row', 'academy');
-                row.innerHTML = `
-	                    <input type="hidden" name="academy_doc_id[]" value="">
-                        <input type="hidden" name="academy_doc_delete[]" value="0" data-academy-delete-input>
-	                    <div class="row-form-2 academy-grid">
-	                        <div>
-	                            <label>Nama File Lainnya</label>
-	                            <input type="text" name="academy_doc_name[]" list="academyDocNameSuggestions" autocomplete="off" placeholder="Contoh: Sertifikat Pelatihan atau Dokumen Pendukung">
-	                        </div>
-	                        <div>
-	                            <label>File</label>
-	                            <div class="doc-upload-input doc-upload-input-reset">
-	                                <label for="${id}" class="file-upload-label">
-	                                    <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-	                                    <span class="file-text">
-	                                        <strong>Pilih file</strong>
-	                                        <small>PNG atau JPG</small>
-	                                    </span>
-	                                </label>
-                                <input type="file" id="${id}" name="academy_doc_file[]" accept="image/png,image/jpeg" class="sr-only">
-	                                <div class="file-selected-name" data-for="${id}"></div>
-	                            </div>
-                                <div class="action-row-end academy-doc-actions">
-                                    <button type="button" class="btn-secondary button-compact" data-academy-delete>Hapus Baris</button>
-                                </div>
-	                        </div>
-	                    </div>
-	                `;
-
-                container.appendChild(row);
-            });
-
-            container.addEventListener('click', function(e) {
-                const deleteButton = e.target.closest('[data-academy-delete]');
-                if (!deleteButton) {
-                    return;
-                }
-
-                const row = deleteButton.closest('.academy-doc-row');
-                if (!row) {
-                    return;
-                }
-
-                const idInput = row.querySelector('input[name="academy_doc_id[]"]');
-                const deleteInput = row.querySelector('[data-academy-delete-input]');
-                const fileInput = row.querySelector('input[type="file"]');
-
-                if (fileInput) {
-                    fileInput.value = '';
-                }
-
-                if (idInput && idInput.value.trim() !== '') {
-                    if (!window.confirm('Hapus file ini saat disimpan? File akan dihapus permanen dari server.')) {
-                        return;
-                    }
-
-                    if (deleteInput) {
-                        deleteInput.value = '1';
-                    }
-                    row.style.display = 'none';
-                    return;
-                }
-
-                row.remove();
-            });
-        });
-    </script>
-</section>
+    </section>
 
 <div id="settingAkunLoadingOverlay" class="setting-akun-loading-overlay hidden" aria-hidden="true">
     <div class="setting-akun-loading-card">
@@ -893,39 +717,59 @@ DOKUMEN PENDUKUNG
         display: none;
     }
 
+    .doc-upload-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        align-items: start;
+    }
+
+    .doc-upload-wrapper {
+        height: 100%;
+    }
+
     .doc-status-badge {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
     }
 
     .btn-doc-pill {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 32px;
-        padding: 0 12px;
+        min-height: 28px;
+        padding: 0 10px;
         border-radius: 999px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         line-height: 1;
         white-space: nowrap;
     }
 
-    .academy-doc-preview {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 10px;
+    .badge-success-mini,
+    .badge-muted-mini {
+        font-size: 11px;
+        padding: 4px 8px;
+        line-height: 1.2;
+    }
+
+    .doc-hint {
+        font-size: 11px;
+        line-height: 1.45;
+    }
+
+    @media (max-width: 1100px) {
+        .doc-upload-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
     }
 
     @media (max-width: 640px) {
-        .doc-status-badge,
-        .academy-doc-preview {
-            justify-content: flex-start;
+        .doc-upload-grid {
+            grid-template-columns: 1fr;
         }
     }
 
@@ -1147,10 +991,6 @@ DOKUMEN PENDUKUNG
                         return input.files && input.files.length > 0;
                     });
                 const hasPinChange = oldPinInput.value.trim() !== '' || newPinInput.value.trim() !== '' || confirmPinInput.value.trim() !== '';
-                const hasExtraDocs = Array.from(form.querySelectorAll('input[name="academy_doc_name[]"]')).some(function(input) {
-                    return input.value.trim() !== '';
-                });
-
                 const steps = ['Memeriksa kelengkapan data akun...'];
 
                 if (hasPinChange) {
@@ -1159,10 +999,6 @@ DOKUMEN PENDUKUNG
 
                 if (hasUploads) {
                     steps.push('Mengunggah dan mengompres file gambar...');
-                }
-
-                if (hasExtraDocs) {
-                    steps.push('Menyinkronkan file lainnya...');
                 }
 
                 steps.push('Menyimpan perubahan ke database...');

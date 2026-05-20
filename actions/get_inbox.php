@@ -191,6 +191,23 @@ function inboxSortKey(array $item): int
     return $time !== false ? $time : 0;
 }
 
+function inboxProtectedUserInboxTypes(): array
+{
+    return [
+        'disciplinary_case',
+        'disciplinary_reduction',
+        'disciplinary_warning_letter',
+    ];
+}
+
+function inboxProtectedSourceTypes(): array
+{
+    return [
+        'incoming_letter',
+        'meeting_minutes',
+    ];
+}
+
 $user = $_SESSION['user_rh'] ?? null;
 if (!$user) {
     echo json_encode(['unread' => 0, 'items' => []]);
@@ -215,6 +232,7 @@ if (inboxTableExists($pdo, 'user_inbox')) {
             id,
             title,
             message,
+            type,
             is_read,
             created_at,
             DATE_FORMAT(created_at, '%d %b %Y %H:%i WIB') AS created_at_label
@@ -226,6 +244,7 @@ if (inboxTableExists($pdo, 'user_inbox')) {
     $stmt->execute([$userId]);
 
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $inboxType = strtolower(trim((string)($row['type'] ?? 'system')));
         $items[] = [
             'id' => (int)$row['id'],
             'item_id' => (int)$row['id'],
@@ -236,7 +255,7 @@ if (inboxTableExists($pdo, 'user_inbox')) {
             'created_at' => (string)$row['created_at'],
             'created_at_label' => (string)$row['created_at_label'],
             'delete_label' => 'Hapus',
-            'badge' => 'SYSTEM',
+            'badge' => $inboxType === 'birthday_evening' ? 'ULANG TAHUN' : 'SYSTEM',
         ];
     }
 }
@@ -244,6 +263,28 @@ if (inboxTableExists($pdo, 'user_inbox')) {
 $hasInboxState = inboxTableExists($pdo, 'user_inbox_state');
 $hasIncomingDivisionScope = inboxTableHasColumn($pdo, 'incoming_letters', 'division_scope');
 $hasMinutesDivisionScope = inboxTableHasColumn($pdo, 'meeting_minutes', 'division_scope');
+
+if (inboxTableExists($pdo, 'user_inbox')) {
+    $protectedTypes = inboxProtectedUserInboxTypes();
+    $placeholders = implode(',', array_fill(0, count($protectedTypes), '?'));
+
+    $stmt = $pdo->prepare("
+        UPDATE user_inbox
+        SET is_read = 1
+        WHERE user_id = ?
+          AND is_read = 0
+          AND created_at <= (NOW() - INTERVAL 14 DAY)
+    ");
+    $stmt->execute([$userId]);
+
+    $stmt = $pdo->prepare("
+        DELETE FROM user_inbox
+        WHERE user_id = ?
+          AND created_at <= (NOW() - INTERVAL 28 DAY)
+          AND type NOT IN ($placeholders)
+    ");
+    $stmt->execute(array_merge([$userId], $protectedTypes));
+}
 
 if ($hasInboxState) {
     $incomingWhere = "l.target_user_id = ?";
@@ -256,6 +297,23 @@ if ($hasInboxState) {
         }
         $incomingParams = [$userDivision !== '' ? $userDivision : 'All Divisi'];
     }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO user_inbox_state (user_id, item_type, item_id, is_read, is_deleted, read_at, deleted_at)
+        SELECT ?, 'incoming_letter', l.id, 1, 0, NOW(), NULL
+        FROM incoming_letters l
+        LEFT JOIN user_inbox_state s
+            ON s.user_id = ?
+           AND s.item_type = 'incoming_letter'
+           AND s.item_id = l.id
+        WHERE {$incomingWhere}
+          AND COALESCE(s.is_deleted, 0) = 0
+          AND l.submitted_at <= (NOW() - INTERVAL 14 DAY)
+        ON DUPLICATE KEY UPDATE
+            is_read = 1,
+            read_at = COALESCE(user_inbox_state.read_at, NOW())
+    ");
+    $stmt->execute(array_merge([$userId, $userId], $incomingParams));
 
     $stmt = $pdo->prepare("
         SELECT
@@ -326,6 +384,23 @@ if ($hasInboxState) {
     }
 
     if ($minutesWhere !== '1 = 0') {
+        $stmt = $pdo->prepare("
+            INSERT INTO user_inbox_state (user_id, item_type, item_id, is_read, is_deleted, read_at, deleted_at)
+            SELECT ?, 'meeting_minutes', m.id, 1, 0, NOW(), NULL
+            FROM meeting_minutes m
+            LEFT JOIN user_inbox_state s
+                ON s.user_id = ?
+               AND s.item_type = 'meeting_minutes'
+               AND s.item_id = m.id
+            WHERE {$minutesWhere}
+              AND COALESCE(s.is_deleted, 0) = 0
+              AND m.created_at <= (NOW() - INTERVAL 14 DAY)
+            ON DUPLICATE KEY UPDATE
+                is_read = 1,
+                read_at = COALESCE(user_inbox_state.read_at, NOW())
+        ");
+        $stmt->execute(array_merge([$userId, $userId], $minutesParams));
+
         $stmt = $pdo->prepare("
             SELECT
                 m.id,

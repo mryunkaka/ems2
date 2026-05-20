@@ -107,8 +107,10 @@ $hideQuestionCounts = $recruitmentType === 'assistant_manager';
                     Halo, <strong><?= htmlspecialchars($applicant['ic_name']) ?></strong>. Jawab seluruh pertanyaan dengan jujur sesuai kebiasaan, sikap kerja, dan kondisi Anda yang sebenarnya.
                 </p>
 
-                <div class="alert alert-info mt-5 mb-0 border-white/15 bg-white/10 text-slate-100">
+                <div class="card mt-5 mb-0 border-white/15 bg-white/10 text-white shadow-none">
+                    <div class="card-section">
                     Tidak ada jawaban benar atau salah. Sistem menilai konsistensi, kesiapan, dan kecocokan pola kerja.
+                    </div>
                 </div>
 
                 <div class="public-test-meta">

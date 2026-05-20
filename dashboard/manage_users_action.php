@@ -109,6 +109,7 @@ $hasCitizenIdColumn = manageUsersActionHasColumn($pdo, 'citizen_id');
 $hasNoHpIcColumn = manageUsersActionHasColumn($pdo, 'no_hp_ic');
 $hasJenisKelaminColumn = manageUsersActionHasColumn($pdo, 'jenis_kelamin');
 $hasTanggalMasukColumn = manageUsersActionHasColumn($pdo, 'tanggal_masuk');
+$hasTanggalLahirIcColumn = manageUsersActionHasColumn($pdo, 'tanggal_lahir_ic');
 $promotionDateColumns = [
     'tanggal_naik_paramedic',
     'tanggal_naik_co_asst',
@@ -220,6 +221,8 @@ if ($action === 'add_user') {
     $unitCode = ems_normalize_unit_code($_POST['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($_POST['can_view_all_units']) && ems_is_director_role($sessionRole) ? 1 : null;
     $batch    = (int)($_POST['batch'] ?? 0);
+    $tanggalLahirIcRaw = $_POST['tanggal_lahir_ic'] ?? '';
+    $tanggalLahirIc = manageUsersActionNormalizeDate($tanggalLahirIcRaw);
 
     if ($name === '' || $position === '' || $role === '' || $division === '') {
         $_SESSION['flash_errors'][] = 'Semua field wajib diisi.';
@@ -241,6 +244,12 @@ if ($action === 'add_user') {
 
     if (!ems_is_valid_position($position)) {
         $_SESSION['flash_errors'][] = 'Jabatan tidak valid.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if ($hasTanggalLahirIcColumn && trim((string)$tanggalLahirIcRaw) !== '' && $tanggalLahirIc === null) {
+        $_SESSION['flash_errors'][] = 'Tanggal lahir IC tidak valid.';
         header('Location: manage_users.php');
         exit;
     }
@@ -287,6 +296,12 @@ if ($action === 'add_user') {
         $columns[] = 'can_view_all_units';
         $placeholders[] = '?';
         $params[] = $canViewAllUnits;
+    }
+
+    if ($hasTanggalLahirIcColumn) {
+        $columns[] = 'tanggal_lahir_ic';
+        $placeholders[] = '?';
+        $params[] = $tanggalLahirIc;
     }
 
     $columns = array_merge($columns, ['pin', 'batch', 'is_active', 'is_verified']);
@@ -658,6 +673,8 @@ $noHpIc = trim((string)($_POST['no_hp_ic'] ?? ''));
 $jenisKelamin = trim((string)($_POST['jenis_kelamin'] ?? ''));
 $tanggalMasukRaw = $_POST['tanggal_masuk'] ?? '';
 $tanggalMasuk = manageUsersActionNormalizeDate($tanggalMasukRaw);
+$tanggalLahirIcRaw = $_POST['tanggal_lahir_ic'] ?? '';
+$tanggalLahirIc = manageUsersActionNormalizeDate($tanggalLahirIcRaw);
 $promotionDates = [];
 foreach ($availablePromotionDateColumns as $promotionColumn) {
     $promotionDates[$promotionColumn] = manageUsersActionNormalizeDate($_POST[$promotionColumn] ?? '');
@@ -752,6 +769,12 @@ if ($hasTanggalMasukColumn && $tanggalMasukRaw !== '' && $tanggalMasuk === null)
     exit;
 }
 
+if ($hasTanggalLahirIcColumn && $tanggalLahirIcRaw !== '' && $tanggalLahirIc === null) {
+    $_SESSION['flash_errors'][] = 'Tanggal lahir IC tidak valid.';
+    header('Location: manage_users.php');
+    exit;
+}
+
 foreach ($promotionDates as $promotionColumn => $promotionDateValue) {
     if (trim((string)($_POST[$promotionColumn] ?? '')) !== '' && $promotionDateValue === null) {
         $_SESSION['flash_errors'][] = 'Format tanggal kenaikan tidak valid.';
@@ -816,6 +839,11 @@ if ($hasJenisKelaminColumn) {
 if ($hasTanggalMasukColumn) {
     $sql .= ", tanggal_masuk = ?";
     $params[] = $tanggalMasuk;
+}
+
+if ($hasTanggalLahirIcColumn) {
+    $sql .= ", tanggal_lahir_ic = ?";
+    $params[] = $tanggalLahirIc;
 }
 
 foreach ($availablePromotionDateColumns as $promotionColumn) {
@@ -888,6 +916,9 @@ if ($hasUnitCodeColumn && ems_normalize_unit_code($currentUserData['unit_code'] 
 }
 if ($hasTanggalMasukColumn && (($currentUserData['tanggal_masuk'] ?? null) !== $tanggalMasuk)) {
     $summaryParts[] = 'tanggal masuk diubah';
+}
+if ($hasTanggalLahirIcColumn && (($currentUserData['tanggal_lahir_ic'] ?? null) !== $tanggalLahirIc)) {
+    $summaryParts[] = 'tanggal lahir IC diubah';
 }
 foreach ($availablePromotionDateColumns as $promotionColumn) {
     if (($currentUserData[$promotionColumn] ?? null) !== $promotionDates[$promotionColumn]) {

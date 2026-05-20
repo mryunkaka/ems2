@@ -2,6 +2,155 @@ document.addEventListener("DOMContentLoaded", () => {
   const GLOBAL_UPLOAD_LIMIT_BYTES = 1024 * 1024;
   const globalUploadNotice =
     "Maksimal ukuran upload adalah 1 MB per file. Gambar akan dicoba dikompres otomatis, sedangkan dokumen non-gambar di atas 1 MB akan ditolak.";
+  const TOAST_CONTAINER_ID = "emsToastContainer";
+
+  function ensureToastContainer() {
+    let container = document.getElementById(TOAST_CONTAINER_ID);
+    if (container) {
+      return container;
+    }
+
+    container = document.createElement("div");
+    container.id = TOAST_CONTAINER_ID;
+    container.className = "ems-toast-container";
+    container.setAttribute("aria-live", "polite");
+    container.setAttribute("aria-atomic", "true");
+    document.body.appendChild(container);
+    return container;
+  }
+
+  function normalizeToastType(type) {
+    const safeType = String(type || "info").toLowerCase();
+    if (["success", "error", "warning", "info"].includes(safeType)) {
+      return safeType;
+    }
+    return "info";
+  }
+
+  function toastTitle(type) {
+    switch (normalizeToastType(type)) {
+      case "success":
+        return "Berhasil";
+      case "error":
+        return "Gagal";
+      case "warning":
+        return "Perhatian";
+      default:
+        return "Informasi";
+    }
+  }
+
+  window.emsToast =
+    window.emsToast ||
+    function (message, type = "info", options = {}) {
+      const text = String(message || "").trim();
+      if (!text) {
+        return null;
+      }
+
+      const safeType = normalizeToastType(type);
+      const container = ensureToastContainer();
+      const toast = document.createElement("div");
+      const duration = Number(options.duration || 5200);
+      const title = String(options.title || toastTitle(safeType));
+
+      toast.className = "ems-toast ems-toast-" + safeType;
+      toast.setAttribute("role", safeType === "error" ? "alert" : "status");
+      toast.innerHTML =
+        '<div class="ems-toast-head">' +
+        '<div class="ems-toast-title">' +
+        title +
+        "</div>" +
+        '<button type="button" class="ems-toast-close" aria-label="Tutup notifikasi">&times;</button>' +
+        "</div>" +
+        '<div class="ems-toast-body"></div>';
+
+      const body = toast.querySelector(".ems-toast-body");
+      const closeButton = toast.querySelector(".ems-toast-close");
+      if (body) {
+        body.textContent = text;
+      }
+
+      let removed = false;
+      let timerId = null;
+
+      const removeToast = () => {
+        if (removed) {
+          return;
+        }
+        removed = true;
+        if (timerId) {
+          window.clearTimeout(timerId);
+        }
+        toast.classList.remove("is-visible");
+        toast.classList.add("is-leaving");
+        window.setTimeout(() => {
+          toast.remove();
+        }, 220);
+      };
+
+      if (closeButton) {
+        closeButton.addEventListener("click", removeToast);
+      }
+
+      container.appendChild(toast);
+      window.requestAnimationFrame(() => {
+        toast.classList.add("is-visible");
+      });
+
+      timerId = window.setTimeout(removeToast, Math.max(2200, duration));
+      return toast;
+    };
+
+  if (!window.__emsNativeAlertWrapped) {
+    const nativeAlert =
+      typeof window.alert === "function" ? window.alert.bind(window) : null;
+    window.emsNativeAlert = nativeAlert;
+    window.alert = function (message) {
+      if (typeof window.emsToast === "function") {
+        window.emsToast(message, "warning");
+        return;
+      }
+      if (nativeAlert) {
+        nativeAlert(message);
+      }
+    };
+    window.__emsNativeAlertWrapped = true;
+  }
+
+  document
+    .querySelectorAll(
+      ".alert, .notif, .alert-info, .alert-error, .alert-warning, .alert-success"
+    )
+    .forEach((node) => {
+      const text = String(node.textContent || "").trim();
+      if (!text) {
+        node.remove();
+        return;
+      }
+
+      let type = "info";
+      if (
+        node.classList.contains("alert-error") ||
+        node.classList.contains("notif-danger") ||
+        node.classList.contains("notif-error")
+      ) {
+        type = "error";
+      } else if (
+        node.classList.contains("alert-success") ||
+        node.classList.contains("notif-success")
+      ) {
+        type = "success";
+      } else if (
+        node.classList.contains("alert-warning") ||
+        node.classList.contains("notif-warning")
+      ) {
+        type = "warning";
+      }
+
+      window.emsToast(text, type);
+      node.remove();
+    });
 
   async function fileToImageBitmap(file) {
     if ("createImageBitmap" in window) {
@@ -264,17 +413,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const notifications = document.querySelectorAll(".notif");
 
   if (notifications.length) {
-    setTimeout(() => {
-      notifications.forEach((notif) => {
-        notif.style.transition = "opacity 0.4s ease, transform 0.4s ease";
-        notif.style.opacity = "0";
-        notif.style.transform = "translateY(-6px)";
-
-        setTimeout(() => {
-          notif.remove();
-        }, 400);
-      });
-    }, 5000);
+    notifications.forEach((notif) => notif.remove());
   }
 
   /* =========================
@@ -371,30 +510,11 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const showInlineAlert = (type, message, details = "") => {
-      const pageShell = document.querySelector(".page.page-shell-sm");
-      if (!pageShell) return;
-
-      pageShell
-        .querySelectorAll("[data-setting-akun-runtime-alert]")
-        .forEach((node) => node.remove());
-
-      const alert = document.createElement("div");
-      alert.className = type === "error" ? "alert alert-error" : "alert alert-info";
-      alert.setAttribute("data-setting-akun-runtime-alert", "1");
-      alert.textContent = message;
-
-      if (details) {
-        const meta = document.createElement("div");
-        meta.style.marginTop = "8px";
-        meta.style.fontSize = "13px";
-        meta.style.lineHeight = "1.6";
-        meta.textContent = details;
-        alert.appendChild(meta);
-      }
-
-      const firstCard = pageShell.querySelector(".card");
-      pageShell.insertBefore(alert, firstCard || pageShell.firstChild);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      const parts = [message, details].filter(Boolean);
+      window.emsToast(parts.join(" "), type === "error" ? "error" : "info", {
+        title: type === "error" ? "Validasi Akun" : "Setting Akun",
+        duration: type === "error" ? 6800 : 5600,
+      });
     };
 
     const startQuickSaveState = () => {

@@ -551,22 +551,11 @@ include __DIR__ . '/../partials/sidebar.php';
        ALERT HANDLER (5 DETIK)
        =============================== */
     function showAlert(type, message, target = 'ajaxAlert') {
-        const box = document.getElementById(target);
-        if (!box) return;
-
-        box.innerHTML = `
-        <div class="alert alert-${type}">
-            ${message}
-        </div>
-    `;
-
-        setTimeout(() => {
-            const alert = box.querySelector('.alert');
-            if (alert) {
-                alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 600);
-            }
-        }, 5000);
+        if (typeof window.emsToast === 'function') {
+            window.emsToast(message, type === 'error' ? 'error' : 'success', {
+                title: 'Regulasi',
+            });
+        }
     }
 </script>
 

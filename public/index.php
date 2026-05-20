@@ -98,9 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <?php if ($errorMessage !== ''): ?>
-                        <div class="alert alert-danger mt-4 mb-0">
-                            <?= htmlspecialchars($errorMessage) ?>
-                        </div>
+                        <?= ems_render_toast_script((string)$errorMessage, 'error', 'Portal EMS', 6800) ?>
                     <?php endif; ?>
 
                     <div class="form-submit-wrapper mt-6">

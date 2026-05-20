@@ -9,6 +9,8 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Pengajuan Kenaikan Jabatan';
+$hasPromotionOpsMedicalRecordId = ems_column_exists($pdo, 'position_promotion_request_operations', 'medical_record_id');
+$promotionOpsNullFallbackCondition = $hasPromotionOpsMedicalRecordId ? ' AND pro.medical_record_id IS NULL' : '';
 
 $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
 if ($userId <= 0) {
@@ -195,12 +197,12 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                 LEFT JOIN user_rh u ON u.id = r.doctor_id
                 WHERE mra.assistant_user_id = ?
                     AND r.operasi_type = 'major'
-                    AND r.id NOT IN (
+                    " . ($hasPromotionOpsMedicalRecordId ? "AND r.id NOT IN (
                         SELECT pro.medical_record_id
                         FROM position_promotion_request_operations pro
                         INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
                         WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
-                    )
+                    )" : "") . "
                     AND r.id NOT IN (
                         SELECT r2.id
                         FROM medical_records r2
@@ -208,12 +210,17 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                             AND pro.operation_role = 'assistant'
                             AND pro.operation_level = 'major'
                         INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-                        WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                        WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
                         AND r2.id = r.id
                     )
                 ORDER BY r.created_at DESC
             ");
-            $stmt->execute([$userId, $userId, $userId]);
+            $params = [$userId];
+            if ($hasPromotionOpsMedicalRecordId) {
+                $params[] = $userId;
+            }
+            $params[] = $userId;
+            $stmt->execute($params);
             $assistantRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $assistantRecords);
         }
@@ -233,12 +240,12 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
             LEFT JOIN user_rh u ON u.id = r.doctor_id
             WHERE r.doctor_id = ?
                 AND r.operasi_type = 'minor'
-                AND r.id NOT IN (
+                " . ($hasPromotionOpsMedicalRecordId ? "AND r.id NOT IN (
                     SELECT pro.medical_record_id
                     FROM position_promotion_request_operations pro
                     INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
                     WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
-                )
+                )" : "") . "
                 AND r.id NOT IN (
                     SELECT r2.id
                     FROM medical_records r2
@@ -246,12 +253,17 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                         AND pro.operation_role = 'dpjp'
                         AND pro.operation_level = 'minor'
                     INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                    WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
                     AND r2.id = r.id
                 )
             ORDER BY r.created_at DESC
         ");
-        $stmt->execute([$userId, $userId, $userId]);
+        $params = [$userId];
+        if ($hasPromotionOpsMedicalRecordId) {
+            $params[] = $userId;
+        }
+        $params[] = $userId;
+        $stmt->execute($params);
         $dpjpRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $dpjpRecords);
 
@@ -270,12 +282,12 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
             LEFT JOIN user_rh u ON u.id = r.doctor_id
             WHERE r.doctor_id = ?
                 AND r.operasi_type = 'major'
-                AND r.id NOT IN (
+                " . ($hasPromotionOpsMedicalRecordId ? "AND r.id NOT IN (
                     SELECT pro.medical_record_id
                     FROM position_promotion_request_operations pro
                     INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
                     WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
-                )
+                )" : "") . "
                 AND r.id NOT IN (
                     SELECT r2.id
                     FROM medical_records r2
@@ -283,12 +295,17 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                         AND pro.operation_role = 'dpjp'
                         AND pro.operation_level = 'major'
                     INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-                    WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                    WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
                     AND r2.id = r.id
                 )
             ORDER BY r.created_at DESC
         ");
-        $stmt->execute([$userId, $userId, $userId]);
+        $params = [$userId];
+        if ($hasPromotionOpsMedicalRecordId) {
+            $params[] = $userId;
+        }
+        $params[] = $userId;
+        $stmt->execute($params);
         $dpjpMajorRecords = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $medicalRecordsAsAssistant = array_merge($medicalRecordsAsAssistant, $dpjpMajorRecords);
 
@@ -313,16 +330,18 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
         $whereClause = implode(' AND ', $whereConditions);
         
         if ($hasAssistantsTable) {
-            $whereConditions[] = "r.id NOT IN (
+            if ($hasPromotionOpsMedicalRecordId) {
+                $whereConditions[] = "r.id NOT IN (
                 SELECT pro.medical_record_id
                 FROM position_promotion_request_operations pro
                 INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
                 WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
                 AND pr.from_position = ? AND pr.to_position = ?
             )";
-            $params[] = $userId;
-            $params[] = $position;
-            $params[] = $toPosition;
+                $params[] = $userId;
+                $params[] = $position;
+                $params[] = $toPosition;
+            }
 
             // Fallback exclusion for old data without medical_record_id
             $whereConditions[] = "r.id NOT IN (
@@ -331,7 +350,7 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                 INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
                     AND pro.operation_role = 'assistant'
                 INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
                 AND pr.from_position = ? AND pr.to_position = ?
                 AND r2.id = r.id
             )";
@@ -369,16 +388,18 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                 $whereConditions[] = "r.operasi_type = 'major'";
             }
 
-            $whereConditions[] = "r.id NOT IN (
+            if ($hasPromotionOpsMedicalRecordId) {
+                $whereConditions[] = "r.id NOT IN (
                 SELECT pro.medical_record_id
                 FROM position_promotion_request_operations pro
                 INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
                 WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
                 AND pr.from_position = ? AND pr.to_position = ?
             )";
-            $params[] = $userId;
-            $params[] = $position;
-            $params[] = $toPosition;
+                $params[] = $userId;
+                $params[] = $position;
+                $params[] = $toPosition;
+            }
 
             // Fallback exclusion for old data without medical_record_id
             $whereConditions[] = "r.id NOT IN (
@@ -387,7 +408,7 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
                 INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
                     AND pro.operation_role = 'assistant'
                 INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-                WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+                WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
                 AND pr.from_position = ? AND pr.to_position = ?
                 AND r2.id = r.id
             )";
@@ -446,13 +467,15 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
             $dpjpWhereConditions[] = "r.operasi_type = 'major'";
         }
 
-        $dpjpWhereConditions[] = "r.id NOT IN (
+        if ($hasPromotionOpsMedicalRecordId) {
+            $dpjpWhereConditions[] = "r.id NOT IN (
             SELECT pro.medical_record_id
             FROM position_promotion_request_operations pro
             INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
             WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NOT NULL
         )";
-        $dpjpParams[] = $userId;
+            $dpjpParams[] = $userId;
+        }
 
         $dpjpWhereConditions[] = "r.id NOT IN (
             SELECT r2.id
@@ -460,7 +483,7 @@ if (in_array($position, ['paramedic', 'co_asst'], true)) {
             INNER JOIN position_promotion_request_operations pro ON pro.patient_name = r2.patient_name
                 AND pro.operation_role = 'dpjp'
             INNER JOIN position_promotion_requests pr ON pr.id = pro.request_id
-            WHERE pr.user_id = ? AND pr.status = 'approved' AND pro.medical_record_id IS NULL
+            WHERE pr.user_id = ? AND pr.status = 'approved'{$promotionOpsNullFallbackCondition}
             AND r2.id = r.id
         )";
         $dpjpParams[] = $userId;

@@ -318,13 +318,13 @@ include __DIR__ . '/../partials/sidebar.php';
         <p class="section-intro">Pendataan surat masuk dari instansi, pencatatan surat keluar, dan notulen hasil pertemuan.</p>
 
         <?php foreach ($messages as $message): ?>
-            <div class="alert alert-info"><?= htmlspecialchars((string)$message) ?></div>
+            <?= ems_render_toast_script((string)$message, 'info', 'Surat Menyurat') ?>
         <?php endforeach; ?>
         <?php foreach ($warnings as $warning): ?>
-            <div class="alert alert-warning"><?= htmlspecialchars((string)$warning) ?></div>
+            <?= ems_render_toast_script((string)$warning, 'warning', 'Surat Menyurat') ?>
         <?php endforeach; ?>
         <?php foreach ($errors as $error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars((string)$error) ?></div>
+            <?= ems_render_toast_script((string)$error, 'error', 'Surat Menyurat', 6800) ?>
         <?php endforeach; ?>
         <?php if (!$hasOutgoingRevisionColumns || !$hasMinutesRevisionColumns || !$hasIncomingDivisionScope || !$hasOutgoingDivisionScope || !$hasMinutesDivisionScope || !$hasMinutesCodeColumn || !$hasMinutesAttachmentsTable): ?>
             <div class="alert alert-warning">Sebagian fitur edit/revisi/divisi/kode/lampiran notulen memerlukan SQL terbaru di folder <code>docs/sql</code>.</div>

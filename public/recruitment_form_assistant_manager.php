@@ -36,8 +36,10 @@ $profile = ems_recruitment_profile('assistant_manager');
                     <?= htmlspecialchars($profile['description']) ?>
                 </p>
 
-                <div class="alert alert-info mt-5 mb-0 border-white/15 bg-white/10 text-slate-100">
+                <div class="card mt-5 mb-0 border-white/15 bg-white/10 text-white shadow-none">
+                    <div class="card-section">
                     Assessment difokuskan pada SOP EMS, integritas, dan pola kerja kandidat.
+                    </div>
                 </div>
 
                 <div class="public-feature-list">

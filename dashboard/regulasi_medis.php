@@ -995,16 +995,11 @@ include __DIR__ . '/../partials/sidebar.php';
     });
 
     function showAlert(type, message) {
-        const box = document.getElementById('regAlert');
-        if (!box) return;
-        box.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-        setTimeout(() => {
-            const alert = box.querySelector('.alert');
-            if (alert) {
-                alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 600);
-            }
-        }, 5000);
+        if (typeof window.emsToast === 'function') {
+            window.emsToast(message, type === 'error' ? 'error' : 'success', {
+                title: 'Regulasi Medis',
+            });
+        }
     }
 </script>
 

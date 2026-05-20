@@ -61,6 +61,23 @@ function authGuardUserRhHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function authGuardRequiresTanggalLahirIc(string $scriptName): bool
+{
+    return in_array($scriptName, [
+        'rekap_farmasi.php',
+        'rekap_farmasi_v2.php',
+        'konsumen.php',
+        'ems_services.php',
+    ], true);
+}
+
+function authGuardRedirectTanggalLahirIcRequired(): void
+{
+    $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi dulu sebelum akses jualan farmasi.';
+    header('Location: /dashboard/setting_akun.php');
+    exit;
+}
+
 if (isset($_SESSION['user_rh'])) {
     $uid = (int)($_SESSION['user_rh']['id'] ?? 0);
     if ($uid > 0) {
@@ -68,11 +85,13 @@ if (isset($_SESSION['user_rh'])) {
             $hasDivisionColumn = authGuardUserRhHasColumn($pdo, 'division');
             $hasUnitCodeColumn = authGuardUserRhHasColumn($pdo, 'unit_code');
             $hasCanViewAllUnitsColumn = authGuardUserRhHasColumn($pdo, 'can_view_all_units');
+            $hasTanggalLahirIcColumn = authGuardUserRhHasColumn($pdo, 'tanggal_lahir_ic');
             $divisionSelect = $hasDivisionColumn ? ', division' : '';
             $unitSelect = $hasUnitCodeColumn ? ', unit_code' : '';
             $canViewAllUnitsSelect = $hasCanViewAllUnitsColumn ? ', can_view_all_units' : '';
+            $tanggalLahirIcSelect = $hasTanggalLahirIcColumn ? ', tanggal_lahir_ic' : '';
             $stmt = $pdo->prepare("
-                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}
+                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}{$tanggalLahirIcSelect}
                 FROM user_rh
                 WHERE id = ?
                 LIMIT 1
@@ -93,6 +112,9 @@ if (isset($_SESSION['user_rh'])) {
                 $_SESSION['user_rh']['can_view_all_units'] = isset($row['can_view_all_units'])
                     ? ((int)$row['can_view_all_units'] === 1 ? 1 : 0)
                     : ($_SESSION['user_rh']['can_view_all_units'] ?? 0);
+                if (array_key_exists('tanggal_lahir_ic', $row)) {
+                    $_SESSION['user_rh']['tanggal_lahir_ic'] = $row['tanggal_lahir_ic'] ?? null;
+                }
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
                     $_SESSION['user_rh']['full_name'] = $row['full_name'];
@@ -110,6 +132,13 @@ if (isset($_SESSION['user_rh'])) {
     $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
     $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
     if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
+        if (authGuardRequiresTanggalLahirIc($currentScript)) {
+            $tanggalLahirIc = trim((string)($_SESSION['user_rh']['tanggal_lahir_ic'] ?? ''));
+            if ($tanggalLahirIc === '') {
+                authGuardRedirectTanggalLahirIcRequired();
+            }
+        }
+
         if ($currentScript !== 'sertifikat_heli_pendaftaran.php' && $currentScript !== 'sertifikat_heli_action.php') {
             ems_enforce_dashboard_page_access(
                 $_SESSION['user_rh']['division'] ?? '',
@@ -157,7 +186,8 @@ if (!empty($_COOKIE['remember_login'])) {
                     'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
                     'cuti_status' => $user['cuti_status'] ?? null,
                     'cuti_start_date' => $user['cuti_start_date'] ?? null,
-                    'cuti_end_date' => $user['cuti_end_date'] ?? null
+                    'cuti_end_date' => $user['cuti_end_date'] ?? null,
+                    'tanggal_lahir_ic' => $user['tanggal_lahir_ic'] ?? null,
                 ];
                 return;
             }

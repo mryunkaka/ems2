@@ -164,10 +164,6 @@ if (ems_can_access_division_menu($division, 'Secretary')) {
     ];
 }
 
-if ($isTrainee) {
-    $groupedNav['Pengaturan'][] = sidebarItem('#', '', 'Info Trainee', 'exclamation-triangle');
-}
-
 if ($isAltaUnit && !$canViewAllUnits) {
     if (ems_is_staff_role($userRole) && $isMedicalDivision) {
         $groupedNav = [
@@ -225,6 +221,25 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
             ],
         ];
+    }
+}
+
+if ($isTrainee) {
+    $blockedTraineePages = [
+        'rekap_farmasi.php',
+        'rekap_farmasi_v2.php',
+        'konsumen.php',
+        'ranking.php',
+        'absensi_ems.php',
+        'gaji.php',
+        'regulasi_farmasi.php',
+    ];
+
+    foreach ($groupedNav as $groupTitle => $items) {
+        $groupedNav[$groupTitle] = array_values(array_filter($items, static function (array $item) use ($blockedTraineePages): bool {
+            $page = (string)($item['page'] ?? '');
+            return $page === '' || !in_array($page, $blockedTraineePages, true);
+        }));
     }
 }
 

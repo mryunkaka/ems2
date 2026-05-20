@@ -1116,6 +1116,16 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Exception: medical_roster accessible by all logged-in users
+    if ($scriptName === 'medical_roster.php') {
+        return;
+    }
+
+    // Exception: konsumen accessible by all logged-in users
+    if ($scriptName === 'konsumen.php') {
+        return;
+    }
+
     $sessionUser = $_SESSION['user_rh'] ?? [];
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
@@ -2352,4 +2362,35 @@ function ems_secure_file_url(?string $path): string
     }
 
     return ems_url('/ajax/secure_file.php?path=' . rawurlencode($cleanPath));
+}
+
+function ems_render_toast_script(string $message, string $type = 'info', ?string $title = null, int $duration = 5200): string
+{
+    $safeMessage = trim($message);
+    if ($safeMessage === '') {
+        return '';
+    }
+
+    $safeType = strtolower(trim($type));
+    if (!in_array($safeType, ['success', 'error', 'warning', 'info'], true)) {
+        $safeType = 'info';
+    }
+
+    $safeTitle = trim((string)$title);
+    if ($safeTitle === '') {
+        $safeTitle = 'Informasi';
+    }
+
+    return '<script>'
+        . 'document.addEventListener("DOMContentLoaded",function(){'
+        . 'if(typeof window.emsToast==="function"){'
+        . 'window.emsToast('
+        . json_encode($safeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ','
+        . json_encode($safeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ','
+        . '{title:' . json_encode($safeTitle, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        . ',duration:' . max(2200, $duration) . '}'
+        . ');'
+        . '}'
+        . '});'
+        . '</script>';
 }

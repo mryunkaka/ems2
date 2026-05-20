@@ -457,13 +457,13 @@ include __DIR__ . '/../partials/sidebar.php';
 	        <p class="page-subtitle">Menampilkan seluruh data transaksi konsumen <?= htmlspecialchars(ems_unit_label($effectiveUnit)) ?>. Data lama yang masih tersimpan sebagai nama tetap ditampilkan apa adanya.</p>
 
         <?php foreach ($flashMessages as $message): ?>
-            <div class="alert alert-success mb-4"><?= htmlspecialchars((string)$message) ?></div>
+            <?= ems_render_toast_script((string)$message, 'success', 'Konsumen') ?>
         <?php endforeach; ?>
         <?php foreach ($flashWarnings as $warning): ?>
-            <div class="alert alert-warning mb-4"><?= htmlspecialchars((string)$warning) ?></div>
+            <?= ems_render_toast_script((string)$warning, 'warning', 'Konsumen') ?>
         <?php endforeach; ?>
         <?php foreach ($flashErrors as $error): ?>
-            <div class="alert alert-error mb-4"><?= htmlspecialchars((string)$error) ?></div>
+            <?= ems_render_toast_script((string)$error, 'error', 'Konsumen', 6800) ?>
         <?php endforeach; ?>
 
         <div class="card">

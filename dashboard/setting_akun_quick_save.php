@@ -118,6 +118,7 @@ $newPin = (string)($_POST['new_pin'] ?? '');
 $confirmPin = (string)($_POST['confirm_pin'] ?? '');
 $batch = $batchFromDb > 0 ? $batchFromDb : (int)($_POST['batch'] ?? 0);
 $tanggalMasuk = trim((string)($_POST['tanggal_masuk'] ?? ''));
+$tanggalLahirIc = trim((string)($_POST['tanggal_lahir_ic'] ?? ''));
 
 if ($citizenId === '') {
     quickSaveRespond(false, 'Citizen ID wajib diisi.', [], 422);
@@ -206,6 +207,14 @@ $selectColumns = [
     'dokumen_lainnya',
 ];
 $userRhColumns = quickSaveColumns($pdo);
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    if ($tanggalLahirIc === '') {
+        quickSaveRespond(false, 'Tanggal lahir IC sesuai KTP wajib diisi.', [], 422);
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalLahirIc)) {
+        quickSaveRespond(false, 'Format tanggal lahir IC tidak valid.', [], 422);
+    }
+}
 foreach (array_merge($extraDocFields, $issuedDateFields, $dateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $selectColumns[] = $optionalColumn;
@@ -456,6 +465,11 @@ $params = [
     $academyJson,
 ];
 
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    $sql .= ", tanggal_lahir_ic = ?";
+    $params[] = $tanggalLahirIc;
+}
+
 if ($batchFromDb === 0) {
     $sql .= ", batch = ?";
     $params[] = $batch;
@@ -510,6 +524,9 @@ $_SESSION['user_rh']['tanggal_masuk'] = $tanggalMasuk;
 $_SESSION['user_rh']['citizen_id'] = $citizenId;
 $_SESSION['user_rh']['no_hp_ic'] = $noHpIc;
 $_SESSION['user_rh']['jenis_kelamin'] = $jenisKelamin;
+if (isset($userRhColumns['tanggal_lahir_ic'])) {
+    $_SESSION['user_rh']['tanggal_lahir_ic'] = $tanggalLahirIc;
+}
 if ($kodeNomorInduk !== null) {
     $_SESSION['user_rh']['kode_nomor_induk_rs'] = $kodeNomorInduk;
 }

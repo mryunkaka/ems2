@@ -131,10 +131,10 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
 
         <?php foreach ($messages as $message): ?>
-            <div class="alert alert-info"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
+            <?= ems_render_toast_script((string)$message, 'info', 'Detail Rekam Medis') ?>
         <?php endforeach; ?>
         <?php foreach ($errors as $error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars((string)$error, ENT_QUOTES, 'UTF-8') ?></div>
+            <?= ems_render_toast_script((string)$error, 'error', 'Detail Rekam Medis', 6800) ?>
         <?php endforeach; ?>
 
         <div class="medical-view-layout">

@@ -11,7 +11,10 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 $pushConfig = require __DIR__ . '/../config/push.php';
 
 $user = $_SESSION['user_rh'] ?? [];
-$currentUnit = ems_effective_unit($pdo, $user);
+$resolvedPdo = (isset($pdo) && $pdo instanceof PDO) ? $pdo : null;
+$currentUnit = $resolvedPdo instanceof PDO
+    ? ems_effective_unit($resolvedPdo, $user)
+    : ems_normalize_unit_code($user['unit_code'] ?? 'roxwood');
 $hideAltaTopbarUtilities = $currentUnit === 'alta';
 $currentHospitalName = ems_unit_hospital_name($currentUnit);
 $currentLogoPath = ems_unit_logo_path($currentUnit);
@@ -31,9 +34,9 @@ $avatarColor    = avatarColorFromName($medicName);
 $userId = $user['id'] ?? 0;
 $notif  = null;
 
-if ($userId && !$hideAltaTopbarUtilities) {
+if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
     try {
-        $stmt = $pdo->prepare("
+        $stmt = $resolvedPdo->prepare("
             SELECT id, message
             FROM user_farmasi_notifications
             WHERE user_id = ?
@@ -81,6 +84,7 @@ if ($userId && !$hideAltaTopbarUtilities) {
     <script>
         window.EMS_BASE_URL = <?= json_encode(ems_base_path(), JSON_UNESCAPED_SLASHES) ?>;
         window.EMS_CSRF_TOKEN = <?= json_encode($csrfToken, JSON_UNESCAPED_SLASHES) ?>;
+        window.EMS_USER_ID = <?= json_encode((int)($user['id'] ?? 0), JSON_UNESCAPED_SLASHES) ?>;
         window.emsUrl = window.emsUrl || function(path) {
             const normalized = '/' + String(path || '').replace(/^\/+/, '');
             if (!window.EMS_BASE_URL) {
@@ -176,6 +180,28 @@ if ($userId && !$hideAltaTopbarUtilities) {
                 </div>
             </div>
         <?php endif; ?>
+
+        <div id="birthdayTodayModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="birthdayTodayTitle">
+            <div class="inbox-modal-box modal-shell modal-frame-md">
+                <div class="modal-head">
+                    <div class="min-w-0">
+                        <div id="birthdayTodayTitle" class="modal-title">Ulang Tahun Hari Ini</div>
+                        <div class="meta-text-xs mt-1 text-slate-500">Modal ini hanya muncul sekali sampai Anda menutupnya.</div>
+                    </div>
+                    <button onclick="closeBirthdayTodayModal()" type="button" class="modal-close-btn" aria-label="Tutup modal">
+                        <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                    </button>
+                </div>
+                <div class="modal-content">
+                    <div id="birthdayTodayList" class="space-y-3"></div>
+                </div>
+                <div class="modal-foot">
+                    <div class="modal-actions justify-end">
+                        <button onclick="closeBirthdayTodayModal()" type="button" class="btn-secondary">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <script>
             let notifTimer = null;
@@ -501,6 +527,77 @@ if ($userId && !$hideAltaTopbarUtilities) {
             });
         </script>
         <script>
+            function closeBirthdayTodayModal() {
+                const modal = document.getElementById('birthdayTodayModal');
+                if (!modal) {
+                    return;
+                }
+
+                modal.classList.add('hidden');
+                document.body.classList.remove('modal-open');
+            }
+
+            async function loadBirthdayTodayModal() {
+                const modal = document.getElementById('birthdayTodayModal');
+                const list = document.getElementById('birthdayTodayList');
+                if (!modal || !list || !window.EMS_USER_ID) {
+                    return;
+                }
+
+                const response = await safeFetchJSON(window.emsUrl('/actions/birthday_notices.php'));
+                if (!response || !response.success || !Array.isArray(response.items) || response.items.length === 0) {
+                    return;
+                }
+
+                const dateKey = String(response.date_key || '');
+                const storageKey = 'ems-birthday-modal:' + String(window.EMS_USER_ID) + ':' + dateKey;
+                if (window.localStorage && localStorage.getItem(storageKey) === '1') {
+                    return;
+                }
+
+                list.innerHTML = response.items.map(function(item) {
+                    const name = String(item.name || 'Medis');
+                    const position = String(item.position || '-');
+                    const division = String(item.division || '-');
+                    const zodiac = String(item.zodiac || '-');
+                    return `
+                        <div class="card">
+                            <div class="text-sm font-semibold text-slate-800">${name}</div>
+                            <div class="meta-text-xs mt-1 text-slate-500">${position} • ${division}</div>
+                            <div class="mt-2 text-sm text-slate-700">Hari ini sedang berulang tahun. Nuansa zodiaknya ${zodiac}.</div>
+                        </div>
+                    `;
+                }).join('');
+
+                const rememberSeen = function() {
+                    if (window.localStorage) {
+                        localStorage.setItem(storageKey, '1');
+                    }
+                };
+
+                modal.classList.remove('hidden');
+                document.body.classList.add('modal-open');
+
+                modal.addEventListener('click', function(event) {
+                    if (event.target === modal) {
+                        rememberSeen();
+                        closeBirthdayTodayModal();
+                    }
+                }, { once: true });
+
+                const originalClose = window.closeBirthdayTodayModal;
+                window.closeBirthdayTodayModal = function() {
+                    rememberSeen();
+                    originalClose();
+                    window.closeBirthdayTodayModal = originalClose;
+                };
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                loadBirthdayTodayModal();
+            });
+        </script>
+        <script>
 	            /* ======================================================
 	   HEARTBEAT - GLOBAL ACTIVITY TRACKER
 	   ====================================================== */
@@ -639,56 +736,66 @@ if ($userId && !$hideAltaTopbarUtilities) {
                 document.body.classList.remove('modal-open');
             }
 
-            function deleteInbox() {
+            async function deleteInbox() {
                 if (!currentInboxId) return;
 
-                fetch(window.emsUrl('/actions/delete_inbox.php'), {
+                const response = await safeFetchJSON(window.emsUrl('/actions/delete_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
                         item_id: String(currentInboxId),
                         source_type: String(currentInboxType || 'user_inbox'),
                         csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
-                }).then(() => {
+                });
+
+                if (response && response.success) {
                     closeInboxModal();
                     loadInbox();
-                });
+                }
             }
 
-            function markAllInboxRead() {
-                fetch(window.emsUrl('/actions/read_inbox.php'), {
+            async function markAllInboxRead() {
+                const response = await safeFetchJSON(window.emsUrl('/actions/read_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
                         bulk_action: 'mark_all',
                         csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
-                }).then(() => {
-                    loadInbox();
                 });
+
+                if (response && response.success) {
+                    loadInbox();
+                }
             }
 
-            function deleteAllInbox() {
+            async function deleteAllInbox() {
                 if (!window.confirm('Yakin ingin menyembunyikan atau menghapus semua inbox?')) {
                     return;
                 }
 
-                fetch(window.emsUrl('/actions/delete_inbox.php'), {
+                const response = await safeFetchJSON(window.emsUrl('/actions/delete_inbox.php'), {
                     method: 'POST',
                     body: new URLSearchParams({
                         bulk_action: 'delete_all',
                         csrf_token: String(window.EMS_CSRF_TOKEN || '')
                     })
-                }).then(() => {
+                });
+
+                if (response && response.success) {
                     closeInboxModal();
                     loadInbox();
-                });
+                }
             }
 
-            inboxMarkAllBtn?.addEventListener('click', function() {
+            inboxMarkAllBtn?.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
                 markAllInboxRead();
             });
 
-            inboxDeleteAllBtn?.addEventListener('click', function() {
+            inboxDeleteAllBtn?.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
                 deleteAllInbox();
             });
 

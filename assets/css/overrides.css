@@ -6,6 +6,12 @@
   --ems-head: rgba(14, 165, 233, 0.10);
 }
 
+/* Legacy page alerts are migrated to top-right toast by assets/js/app.js */
+.alert,
+.notif {
+  display: none !important;
+}
+
 /* =========================================================
    GLOBAL CARD SHELL
    ========================================================= */
@@ -925,5 +931,264 @@ table.dataTable td + td {
   .inbox-header-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+}
+
+/* =========================================================
+   GLOBAL TOAST
+   ========================================================= */
+.ems-toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 120000;
+  display: grid;
+  gap: 12px;
+  width: min(360px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
+.ems-toast {
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+  padding: 14px 16px;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ems-toast::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: #38bdf8;
+}
+
+.ems-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.ems-toast.is-leaving {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+}
+
+.ems-toast-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ems-toast-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.ems-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.55);
+  color: #334155;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ems-toast-close:hover {
+  background: rgba(203, 213, 225, 0.8);
+}
+
+.ems-toast-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+  word-break: break-word;
+}
+
+.ems-toast-success::before {
+  background: #22c55e;
+}
+
+.ems-toast-success .ems-toast-title {
+  color: #166534;
+}
+
+.ems-toast-error::before {
+  background: #f43f5e;
+}
+
+.ems-toast-error .ems-toast-title {
+  color: #be123c;
+}
+
+.ems-toast-warning::before {
+  background: #f59e0b;
+}
+
+.ems-toast-warning .ems-toast-title {
+  color: #b45309;
+}
+
+.ems-toast-info::before {
+  background: #0ea5e9;
+}
+
+.ems-toast-info .ems-toast-title {
+  color: #0369a1;
+}
+
+/* =========================================================
+   GLOBAL RESPONSIVE BASELINE
+   ========================================================= */
+.page-shell-sm,
+.page-shell-md,
+.page-shell-lg,
+.page-shell-xl {
+  width: min(100%, 100%);
+}
+
+.table-wrapper,
+.table-wrapper-sm,
+.dt-container {
+  max-width: 100%;
+}
+
+.modal-box,
+.modal-shell,
+.request-modal-card,
+.forensic-detail-modal {
+  max-width: min(100%, calc(100vw - 24px));
+}
+
+img,
+iframe,
+embed,
+object {
+  max-width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .page-shell-sm,
+  .page-shell-md,
+  .page-shell-lg,
+  .page-shell-xl {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .card,
+  .farmasi-card,
+  .request-card,
+  .request-approval-card,
+  .table-wrapper-sm {
+    border-radius: 18px;
+  }
+
+  .row-form-2,
+  .row-form-3,
+  .request-detail-grid,
+  .forensic-detail-grid,
+  .stats-grid-3 {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  .ems-toast-container {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+
+  .page-shell-sm,
+  .page-shell-md,
+  .page-shell-lg,
+  .page-shell-xl {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .card,
+  .farmasi-card,
+  .request-card,
+  .request-approval-card,
+  .modal-box,
+  .modal-shell,
+  .request-modal-card,
+  .forensic-detail-modal {
+    border-radius: 18px !important;
+  }
+
+  .farmasi-card-header,
+  .farmasi-card-content,
+  .farmasi-card-footer,
+  .request-modal-head,
+  .request-modal-content,
+  .forensic-detail-head,
+  .forensic-detail-content {
+    padding: 14px 16px;
+  }
+
+  .request-card-header,
+  .switcher-bar,
+  .switcher-actions,
+  .modal-actions,
+  .card-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .switcher-actions .btn,
+  .switcher-actions button,
+  .modal-actions .btn,
+  .modal-actions button,
+  .card-actions .btn,
+  .card-actions button {
+    width: 100%;
+  }
+
+  .row-form-2,
+  .row-form-3,
+  .request-detail-grid,
+  .forensic-detail-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  table.table-custom th,
+  table.table-custom td,
+  table.dataTable th,
+  table.dataTable td {
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+
+  .btn,
+  button,
+  input,
+  select,
+  textarea {
+    max-width: 100%;
   }
 }
