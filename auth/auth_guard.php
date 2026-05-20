@@ -6,6 +6,31 @@ if (session_status() === PHP_SESSION_NONE) {
 require __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
+function authGuardWantsJsonResponse(): bool
+{
+    $requestUri = strtolower((string)($_SERVER['REQUEST_URI'] ?? ''));
+    $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+    $requestedWith = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+    return str_contains($requestUri, '/actions/')
+        || str_contains($requestUri, '/ajax/')
+        || str_contains($accept, 'application/json')
+        || $requestedWith === 'xmlhttprequest';
+}
+
+function authGuardAbortUnauthorized(): void
+{
+    if (authGuardWantsJsonResponse()) {
+        http_response_code(401);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Unauthorized',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+}
+
 function authGuardRememberLoginCookieOptions(int $expires): array
 {
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -141,5 +166,6 @@ if (!empty($_COOKIE['remember_login'])) {
 }
 
 setcookie('remember_login', '', authGuardRememberLoginCookieOptions(time() - 3600));
+authGuardAbortUnauthorized();
 header("Location: /auth/login.php");
 exit;

@@ -195,7 +195,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                 },
                 credentials: 'same-origin',
                 body: JSON.stringify({ status: nextStatus })

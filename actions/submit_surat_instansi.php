@@ -2,6 +2,7 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';

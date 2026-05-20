@@ -3,12 +3,15 @@ session_start();
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 
 if (!isset($_SESSION['user_rh'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
+
+emsRequireRateLimit('search_medic', emsCurrentRequestIdentifier((int)($_SESSION['user_rh']['id'] ?? 0)), 20, 60, 'Pencarian terlalu sering. Coba lagi dalam 1 menit.');
 
 $query = trim($_GET['q'] ?? '');
 

@@ -1,11 +1,15 @@
 <?php
 session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/training_groups.php';
 
 header('Content-Type: application/json');
+
+emsRequireJsonCsrf();
 
 if (empty($_SESSION['user_rh']['id'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);

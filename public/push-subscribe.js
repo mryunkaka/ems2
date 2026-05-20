@@ -49,7 +49,12 @@ async function initPush() {
   // 4️⃣ Simpan ke server
   await fetch("/actions/save_push_subscription.php", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": String(window.EMS_CSRF_TOKEN || ""),
+      "X-Requested-With": "XMLHttpRequest",
+    },
     body: JSON.stringify(subscription.toJSON()),
   });
 

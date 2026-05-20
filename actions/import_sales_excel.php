@@ -2,6 +2,8 @@
 session_start();
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../vendor/autoload.php'; // PhpSpreadsheet
@@ -12,6 +14,8 @@ if (!isset($_SESSION['user_rh'])) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit;
 }
+
+emsRequireJsonCsrf();
 
 // Validate POST data
 if (!isset($_POST['medic_name']) || !isset($_POST['transaction_date']) || !isset($_FILES['excel_file'])) {

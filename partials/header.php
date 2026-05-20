@@ -285,7 +285,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
             // =========================
             function confirmOnline() {
                 fetch(window.emsUrl('/actions/confirm_farmasi_online.php'), {
-                        method: 'POST'
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
+                        }
                     })
                     .then(() => {
                         if (offlineTimer) clearInterval(offlineTimer);
@@ -304,7 +307,10 @@ if ($userId && !$hideAltaTopbarUtilities) {
                 }
 
                 fetch(window.emsUrl('/actions/set_farmasi_offline.php'), {
-                        method: 'POST'
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
+                        }
                     })
                     .then(() => {
                         if (offlineTimer) clearInterval(offlineTimer);
@@ -368,6 +374,11 @@ if ($userId && !$hideAltaTopbarUtilities) {
                         credentials: 'same-origin',
                         cache: 'no-store',
                         ...options,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || ''),
+                            ...(options.headers || {})
+                        },
                         signal: controller.signal
                     });
 

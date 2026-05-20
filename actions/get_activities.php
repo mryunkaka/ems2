@@ -1,5 +1,7 @@
 <?php
 session_start();
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -83,6 +85,8 @@ function formatActivityTimeAgo(int $timestamp): string
 }
 
 try {
+    $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+    emsRequireRateLimit('get_activities', emsCurrentRequestIdentifier($userId), 30, 60, 'Aktivitas dipanggil terlalu sering. Coba lagi sebentar.');
     $maxItems = 30;
     $activities = [];
     $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);

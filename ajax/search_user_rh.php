@@ -1,10 +1,13 @@
 <?php
 session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
 header('Content-Type: application/json');
+
+emsRequireRateLimit('search_user_rh', emsCurrentRequestIdentifier((int)($_SESSION['user_rh']['id'] ?? 0)), 20, 60, 'Pencarian terlalu sering. Coba lagi nanti.');
 
 $q = trim($_GET['q'] ?? '');
 $scope = strtolower(trim($_GET['scope'] ?? 'all'));

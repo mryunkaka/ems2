@@ -2,11 +2,14 @@
 session_start();
 date_default_timezone_set('Asia/Jakarta');
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require __DIR__ . '/../config/database.php';
 require __DIR__ . '/../config/helpers.php';
 require __DIR__ . '/../config/farmasi_quiz.php';
 
 try {
+    emsRequireJsonCsrf();
     $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
     if ($userId <= 0) {
         ems_json_error('Unauthorized', 401);

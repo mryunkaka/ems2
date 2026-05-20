@@ -5878,7 +5878,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 const res = await fetch(window.emsUrl('/actions/toggle_farmasi_status.php'), {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                     },
                     body: JSON.stringify({
                         status: next
@@ -6051,7 +6052,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 const res = await fetch(window.emsUrl('/actions/force_offline_medis.php'), {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                     },
                     body: JSON.stringify({
                         target_user_id: targetUserId,
@@ -6419,7 +6421,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     fetch(submitUrl, {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                             },
                             credentials: 'same-origin',
                             body: JSON.stringify({
@@ -6469,6 +6472,9 @@ include __DIR__ . '/../partials/sidebar.php';
                     submitBusy = true;
                     fetch(finishUrl, {
                             method: 'POST',
+                            headers: {
+                                'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
+                            },
                             credentials: 'same-origin'
                         })
                         .then(function(response) {
@@ -6783,7 +6789,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 const res = await fetch(window.emsUrl('/actions/auto_offline_farmasi.php'), {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                     }
                 });
                 const json = await res.json();
@@ -6868,7 +6875,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     const res = await fetch(window.emsUrl('/actions/save_farmasi_settings.php'), {
                         method: 'POST',
                         headers: {
-                            'Content-Type': 'application/json'
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
                         },
                         body: JSON.stringify({
                             max_online_medics: maxMedics,

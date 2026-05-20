@@ -1,5 +1,7 @@
 <?php
 session_start();
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json');
@@ -11,6 +13,7 @@ if (!$user || empty($user['id'])) {
 }
 
 $userId = (int)$user['id'];
+emsRequireRateLimit('heartbeat', emsCurrentRequestIdentifier($userId), 120, 60, 'Heartbeat terlalu sering.');
 
 // 🔒 UPDATE HANYA JIKA STATUS ONLINE
 $stmt = $pdo->prepare("

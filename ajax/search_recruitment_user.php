@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_settings.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -10,6 +11,8 @@ if ((int)($settings['is_open'] ?? 1) !== 1) {
     echo json_encode(['items' => []], JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+emsRequireRateLimit('search_recruitment_user', emsCurrentRequestIdentifier(null), 15, 60, 'Pencarian recruitment terlalu sering. Coba lagi nanti.');
 
 function recruitmentFormatJoinDuration(?string $tanggalMasuk): string
 {

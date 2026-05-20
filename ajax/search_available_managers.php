@@ -1,6 +1,8 @@
 <?php
 session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/training_groups.php';
@@ -11,6 +13,8 @@ if (empty($_SESSION['user_rh']['id'])) {
     echo json_encode([]);
     exit;
 }
+
+emsRequireRateLimit('search_available_managers', emsCurrentRequestIdentifier((int)($_SESSION['user_rh']['id'] ?? 0)), 20, 60, 'Pencarian terlalu sering. Coba lagi nanti.');
 
 if (!ems_training_availability_tables_ready($pdo)) {
     echo json_encode([]);

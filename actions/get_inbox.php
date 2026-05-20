@@ -2,6 +2,7 @@
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
@@ -197,6 +198,7 @@ if (!$user) {
 }
 
 $userId = (int)($user['id'] ?? 0);
+emsRequireRateLimit('get_inbox', emsCurrentRequestIdentifier($userId), 30, 60, 'Inbox dipanggil terlalu sering. Coba lagi sebentar.');
 $userDivision = ems_normalize_division($user['division'] ?? '');
 $items = [];
 $incomingAttachmentsMap = [];

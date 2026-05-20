@@ -1182,8 +1182,10 @@ MODAL IMPORT KONSUMEN (EMS)
         document.getElementById('importBtn').disabled = true;
 
         try {
+            formData.append('csrf_token', String(window.EMS_CSRF_TOKEN || ''));
             const res = await fetch('/actions/import_sales_excel.php', {
                 method: 'POST',
+                credentials: 'same-origin',
                 body: formData
             });
 

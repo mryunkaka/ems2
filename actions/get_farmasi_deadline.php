@@ -3,10 +3,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/request_guard.php';
 require __DIR__ . '/../config/database.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate');
+
+emsRequireRateLimit('get_farmasi_deadline', emsCurrentRequestIdentifier((int)($_SESSION['user_rh']['id'] ?? 0)), 30, 60, 'Pengecekan deadline terlalu sering.');
 
 $userId = $_SESSION['user_rh']['id'] ?? 0;
 if (!$userId) {
