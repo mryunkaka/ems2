@@ -93,7 +93,36 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/file_records/')) {
-    if ($userDivision !== 'Secretary') {
+    if (!ems_is_management_division($userDivision)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM secretary_file_record_attachments sfra
+        INNER JOIN secretary_file_records sfr ON sfr.id = sfra.record_id
+        WHERE sfra.file_path = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/secretary/internal_coordinations/')) {
+    $stmt = $pdo->prepare("
+        SELECT sic.division_scope
+        FROM secretary_internal_coordination_attachments sica
+        INNER JOIN secretary_internal_coordinations sic ON sic.id = sica.coordination_id
+        WHERE sica.file_path = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath]);
+    $coordinationScope = (string)($stmt->fetchColumn() ?: '');
+
+    if (
+        $coordinationScope === ''
+        || ($userDivision !== 'Secretary' && !ems_division_scope_matches_division($coordinationScope, $userDivision))
+    ) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/user_docs/')) {

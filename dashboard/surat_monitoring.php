@@ -111,10 +111,13 @@ function surat_monitoring_group_attachments(array $rows, string $foreignKey): ar
 function surat_monitoring_attachment_payload(array $attachments, string $fallbackName): array
 {
     return array_map(static function (array $attachment) use ($fallbackName): array {
-        $filePath = '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/');
+        $relativePath = ltrim((string) ($attachment['file_path'] ?? ''), '/');
+        $filePath = $relativePath !== ''
+            ? ems_url('/ajax/secure_file.php?path=' . rawurlencode($relativePath))
+            : '';
         $fileName = trim((string) ($attachment['file_name'] ?? ''));
         $resolvedName = $fileName !== '' ? $fileName : $fallbackName;
-        $extension = strtolower((string) pathinfo($fileName !== '' ? $fileName : $filePath, PATHINFO_EXTENSION));
+        $extension = strtolower((string) pathinfo($fileName !== '' ? $fileName : $relativePath, PATHINFO_EXTENSION));
         $isImage = in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true);
 
         return [
