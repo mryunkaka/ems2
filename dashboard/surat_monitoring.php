@@ -170,6 +170,11 @@ function surat_monitoring_push_timeline(array &$items, string $type, string $tit
     ];
 }
 
+function surat_monitoring_file_record_excluded_marker(): string
+{
+    return 'ga_cooperation_input';
+}
+
 $scopeLabel = surat_monitoring_scope_label($division);
 $summary = [
     'incoming' => 0,
@@ -216,15 +221,41 @@ try {
     $summary['minutes'] = (int) $stmt->fetchColumn();
 
     if (surat_monitoring_table_exists($pdo, 'secretary_file_records')) {
-        $summary['file_records'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records")->fetchColumn();
+        $hasFileRecordKeywords = surat_monitoring_table_has_column($pdo, 'secretary_file_records', 'keywords');
 
-        $stmt = $pdo->query("
-            SELECT id, file_code, file_category, reference_number, title, counterparty_name, document_date, status, description
-            FROM secretary_file_records
-            ORDER BY document_date DESC, id DESC
-            LIMIT 6
-        ");
-        $fileRecordRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        if ($hasFileRecordKeywords) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM secretary_file_records
+                WHERE COALESCE(keywords, '') NOT LIKE :excluded_marker
+            ");
+            $stmt->execute([
+                'excluded_marker' => '%' . surat_monitoring_file_record_excluded_marker() . '%',
+            ]);
+            $summary['file_records'] = (int) $stmt->fetchColumn();
+
+            $stmt = $pdo->prepare("
+                SELECT id, file_code, file_category, reference_number, title, counterparty_name, document_date, status, description
+                FROM secretary_file_records
+                WHERE COALESCE(keywords, '') NOT LIKE :excluded_marker
+                ORDER BY document_date DESC, id DESC
+                LIMIT 6
+            ");
+            $stmt->execute([
+                'excluded_marker' => '%' . surat_monitoring_file_record_excluded_marker() . '%',
+            ]);
+            $fileRecordRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } else {
+            $summary['file_records'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_file_records")->fetchColumn();
+
+            $stmt = $pdo->query("
+                SELECT id, file_code, file_category, reference_number, title, counterparty_name, document_date, status, description
+                FROM secretary_file_records
+                ORDER BY document_date DESC, id DESC
+                LIMIT 6
+            ");
+            $fileRecordRows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
 
         $fileRecordIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $fileRecordRows)));
         if ($fileRecordIds && surat_monitoring_table_exists($pdo, 'secretary_file_record_attachments')) {
