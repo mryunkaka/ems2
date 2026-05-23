@@ -231,6 +231,7 @@ try {
     $values[] = $visibilityScope;
     $values[] = $id;
 
+    ems_ensure_medical_record_assistants_table($pdo);
     ems_ensure_medical_record_supporting_images_table($pdo);
     $pdo->beginTransaction();
 
