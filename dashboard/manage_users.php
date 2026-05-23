@@ -326,10 +326,65 @@ function manageUsersFormatBirthdayCell(?string $tanggalLahirIc): array
     ];
 }
 
+function manageUsersBuildBirthdayHighlights(array $users): array
+{
+    $todayCelebrants = [];
+    $upcomingCelebrants = [];
+
+    foreach ($users as $userRow) {
+        if ((int)($userRow['is_active'] ?? 0) !== 1) {
+            continue;
+        }
+
+        $birthDate = $userRow['tanggal_lahir_ic'] ?? null;
+        $daysUntil = ems_birthday_days_until($birthDate);
+        if ($daysUntil === null) {
+            continue;
+        }
+
+        $entry = [
+            'id' => (int)($userRow['id'] ?? 0),
+            'full_name' => (string)($userRow['full_name'] ?? ''),
+            'position' => ems_position_label($userRow['position'] ?? ''),
+            'division' => ems_normalize_division($userRow['division'] ?? '') ?: '-',
+            'date' => ems_birthday_format_long($birthDate),
+            'countdown' => ems_birthday_countdown_label($birthDate),
+            'turning_age' => ems_birthday_turning_age($birthDate),
+            'days_until' => $daysUntil,
+        ];
+
+        if ($daysUntil === 0) {
+            $todayCelebrants[] = $entry;
+            continue;
+        }
+
+        $upcomingCelebrants[] = $entry;
+    }
+
+    usort($todayCelebrants, static function (array $left, array $right): int {
+        return strcasecmp($left['full_name'], $right['full_name']);
+    });
+
+    usort($upcomingCelebrants, static function (array $left, array $right): int {
+        if (($left['days_until'] ?? 9999) === ($right['days_until'] ?? 9999)) {
+            return strcasecmp($left['full_name'], $right['full_name']);
+        }
+
+        return ((int)($left['days_until'] ?? 9999)) <=> ((int)($right['days_until'] ?? 9999));
+    });
+
+    return [
+        'today' => $todayCelebrants,
+        'upcoming' => array_slice($upcomingCelebrants, 0, 8),
+    ];
+}
+
 foreach ($users as $u) {
     $batchKey = !empty($u['batch']) ? 'Batch ' . (int)$u['batch'] : 'Tanpa Batch';
     $usersByBatch[$batchKey][] = $u;
 }
+
+$birthdayHighlights = manageUsersBuildBirthdayHighlights($users);
 
 // Urutkan batch (Batch 1,2,3... lalu Tanpa Batch di akhir)
 uksort($usersByBatch, function ($a, $b) {
@@ -472,10 +527,90 @@ uksort($usersByBatch, function ($a, $b) {
         background: rgba(248, 250, 252, 0.55);
     }
 
+    .birthday-highlight-grid {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .birthday-highlight-card {
+        padding: 1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.92));
+    }
+
+    .birthday-highlight-title {
+        margin: 0 0 0.2rem;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .birthday-highlight-subtitle {
+        margin: 0 0 0.9rem;
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+
+    .birthday-highlight-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .birthday-highlight-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.8rem 0.9rem;
+        border-radius: 14px;
+        background: rgba(248, 250, 252, 0.9);
+        border: 1px solid rgba(226, 232, 240, 0.95);
+    }
+
+    .birthday-highlight-item.is-today {
+        background: linear-gradient(135deg, rgba(254, 249, 195, 0.96), rgba(255, 237, 213, 0.96));
+        border-color: rgba(251, 191, 36, 0.45);
+    }
+
+    .birthday-highlight-name {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .birthday-highlight-meta,
+    .birthday-highlight-countdown {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+
+    .birthday-highlight-badge {
+        align-self: center;
+        white-space: nowrap;
+        padding: 0.45rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(14, 165, 233, 0.12);
+        color: #075985;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    .birthday-highlight-empty {
+        padding: 0.95rem 1rem;
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 14px;
+        color: #64748b;
+        background: rgba(248, 250, 252, 0.58);
+        font-size: 0.85rem;
+    }
+
     @media (min-width: 1024px) {
         .edit-user-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
             align-items: start;
+        }
+
+        .birthday-highlight-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 
@@ -647,6 +782,64 @@ uksort($usersByBatch, function ($a, $b) {
                        class="forensic-medics-tab<?= $viewMode === 'all' ? ' is-active' : '' ?>">
                         Semua
                     </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-section mb-4">
+            <div class="card-header">List Ulang Tahun</div>
+            <div class="card-body">
+                <div class="birthday-highlight-grid">
+                    <div class="birthday-highlight-card">
+                        <h3 class="birthday-highlight-title">Ulang Tahun Hari Ini</h3>
+                        <p class="birthday-highlight-subtitle">Anggota aktif yang sedang berulang tahun hari ini.</p>
+                        <div class="birthday-highlight-list">
+                            <?php if ($birthdayHighlights['today'] === []): ?>
+                                <div class="birthday-highlight-empty">Belum ada anggota yang ulang tahun hari ini.</div>
+                            <?php else: ?>
+                                <?php foreach ($birthdayHighlights['today'] as $birthdayUser): ?>
+                                    <div class="birthday-highlight-item is-today">
+                                        <div>
+                                            <div class="birthday-highlight-name"><?= htmlspecialchars($birthdayUser['full_name']) ?></div>
+                                            <div class="birthday-highlight-meta">
+                                                <?= htmlspecialchars($birthdayUser['position']) ?> • <?= htmlspecialchars($birthdayUser['division']) ?>
+                                            </div>
+                                            <div class="birthday-highlight-countdown">
+                                                <?= htmlspecialchars($birthdayUser['date']) ?>
+                                                <?php if (!empty($birthdayUser['turning_age'])): ?>
+                                                    • Ulang tahun ke-<?= (int)$birthdayUser['turning_age'] ?>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <div class="birthday-highlight-badge">Hari ini</div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div class="birthday-highlight-card">
+                        <h3 class="birthday-highlight-title">Ulang Tahun Terdekat</h3>
+                        <p class="birthday-highlight-subtitle">8 anggota aktif dengan ulang tahun paling dekat berikutnya.</p>
+                        <div class="birthday-highlight-list">
+                            <?php if ($birthdayHighlights['upcoming'] === []): ?>
+                                <div class="birthday-highlight-empty">Belum ada data ulang tahun terdekat.</div>
+                            <?php else: ?>
+                                <?php foreach ($birthdayHighlights['upcoming'] as $birthdayUser): ?>
+                                    <div class="birthday-highlight-item">
+                                        <div>
+                                            <div class="birthday-highlight-name"><?= htmlspecialchars($birthdayUser['full_name']) ?></div>
+                                            <div class="birthday-highlight-meta">
+                                                <?= htmlspecialchars($birthdayUser['position']) ?> • <?= htmlspecialchars($birthdayUser['division']) ?>
+                                            </div>
+                                            <div class="birthday-highlight-countdown"><?= htmlspecialchars($birthdayUser['date']) ?></div>
+                                        </div>
+                                        <div class="birthday-highlight-badge"><?= htmlspecialchars($birthdayUser['countdown']) ?></div>
+                                    </div>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
