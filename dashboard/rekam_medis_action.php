@@ -14,10 +14,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Invalid method');
 }
 
-// Validate CSRF token
+if (!empty($_SERVER['CONTENT_LENGTH']) && empty($_POST) && empty($_FILES)) {
+    $_SESSION['flash_errors'][] = 'Data gagal dikirim. Kemungkinan sesi sudah berubah atau ukuran upload melebihi batas server. Muat ulang halaman lalu coba simpan lagi.';
+    $redirectTo = trim((string)($_GET['redirect_to'] ?? $_POST['redirect_to'] ?? 'rekam_medis.php'));
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    http_response_code(403);
-    exit('Invalid CSRF token');
+    $_SESSION['flash_errors'][] = 'Token keamanan form tidak valid atau sudah kedaluwarsa. Muat ulang halaman rekam medis lalu simpan kembali.';
+    $redirectTo = trim((string)($_POST['redirect_to'] ?? $_GET['redirect_to'] ?? 'rekam_medis.php'));
+    header('Location: ' . $redirectTo);
+    exit;
 }
 
 // Get user from session

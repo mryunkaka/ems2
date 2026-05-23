@@ -12,9 +12,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Invalid method');
 }
 
+if (!empty($_SERVER['CONTENT_LENGTH']) && empty($_POST) && empty($_FILES)) {
+    $_SESSION['flash_errors'][] = 'Data gagal dikirim. Kemungkinan sesi sudah berubah atau ukuran upload melebihi batas server. Muat ulang halaman lalu coba simpan lagi.';
+    $redirectId = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+    $redirectMode = trim((string)($_GET['mode'] ?? $_POST['mode'] ?? ''));
+    $redirectSuffix = $redirectMode !== '' ? '&mode=' . urlencode($redirectMode) : '';
+    header('Location: rekam_medis_edit.php?id=' . $redirectId . $redirectSuffix);
+    exit;
+}
+
 if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    http_response_code(403);
-    exit('Invalid CSRF token');
+    $_SESSION['flash_errors'][] = 'Token keamanan form tidak valid atau sudah kedaluwarsa. Muat ulang halaman edit lalu simpan kembali.';
+    $redirectId = (int)($_POST['id'] ?? $_GET['id'] ?? 0);
+    $redirectMode = trim((string)($_POST['mode'] ?? $_GET['mode'] ?? ''));
+    $redirectSuffix = $redirectMode !== '' ? '&mode=' . urlencode($redirectMode) : '';
+    header('Location: rekam_medis_edit.php?id=' . $redirectId . $redirectSuffix);
+    exit;
 }
 
 $user = $_SESSION['user_rh'] ?? [];

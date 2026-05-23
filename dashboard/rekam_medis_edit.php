@@ -638,6 +638,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Sync content to textarea before form submit
     document.querySelector('form').addEventListener('submit', function(event) {
+        const csrfInput = this.querySelector('input[name="csrf_token"]');
+        if (csrfInput && window.EMS_CSRF_TOKEN) {
+            csrfInput.value = String(window.EMS_CSRF_TOKEN);
+        }
+
         const htmlContent = window.quill.root.innerHTML;
         document.getElementById('medical_result_html').value = htmlContent;
         
