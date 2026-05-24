@@ -43,7 +43,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <form method="POST" action="rekam_medis_action.php" enctype="multipart/form-data" x-data="medicalForm()">
             <?= csrfField() ?>
             <input type="hidden" name="visibility_scope" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>">
-            <input type="hidden" name="redirect_to" value="<?= $isForensicPrivate ? 'forensic_medical_records.php' : 'rekam_medis.php' ?>">
+            <input type="hidden" name="redirect_to" value="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>">
             <input type="hidden" name="mode" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>">
 
             <!-- CARD 1: DATA PASIEN -->

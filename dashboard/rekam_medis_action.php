@@ -33,6 +33,18 @@ $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userDivision = ems_normalize_division($user['division'] ?? '');
 
+function ems_medical_record_redirect_target(string $redirectTo, string $fallback = 'rekam_medis_list.php'): string
+{
+    $allowed = [
+        'rekam_medis.php',
+        'rekam_medis_list.php',
+        'forensic_medical_records.php',
+        'forensic_medical_records_list.php',
+    ];
+
+    return in_array($redirectTo, $allowed, true) ? $redirectTo : $fallback;
+}
+
 if ($userId <= 0) {
     $_SESSION['flash_errors'][] = 'Session tidak valid.';
     header('Location: rekam_medis.php');
@@ -52,7 +64,12 @@ try {
     $operasiType = $_POST['operasi_type'] ?? 'minor';
     $jenisOperasi = trim((string) ($_POST['jenis_operasi'] ?? ''));
     $visibilityScope = $_POST['visibility_scope'] ?? 'standard';
-    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
+    $redirectFallback = $visibilityScope === 'forensic_private'
+        ? 'forensic_medical_records_list.php'
+        : 'rekam_medis_list.php';
+    $redirectTo = ems_medical_record_redirect_target(trim($_POST['redirect_to'] ?? $redirectFallback), $redirectFallback);
+    $hasPatientCitizenIdColumn = ems_column_exists($pdo, 'medical_records', 'patient_citizen_id');
+    $hasVisibilityScopeColumn = ems_column_exists($pdo, 'medical_records', 'visibility_scope');
     $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
     
     // Required fields validation
@@ -151,6 +168,10 @@ try {
     $medicalResultHtml = $_POST['medical_result_html'] ?? '';
     // Basic XSS prevention - strip script tags
     $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
+    $medicalResultText = trim(html_entity_decode(strip_tags((string) $medicalResultHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    if ($medicalResultText === '') {
+        throw new Exception('Hasil rekam medis wajib diisi.');
+    }
     
     // =====================
     // 5. INSERT TO DATABASE
@@ -166,7 +187,6 @@ try {
     $columns = [
         'record_code',
         'patient_name',
-        'patient_citizen_id',
         'patient_occupation',
         'patient_dob',
         'patient_phone',
@@ -183,7 +203,6 @@ try {
     $values = [
         $recordCode,
         $patientName,
-        $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),
@@ -198,14 +217,21 @@ try {
         $operasiType,
     ];
 
+    if ($hasPatientCitizenIdColumn) {
+        $columns[] = 'patient_citizen_id';
+        $values[] = $patientCitizenId;
+    }
+
     if ($hasJenisOperasiColumn) {
         $columns[] = 'jenis_operasi';
         $values[] = $jenisOperasi !== '' ? $jenisOperasi : null;
     }
 
-    $columns[] = 'visibility_scope';
+    if ($hasVisibilityScopeColumn) {
+        $columns[] = 'visibility_scope';
+        $values[] = $visibilityScope;
+    }
     $columns[] = 'created_by';
-    $values[] = $visibilityScope;
     $values[] = $userId;
 
     $quotedColumns = implode(', ', array_map(static fn (string $column): string => "`{$column}`", $columns));
@@ -276,7 +302,7 @@ try {
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil disimpan.';
     
-    header('Location: ' . $redirectTo . '?saved=1');
+    header('Location: ' . $redirectTo);
     exit;
     
 } catch (Exception $e) {
@@ -284,7 +310,10 @@ try {
         $pdo->rollBack();
     }
     $_SESSION['flash_errors'][] = $e->getMessage();
-    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis.php');
+    $redirectFallback = (trim((string) ($_POST['visibility_scope'] ?? 'standard')) === 'forensic_private')
+        ? 'forensic_medical_records.php'
+        : 'rekam_medis.php';
+    $redirectTo = ems_medical_record_redirect_target(trim($_POST['redirect_to'] ?? $redirectFallback), $redirectFallback);
     header('Location: ' . $redirectTo);
     exit;
 }

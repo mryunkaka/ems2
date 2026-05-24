@@ -34,6 +34,16 @@ $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userDivision = ems_normalize_division($user['division'] ?? '');
 
+function ems_medical_record_edit_redirect_target(string $redirectTo, string $fallback = 'rekam_medis_list.php'): string
+{
+    $allowed = [
+        'rekam_medis_list.php',
+        'forensic_medical_records_list.php',
+    ];
+
+    return in_array($redirectTo, $allowed, true) ? $redirectTo : $fallback;
+}
+
 if ($userId <= 0) {
     $_SESSION['flash_errors'][] = 'Session tidak valid.';
     header('Location: rekam_medis_list.php');
@@ -84,7 +94,12 @@ try {
     $operasiType = $_POST['operasi_type'] ?? 'minor';
     $jenisOperasi = trim((string) ($_POST['jenis_operasi'] ?? ''));
     $visibilityScope = $_POST['visibility_scope'] ?? ($record['visibility_scope'] ?? 'standard');
-    $redirectTo = trim($_POST['redirect_to'] ?? 'rekam_medis_list.php');
+    $redirectFallback = $visibilityScope === 'forensic_private'
+        ? 'forensic_medical_records_list.php'
+        : 'rekam_medis_list.php';
+    $redirectTo = ems_medical_record_edit_redirect_target(trim($_POST['redirect_to'] ?? $redirectFallback), $redirectFallback);
+    $hasPatientCitizenIdColumn = ems_column_exists($pdo, 'medical_records', 'patient_citizen_id');
+    $hasVisibilityScopeColumn = ems_column_exists($pdo, 'medical_records', 'visibility_scope');
     $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
     
     if ($patientName === '') {
@@ -181,6 +196,10 @@ try {
     
     $medicalResultHtml = $_POST['medical_result_html'] ?? '';
     $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
+    $medicalResultText = trim(html_entity_decode(strip_tags((string) $medicalResultHtml), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    if ($medicalResultText === '') {
+        throw new Exception('Hasil rekam medis wajib diisi.');
+    }
     $assistantIds = ems_normalize_assistant_ids((array) ($_POST['assistant_ids'] ?? []));
     if ($assistantIds === []) {
         throw new Exception('Asisten operasi wajib diisi minimal 1 orang.');
@@ -192,7 +211,6 @@ try {
     
     $setParts = [
         'patient_name = ?',
-        'patient_citizen_id = ?',
         'patient_occupation = ?',
         'patient_dob = ?',
         'patient_phone = ?',
@@ -207,7 +225,6 @@ try {
     ];
     $values = [
         $patientName,
-        $patientCitizenId,
         trim($_POST['patient_occupation'] ?? 'Civilian'),
         $patientDob,
         trim($_POST['patient_phone'] ?? null),
@@ -221,14 +238,21 @@ try {
         $operasiType,
     ];
 
+    if ($hasPatientCitizenIdColumn) {
+        $setParts[] = 'patient_citizen_id = ?';
+        $values[] = $patientCitizenId;
+    }
+
     if ($hasJenisOperasiColumn) {
         $setParts[] = 'jenis_operasi = ?';
         $values[] = $jenisOperasi !== '' ? $jenisOperasi : null;
     }
 
-    $setParts[] = 'visibility_scope = ?';
+    if ($hasVisibilityScopeColumn) {
+        $setParts[] = 'visibility_scope = ?';
+        $values[] = $visibilityScope;
+    }
     $setParts[] = 'updated_at = NOW()';
-    $values[] = $visibilityScope;
     $values[] = $id;
 
     ems_ensure_medical_record_assistants_table($pdo);
