@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pushConfig = require __DIR__ . '/../config/push.php';
+$realtimeSyncConfig = require __DIR__ . '/../config/realtime_chat.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $resolvedPdo = (isset($pdo) && $pdo instanceof PDO) ? $pdo : null;
@@ -16,6 +17,7 @@ $currentUnit = $resolvedPdo instanceof PDO
     ? ems_effective_unit($resolvedPdo, $user)
     : ems_normalize_unit_code($user['unit_code'] ?? 'roxwood');
 $hideAltaTopbarUtilities = $currentUnit === 'alta';
+$realtimeMusicEnabled = !$hideAltaTopbarUtilities && !empty($realtimeSyncConfig['enabled']);
 $currentHospitalName = ems_unit_hospital_name($currentUnit);
 $currentLogoPath = ems_unit_logo_path($currentUnit);
 $currentSystemName = ems_unit_system_name($currentUnit);
@@ -71,6 +73,9 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/design/tailwind/build.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/design/tailwind/inbox-modal.css'), ENT_QUOTES, 'UTF-8') ?>">
     <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/css/overrides.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <?php if ($realtimeMusicEnabled): ?>
+        <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/css/realtime-music-widget.css'), ENT_QUOTES, 'UTF-8') ?>">
+    <?php endif; ?>
     <script defer src="<?= htmlspecialchars(ems_asset('/assets/vendor/alpine/alpine.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 
 </head>
@@ -149,6 +154,12 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
 	                            <ul id="inboxList"></ul>
                             </div>
                         </div>
+
+                        <?php if ($realtimeMusicEnabled): ?>
+                            <div class="music-wrapper">
+                                <button id="emsLiveMusicBtn" class="inbox-btn ems-live-music-btn" type="button" aria-label="Buka live music"><?= ems_icon('play-circle', 'h-7 w-7', '2.2') ?><span id="emsLiveMusicBadge" class="inbox-badge ems-live-music-badge" style="display:none">0</span></button>
+                            </div>
+                        <?php endif; ?>
                     <?php endif; ?>
             </div>
 
@@ -175,6 +186,60 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                         <div class="inbox-modal-actions">
                             <button onclick="closeInboxModal()" type="button" class="btn-secondary">Tutup</button>
                             <button onclick="deleteInbox()" type="button" class="btn-danger">Hapus</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($realtimeMusicEnabled): ?>
+            <div id="emsLiveMusicModal" class="hidden modal-overlay ems-live-music-overlay" role="dialog" aria-modal="true" aria-labelledby="emsLiveMusicTitle">
+                <div class="modal-box modal-shell modal-frame-lg ems-live-music-modal">
+                    <div class="modal-head ems-live-music-head">
+                        <div class="min-w-0">
+                            <div id="emsLiveMusicTitle" class="modal-title">Live Music</div>
+                            <div id="emsLiveMusicMeta" class="meta-text-xs mt-1 ems-live-music-meta">Sinkron untuk audio direct dan YouTube.</div>
+                        </div>
+                        <button id="emsLiveMusicClose" type="button" class="modal-close-btn" aria-label="Tutup live music">
+                            <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                        </button>
+                    </div>
+
+                    <div class="modal-content ems-live-music-content">
+                        <div class="ems-live-music-now">
+                            <div class="ems-live-music-now-copy">
+                                <div id="emsLiveMusicNowLabel" class="ems-live-music-now-label">Belum ada musik aktif</div>
+                                <div id="emsLiveMusicNowMeta" class="ems-live-music-now-meta">Tambahkan link audio direct atau YouTube untuk mulai siaran.</div>
+                            </div>
+                            <div class="ems-live-music-now-actions">
+                                <button id="emsLiveMusicEnableAudio" type="button" class="btn-secondary ems-live-music-enable">Aktifkan Audio</button>
+                                <button id="emsLiveMusicPrimaryAction" type="button" class="btn-secondary ems-live-music-action" disabled>Putar</button>
+                                <button id="emsLiveMusicSkip" type="button" class="btn-secondary ems-live-music-action" disabled>Lewati</button>
+                            </div>
+                        </div>
+
+                        <div class="ems-live-music-layout">
+                            <div class="ems-live-music-queue-block">
+                                <div class="ems-live-music-queue-head">
+                                    <div class="ems-live-music-queue-title">Antrian Music</div>
+                                    <div id="emsLiveMusicQueueCount" class="ems-live-music-queue-count">0 item</div>
+                                </div>
+                                <div id="emsLiveMusicQueue" class="ems-live-music-queue-list"></div>
+                            </div>
+
+                            <div id="emsLiveMusicPlayerShell" class="ems-live-music-player-shell">
+                                <audio id="emsLiveMusicAudio" class="ems-live-music-audio" controls preload="none"></audio>
+                                <div id="emsLiveMusicEmbedWrap" class="ems-live-music-embed-wrap hidden"></div>
+                                <div id="emsLiveMusicHint" class="ems-live-music-hint">Link Spotify atau TikTok akan masuk antrian sebagai referensi. Audio sinkron realtime saat ini hanya untuk audio direct dan YouTube.</div>
+                            </div>
+
+                            <form id="emsLiveMusicForm" class="ems-live-music-form">
+                                <div class="ems-live-music-inputs">
+                                    <input id="emsLiveMusicUrl" type="url" placeholder="Tempel link YouTube, Spotify, TikTok, atau URL audio direct" autocomplete="off">
+                                    <button id="emsLiveMusicAdd" type="submit" class="btn-primary ems-live-music-add">Tambah</button>
+                                </div>
+                                <div id="emsLiveMusicFormNote" class="ems-live-music-form-note">Antrian realtime terlihat untuk semua visitor yang membuka website.</div>
+                            </form>
                         </div>
                     </div>
                 </div>

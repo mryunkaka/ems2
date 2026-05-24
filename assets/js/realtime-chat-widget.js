@@ -1,4 +1,4 @@
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
+import { getApp, getApps, initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
 import {
     getDatabase,
@@ -37,7 +37,7 @@ import {
     const onlineStatusEl = document.getElementById('emsLiveChatStatus');
     const onlineLabelEl = document.getElementById('emsLiveChatOnlineLabel');
 
-    const app = initializeApp(config.firebase);
+    const app = getApps().length ? getApp() : initializeApp(config.firebase);
     const auth = getAuth(app);
     const database = getDatabase(app);
 

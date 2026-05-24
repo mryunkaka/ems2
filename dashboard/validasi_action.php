@@ -1,7 +1,7 @@
 <?php
 session_start();
 require __DIR__ . '/../config/database.php';
-require __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/helpers.php';
 
 // Guard role
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));

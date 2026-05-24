@@ -452,7 +452,22 @@ window.addEventListener('resize', function() {
             'viewer' => $realtimeChatViewer,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     </script>
+    <script>
+        window.EMS_REALTIME_MUSIC_CONFIG = <?= json_encode([
+            'enabled' => true,
+            'firebase' => $realtimeChatConfig['firebase'],
+            'paths' => [
+                'queue' => $realtimeChatConfig['paths']['musicQueue'] ?? 'ems_live_music/global_room/queue',
+                'state' => $realtimeChatConfig['paths']['musicState'] ?? 'ems_live_music/global_room/state',
+            ],
+            'ui' => [
+                'maxQueueItems' => $realtimeChatConfig['ui']['maxQueueItems'] ?? 25,
+            ],
+            'viewer' => $realtimeChatViewer,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    </script>
     <script type="module" src="<?= htmlspecialchars(ems_asset('/assets/js/realtime-chat-widget.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script type="module" src="<?= htmlspecialchars(ems_asset('/assets/js/realtime-music-widget.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <?php endif; ?>
 
 </body>
