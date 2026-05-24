@@ -405,14 +405,54 @@ uksort($usersByBatch, function ($a, $b) {
 <style>
     .manage-users-page {
         max-width: 92rem;
+        display: flex;
+        flex-direction: column;
     }
 
     .manage-users-card {
         overflow: hidden;
+        order: 10;
     }
 
     .manage-users-card > .table-wrapper {
         overflow-x: auto;
+    }
+
+    .manage-users-toolbar {
+        display: grid;
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .manage-users-toolbar-title {
+        display: flex;
+        align-items: center;
+        min-height: 2.5rem;
+        font-weight: 700;
+    }
+
+    .manage-users-toolbar-controls {
+        display: grid;
+        gap: 0.875rem;
+        width: 100%;
+    }
+
+    .manage-users-filter-row,
+    .manage-users-action-row {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .manage-users-filter-row .toolbar-select,
+    .manage-users-filter-row .toolbar-input {
+        flex: 1 1 13rem;
+        min-width: 0;
+    }
+
+    .manage-users-action-row > * {
+        flex: 0 0 auto;
     }
 
     .edit-user-modal {
@@ -471,6 +511,11 @@ uksort($usersByBatch, function ($a, $b) {
 
     .account-update-history-card {
         margin-bottom: 1rem;
+        order: 30;
+    }
+
+    .birthday-section-card {
+        order: 20;
     }
 
     .account-update-history-list {
@@ -609,6 +654,10 @@ uksort($usersByBatch, function ($a, $b) {
             align-items: start;
         }
 
+        .manage-users-toolbar {
+            grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+        }
+
         .birthday-highlight-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -646,10 +695,22 @@ uksort($usersByBatch, function ($a, $b) {
     }
 
     /* Horizontal action buttons for all-users view */
-    .manage-user-action-horizontal {
+    .manage-user-action-horizontal,
+    .manage-user-action-stack {
         display: flex;
+        flex-direction: row;
         gap: 0.5rem;
         flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+    }
+
+    .manage-user-action-horizontal > *,
+    .manage-user-action-stack > * {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 2.5rem;
+        white-space: nowrap;
     }
 
     /* Prevent text wrapping and enable horizontal scroll for table */
@@ -671,7 +732,7 @@ uksort($usersByBatch, function ($a, $b) {
     /* Ensure action column has minimum width */
     .table-custom th:last-child,
     .table-custom td:last-child {
-        min-width: 140px;
+        min-width: 180px;
     }
 
     /* Batch column min width */
@@ -694,51 +755,6 @@ uksort($usersByBatch, function ($a, $b) {
         <?php foreach ($errors as $e): ?>
             <?= ems_render_toast_script((string)$e, 'error', 'Manajemen User', 6800) ?>
         <?php endforeach; ?>
-
-        <div class="card account-update-history-card">
-            <div class="card-header">History Update Akun User</div>
-            <div class="account-update-history-list">
-                <?php if (empty($accountUpdateHistory)): ?>
-                    <div class="account-update-history-empty">
-                        Belum ada riwayat update akun user.
-                    </div>
-                <?php else: ?>
-                    <?php foreach ($accountUpdateHistory as $historyRow): ?>
-                        <?php
-                        $editorName = trim((string)($historyRow['editor_name'] ?? 'Sistem'));
-                        $editorRole = trim((string)($historyRow['editor_role'] ?? ''));
-                        $editorLabel = $editorRole !== ''
-                            ? ems_role_label($editorRole) . ' ' . $editorName
-                            : $editorName;
-                        $targetName = trim((string)($historyRow['target_name'] ?? 'User'));
-                        $summary = trim((string)($historyRow['summary'] ?? ''));
-                        $actionType = strtolower(trim((string)($historyRow['action_type'] ?? 'edit')));
-                        $actionTextMap = [
-                            'edit' => 'telah melakukan perubahan pada medis',
-                            'add_user' => 'telah menambahkan akun medis',
-                            'delete' => 'telah menghapus akun medis',
-                            'resign' => 'telah menonaktifkan akun medis',
-                            'reactivate' => 'telah mengaktifkan kembali akun medis',
-                        ];
-                        $actionText = $actionTextMap[$actionType] ?? 'telah memperbarui akun medis';
-                        ?>
-                        <div class="account-update-history-item">
-                            <div class="account-update-history-text">
-                                <strong><?= htmlspecialchars($editorLabel) ?></strong>
-                                <?= htmlspecialchars($actionText) ?>
-                                <strong><?= htmlspecialchars($targetName) ?></strong>.
-                                <?php if ($summary !== ''): ?>
-                                    <span><?= htmlspecialchars($summary) ?></span>
-                                <?php endif; ?>
-                            </div>
-                            <div class="account-update-history-meta">
-                                <?= htmlspecialchars(formatManageUsersHistoryDate($historyRow['created_at'] ?? null)) ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </div>
 
         <!-- Statistics Summary Card -->
         <div class="card mb-4">
@@ -786,7 +802,7 @@ uksort($usersByBatch, function ($a, $b) {
             </div>
         </div>
 
-        <div class="card card-section mb-4">
+        <div class="card card-section mb-4 birthday-section-card">
             <div class="card-header">List Ulang Tahun</div>
             <div class="card-body">
                 <div class="birthday-highlight-grid">
@@ -845,63 +861,69 @@ uksort($usersByBatch, function ($a, $b) {
         </div>
 
         <div class="card manage-users-card">
-            <div class="card-header card-toolbar">
-                <span>Daftar User <?= $viewMode === 'all' ? '(Semua)' : '(Per Batch)' ?></span>
-	                <div class="toolbar-group">
-	                    <select id="docStatusFilter" class="toolbar-select">
-	                        <option value="all" selected>Semua Dokumen</option>
-	                        <option value="missing_ktp">Belum Upload KTP</option>
-	                        <option value="missing_sim">Belum Upload SIM</option>
-	                        <option value="missing_kta">Belum Upload KTA</option>
-	                        <option value="missing_skb">Belum Upload SKB</option>
-	                        <option value="missing_sertifikat_heli">Belum Upload Sertifikat Heli</option>
-	                        <option value="missing_sertifikat_operasi">Belum Upload Sertifikat Operasi</option>
-	                        <?php foreach ($dynamicOtherDocFilterOptions as $docFilter): ?>
-	                            <option value="<?= htmlspecialchars($docFilter['value']) ?>">
-	                                Belum Upload <?= htmlspecialchars($docFilter['label']) ?>
-	                            </option>
-	                        <?php endforeach; ?>
-	                    </select>
+            <div class="card-header manage-users-toolbar">
+                <div class="manage-users-toolbar-title">
+                    <span>Daftar User <?= $viewMode === 'all' ? '(Semua)' : '(Per Batch)' ?></span>
+                </div>
+                <div class="manage-users-toolbar-controls">
+                    <div class="manage-users-filter-row">
+                        <select id="docStatusFilter" class="toolbar-select">
+                            <option value="all" selected>Semua Dokumen</option>
+                            <option value="missing_ktp">Belum Upload KTP</option>
+                            <option value="missing_sim">Belum Upload SIM</option>
+                            <option value="missing_kta">Belum Upload KTA</option>
+                            <option value="missing_skb">Belum Upload SKB</option>
+                            <option value="missing_sertifikat_heli">Belum Upload Sertifikat Heli</option>
+                            <option value="missing_sertifikat_operasi">Belum Upload Sertifikat Operasi</option>
+                            <?php foreach ($dynamicOtherDocFilterOptions as $docFilter): ?>
+                                <option value="<?= htmlspecialchars($docFilter['value']) ?>">
+                                    Belum Upload <?= htmlspecialchars($docFilter['label']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                         <select id="memberStatusFilter" class="toolbar-select">
                             <option value="all" selected>Semua Anggota</option>
                             <option value="active">Anggota Aktif</option>
                             <option value="cuti">Anggota Cuti</option>
                             <option value="resign">Anggota Resign</option>
                         </select>
-	                    <select id="searchColumn" class="toolbar-select">
-	                        <option value="all" selected>Semua Kolom</option>
-	                        <option value="name">Nama</option>
-	                        <option value="position">Jabatan</option>
-	                        <option value="role">Role</option>
-	                        <option value="division">Division</option>
-	                        <option value="docs">Dokumen</option>
-	                        <option value="join">Tanggal Join</option>
-	                    </select>
-	                    <input type="text"
-	                        id="searchUser"
-                        placeholder="Cari nama..."
-                        class="toolbar-input">
+                        <select id="searchColumn" class="toolbar-select">
+                            <option value="all" selected>Semua Kolom</option>
+                            <option value="name">Nama</option>
+                            <option value="position">Jabatan</option>
+                            <option value="role">Role</option>
+                            <option value="division">Division</option>
+                            <option value="docs">Dokumen</option>
+                            <option value="join">Tanggal Join</option>
+                        </select>
+                        <input type="text"
+                            id="searchUser"
+                            placeholder="Cari nama..."
+                            class="toolbar-input">
+                    </div>
 
-                    <?php
-                    $exportParams = ['view' => $viewMode];
-                    $exportQuery = http_build_query($exportParams);
-                    $exportUrl = ems_url('/dashboard/manage_users_export.php?' . $exportQuery);
-                    ?>
-                    <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
-                        <?= ems_icon('document-arrow-down', 'h-4 w-4') ?> Export Excel
-                    </a>
+                    <div class="manage-users-action-row">
+                        <?php
+                        $exportParams = ['view' => $viewMode];
+                        $exportQuery = http_build_query($exportParams);
+                        $exportUrl = ems_url('/dashboard/manage_users_export.php?' . $exportQuery);
+                        ?>
+                        <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                            <?= ems_icon('document-arrow-down', 'h-4 w-4') ?> Export Excel
+                        </a>
 
-                    <button id="btnExportText" class="btn-secondary" type="button">
-                        <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
-                    </button>
+                        <button id="btnExportText" class="btn-secondary" type="button">
+                            <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
+                        </button>
 
-                    <button id="btnClearUserFilters" class="btn-secondary" type="button">
-                        <?= ems_icon('x-mark', 'h-4 w-4') ?> Clear
-                    </button>
+                        <button id="btnClearUserFilters" class="btn-secondary" type="button">
+                            <?= ems_icon('x-mark', 'h-4 w-4') ?> Clear
+                        </button>
 
-                    <button id="btnAddUser" class="btn-success">
-                        <?= ems_icon('plus', 'h-4 w-4') ?> Tambah Anggota
-                    </button>
+                        <button id="btnAddUser" class="btn-success">
+                            <?= ems_icon('plus', 'h-4 w-4') ?> Tambah Anggota
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -931,9 +953,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>#</th>
                                         <th>Nama</th>
                                         <th>Jabatan</th>
-                                        <th>Role</th>
                                         <th>Division</th>
-                                        <th>Unit</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
                                         <th>Dokumen</th>
@@ -1050,9 +1070,7 @@ uksort($usersByBatch, function ($a, $b) {
                                             </td>
 
                                             <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
-                                            <td><?= htmlspecialchars(ems_role_label($u['role'])) ?></td>
                                             <td><?= htmlspecialchars(ems_normalize_division($u['division'] ?? '') ?: '-') ?></td>
-                                            <td><?= htmlspecialchars(ems_unit_label($u['unit_code'] ?? 'roxwood')) ?></td>
                                             <td>
                                                 <?php if (!empty($u['tanggal_masuk'])): ?>
                                                     <div>
@@ -1098,7 +1116,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 ?>
                                             </td>
                                             <td>
-                                                <div class="manage-user-action-stack">
+                                                <div class="manage-user-action-horizontal">
                                                     <?php if (!$isProtectedUser || $canManageProtectedUser): ?>
                                                         <button
                                                             class="btn-secondary btn-sm candidate-action-btn action-icon-btn btn-edit-user"
@@ -1198,9 +1216,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Nama</th>
                                         <th>Batch</th>
                                         <th>Jabatan</th>
-                                        <th>Role</th>
                                         <th>Division</th>
-                                        <th>Unit</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
                                         <th>Dokumen</th>
@@ -1326,9 +1342,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <?php endif; ?>
                                             </td>
                                             <td><?= htmlspecialchars(ems_position_label($u['position'])) ?></td>
-                                            <td><?= htmlspecialchars(ems_role_label($u['role'])) ?></td>
                                             <td><?= htmlspecialchars(ems_normalize_division($u['division'] ?? '') ?: '-') ?></td>
-                                            <td><?= htmlspecialchars(ems_unit_label($u['unit_code'] ?? 'roxwood')) ?></td>
                                             <td>
                                                 <?php if (!empty($u['tanggal_masuk'])): ?>
                                                     <div>
@@ -1453,6 +1467,51 @@ uksort($usersByBatch, function ($a, $b) {
                     </div>
                 <?php endif; ?>
 
+            </div>
+        </div>
+
+        <div class="card account-update-history-card">
+            <div class="card-header">History Update Akun User</div>
+            <div class="account-update-history-list">
+                <?php if (empty($accountUpdateHistory)): ?>
+                    <div class="account-update-history-empty">
+                        Belum ada riwayat update akun user.
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($accountUpdateHistory as $historyRow): ?>
+                        <?php
+                        $editorName = trim((string)($historyRow['editor_name'] ?? 'Sistem'));
+                        $editorRole = trim((string)($historyRow['editor_role'] ?? ''));
+                        $editorLabel = $editorRole !== ''
+                            ? ems_role_label($editorRole) . ' ' . $editorName
+                            : $editorName;
+                        $targetName = trim((string)($historyRow['target_name'] ?? 'User'));
+                        $summary = trim((string)($historyRow['summary'] ?? ''));
+                        $actionType = strtolower(trim((string)($historyRow['action_type'] ?? 'edit')));
+                        $actionTextMap = [
+                            'edit' => 'telah melakukan perubahan pada medis',
+                            'add_user' => 'telah menambahkan akun medis',
+                            'delete' => 'telah menghapus akun medis',
+                            'resign' => 'telah menonaktifkan akun medis',
+                            'reactivate' => 'telah mengaktifkan kembali akun medis',
+                        ];
+                        $actionText = $actionTextMap[$actionType] ?? 'telah memperbarui akun medis';
+                        ?>
+                        <div class="account-update-history-item">
+                            <div class="account-update-history-text">
+                                <strong><?= htmlspecialchars($editorLabel) ?></strong>
+                                <?= htmlspecialchars($actionText) ?>
+                                <strong><?= htmlspecialchars($targetName) ?></strong>.
+                                <?php if ($summary !== ''): ?>
+                                    <span><?= htmlspecialchars($summary) ?></span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="account-update-history-meta">
+                                <?= htmlspecialchars(formatManageUsersHistoryDate($historyRow['created_at'] ?? null)) ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>

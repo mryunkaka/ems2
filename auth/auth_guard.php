@@ -63,17 +63,16 @@ function authGuardUserRhHasColumn(PDO $pdo, string $column): bool
 
 function authGuardRequiresTanggalLahirIc(string $scriptName): bool
 {
-    return in_array($scriptName, [
-        'rekap_farmasi.php',
-        'rekap_farmasi_v2.php',
-        'konsumen.php',
-        'ems_services.php',
+    return !in_array($scriptName, [
+        'setting_akun.php',
+        'setting_akun_action.php',
+        'setting_akun_quick_save.php',
     ], true);
 }
 
 function authGuardRedirectTanggalLahirIcRequired(): void
 {
-    $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi dulu sebelum akses jualan farmasi.';
+    $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi terlebih dahulu sebelum mengakses halaman dashboard.';
     header('Location: /dashboard/setting_akun.php');
     exit;
 }
@@ -132,7 +131,8 @@ if (isset($_SESSION['user_rh'])) {
     $currentScript = basename((string)($_SERVER['PHP_SELF'] ?? ''));
     $currentPath = str_replace('\\', '/', (string)($_SERVER['PHP_SELF'] ?? ''));
     if ($currentScript !== '' && str_contains($currentPath, '/dashboard/')) {
-        if (authGuardRequiresTanggalLahirIc($currentScript)) {
+        $hasTanggalLahirIcColumn = authGuardUserRhHasColumn($pdo, 'tanggal_lahir_ic');
+        if ($hasTanggalLahirIcColumn && authGuardRequiresTanggalLahirIc($currentScript)) {
             $tanggalLahirIc = trim((string)($_SESSION['user_rh']['tanggal_lahir_ic'] ?? ''));
             if ($tanggalLahirIc === '') {
                 authGuardRedirectTanggalLahirIcRequired();
