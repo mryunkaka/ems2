@@ -1,0 +1,387 @@
+.ems-live-chat {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 99990;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.ems-live-chat.hidden {
+    display: none;
+}
+
+.ems-live-chat-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 54px;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #0f2740, #0b5f8f);
+    color: #ffffff;
+    padding: 8px 12px 8px 10px;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.24);
+}
+
+.ems-live-chat-toggle:hover {
+    background: linear-gradient(135deg, #0b2137, #085f8f);
+}
+
+.ems-live-chat-toggle-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    flex: 0 0 auto;
+}
+
+.ems-live-chat-toggle-dot {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 2px rgba(15, 39, 64, 0.85);
+}
+
+.ems-live-chat-toggle-copy {
+    display: grid;
+    gap: 1px;
+    text-align: left;
+    line-height: 1.05;
+}
+
+.ems-live-chat-toggle-title {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.ems-live-chat-toggle-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(226, 232, 240, 0.94);
+}
+
+.ems-live-chat-online-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: #22c55e;
+    color: #052e16;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.ems-live-chat-panel {
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(68vh, 560px);
+    display: none;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+    backdrop-filter: blur(12px);
+}
+
+.ems-live-chat.is-open .ems-live-chat-panel {
+    display: grid;
+}
+
+.ems-live-chat-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    background: linear-gradient(135deg, #0d3655, #0b6aa0);
+    color: #ffffff;
+}
+
+.ems-live-chat-panel-title {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.ems-live-chat-panel-subtitle {
+    margin-top: 2px;
+    font-size: 10px;
+    color: rgba(224, 242, 254, 0.9);
+}
+
+.ems-live-chat-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    flex: 0 0 auto;
+}
+
+.ems-live-chat-close:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.ems-live-chat-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.78);
+    background: #f8fafc;
+}
+
+.ems-live-chat-status-label {
+    font-size: 11px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.ems-live-chat-status-meta {
+    margin-top: 2px;
+    font-size: 10px;
+    color: #64748b;
+}
+
+.ems-live-chat-messages {
+    overflow-y: auto;
+    padding: 12px 12px 6px;
+    background:
+        radial-gradient(circle at top left, rgba(186, 230, 253, 0.28), transparent 34%),
+        linear-gradient(180deg, #f8fbff, #f8fafc);
+}
+
+.ems-live-chat-empty,
+.ems-live-chat-system {
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: #e0f2fe;
+    color: #0c4a6e;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.ems-live-chat-message {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.ems-live-chat-message.is-self {
+    justify-content: flex-end;
+}
+
+.ems-live-chat-bubble {
+    max-width: min(84%, 250px);
+    padding: 9px 11px;
+    border-radius: 16px;
+    background: #ffffff;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    box-shadow: 0 5px 14px rgba(148, 163, 184, 0.11);
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-bubble {
+    background: linear-gradient(135deg, #1494d4, #0b79bb);
+    border-color: rgba(2, 132, 199, 0.2);
+    color: #ffffff;
+}
+
+.ems-live-chat-message-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.ems-live-chat-message-name {
+    font-size: 11px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-name {
+    color: #ffffff;
+}
+
+.ems-live-chat-message-time {
+    font-size: 9px;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-time {
+    color: rgba(224, 242, 254, 0.94);
+}
+
+.ems-live-chat-message-body {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #334155;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-body {
+    color: #ffffff;
+}
+
+.ems-live-chat-message-page {
+    margin-top: 6px;
+    font-size: 9px;
+    color: #64748b;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-page {
+    color: rgba(224, 242, 254, 0.94);
+}
+
+.ems-live-chat-form {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(226, 232, 240, 0.82);
+    background: #ffffff;
+}
+
+.ems-live-chat-composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: end;
+}
+
+.ems-live-chat-input {
+    min-height: 44px;
+    max-height: 96px;
+    border-radius: 16px;
+    border: 1px solid #cbd5e1;
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.45;
+    resize: vertical;
+    background: #ffffff;
+}
+
+.ems-live-chat-send {
+    width: 46px;
+    min-width: 46px;
+    height: 44px;
+    border: 0;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #16934b, #0f766e);
+    color: #ffffff;
+    font-weight: 800;
+    box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
+}
+
+.ems-live-chat-send:hover {
+    background: linear-gradient(135deg, #15803d, #0f766e);
+}
+
+.ems-live-chat-send:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.ems-live-chat-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    color: #64748b;
+}
+
+.ems-live-chat-viewers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 12px 10px;
+    background: #ffffff;
+}
+
+.ems-live-chat-viewer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 10px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ems-live-chat-viewer-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #22c55e;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 767px) {
+    .ems-live-chat {
+        right: 10px;
+        left: 10px;
+        bottom: max(10px, env(safe-area-inset-bottom));
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .ems-live-chat-toggle {
+        width: 100%;
+        justify-content: space-between;
+        min-height: 50px;
+        padding: 8px 10px;
+    }
+
+    .ems-live-chat-panel {
+        width: 100%;
+        max-height: min(70vh, 520px);
+        border-radius: 20px;
+    }
+
+    .ems-live-chat-panel-head {
+        padding: 11px 12px 9px;
+    }
+
+    .ems-live-chat-status,
+    .ems-live-chat-form {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .ems-live-chat-viewers {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-bottom: 12px;
+    }
+}

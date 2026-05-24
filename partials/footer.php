@@ -6,6 +6,15 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
     $footerUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
     $footerLoginUrl = ems_url('/auth/login.php?unit=' . urlencode($footerUnit));
 }
+
+$realtimeChatConfig = require __DIR__ . '/../config/realtime_chat.php';
+$realtimeChatViewer = [
+    'userId' => (string)($_SESSION['user_rh']['id'] ?? ''),
+    'name' => (string)(($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? '')),
+    'role' => (string)($_SESSION['user_rh']['role'] ?? ''),
+    'unit' => (string)($_SESSION['user_rh']['unit_code'] ?? ''),
+    'pageTitle' => (string)($pageTitle ?? ''),
+];
 ?>
 </main>
 </div>
@@ -73,6 +82,71 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
         }
     }
 </style>
+
+<?php if (!empty($realtimeChatConfig['enabled'])): ?>
+    <link rel="stylesheet" href="<?= htmlspecialchars(ems_asset('/assets/css/realtime-chat-widget.css'), ENT_QUOTES, 'UTF-8') ?>">
+
+    <div id="emsLiveChat" class="ems-live-chat" aria-live="polite">
+        <div id="emsLiveChatPanel" class="ems-live-chat-panel">
+            <div class="ems-live-chat-panel-head">
+                <div>
+                    <div class="ems-live-chat-panel-title">Live Chat</div>
+                    <div class="ems-live-chat-panel-subtitle">Online sekarang</div>
+                </div>
+                <button id="emsLiveChatClose" class="ems-live-chat-close" type="button" aria-label="Tutup live chat">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                        <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="ems-live-chat-status">
+                <div>
+                    <div id="emsLiveChatOnlineLabel" class="ems-live-chat-status-label">0 visitor online</div>
+                    <div id="emsLiveChatViewersMeta" class="ems-live-chat-status-meta">Menghubungkan...</div>
+                </div>
+                <div class="ems-live-chat-online-pill" data-ems-live-chat-online-count>0</div>
+            </div>
+
+            <div id="emsLiveChatMessages" class="ems-live-chat-messages">
+                <div id="emsLiveChatStatus" class="ems-live-chat-empty">Menghubungkan live chat...</div>
+            </div>
+
+            <form id="emsLiveChatForm" class="ems-live-chat-form">
+                <div class="ems-live-chat-composer">
+                    <textarea id="emsLiveChatInput" class="ems-live-chat-input" maxlength="500" placeholder="Tulis pesan..."></textarea>
+                    <button id="emsLiveChatSend" class="ems-live-chat-send" type="submit" aria-label="Kirim pesan">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                            <path d="M3 20l18-8L3 4v6l12 2-12 2z" fill="currentColor"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="ems-live-chat-note">
+                    <span>Maks. 500 karakter</span>
+                    <span>Live</span>
+                </div>
+            </form>
+
+            <div id="emsLiveChatViewers" class="ems-live-chat-viewers"></div>
+        </div>
+
+        <button id="emsLiveChatToggle" class="ems-live-chat-toggle" type="button" aria-label="Buka live chat">
+            <span class="ems-live-chat-toggle-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path d="M6 9h12M6 13h8m-8 8l-2-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-9l-5 4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="ems-live-chat-toggle-dot"></span>
+            </span>
+            <span class="ems-live-chat-toggle-copy">
+                <span class="ems-live-chat-toggle-title">Live Chat</span>
+                <span class="ems-live-chat-toggle-meta">
+                    <span class="ems-live-chat-online-pill" data-ems-live-chat-online-count>0</span>
+                    <span>Online</span>
+                </span>
+            </span>
+        </button>
+    </div>
+<?php endif; ?>
 
 <script src="<?= htmlspecialchars(ems_asset('/assets/js/app.js?refresh=20260501-setting-akun-fast'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/design/js/app-shell.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
@@ -361,6 +435,19 @@ window.addEventListener('resize', function() {
         }
     }, 1000);
 </script>
+
+<?php if (!empty($realtimeChatConfig['enabled'])): ?>
+    <script>
+        window.EMS_REALTIME_CHAT_CONFIG = <?= json_encode([
+            'enabled' => true,
+            'firebase' => $realtimeChatConfig['firebase'],
+            'paths' => $realtimeChatConfig['paths'],
+            'ui' => $realtimeChatConfig['ui'],
+            'viewer' => $realtimeChatViewer,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    </script>
+    <script type="module" src="<?= htmlspecialchars(ems_asset('/assets/js/realtime-chat-widget.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+<?php endif; ?>
 
 </body>
 
