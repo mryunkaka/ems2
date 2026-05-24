@@ -240,6 +240,10 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                                 </div>
                                 <div id="emsLiveMusicFormNote" class="ems-live-music-form-note">Antrian realtime terlihat untuk semua visitor yang membuka website.</div>
                             </form>
+
+                            <div class="ems-live-music-bottom-actions">
+                                <button id="emsLiveMusicCloseBottom" type="button" class="btn-secondary ems-live-music-close-bottom">Tutup</button>
+                            </div>
                         </div>
                     </div>
                 </div>

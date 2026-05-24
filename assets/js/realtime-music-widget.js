@@ -23,6 +23,7 @@ import {
     }
 
     const closeButton = document.getElementById('emsLiveMusicClose');
+    const closeBottomButton = document.getElementById('emsLiveMusicCloseBottom');
     const badge = document.getElementById('emsLiveMusicBadge');
     const queueCountEl = document.getElementById('emsLiveMusicQueueCount');
     const queueListEl = document.getElementById('emsLiveMusicQueue');
@@ -39,19 +40,23 @@ import {
     const embedWrapEl = document.getElementById('emsLiveMusicEmbedWrap');
     const hintEl = document.getElementById('emsLiveMusicHint');
 
-    const queuePath = String(config.paths?.queue || 'ems_live_music/global_room/queue');
-    const statePath = String(config.paths?.state || 'ems_live_music/global_room/state');
-    const maxQueueItems = Number(config.ui?.maxQueueItems || 25);
-    const modalOpenKey = 'emsLiveMusicModalOpen';
-    const cachedStateKey = 'emsLiveMusicStateCache';
-    const cachedQueueKey = 'emsLiveMusicQueueCache';
-
     const viewer = {
         id: String(config.viewer?.userId || '').trim(),
         name: String(config.viewer?.name || '').trim() || 'Visitor',
         role: String(config.viewer?.role || '').trim(),
         unit: String(config.viewer?.unit || '').trim()
     };
+
+    const queuePath = String(config.paths?.queue || 'ems_live_music/global_room/queue');
+    const statePath = String(config.paths?.state || 'ems_live_music/global_room/state');
+    const maxQueueItems = Number(config.ui?.maxQueueItems || 25);
+    const viewerScope = viewer.id || 'guest';
+    const modalOpenKey = 'emsLiveMusicModalOpen';
+    const cachedStateKey = 'emsLiveMusicStateCache';
+    const cachedQueueKey = 'emsLiveMusicQueueCache';
+    const localAudioEnabledKey = 'emsLiveMusicListeningEnabled:' + viewerScope;
+    const localPausedKey = 'emsLiveMusicPausedLocally:' + viewerScope;
+    const localUnlockedKey = 'emsLiveMusicUnlocked:' + viewerScope;
 
     const app = getApps().length ? getApp() : initializeApp(config.firebase);
     const auth = getAuth(app);
@@ -60,7 +65,9 @@ import {
     let authUid = '';
     let queueItems = [];
     let currentState = null;
-    let playerUnlocked = window.sessionStorage.getItem('emsLiveMusicUnlocked') === '1';
+    let playerUnlocked = readStorage(localUnlockedKey) === '1';
+    let localListeningEnabled = readStorage(localAudioEnabledKey) !== '0';
+    let localPlaybackPaused = readStorage(localPausedKey) === '1';
     let youtubePlayer = null;
     let youtubeApiPromise = null;
     let youtubeReady = false;
@@ -83,6 +90,7 @@ import {
     });
 
     closeButton?.addEventListener('click', closeModal);
+    closeBottomButton?.addEventListener('click', closeModal);
 
     modal.addEventListener('click', function (event) {
         if (event.target === modal) {
@@ -97,11 +105,28 @@ import {
     });
 
     enableAudioBtn?.addEventListener('click', async function () {
-        playerUnlocked = true;
-        window.sessionStorage.setItem('emsLiveMusicUnlocked', '1');
+        if (!playerUnlocked || !localListeningEnabled) {
+            playerUnlocked = true;
+            localListeningEnabled = true;
+            localPlaybackPaused = false;
+            writeStorage(localUnlockedKey, '1');
+            writeStorage(localAudioEnabledKey, '1');
+            writeStorage(localPausedKey, '0');
+            setAudioUnlockUi();
+            setLocalPlaybackUi();
+            setFormNote('Audio live diaktifkan di browser ini.', false, true);
+            await applyPlaybackState();
+            return;
+        }
+
+        localListeningEnabled = false;
+        localPlaybackPaused = false;
+        writeStorage(localAudioEnabledKey, '0');
+        writeStorage(localPausedKey, '0');
+        pauseLocalPlayback();
         setAudioUnlockUi();
-        setFormNote('Audio live diaktifkan di browser ini.', false, true);
-        await applyPlaybackState();
+        setLocalPlaybackUi();
+        setFormNote('Audio live dinonaktifkan di browser ini.', false, true);
     });
 
     primaryActionBtn?.addEventListener('click', async function () {
@@ -109,12 +134,31 @@ import {
             return;
         }
 
-        if (currentState.status === 'playing') {
-            await pauseCurrentTrack();
+        if (!playerUnlocked) {
+            playerUnlocked = true;
+            writeStorage(localUnlockedKey, '1');
+        }
+
+        if (!localListeningEnabled) {
+            localListeningEnabled = true;
+            writeStorage(localAudioEnabledKey, '1');
+        }
+
+        if (!localPlaybackPaused && isLocallyPlaying()) {
+            localPlaybackPaused = true;
+            writeStorage(localPausedKey, '1');
+            pauseLocalPlayback();
+            setLocalPlaybackUi();
+            setFormNote('Audio dijeda hanya di browser ini. Live music global tetap berjalan.', false, true);
             return;
         }
 
-        await playCurrentTrack();
+        localPlaybackPaused = false;
+        writeStorage(localPausedKey, '0');
+        await applyPlaybackState();
+        setAudioUnlockUi();
+        setLocalPlaybackUi();
+        setFormNote('Audio diputar lagi di browser ini dan mengikuti waktu live terbaru.', false, true);
     });
 
     skipBtn?.addEventListener('click', async function () {
@@ -355,34 +399,6 @@ import {
         });
     }
 
-    async function playCurrentTrack() {
-        if (!currentState || !currentState.queueId) {
-            return;
-        }
-
-        const resumePosition = getCurrentPlaybackPosition();
-        await update(ref(database, statePath), {
-            status: 'playing',
-            positionMs: resumePosition,
-            startedAt: Date.now(),
-            activatedByName: viewer.name,
-            updatedAt: serverTimestamp()
-        });
-    }
-
-    async function pauseCurrentTrack() {
-        if (!currentState || !currentState.queueId) {
-            return;
-        }
-
-        await update(ref(database, statePath), {
-            status: 'paused',
-            positionMs: getCurrentPlaybackPosition(),
-            activatedByName: viewer.name,
-            updatedAt: serverTimestamp()
-        });
-    }
-
     async function skipCurrentTrack() {
         if (!currentState || !currentState.queueId) {
             return;
@@ -447,7 +463,7 @@ import {
 
             syncAudioPosition();
 
-            if (currentState.status === 'playing' && playerUnlocked) {
+            if (shouldPlayLocally()) {
                 try {
                     await audioEl.play();
                 } catch (error) {
@@ -488,6 +504,7 @@ import {
             primaryActionBtn.textContent = 'Putar';
             primaryActionBtn.disabled = true;
             skipBtn.disabled = true;
+            setAudioUnlockUi();
             hintEl.textContent = 'Link Spotify atau TikTok akan masuk antrian sebagai referensi. Audio sinkron realtime saat ini hanya untuk audio direct dan YouTube.';
             return;
         }
@@ -498,12 +515,17 @@ import {
 
         nowLabelEl.textContent = state.title || 'Tanpa judul';
         nowMetaEl.textContent = statusLabel + ' | ' + sourceLabel + ' | ditambahkan ' + byLine;
-        primaryActionBtn.textContent = state.status === 'playing' ? 'Jeda' : 'Putar';
+        primaryActionBtn.textContent = (!localListeningEnabled || localPlaybackPaused || state.status !== 'playing') ? 'Putar' : 'Jeda';
         primaryActionBtn.disabled = state.playbackType === 'unsupported';
         skipBtn.disabled = false;
+        setAudioUnlockUi();
 
         if (state.playbackType === 'unsupported') {
             hintEl.textContent = 'Track ini hanya tampil sebagai referensi link. Gunakan audio direct atau YouTube untuk live sinkron.';
+        } else if (!localListeningEnabled) {
+            hintEl.textContent = 'Audio dimatikan hanya di browser ini. Device lain tetap mendengar live music.';
+        } else if (localPlaybackPaused) {
+            hintEl.textContent = 'Audio dijeda hanya di browser ini. Klik Putar untuk lompat ke waktu live terbaru.';
         } else if (playerUnlocked) {
             hintEl.textContent = 'Browser ini siap memutar live music bersama visitor lain.';
         } else {
@@ -570,7 +592,61 @@ import {
             return;
         }
 
-        enableAudioBtn.textContent = playerUnlocked ? 'Audio Aktif' : 'Aktifkan Audio';
+        enableAudioBtn.textContent = playerUnlocked && localListeningEnabled ? 'Audio Nonaktif' : 'Audio Aktif';
+        enableAudioBtn.classList.toggle('is-muted', playerUnlocked && !localListeningEnabled);
+    }
+
+    function setLocalPlaybackUi() {
+        if (!primaryActionBtn || !currentState || !currentState.queueId) {
+            return;
+        }
+
+        primaryActionBtn.textContent = shouldPlayLocally() ? 'Jeda' : 'Putar';
+    }
+
+    function shouldPlayLocally() {
+        return Boolean(
+            currentState &&
+            currentState.queueId &&
+            currentState.status === 'playing' &&
+            playerUnlocked &&
+            localListeningEnabled &&
+            !localPlaybackPaused
+        );
+    }
+
+    function isLocallyPlaying() {
+        if (!currentState || currentState.status !== 'playing') {
+            return false;
+        }
+
+        if (currentState.playbackType === 'audio' && audioEl) {
+            return !audioEl.paused;
+        }
+
+        if (currentState.playbackType === 'youtube' && youtubePlayer && youtubeReady && window.YT && window.YT.PlayerState) {
+            try {
+                return youtubePlayer.getPlayerState() === window.YT.PlayerState.PLAYING;
+            } catch (error) {
+                return shouldPlayLocally();
+            }
+        }
+
+        return shouldPlayLocally();
+    }
+
+    function pauseLocalPlayback() {
+        if (audioEl) {
+            audioEl.pause();
+        }
+
+        if (youtubePlayer && youtubeReady) {
+            try {
+                youtubePlayer.pauseVideo();
+            } catch (error) {
+                return;
+            }
+        }
     }
 
     function setFormNote(message, isError, isSuccess) {
@@ -763,7 +839,7 @@ import {
             return;
         }
 
-        const shouldPlay = currentState && currentState.status === 'playing' && playerUnlocked;
+        const shouldPlay = shouldPlayLocally();
         const safeSeconds = Math.max(0, Number(targetSeconds || 0));
 
         if (currentYoutubeVideoId !== videoId) {
@@ -934,6 +1010,31 @@ import {
             return JSON.parse(rawValue);
         } catch (error) {
             return null;
+        }
+    }
+
+    function readStorage(key) {
+        try {
+            return window.localStorage.getItem(key);
+        } catch (error) {
+            try {
+                return window.sessionStorage.getItem(key);
+            } catch (nestedError) {
+                return null;
+            }
+        }
+    }
+
+    function writeStorage(key, value) {
+        try {
+            window.localStorage.setItem(key, value);
+            return;
+        } catch (error) {
+            try {
+                window.sessionStorage.setItem(key, value);
+            } catch (nestedError) {
+                return;
+            }
         }
     }
 

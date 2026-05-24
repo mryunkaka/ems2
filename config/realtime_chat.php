@@ -4,7 +4,7 @@ require_once __DIR__ . '/env.php';
 
 $apiKey = trim((string) ems_env('FIREBASE_API_KEY', ''));
 $authDomain = trim((string) ems_env('FIREBASE_AUTH_DOMAIN', ''));
-$databaseUrl = trim((string) ems_env('FIREBASE_DATABASE_URL', ''));
+$databaseUrl = rtrim(trim((string) ems_env('FIREBASE_DATABASE_URL', '')), '/');
 $projectId = trim((string) ems_env('FIREBASE_PROJECT_ID', ''));
 $appId = trim((string) ems_env('FIREBASE_APP_ID', ''));
 $messagingSenderId = trim((string) ems_env('FIREBASE_MESSAGING_SENDER_ID', ''));

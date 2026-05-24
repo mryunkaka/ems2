@@ -430,21 +430,44 @@
 @media (max-width: 767px) {
     .ems-live-chat {
         right: 10px;
-        left: 10px;
+        left: auto;
         bottom: max(10px, env(safe-area-inset-bottom));
-        align-items: stretch;
+        align-items: flex-end;
         gap: 8px;
     }
 
     .ems-live-chat-toggle {
-        width: 100%;
-        justify-content: space-between;
-        min-height: 50px;
-        padding: 8px 10px;
+        width: auto;
+        max-width: min(180px, calc(100vw - 20px));
+        justify-content: flex-start;
+        min-height: 42px;
+        gap: 8px;
+        padding: 6px 10px 6px 8px;
+    }
+
+    .ems-live-chat-toggle-icon {
+        width: 30px;
+        height: 30px;
+    }
+
+    .ems-live-chat-toggle-title {
+        font-size: 11px;
+    }
+
+    .ems-live-chat-toggle-meta {
+        gap: 4px;
+        font-size: 9px;
+    }
+
+    .ems-live-chat-online-pill {
+        min-width: 18px;
+        height: 18px;
+        padding: 0 6px;
+        font-size: 9px;
     }
 
     .ems-live-chat-panel {
-        width: 100%;
+        width: min(340px, calc(100vw - 20px));
         max-height: min(70vh, 520px);
         border-radius: 20px;
     }

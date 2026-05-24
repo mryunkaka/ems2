@@ -1,4 +1,10 @@
 <?php
+if (defined('EMS_HELPERS_LOADED')) {
+    return;
+}
+
+define('EMS_HELPERS_LOADED', true);
+
 function initialsFromName(string $name): string
 {
     $parts = preg_split('/\s+/', trim($name));
