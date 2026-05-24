@@ -608,6 +608,17 @@ include __DIR__ . '/../partials/sidebar.php';
             : 'REKAM MEDIS : [NAMA JENIS OPERASI]';
     }
 
+    function syncMedicalResultField() {
+        const hiddenField = document.getElementById('medical_result_html');
+        if (!hiddenField || !window.quill) {
+            return '';
+        }
+
+        const htmlContent = String(window.quill.root.innerHTML || '').trim();
+        hiddenField.value = htmlContent;
+        return htmlContent;
+    }
+
     // Remove assistant row
     function removeAssistant(button) {
         const row = button.closest('.assistant-row');
@@ -689,6 +700,7 @@ include __DIR__ . '/../partials/sidebar.php';
             }
             if (formData.medical_result_html && window.quill) {
                 window.quill.root.innerHTML = formData.medical_result_html;
+                syncMedicalResultField();
             }
             if (formData.doctor_id && document.querySelector('[name="doctor_id"]')) {
                 document.querySelector('[name="doctor_id"]').value = formData.doctor_id;
@@ -775,6 +787,7 @@ include __DIR__ . '/../partials/sidebar.php';
             if (window.quill) {
                 window.quill.clipboard.dangerouslyPasteHTML(medicalTemplate);
                 syncMedicalOperationTitle();
+                syncMedicalResultField();
             }
 
             // Clear assistant selections
@@ -829,6 +842,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         // Set template as default content
         window.quill.clipboard.dangerouslyPasteHTML(medicalTemplate);
+        syncMedicalResultField();
         if (window.emsInitUserAutocomplete) {
             window.emsInitUserAutocomplete(document);
         }
@@ -855,6 +869,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         // Save quill content on change
         window.quill.on('text-change', function() {
+            syncMedicalResultField();
             saveToLocalStorage();
         });
 
@@ -865,8 +880,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 csrfInput.value = String(window.EMS_CSRF_TOKEN);
             }
 
-            const htmlContent = window.quill.root.innerHTML;
-            document.getElementById('medical_result_html').value = htmlContent;
+            const htmlContent = syncMedicalResultField();
 
             // Validate not empty
             if (htmlContent === '<p><br></p>' || htmlContent.trim() === '') {
