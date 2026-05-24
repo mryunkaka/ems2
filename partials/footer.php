@@ -89,23 +89,16 @@ $realtimeChatViewer = [
     <div id="emsLiveChat" class="ems-live-chat" aria-live="polite">
         <div id="emsLiveChatPanel" class="ems-live-chat-panel">
             <div class="ems-live-chat-panel-head">
-                <div>
+                <div class="ems-live-chat-panel-heading">
                     <div class="ems-live-chat-panel-title">Live Chat</div>
-                    <div class="ems-live-chat-panel-subtitle">Online sekarang</div>
+                    <button id="emsLiveChatViewersButton" class="ems-live-chat-ghost-btn" type="button">
+                        <span class="ems-live-chat-ghost-dot"></span>
+                        <span id="emsLiveChatOnlineLabel" class="ems-live-chat-panel-subtitle">0 online</span>
+                    </button>
                 </div>
                 <button id="emsLiveChatClose" class="ems-live-chat-close" type="button" aria-label="Tutup live chat">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                        <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
+                    <span class="ems-live-chat-close-mark" aria-hidden="true">x</span>
                 </button>
-            </div>
-
-            <div class="ems-live-chat-status">
-                <div>
-                    <div id="emsLiveChatOnlineLabel" class="ems-live-chat-status-label">0 visitor online</div>
-                    <div id="emsLiveChatViewersMeta" class="ems-live-chat-status-meta">Menghubungkan...</div>
-                </div>
-                <div class="ems-live-chat-online-pill" data-ems-live-chat-online-count>0</div>
             </div>
 
             <div id="emsLiveChatMessages" class="ems-live-chat-messages">
@@ -126,8 +119,21 @@ $realtimeChatViewer = [
                     <span>Live</span>
                 </div>
             </form>
+        </div>
 
-            <div id="emsLiveChatViewers" class="ems-live-chat-viewers"></div>
+        <div id="emsLiveChatViewersModal" class="ems-live-chat-viewers-modal hidden">
+            <div class="ems-live-chat-viewers-dialog">
+                <div class="ems-live-chat-viewers-head">
+                    <div>
+                        <div class="ems-live-chat-viewers-title">Sedang Online</div>
+                        <div id="emsLiveChatViewersMeta" class="ems-live-chat-viewers-subtitle">Menghubungkan...</div>
+                    </div>
+                    <button id="emsLiveChatViewersClose" class="ems-live-chat-close" type="button" aria-label="Tutup daftar online">
+                        <span class="ems-live-chat-close-mark" aria-hidden="true">x</span>
+                    </button>
+                </div>
+                <div id="emsLiveChatViewers" class="ems-live-chat-viewers"></div>
+            </div>
         </div>
 
         <button id="emsLiveChatToggle" class="ems-live-chat-toggle" type="button" aria-label="Buka live chat">

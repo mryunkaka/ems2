@@ -24,6 +24,9 @@ import {
 
     const toggleButton = document.getElementById('emsLiveChatToggle');
     const closeButton = document.getElementById('emsLiveChatClose');
+    const viewersButton = document.getElementById('emsLiveChatViewersButton');
+    const viewersModal = document.getElementById('emsLiveChatViewersModal');
+    const viewersCloseButton = document.getElementById('emsLiveChatViewersClose');
     const onlineCountEls = Array.from(document.querySelectorAll('[data-ems-live-chat-online-count]'));
     const viewersMetaEl = document.getElementById('emsLiveChatViewersMeta');
     const viewersListEl = document.getElementById('emsLiveChatViewers');
@@ -61,6 +64,20 @@ import {
 
     closeButton?.addEventListener('click', function () {
         root.classList.remove('is-open');
+    });
+
+    viewersButton?.addEventListener('click', function () {
+        viewersModal?.classList.remove('hidden');
+    });
+
+    viewersCloseButton?.addEventListener('click', function () {
+        viewersModal?.classList.add('hidden');
+    });
+
+    viewersModal?.addEventListener('click', function (event) {
+        if (event.target === viewersModal) {
+            viewersModal.classList.add('hidden');
+        }
     });
 
     messagesEl?.addEventListener('scroll', function () {
@@ -224,7 +241,7 @@ import {
         }
 
         if (!messages.length) {
-            messagesEl.innerHTML = '<div class="ems-live-chat-empty">Belum ada pesan. Mulai percakapan dari widget ini.</div>';
+            messagesEl.innerHTML = '<div class="ems-live-chat-empty">Belum ada pesan.</div>';
             return;
         }
 
@@ -261,12 +278,12 @@ import {
         }
 
         if (!viewers.length) {
-            viewersMetaEl.textContent = 'Belum ada visitor aktif.';
+            viewersMetaEl.textContent = 'Belum ada user online.';
             viewersListEl.innerHTML = '';
             return;
         }
 
-        viewersMetaEl.textContent = 'Realtime visitor yang sedang membuka website saat ini.';
+        viewersMetaEl.textContent = viewers.length + ' user sedang membuka website.';
         viewersListEl.innerHTML = viewers.map(function (viewer) {
             const role = viewer.role ? ' • ' + escapeHtml(viewer.role) : '';
             const page = viewer.pageTitle || viewer.pagePath || 'Halaman aktif';
@@ -284,7 +301,7 @@ import {
         });
 
         if (onlineLabelEl) {
-            onlineLabelEl.textContent = count + ' visitor online';
+            onlineLabelEl.textContent = count + ' online';
         }
     }
 
