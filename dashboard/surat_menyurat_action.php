@@ -13,11 +13,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Invalid method');
 }
 
-if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    http_response_code(403);
-    exit('Invalid CSRF token');
-}
-
 function surat_redirect(string $fallback = 'surat_menyurat.php'): void
 {
     $redirectTo = trim((string)($_POST['redirect_to'] ?? ''));
@@ -26,6 +21,16 @@ function surat_redirect(string $fallback = 'surat_menyurat.php'): void
     }
     header('Location: ' . $redirectTo);
     exit;
+}
+
+if (csrfRequestBodyTooLarge()) {
+    $_SESSION['flash_errors'][] = 'Upload terlalu besar. Kurangi ukuran/jumlah lampiran lalu coba lagi.';
+    surat_redirect();
+}
+
+if (!validateCsrfToken(csrfRequestToken())) {
+    $_SESSION['flash_errors'][] = 'CSRF token tidak valid. Muat ulang halaman surat menyurat lalu kirim ulang form.';
+    surat_redirect();
 }
 
 function generate_outgoing_letter_code(): string

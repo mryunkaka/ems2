@@ -21,6 +21,30 @@ function generateCsrfToken(): string
     return $_SESSION['csrf_token'];
 }
 
+function csrfRequestToken(): string
+{
+    $postToken = trim((string)($_POST['csrf_token'] ?? ''));
+    if ($postToken !== '') {
+        return $postToken;
+    }
+
+    return trim((string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
+}
+
+function csrfRequestBodyTooLarge(): bool
+{
+    if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+        return false;
+    }
+
+    $contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength <= 0) {
+        return false;
+    }
+
+    return empty($_POST) && empty($_FILES);
+}
+
 function validateCsrfToken(string $token): bool
 {
     if (session_status() === PHP_SESSION_NONE) {

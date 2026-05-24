@@ -2,7 +2,6 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
-require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
@@ -13,11 +12,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Invalid method');
 }
 
-if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    http_response_code(403);
-    exit('Invalid CSRF token');
-}
-
 function redirect_public_form(array $params = []): void
 {
     $target = ems_url('/surat_instansi.php');
@@ -26,6 +20,18 @@ function redirect_public_form(array $params = []): void
     }
     header('Location: ' . $target);
     exit;
+}
+
+if (csrfRequestBodyTooLarge()) {
+    redirect_public_form([
+        'error' => 'Ukuran upload terlalu besar. Kurangi jumlah/ukuran lampiran lalu coba lagi.',
+    ]);
+}
+
+if (!validateCsrfToken(csrfRequestToken())) {
+    redirect_public_form([
+        'error' => 'Sesi form sudah berubah atau kedaluwarsa. Muat ulang halaman lalu kirim lagi.',
+    ]);
 }
 
 function generate_incoming_letter_code(): string
