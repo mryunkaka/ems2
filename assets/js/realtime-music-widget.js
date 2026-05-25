@@ -82,6 +82,7 @@ import {
     let stateLoaded = false;
     let pendingYoutubeState = null;
     let pendingUserPlayRequest = false;
+    let pendingBootstrapQueueId = '';
 
     restoreCachedUi();
     setAudioUnlockUi();
@@ -402,17 +403,7 @@ import {
             renderQueue(nextQueue);
             updateQueueBadge(nextQueue.length);
             persistUiSnapshot();
-
-            if (stateLoaded && (!currentState || !currentState.queueId) && nextQueue.length) {
-                const firstPlayable = nextQueue.find(function (item) {
-                    return item.isPlayable;
-                });
-                if (firstPlayable) {
-                    activateTrack(firstPlayable, 0).catch(function () {
-                        return null;
-                    });
-                }
-            }
+            maybeBootstrapFirstPlayable();
         });
     }
 
@@ -420,25 +411,51 @@ import {
         onValue(ref(database, statePath), function (snapshot) {
             currentState = snapshot.val() || null;
             stateLoaded = true;
+            if (currentState && currentState.queueId) {
+                pendingBootstrapQueueId = String(currentState.queueId);
+            }
             renderCurrentState(currentState);
             persistUiSnapshot();
-
-            if ((!currentState || !currentState.queueId) && queueItems.length) {
-                const firstPlayable = queueItems.find(function (item) {
-                    return item.isPlayable;
-                });
-                if (firstPlayable) {
-                    activateTrack(firstPlayable, 0).catch(function () {
-                        return null;
-                    });
-                    return;
-                }
-            }
+            maybeBootstrapFirstPlayable();
 
             maybeShowTutorialModal();
             applyPlaybackState().catch(function (error) {
                 console.error('Failed to apply shared music state.', error);
             });
+        });
+    }
+
+    function maybeBootstrapFirstPlayable() {
+        if (!stateLoaded) {
+            return;
+        }
+
+        if (currentState && currentState.queueId) {
+            return;
+        }
+
+        if (!queueItems.length) {
+            pendingBootstrapQueueId = '';
+            return;
+        }
+
+        const firstPlayable = queueItems.find(function (item) {
+            return item.isPlayable;
+        });
+
+        if (!firstPlayable) {
+            pendingBootstrapQueueId = '';
+            return;
+        }
+
+        if (pendingBootstrapQueueId === firstPlayable.id) {
+            return;
+        }
+
+        pendingBootstrapQueueId = firstPlayable.id;
+        activateTrack(firstPlayable, 0).catch(function () {
+            pendingBootstrapQueueId = '';
+            return null;
         });
     }
 
