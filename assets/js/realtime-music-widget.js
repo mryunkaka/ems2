@@ -79,7 +79,9 @@ import {
     let currentYoutubeVideoId = '';
     let syncingAudio = false;
     let queueLoaded = false;
+    let stateLoaded = false;
     let pendingYoutubeState = null;
+    let pendingUserPlayRequest = false;
 
     restoreCachedUi();
     setAudioUnlockUi();
@@ -131,6 +133,7 @@ import {
             playerUnlocked = true;
             localListeningEnabled = true;
             localPlaybackPaused = false;
+            pendingUserPlayRequest = true;
             writeStorage(localUnlockedKey, '1');
             writeStorage(localAudioEnabledKey, '1');
             writeStorage(localPausedKey, '0');
@@ -143,6 +146,7 @@ import {
 
         localListeningEnabled = false;
         localPlaybackPaused = false;
+        pendingUserPlayRequest = false;
         writeStorage(localAudioEnabledKey, '0');
         writeStorage(localPausedKey, '0');
         pauseLocalPlayback();
@@ -399,7 +403,7 @@ import {
             updateQueueBadge(nextQueue.length);
             persistUiSnapshot();
 
-            if ((!currentState || !currentState.queueId) && nextQueue.length) {
+            if (stateLoaded && (!currentState || !currentState.queueId) && nextQueue.length) {
                 const firstPlayable = nextQueue.find(function (item) {
                     return item.isPlayable;
                 });
@@ -415,8 +419,22 @@ import {
     function subscribeState() {
         onValue(ref(database, statePath), function (snapshot) {
             currentState = snapshot.val() || null;
+            stateLoaded = true;
             renderCurrentState(currentState);
             persistUiSnapshot();
+
+            if ((!currentState || !currentState.queueId) && queueItems.length) {
+                const firstPlayable = queueItems.find(function (item) {
+                    return item.isPlayable;
+                });
+                if (firstPlayable) {
+                    activateTrack(firstPlayable, 0).catch(function () {
+                        return null;
+                    });
+                    return;
+                }
+            }
+
             maybeShowTutorialModal();
             applyPlaybackState().catch(function (error) {
                 console.error('Failed to apply shared music state.', error);
@@ -514,16 +532,7 @@ import {
             syncAudioPosition();
 
             if (shouldPlayLocally()) {
-                try {
-                    await audioEl.play();
-                } catch (error) {
-                    console.warn('Browser blocked shared audio autoplay.', error);
-                    playerUnlocked = false;
-                    writeStorage(localUnlockedKey, '0');
-                    setAudioUnlockUi();
-                    setLocalPlaybackUi();
-                    setFormNote('Browser menahan autoplay. Klik Audio Aktif jika suara belum terdengar.', true, false);
-                }
+                await attemptAudioPlayback(pendingUserPlayRequest);
             } else {
                 audioEl.pause();
             }
@@ -713,6 +722,93 @@ import {
                 youtubePlayer.pauseVideo();
             } catch (error) {
                 return;
+            }
+        }
+    }
+
+    function isAutoplayBlockedError(error) {
+        const errorName = String(error?.name || '');
+        return errorName === 'NotAllowedError' || errorName === 'SecurityError';
+    }
+
+    function isRetryablePlaybackError(error) {
+        const errorName = String(error?.name || '');
+        return errorName === 'AbortError' || errorName === 'NotSupportedError';
+    }
+
+    function waitForAudioReady(timeoutMs) {
+        return new Promise(function (resolve) {
+            if (!audioEl) {
+                resolve(false);
+                return;
+            }
+
+            let finished = false;
+            let timer = null;
+            const cleanup = function (result) {
+                if (finished) {
+                    return;
+                }
+
+                finished = true;
+                audioEl.removeEventListener('canplay', onReady);
+                audioEl.removeEventListener('loadeddata', onReady);
+                audioEl.removeEventListener('canplaythrough', onReady);
+                if (timer) {
+                    window.clearTimeout(timer);
+                }
+                resolve(result);
+            };
+            const onReady = function () {
+                cleanup(true);
+            };
+
+            audioEl.addEventListener('canplay', onReady, { once: true });
+            audioEl.addEventListener('loadeddata', onReady, { once: true });
+            audioEl.addEventListener('canplaythrough', onReady, { once: true });
+            timer = window.setTimeout(function () {
+                cleanup(false);
+            }, timeoutMs);
+        });
+    }
+
+    async function attemptAudioPlayback(retryOnPendingMedia) {
+        if (!audioEl) {
+            return;
+        }
+
+        try {
+            await audioEl.play();
+            pendingUserPlayRequest = false;
+            return;
+        } catch (error) {
+            if (retryOnPendingMedia && isRetryablePlaybackError(error)) {
+                const ready = await waitForAudioReady(1800);
+                if (ready) {
+                    try {
+                        await audioEl.play();
+                        pendingUserPlayRequest = false;
+                        return;
+                    } catch (retryError) {
+                        error = retryError;
+                    }
+                }
+            }
+
+            if (isAutoplayBlockedError(error)) {
+                console.warn('Browser blocked shared audio autoplay.', error);
+                playerUnlocked = false;
+                pendingUserPlayRequest = false;
+                writeStorage(localUnlockedKey, '0');
+                setAudioUnlockUi();
+                setLocalPlaybackUi();
+                setFormNote('Browser menahan autoplay. Klik Audio Aktif jika suara belum terdengar.', true, false);
+                return;
+            }
+
+            console.warn('Failed to start shared audio playback.', error);
+            if (retryOnPendingMedia) {
+                setFormNote('Audio sedang dimuat. Jika masih hening, klik Audio Aktif sekali lagi.', true, false);
             }
         }
     }
@@ -928,6 +1024,16 @@ import {
 
         if (shouldPlay) {
             youtubePlayer.playVideo();
+            if (pendingUserPlayRequest) {
+                window.setTimeout(function () {
+                    try {
+                        youtubePlayer.playVideo();
+                    } catch (error) {
+                        return;
+                    }
+                }, 150);
+            }
+            pendingUserPlayRequest = false;
         } else {
             youtubePlayer.pauseVideo();
         }
