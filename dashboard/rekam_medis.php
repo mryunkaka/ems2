@@ -40,7 +40,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <?= ems_render_toast_script((string)$error, 'error', 'Rekam Medis', 6800) ?>
         <?php endforeach; ?>
 
-        <form method="POST" action="rekam_medis_action.php" enctype="multipart/form-data" x-data="medicalForm()">
+        <form id="medical-record-form" method="POST" action="rekam_medis_action.php" enctype="multipart/form-data" x-data="medicalForm()">
             <?= csrfField() ?>
             <input type="hidden" name="visibility_scope" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>">
             <input type="hidden" name="redirect_to" value="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>">
@@ -805,6 +805,11 @@ include __DIR__ . '/../partials/sidebar.php';
 
     // Initialize Quill Editor when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {
+        const medicalFormEl = document.getElementById('medical-record-form');
+        if (!medicalFormEl) {
+            return;
+        }
+
         // Check if this is after successful save - clear localStorage immediately
         <?php if ($saved): ?>
             localStorage.removeItem(STORAGE_KEY);
@@ -863,7 +868,7 @@ include __DIR__ . '/../partials/sidebar.php';
         setInterval(saveToLocalStorage, AUTO_SAVE_INTERVAL);
 
         // Save on input change
-        document.querySelector('form').addEventListener('input', function() {
+        medicalFormEl.addEventListener('input', function() {
             saveToLocalStorage();
         });
 
@@ -874,7 +879,7 @@ include __DIR__ . '/../partials/sidebar.php';
         });
 
         // Sync content to textarea before form submit
-        document.querySelector('form').addEventListener('submit', function(event) {
+        medicalFormEl.addEventListener('submit', function(event) {
             const csrfInput = this.querySelector('input[name="csrf_token"]');
             if (csrfInput && window.EMS_CSRF_TOKEN) {
                 csrfInput.value = String(window.EMS_CSRF_TOKEN);

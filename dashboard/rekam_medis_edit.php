@@ -117,7 +117,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <?= ems_render_toast_script((string)$error, 'error', 'Edit Rekam Medis', 6800) ?>
         <?php endforeach; ?>
 
-        <form method="POST" action="rekam_medis_edit_action.php" enctype="multipart/form-data" x-data="medicalForm()">
+        <form id="medical-record-form" method="POST" action="rekam_medis_edit_action.php" enctype="multipart/form-data" x-data="medicalForm()">
             <?= csrfField() ?>
             <input type="hidden" name="id" value="<?= $record['id'] ?>" />
             <input type="hidden" name="visibility_scope" value="<?= $isForensicPrivate ? 'forensic_private' : 'standard' ?>" />
@@ -500,6 +500,17 @@ function syncMedicalOperationTitle() {
         : 'REKAM MEDIS : [NAMA JENIS OPERASI]';
 }
 
+function syncMedicalResultField() {
+    const hiddenField = document.getElementById('medical_result_html');
+    if (!hiddenField || !window.quill) {
+        return '';
+    }
+
+    const htmlContent = String(window.quill.root.innerHTML || '').trim();
+    hiddenField.value = htmlContent;
+    return htmlContent;
+}
+
 // Global previewImage function for file upload preview
 window.previewImage = function(event, previewId) {
     const file = event.target.files[0];
@@ -604,6 +615,11 @@ window.quill = null;
 
 // Initialize Quill Editor when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
+    const medicalFormEl = document.getElementById('medical-record-form');
+    if (!medicalFormEl) {
+        return;
+    }
+
     if (window.emsInitUserAutocomplete) {
         window.emsInitUserAutocomplete(document);
     }
@@ -628,6 +644,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (existingContent) {
         window.quill.root.innerHTML = existingContent;
     }
+    syncMedicalResultField();
 
     syncMedicalOperationTitle();
 
@@ -636,15 +653,18 @@ document.addEventListener('DOMContentLoaded', function() {
         jenisOperasiInput.addEventListener('input', syncMedicalOperationTitle);
     }
 
+    window.quill.on('text-change', function() {
+        syncMedicalResultField();
+    });
+
     // Sync content to textarea before form submit
-    document.querySelector('form').addEventListener('submit', function(event) {
+    medicalFormEl.addEventListener('submit', function(event) {
         const csrfInput = this.querySelector('input[name="csrf_token"]');
         if (csrfInput && window.EMS_CSRF_TOKEN) {
             csrfInput.value = String(window.EMS_CSRF_TOKEN);
         }
 
-        const htmlContent = window.quill.root.innerHTML;
-        document.getElementById('medical_result_html').value = htmlContent;
+        const htmlContent = syncMedicalResultField();
         
         if (htmlContent === '<p><br></p>' || htmlContent.trim() === '') {
             alert('Hasil rekam medis wajib diisi!');
