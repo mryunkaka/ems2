@@ -83,11 +83,15 @@ import {
     let pendingYoutubeState = null;
     let pendingUserPlayRequest = false;
     let pendingBootstrapQueueId = '';
-    let subscriptionsStarted = false;
 
     restoreCachedUi();
     setAudioUnlockUi();
     restoreModalState();
+    if (currentState && currentState.queueId) {
+        applyPlaybackState().catch(function () {
+            return null;
+        });
+    }
 
     openButton.addEventListener('click', function () {
         openModal();
@@ -280,10 +284,20 @@ import {
     });
 
     window.addEventListener('pagehide', persistUiSnapshot);
-    scheduleRealtimeStartup();
+
+    signInAnonymously(auth)
+        .then(function (credential) {
+            authUid = credential.user.uid;
+            subscribeQueue();
+            subscribeState();
+        })
+        .catch(function (error) {
+            console.error('Anonymous Firebase auth failed for live music.', error);
+            setFormNote(humanizeFirebaseError(error, 'Live music belum aktif. Cek konfigurasi Firebase.'), true, false);
+            metaEl.textContent = 'Live music belum aktif.';
+        });
 
     function openModal() {
-        startRealtimeSubscriptions();
         modal.classList.remove('hidden');
         document.body.classList.add('modal-open');
         window.sessionStorage.setItem(modalOpenKey, '1');
@@ -299,42 +313,6 @@ import {
         if (window.sessionStorage.getItem(modalOpenKey) === '1') {
             openModal();
         }
-    }
-
-    function scheduleRealtimeStartup() {
-        const start = function () {
-            window.setTimeout(function () {
-                startRealtimeSubscriptions();
-            }, 1200);
-        };
-
-        if (document.readyState === 'complete') {
-            start();
-            return;
-        }
-
-        window.addEventListener('load', start, { once: true });
-    }
-
-    function startRealtimeSubscriptions() {
-        if (subscriptionsStarted) {
-            return;
-        }
-
-        subscriptionsStarted = true;
-
-        signInAnonymously(auth)
-            .then(function (credential) {
-                authUid = credential.user.uid;
-                subscribeQueue();
-                subscribeState();
-            })
-            .catch(function (error) {
-                subscriptionsStarted = false;
-                console.error('Anonymous Firebase auth failed for live music.', error);
-                setFormNote(humanizeFirebaseError(error, 'Live music belum aktif. Cek konfigurasi Firebase.'), true, false);
-                metaEl.textContent = 'Live music belum aktif.';
-            });
     }
 
     function openTutorialModal() {
