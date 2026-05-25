@@ -62,6 +62,7 @@ import {
     const localPausedKey = 'emsLiveMusicPausedLocally:' + viewerScope;
     const localUnlockedKey = 'emsLiveMusicUnlocked:' + viewerScope;
     const tutorialSeenKey = 'emsLiveMusicTutorialSeen:' + viewerScope;
+    const playbackSnapshotKey = 'emsLiveMusicPlaybackSnapshot:' + viewerScope;
 
     const app = getApps().length ? getApp() : initializeApp(config.firebase);
     const auth = getAuth(app);
@@ -83,8 +84,11 @@ import {
     let pendingYoutubeState = null;
     let pendingUserPlayRequest = false;
     let pendingBootstrapQueueId = '';
+    let serverTimeOffsetMs = 0;
+    let syncLoopTimer = null;
 
     restoreCachedUi();
+    restorePlaybackSnapshot();
     setAudioUnlockUi();
     restoreModalState();
     if (currentState && currentState.queueId) {
@@ -275,6 +279,10 @@ import {
         syncAudioPosition();
     });
 
+    audioEl?.addEventListener('timeupdate', function () {
+        persistPlaybackSnapshot();
+    });
+
     audioEl?.addEventListener('ended', function () {
         if (currentState && currentState.queueId) {
             skipCurrentTrack().catch(function () {
@@ -283,13 +291,26 @@ import {
         }
     });
 
-    window.addEventListener('pagehide', persistUiSnapshot);
+    window.addEventListener('pagehide', function () {
+        persistPlaybackSnapshot();
+        persistUiSnapshot();
+    });
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden') {
+            persistPlaybackSnapshot();
+            return;
+        }
+
+        scheduleSyncPass(250);
+    });
 
     signInAnonymously(auth)
         .then(function (credential) {
             authUid = credential.user.uid;
+            subscribeServerClock();
             subscribeQueue();
             subscribeState();
+            startSyncLoop();
         })
         .catch(function (error) {
             console.error('Anonymous Firebase auth failed for live music.', error);
@@ -371,6 +392,80 @@ import {
         }
     }
 
+    function restorePlaybackSnapshot() {
+        const snapshot = safeParseJSON(readStorage(playbackSnapshotKey));
+        if (!snapshot || typeof snapshot !== 'object') {
+            return;
+        }
+
+        if (!currentState || !snapshot.queueId || currentState.queueId !== snapshot.queueId) {
+            return;
+        }
+
+        if (!playerUnlocked || !localListeningEnabled || localPlaybackPaused) {
+            return;
+        }
+
+        const snapshotObservedAt = Number(snapshot.observedAt || 0);
+        const snapshotPositionMs = Math.max(0, Number(snapshot.positionMs || 0));
+        const expectedPositionMs = snapshotObservedAt > 0
+            ? snapshotPositionMs + Math.max(0, Date.now() - snapshotObservedAt)
+            : snapshotPositionMs;
+
+        if (currentState.playbackType === 'audio' && audioEl) {
+            const snapshotSrc = String(snapshot.src || '');
+            const stateSrc = String(currentState.streamUrl || currentState.url || '');
+            if (!snapshotSrc || !stateSrc || snapshotSrc !== stateSrc) {
+                return;
+            }
+
+            audioEl.src = stateSrc;
+            audioEl.preload = 'auto';
+            audioEl.classList.remove('hidden');
+            try {
+                syncingAudio = true;
+                audioEl.currentTime = Math.max(0, expectedPositionMs / 1000);
+            } catch (error) {
+                return;
+            } finally {
+                syncingAudio = false;
+            }
+
+            attemptAudioPlayback(true).catch(function () {
+                return null;
+            });
+        }
+    }
+
+    function persistPlaybackSnapshot() {
+        if (!currentState || !currentState.queueId) {
+            writeStorage(playbackSnapshotKey, '');
+            return;
+        }
+
+        try {
+            const payload = {
+                queueId: currentState.queueId,
+                playbackType: currentState.playbackType,
+                positionMs: getCurrentPlaybackPosition(),
+                observedAt: Date.now(),
+                src: currentState.playbackType === 'audio'
+                    ? String(audioEl?.getAttribute('src') || currentState.streamUrl || currentState.url || '')
+                    : '',
+                youtubeId: currentState.playbackType === 'youtube' ? String(currentState.youtubeId || '') : ''
+            };
+            writeStorage(playbackSnapshotKey, JSON.stringify(payload));
+        } catch (error) {
+            return;
+        }
+    }
+
+    function subscribeServerClock() {
+        onValue(ref(database, '.info/serverTimeOffset'), function (snapshot) {
+            serverTimeOffsetMs = Number(snapshot.val() || 0);
+        });
+    }
+
     function subscribeQueue() {
         onValue(query(ref(database, queuePath), limitToLast(maxQueueItems)), function (snapshot) {
             const nextQueue = [];
@@ -422,6 +517,7 @@ import {
             applyPlaybackState().catch(function (error) {
                 console.error('Failed to apply shared music state.', error);
             });
+            scheduleSyncPass(100);
         });
     }
 
@@ -476,7 +572,7 @@ import {
             sourceLabel: item.sourceLabel,
             status: 'playing',
             positionMs: Math.max(0, Number(positionMs || 0)),
-            startedAt: Date.now(),
+            startedAt: serverTimestamp(),
             addedByName: item.addedByName || viewer.name,
             addedByRole: item.addedByRole || viewer.role,
             activatedByName: viewer.name,
@@ -543,6 +639,7 @@ import {
 
             if (audioEl.getAttribute('src') !== nextSrc) {
                 audioEl.src = nextSrc;
+                audioEl.preload = 'auto';
                 audioEl.load();
             }
 
@@ -939,7 +1036,10 @@ import {
             return;
         }
 
-        if (Math.abs((audioEl.currentTime || 0) - targetSeconds) > 1.2) {
+        const driftSeconds = (audioEl.currentTime || 0) - targetSeconds;
+        const absoluteDrift = Math.abs(driftSeconds);
+
+        if (absoluteDrift > 1.2) {
             try {
                 syncingAudio = true;
                 audioEl.currentTime = Math.max(0, targetSeconds);
@@ -948,7 +1048,17 @@ import {
             } finally {
                 syncingAudio = false;
             }
+            setAudioPlaybackRate(1);
+            return;
         }
+
+        if (absoluteDrift > 0.18) {
+            const nextRate = driftSeconds < 0 ? 1.04 : 0.96;
+            setAudioPlaybackRate(nextRate);
+            return;
+        }
+
+        setAudioPlaybackRate(1);
     }
 
     async function syncYoutubePlayback() {
@@ -1034,7 +1144,10 @@ import {
         }
 
         try {
-            youtubePlayer.seekTo(safeSeconds, true);
+            const currentSeconds = Number(youtubePlayer.getCurrentTime ? youtubePlayer.getCurrentTime() : 0);
+            if (Math.abs(currentSeconds - safeSeconds) > 1.2) {
+                youtubePlayer.seekTo(safeSeconds, true);
+            }
         } catch (error) {
             return;
         }
@@ -1138,7 +1251,74 @@ import {
             return base;
         }
 
-        return Math.max(0, base + (Date.now() - startedAt));
+        return Math.max(0, base + (getServerNowMs() - startedAt));
+    }
+
+    function getServerNowMs() {
+        return Date.now() + serverTimeOffsetMs;
+    }
+
+    function setAudioPlaybackRate(nextRate) {
+        if (!audioEl) {
+            return;
+        }
+
+        const normalizedRate = Math.max(0.96, Math.min(1.04, Number(nextRate || 1)));
+        if (Math.abs((audioEl.playbackRate || 1) - normalizedRate) < 0.005) {
+            return;
+        }
+
+        try {
+            audioEl.playbackRate = normalizedRate;
+        } catch (error) {
+            return;
+        }
+    }
+
+    function startSyncLoop() {
+        if (syncLoopTimer) {
+            window.clearInterval(syncLoopTimer);
+        }
+
+        syncLoopTimer = window.setInterval(function () {
+            if (document.visibilityState === 'hidden') {
+                return;
+            }
+
+            if (!currentState || !currentState.queueId || !shouldPlayLocally()) {
+                return;
+            }
+
+            if (currentState.playbackType === 'audio') {
+                syncAudioPosition();
+                return;
+            }
+
+            if (currentState.playbackType === 'youtube') {
+                syncYoutubePlayback().catch(function () {
+                    return null;
+                });
+            }
+        }, 2500);
+    }
+
+    function scheduleSyncPass(delayMs) {
+        window.setTimeout(function () {
+            if (!currentState || !currentState.queueId || !shouldPlayLocally()) {
+                return;
+            }
+
+            if (currentState.playbackType === 'audio') {
+                syncAudioPosition();
+                return;
+            }
+
+            if (currentState.playbackType === 'youtube') {
+                syncYoutubePlayback().catch(function () {
+                    return null;
+                });
+            }
+        }, Math.max(0, Number(delayMs || 0)));
     }
 
     function getCurrentPlaybackPosition() {
