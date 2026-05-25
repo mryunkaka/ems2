@@ -31,6 +31,52 @@
     overflow: hidden;
 }
 
+.ems-live-music-tutorial-modal {
+    width: min(92vw, 560px);
+    max-width: 560px;
+}
+
+.ems-live-music-tutorial-content {
+    display: grid;
+    gap: 14px;
+}
+
+.ems-live-music-tutorial-copy {
+    font-size: 13px;
+    line-height: 1.7;
+    color: #334155;
+}
+
+.ems-live-music-tutorial-steps {
+    display: grid;
+    gap: 10px;
+}
+
+.ems-live-music-tutorial-step {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 12px 14px;
+    border: 1px solid rgba(186, 230, 253, 0.9);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(240, 249, 255, 0.98), rgba(239, 246, 255, 0.92));
+    color: #0f172a;
+}
+
+.ems-live-music-tutorial-step-no {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #0284c7, #0ea5e9);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 800;
+}
+
 .ems-live-music-head {
     background: linear-gradient(135deg, #082f49, #0b6aa0);
     color: #ffffff;

@@ -33,6 +33,10 @@ import {
     const primaryActionBtn = document.getElementById('emsLiveMusicPrimaryAction');
     const skipBtn = document.getElementById('emsLiveMusicSkip');
     const enableAudioBtn = document.getElementById('emsLiveMusicEnableAudio');
+    const tutorialModal = document.getElementById('emsLiveMusicTutorialModal');
+    const tutorialCloseBtn = document.getElementById('emsLiveMusicTutorialClose');
+    const tutorialDismissBtn = document.getElementById('emsLiveMusicTutorialDismiss');
+    const tutorialOpenBtn = document.getElementById('emsLiveMusicTutorialOpen');
     const form = document.getElementById('emsLiveMusicForm');
     const urlInput = document.getElementById('emsLiveMusicUrl');
     const formNoteEl = document.getElementById('emsLiveMusicFormNote');
@@ -57,6 +61,7 @@ import {
     const localAudioEnabledKey = 'emsLiveMusicListeningEnabled:' + viewerScope;
     const localPausedKey = 'emsLiveMusicPausedLocally:' + viewerScope;
     const localUnlockedKey = 'emsLiveMusicUnlocked:' + viewerScope;
+    const tutorialSeenKey = 'emsLiveMusicTutorialSeen:' + viewerScope;
 
     const app = getApps().length ? getApp() : initializeApp(config.firebase);
     const auth = getAuth(app);
@@ -65,7 +70,7 @@ import {
     let authUid = '';
     let queueItems = [];
     let currentState = null;
-    let playerUnlocked = readStorage(localUnlockedKey) === '1';
+    let playerUnlocked = readStorage(localUnlockedKey) !== '0';
     let localListeningEnabled = readStorage(localAudioEnabledKey) !== '0';
     let localPlaybackPaused = readStorage(localPausedKey) === '1';
     let youtubePlayer = null;
@@ -91,6 +96,12 @@ import {
 
     closeButton?.addEventListener('click', closeModal);
     closeBottomButton?.addEventListener('click', closeModal);
+    tutorialCloseBtn?.addEventListener('click', dismissTutorialModal);
+    tutorialDismissBtn?.addEventListener('click', dismissTutorialModal);
+    tutorialOpenBtn?.addEventListener('click', function () {
+        dismissTutorialModal();
+        openModal();
+    });
 
     modal.addEventListener('click', function (event) {
         if (event.target === modal) {
@@ -98,9 +109,20 @@ import {
         }
     });
 
+    tutorialModal?.addEventListener('click', function (event) {
+        if (event.target === tutorialModal) {
+            dismissTutorialModal();
+        }
+    });
+
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
             closeModal();
+            return;
+        }
+
+        if (event.key === 'Escape' && tutorialModal && !tutorialModal.classList.contains('hidden')) {
+            dismissTutorialModal();
         }
     });
 
@@ -278,7 +300,7 @@ import {
 
     function closeModal() {
         modal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
+        syncBodyModalState();
         window.sessionStorage.setItem(modalOpenKey, '0');
     }
 
@@ -286,6 +308,33 @@ import {
         if (window.sessionStorage.getItem(modalOpenKey) === '1') {
             openModal();
         }
+    }
+
+    function openTutorialModal() {
+        if (!tutorialModal) {
+            return;
+        }
+
+        tutorialModal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+    }
+
+    function dismissTutorialModal() {
+        if (!tutorialModal) {
+            return;
+        }
+
+        tutorialModal.classList.add('hidden');
+        writeStorage(tutorialSeenKey, '1');
+        syncBodyModalState();
+    }
+
+    function syncBodyModalState() {
+        const hasVisibleModal =
+            (modal && !modal.classList.contains('hidden')) ||
+            (tutorialModal && !tutorialModal.classList.contains('hidden'));
+
+        document.body.classList.toggle('modal-open', Boolean(hasVisibleModal));
     }
 
     function restoreCachedUi() {
@@ -368,6 +417,7 @@ import {
             currentState = snapshot.val() || null;
             renderCurrentState(currentState);
             persistUiSnapshot();
+            maybeShowTutorialModal();
             applyPlaybackState().catch(function (error) {
                 console.error('Failed to apply shared music state.', error);
             });
@@ -468,7 +518,11 @@ import {
                     await audioEl.play();
                 } catch (error) {
                     console.warn('Browser blocked shared audio autoplay.', error);
-                    setFormNote('Browser menahan autoplay. Klik Aktifkan Audio.', true, false);
+                    playerUnlocked = false;
+                    writeStorage(localUnlockedKey, '0');
+                    setAudioUnlockUi();
+                    setLocalPlaybackUi();
+                    setFormNote('Browser menahan autoplay. Klik Audio Aktif jika suara belum terdengar.', true, false);
                 }
             } else {
                 audioEl.pause();
@@ -527,9 +581,9 @@ import {
         } else if (localPlaybackPaused) {
             hintEl.textContent = 'Audio dijeda hanya di browser ini. Klik Putar untuk lompat ke waktu live terbaru.';
         } else if (playerUnlocked) {
-            hintEl.textContent = 'Browser ini siap memutar live music bersama visitor lain.';
+            hintEl.textContent = 'Live music aktif otomatis di browser ini. Klik Audio Nonaktif jika ingin mematikan suara.';
         } else {
-            hintEl.textContent = 'Klik Aktifkan Audio sekali di browser ini agar live music bisa terdengar.';
+            hintEl.textContent = 'Live music akan mencoba aktif otomatis. Jika browser menahan autoplay, klik Audio Aktif.';
         }
     }
 
@@ -594,6 +648,20 @@ import {
 
         enableAudioBtn.textContent = playerUnlocked && localListeningEnabled ? 'Audio Nonaktif' : 'Audio Aktif';
         enableAudioBtn.classList.toggle('is-muted', playerUnlocked && !localListeningEnabled);
+    }
+
+    function maybeShowTutorialModal() {
+        if (!currentState || !currentState.queueId || currentState.playbackType === 'unsupported' || currentState.status !== 'playing') {
+            return;
+        }
+
+        if (readStorage(tutorialSeenKey) === '1') {
+            return;
+        }
+
+        if (tutorialModal && tutorialModal.classList.contains('hidden')) {
+            openTutorialModal();
+        }
     }
 
     function setLocalPlaybackUi() {

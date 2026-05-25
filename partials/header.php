@@ -248,6 +248,47 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                     </div>
                 </div>
             </div>
+
+            <div id="emsLiveMusicTutorialModal" class="hidden modal-overlay ems-live-music-overlay" role="dialog" aria-modal="true" aria-labelledby="emsLiveMusicTutorialTitle">
+                <div class="modal-box modal-shell modal-frame-md ems-live-music-tutorial-modal">
+                    <div class="modal-head ems-live-music-head">
+                        <div class="min-w-0">
+                            <div id="emsLiveMusicTutorialTitle" class="modal-title">Live Music Aktif</div>
+                            <div class="meta-text-xs mt-1 ems-live-music-meta">Pemberitahuan ini hanya muncul sekali di browser ini.</div>
+                        </div>
+                        <button id="emsLiveMusicTutorialClose" type="button" class="modal-close-btn" aria-label="Tutup tutorial live music">
+                            <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                        </button>
+                    </div>
+
+                    <div class="modal-content ems-live-music-tutorial-content">
+                        <div class="ems-live-music-tutorial-copy">
+                            Saat ada siaran live music, audio akan otomatis aktif di browser ini.
+                        </div>
+                        <div class="ems-live-music-tutorial-steps">
+                            <div class="ems-live-music-tutorial-step">
+                                <span class="ems-live-music-tutorial-step-no">1</span>
+                                <span>Buka menu <strong>Live Music</strong> dari tombol musik di kanan atas.</span>
+                            </div>
+                            <div class="ems-live-music-tutorial-step">
+                                <span class="ems-live-music-tutorial-step-no">2</span>
+                                <span>Jika ingin mematikan suara, klik tombol <strong>Audio Nonaktif</strong>.</span>
+                            </div>
+                            <div class="ems-live-music-tutorial-step">
+                                <span class="ems-live-music-tutorial-step-no">3</span>
+                                <span>Jika ingin menyalakan lagi, klik tombol <strong>Audio Aktif</strong>.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="modal-foot">
+                        <div class="modal-actions justify-end">
+                            <button id="emsLiveMusicTutorialOpen" type="button" class="btn-primary">Buka Live Music</button>
+                            <button id="emsLiveMusicTutorialDismiss" type="button" class="btn-secondary">Mengerti</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         <?php endif; ?>
 
         <div id="birthdayTodayModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="birthdayTodayTitle">

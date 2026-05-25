@@ -207,8 +207,9 @@ import {
                     return (right.openedAt || 0) - (left.openedAt || 0);
                 });
 
-            updateOnlineCount(entries.length);
-            renderViewers(entries.slice(0, 8));
+            const uniqueViewers = dedupeViewers(entries);
+            updateOnlineCount(uniqueViewers.length);
+            renderViewers(uniqueViewers.slice(0, 8));
         });
     }
 
@@ -293,6 +294,29 @@ import {
                     '<span>' + escapeHtml(viewer.name) + role + '</span>' +
                 '</div>';
         }).join('');
+    }
+
+    function dedupeViewers(entries) {
+        const uniqueMap = new Map();
+
+        entries.forEach(function (entry) {
+            const key = buildViewerKey(entry);
+            const existing = uniqueMap.get(key);
+
+            if (!existing || (entry.openedAt || 0) > (existing.openedAt || 0)) {
+                uniqueMap.set(key, entry);
+            }
+        });
+
+        return Array.from(uniqueMap.values()).sort(function (left, right) {
+            return (right.openedAt || 0) - (left.openedAt || 0);
+        });
+    }
+
+    function buildViewerKey(entry) {
+        const normalizedName = sanitizeText((entry && entry.name) || '').toLowerCase();
+        const normalizedRole = sanitizeText((entry && entry.role) || '').toLowerCase();
+        return normalizedName + '::' + normalizedRole;
     }
 
     function updateOnlineCount(count) {
