@@ -106,6 +106,13 @@ $realtimeChatViewer = [
             </div>
 
             <form id="emsLiveChatForm" class="ems-live-chat-form">
+                <div id="emsLiveChatEditBar" class="ems-live-chat-edit-bar hidden">
+                    <div class="ems-live-chat-edit-copy">
+                        <strong>Mengedit pesan</strong>
+                        <span id="emsLiveChatEditPreview"></span>
+                    </div>
+                    <button id="emsLiveChatEditCancel" class="ems-live-chat-edit-cancel" type="button">Batal</button>
+                </div>
                 <div class="ems-live-chat-composer">
                     <textarea id="emsLiveChatInput" class="ems-live-chat-input" maxlength="500" placeholder="Tulis pesan..."></textarea>
                     <button id="emsLiveChatSend" class="ems-live-chat-send" type="submit" aria-label="Kirim pesan">

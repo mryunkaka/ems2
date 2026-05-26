@@ -36,6 +36,9 @@ import {
     const sendButton = document.getElementById('emsLiveChatSend');
     const onlineStatusEl = document.getElementById('emsLiveChatStatus');
     const onlineLabelEl = document.getElementById('emsLiveChatOnlineLabel');
+    const editBarEl = document.getElementById('emsLiveChatEditBar');
+    const editPreviewEl = document.getElementById('emsLiveChatEditPreview');
+    const editCancelButton = document.getElementById('emsLiveChatEditCancel');
 
     const app = getApps().length ? getApp() : initializeApp(config.firebase);
     const auth = getAuth(app);
@@ -53,6 +56,8 @@ import {
 
     let authUid = null;
     let scrolledToBottom = true;
+    let editingMessageId = '';
+    let editingOriginalText = '';
 
     toggleButton?.addEventListener('click', function () {
         root.classList.toggle('is-open');
@@ -80,9 +85,41 @@ import {
         }
     });
 
+    editCancelButton?.addEventListener('click', function () {
+        resetEditingState(true);
+    });
+
     messagesEl?.addEventListener('scroll', function () {
         const threshold = 40;
         scrolledToBottom = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - threshold;
+    });
+
+    messagesEl?.addEventListener('click', function (event) {
+        const button = event.target instanceof Element
+            ? event.target.closest('[data-ems-chat-action="edit"]')
+            : null;
+
+        if (!button) {
+            return;
+        }
+
+        const messageId = String(button.getAttribute('data-message-id') || '').trim();
+        const messageText = String(button.getAttribute('data-message-text') || '');
+
+        if (!messageId) {
+            return;
+        }
+
+        editingMessageId = messageId;
+        editingOriginalText = messageText;
+
+        if (input) {
+            input.value = messageText;
+            input.focus();
+            input.setSelectionRange(messageText.length, messageText.length);
+        }
+
+        renderEditingState();
     });
 
     form?.addEventListener('submit', async function (event) {
@@ -96,25 +133,34 @@ import {
         sendButton.disabled = true;
 
         try {
-            await push(ref(database, roomPath), {
-                authUid,
-                sessionId,
-                senderId: visitorProfile.senderId,
-                senderName: visitorProfile.name,
-                senderRole: visitorProfile.role,
-                senderUnit: visitorProfile.unit,
-                pageTitle: visitorProfile.pageTitle,
-                pagePath: visitorProfile.pagePath,
-                text: text.slice(0, 500),
-                createdAt: serverTimestamp()
-            });
+            if (editingMessageId) {
+                await update(ref(database, roomPath + '/' + editingMessageId), {
+                    text: text.slice(0, 500),
+                    editedAt: serverTimestamp()
+                });
+                resetEditingState(false);
+            } else {
+                await push(ref(database, roomPath), {
+                    authUid,
+                    sessionId,
+                    senderId: visitorProfile.senderId,
+                    senderName: visitorProfile.name,
+                    senderRole: visitorProfile.role,
+                    senderUnit: visitorProfile.unit,
+                    pageTitle: visitorProfile.pageTitle,
+                    pagePath: visitorProfile.pagePath,
+                    text: text.slice(0, 500),
+                    createdAt: serverTimestamp()
+                });
 
-            input.value = '';
+                input.value = '';
+            }
+
             scrolledToBottom = true;
             scrollMessagesToBottom();
         } catch (error) {
             console.error('Failed to send realtime chat message.', error);
-            setStatus('Gagal kirim pesan realtime.', true);
+            setStatus(editingMessageId ? 'Gagal mengedit pesan.' : 'Gagal kirim pesan realtime.', true);
         } finally {
             sendButton.disabled = false;
         }
@@ -228,9 +274,14 @@ import {
                     pageTitle: sanitizeText(value.pageTitle || ''),
                     pagePath: sanitizeText(value.pagePath || ''),
                     text: sanitizeText(value.text || ''),
-                    createdAt: Number(value.createdAt || 0)
+                    createdAt: Number(value.createdAt || 0),
+                    editedAt: Number(value.editedAt || 0)
                 });
             });
+
+            if (editingMessageId && !messages.some(function (message) { return message.id === editingMessageId; })) {
+                resetEditingState(false);
+            }
 
             renderMessages(messages);
         });
@@ -246,22 +297,30 @@ import {
             return;
         }
 
-        const html = messages.map(function (message) {
+        const html = messages.map(function (message, index) {
             const isSelf = authUid && message.authUid === authUid;
             const bubbleClass = isSelf ? 'ems-live-chat-message is-self' : 'ems-live-chat-message';
-            const timeLabel = message.createdAt ? formatTime(message.createdAt) : 'baru saja';
-            const pageLabel = message.pageTitle || message.pagePath || '';
-            const roleLabel = message.senderRole ? ' • ' + escapeHtml(message.senderRole) : '';
+            const timeLabel = message.createdAt ? formatClockTime(message.createdAt) : '';
+            const editedLabel = message.editedAt ? '<span class="ems-live-chat-message-status">diedit</span>' : '';
+            const nameMarkup = isSelf
+                ? ''
+                : '<div class="ems-live-chat-message-head"><div class="ems-live-chat-message-name">' + escapeHtml(message.senderName) + '</div></div>';
+            const actionMarkup = isSelf
+                ? '<div class="ems-live-chat-message-actions"><button class="ems-live-chat-message-action" type="button" data-ems-chat-action="edit" data-message-id="' + escapeHtml(message.id) + '" data-message-text="' + escapeHtml(message.text) + '">Edit</button></div>'
+                : '';
+            const separatorMarkup = shouldRenderDateSeparator(messages, index)
+                ? '<div class="ems-live-chat-date-separator"><span>' + escapeHtml(formatDateSeparator(message.createdAt)) + '</span></div>'
+                : '';
 
-            return '' +
+            return separatorMarkup +
                 '<div class="' + bubbleClass + '">' +
                     '<div class="ems-live-chat-bubble">' +
-                        '<div class="ems-live-chat-message-head">' +
-                            '<div class="ems-live-chat-message-name">' + escapeHtml(message.senderName) + roleLabel + '</div>' +
-                            '<div class="ems-live-chat-message-time">' + escapeHtml(timeLabel) + '</div>' +
+                        nameMarkup +
+                        '<div class="ems-live-chat-message-content">' +
+                            '<div class="ems-live-chat-message-body">' + escapeHtml(message.text) + '</div>' +
+                            '<div class="ems-live-chat-message-meta">' + editedLabel + '<span class="ems-live-chat-message-time">' + escapeHtml(timeLabel) + '</span></div>' +
                         '</div>' +
-                        '<div class="ems-live-chat-message-body">' + escapeHtml(message.text) + '</div>' +
-                        (pageLabel ? '<div class="ems-live-chat-message-page">Halaman: ' + escapeHtml(pageLabel) + '</div>' : '') +
+                        actionMarkup +
                     '</div>' +
                 '</div>';
         }).join('');
@@ -286,12 +345,11 @@ import {
 
         viewersMetaEl.textContent = viewers.length + ' user sedang membuka website.';
         viewersListEl.innerHTML = viewers.map(function (viewer) {
-            const role = viewer.role ? ' • ' + escapeHtml(viewer.role) : '';
             const page = viewer.pageTitle || viewer.pagePath || 'Halaman aktif';
             return '' +
                 '<div class="ems-live-chat-viewer-chip" title="' + escapeHtml(page) + '">' +
                     '<span class="ems-live-chat-viewer-dot"></span>' +
-                    '<span>' + escapeHtml(viewer.name) + role + '</span>' +
+                    '<span>' + escapeHtml(viewer.name) + '</span>' +
                 '</div>';
         }).join('');
     }
@@ -348,6 +406,34 @@ import {
         });
     }
 
+    function resetEditingState(clearInput) {
+        editingMessageId = '';
+        editingOriginalText = '';
+
+        if (clearInput && input) {
+            input.value = '';
+        }
+
+        renderEditingState();
+    }
+
+    function renderEditingState() {
+        if (!editBarEl || !editPreviewEl || !sendButton) {
+            return;
+        }
+
+        if (!editingMessageId) {
+            editBarEl.classList.add('hidden');
+            editPreviewEl.textContent = '';
+            sendButton.setAttribute('aria-label', 'Kirim pesan');
+            return;
+        }
+
+        editBarEl.classList.remove('hidden');
+        editPreviewEl.textContent = editingOriginalText;
+        sendButton.setAttribute('aria-label', 'Simpan edit pesan');
+    }
+
     function buildVisitorProfile(localGuestId, localSessionId) {
         const loggedInName = String(config.viewer?.name || '').trim();
         const role = String(config.viewer?.role || '').trim();
@@ -381,15 +467,76 @@ import {
         return created;
     }
 
-    function formatTime(timestamp) {
+    function formatClockTime(timestamp) {
         try {
             return new Intl.DateTimeFormat('id-ID', {
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                hour12: false
             }).format(new Date(timestamp));
         } catch (error) {
             return '';
         }
+    }
+
+    function formatDateSeparator(timestamp) {
+        if (!timestamp) {
+            return 'Hari ini';
+        }
+
+        const messageDate = new Date(timestamp);
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const messageStart = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+        const diffDays = Math.round((todayStart.getTime() - messageStart.getTime()) / 86400000);
+
+        if (diffDays <= 0) {
+            return 'Hari ini';
+        }
+
+        if (diffDays === 1) {
+            return 'Kemarin';
+        }
+
+        if (diffDays < 7) {
+            return new Intl.DateTimeFormat('id-ID', {
+                weekday: 'long'
+            }).format(messageDate);
+        }
+
+        return new Intl.DateTimeFormat('id-ID', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        }).format(messageDate);
+    }
+
+    function shouldRenderDateSeparator(messages, index) {
+        const current = messages[index];
+        const previous = index > 0 ? messages[index - 1] : null;
+
+        if (!current) {
+            return false;
+        }
+
+        if (!previous) {
+            return true;
+        }
+
+        if (!current.createdAt || !previous.createdAt) {
+            return false;
+        }
+
+        return !isSameCalendarDay(current.createdAt, previous.createdAt);
+    }
+
+    function isSameCalendarDay(leftTimestamp, rightTimestamp) {
+        const left = new Date(leftTimestamp);
+        const right = new Date(rightTimestamp);
+
+        return left.getFullYear() === right.getFullYear()
+            && left.getMonth() === right.getMonth()
+            && left.getDate() === right.getDate();
     }
 
     function sanitizeText(value) {

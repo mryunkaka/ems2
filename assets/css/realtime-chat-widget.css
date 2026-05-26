@@ -189,6 +189,26 @@
         linear-gradient(180deg, #f8fbff, #f8fafc);
 }
 
+.ems-live-chat-date-separator {
+    display: flex;
+    justify-content: center;
+    margin: 10px 0 12px;
+}
+
+.ems-live-chat-date-separator span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    color: #475569;
+    font-size: 10px;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(148, 163, 184, 0.12);
+}
+
 .ems-live-chat-empty,
 .ems-live-chat-system {
     padding: 10px 12px;
@@ -210,8 +230,8 @@
 
 .ems-live-chat-bubble {
     max-width: min(90%, 292px);
-    padding: 9px 11px;
-    border-radius: 16px;
+    padding: 8px 10px 7px;
+    border-radius: 14px;
     background: #ffffff;
     border: 1px solid rgba(226, 232, 240, 0.92);
     box-shadow: 0 5px 14px rgba(148, 163, 184, 0.11);
@@ -226,9 +246,8 @@
 .ems-live-chat-message-head {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
     gap: 8px;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
 }
 
 .ems-live-chat-message-name {
@@ -241,19 +260,9 @@
     color: #ffffff;
 }
 
-.ems-live-chat-message-time {
-    font-size: 9px;
-    color: #64748b;
-    white-space: nowrap;
-}
-
-.ems-live-chat-message.is-self .ems-live-chat-message-time {
-    color: rgba(224, 242, 254, 0.94);
-}
-
 .ems-live-chat-message-body {
-    font-size: 11px;
-    line-height: 1.5;
+    font-size: 12px;
+    line-height: 1.45;
     color: #334155;
     white-space: pre-wrap;
     word-break: break-word;
@@ -263,14 +272,96 @@
     color: #ffffff;
 }
 
-.ems-live-chat-message-page {
-    margin-top: 6px;
-    font-size: 9px;
-    color: #64748b;
+.ems-live-chat-message-content {
+    display: inline-flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    width: 100%;
 }
 
-.ems-live-chat-message.is-self .ems-live-chat-message-page {
+.ems-live-chat-message-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    color: #64748b;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-meta {
     color: rgba(224, 242, 254, 0.94);
+}
+
+.ems-live-chat-message-status {
+    font-size: 9px;
+    opacity: 0.95;
+}
+
+.ems-live-chat-message-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.ems-live-chat-message-action {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 10px;
+    font-weight: 700;
+    color: #0369a1;
+    cursor: pointer;
+}
+
+.ems-live-chat-message.is-self .ems-live-chat-message-action {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.ems-live-chat-edit-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px;
+    border-radius: 14px;
+    border-left: 3px solid #0ea5e9;
+    background: #eff6ff;
+}
+
+.ems-live-chat-edit-bar.hidden {
+    display: none;
+}
+
+.ems-live-chat-edit-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    font-size: 10px;
+    color: #0f172a;
+}
+
+.ems-live-chat-edit-copy strong {
+    font-size: 11px;
+    color: #0369a1;
+}
+
+.ems-live-chat-edit-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #475569;
+}
+
+.ems-live-chat-edit-cancel {
+    border: 0;
+    background: transparent;
+    color: #0369a1;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
 }
 
 .ems-live-chat-form {
