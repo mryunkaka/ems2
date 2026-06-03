@@ -13,22 +13,30 @@ if (isset($_GET['reset']) && $_GET['reset'] === '1') {
 
 $existingGate = ems_public_recruitment_gate_get();
 if ($existingGate && !empty($existingGate['citizen_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $freshGate = ems_public_recruitment_build_gate($pdo, (string)$existingGate['citizen_id']);
+    $freshGate = ems_public_recruitment_build_gate($pdo, (string)$existingGate['citizen_id'], [
+        'ic_name' => (string)($existingGate['ic_name'] ?? ''),
+    ]);
     ems_public_recruitment_gate_set($freshGate);
     ems_public_recruitment_redirect_for_gate($freshGate);
 }
 
 $errorMessage = '';
 $citizenIdValue = '';
+$icNameValue = '';
 $profile = ems_recruitment_profile('medical_candidate');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $citizenIdValue = ems_normalize_citizen_id($_POST['citizen_id'] ?? '');
+    $icNameValue = trim((string)($_POST['ic_name'] ?? ''));
 
-    if ($citizenIdValue === '') {
+    if ($icNameValue === '') {
+        $errorMessage = 'Nama IC wajib diisi.';
+    } elseif ($citizenIdValue === '') {
         $errorMessage = 'Citizen ID wajib diisi.';
     } else {
-        $gate = ems_public_recruitment_build_gate($pdo, $citizenIdValue);
+        $gate = ems_public_recruitment_build_gate($pdo, $citizenIdValue, [
+            'ic_name' => $icNameValue,
+        ]);
         ems_public_recruitment_gate_set($gate);
         ems_public_recruitment_redirect_for_gate($gate);
     }
@@ -88,7 +96,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <form method="post" class="card mb-0">
                     <div class="card-header">
                         <?= ems_icon('identification', 'h-5 w-5') ?>
-                        <span>Citizen ID</span>
+                        <span>Data Akses</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ic_name" class="text-sm font-semibold text-slate-900">Nama IC</label>
+                        <input type="text" id="ic_name" name="ic_name" value="<?= htmlspecialchars($icNameValue) ?>" placeholder="Masukkan nama IC" autocomplete="off" required>
                     </div>
 
                     <div class="form-group">

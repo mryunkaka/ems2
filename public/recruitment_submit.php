@@ -757,10 +757,6 @@ try {
                 continue;
             }
 
-            if ($doc === 'sim' && empty($_FILES[$doc]['tmp_name'])) {
-                continue;
-            }
-
             if (
                 !isset($_FILES[$doc]) ||
                 $_FILES[$doc]['error'] !== UPLOAD_ERR_OK ||

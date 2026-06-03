@@ -91,10 +91,11 @@ function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?ar
     return $row;
 }
 
-function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId): array
+function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId, array $context = []): array
 {
     $citizenId = ems_normalize_citizen_id($citizenId);
     $applicant = ems_public_recruitment_find_applicant($pdo, $citizenId);
+    $icName = trim((string)($context['ic_name'] ?? ''));
 
     $stage = 'form';
     $applicantId = 0;
@@ -108,6 +109,7 @@ function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId): array
 
     return [
         'citizen_id' => $citizenId,
+        'ic_name' => $icName,
         'applicant_id' => $applicantId,
         'recruitment_type' => $recruitmentType,
         'stage' => $stage,
@@ -148,7 +150,9 @@ function ems_public_recruitment_require_gate_stage(string $expectedStage): array
         exit;
     }
 
-    $freshGate = ems_public_recruitment_build_gate($pdo, (string)$gate['citizen_id']);
+    $freshGate = ems_public_recruitment_build_gate($pdo, (string)$gate['citizen_id'], [
+        'ic_name' => (string)($gate['ic_name'] ?? ''),
+    ]);
     ems_public_recruitment_gate_set($freshGate);
 
     if (($freshGate['stage'] ?? '') !== $expectedStage) {

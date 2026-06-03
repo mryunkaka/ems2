@@ -2,11 +2,14 @@
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
+require_once __DIR__ . '/realtime_chat_embed.php';
 
 ems_public_recruitment_require_portal_open();
 $gate = ems_public_recruitment_require_gate_stage('form');
 $profile = ems_recruitment_profile('medical_candidate');
 $citizenId = (string)($gate['citizen_id'] ?? '');
+$icName = trim((string)($gate['ic_name'] ?? ''));
+$chatViewerName = $icName !== '' ? $icName : 'Calon Pelamar';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -113,7 +116,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                         <div class="row-form-2">
                             <div class="form-group">
                                 <label for="ic_name" class="text-sm font-semibold text-slate-900">Nama IC</label>
-                                <input type="text" id="ic_name" name="ic_name" placeholder="Masukkan nama IC" autocomplete="off" required>
+                                <input type="text" id="ic_name" name="ic_name" value="<?= htmlspecialchars($icName) ?>" placeholder="Masukkan nama IC" autocomplete="off" required>
                             </div>
 
                             <div class="form-group">
@@ -230,7 +233,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                             <div class="doc-upload-wrapper m-0">
                                 <div class="doc-upload-header">
                                     <span class="text-sm font-semibold text-slate-900">KTP IC</span>
-                                    <span class="badge-muted-mini">Wajib</span>
+                                    <span class="badge-required-mini">Wajib</span>
                                 </div>
                                 <div class="doc-upload-input">
                                     <label for="ktpIc" class="file-upload-label">
@@ -248,7 +251,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                             <div class="doc-upload-wrapper m-0">
                                 <div class="doc-upload-header">
                                     <span class="text-sm font-semibold text-slate-900">SKB</span>
-                                    <span class="badge-muted-mini">Wajib</span>
+                                    <span class="badge-required-mini">Wajib</span>
                                 </div>
                                 <div class="doc-upload-input">
                                     <label for="skbFile" class="file-upload-label">
@@ -266,7 +269,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                             <div class="doc-upload-wrapper m-0">
                                 <div class="doc-upload-header">
                                     <span class="text-sm font-semibold text-slate-900">SIM</span>
-                                    <span class="badge-muted-mini">Opsional</span>
+                                    <span class="badge-required-mini">Wajib</span>
                                 </div>
                                 <div class="doc-upload-input">
                                     <label for="simFile" class="file-upload-label">
@@ -276,7 +279,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                                             <small>PNG atau JPG</small>
                                         </span>
                                     </label>
-                                    <input type="file" id="simFile" name="sim" accept="image/png,image/jpeg" class="sr-only recruitment-file-input">
+                                    <input type="file" id="simFile" name="sim" accept="image/png,image/jpeg" class="sr-only recruitment-file-input" required>
                                     <div class="file-selected-name" data-for="simFile"></div>
                                 </div>
                             </div>
@@ -284,7 +287,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                             <div class="doc-upload-wrapper m-0">
                                 <div class="doc-upload-header">
                                     <span class="text-sm font-semibold text-slate-900">Surat Keterangan Sehat</span>
-                                    <span class="badge-muted-mini">Wajib</span>
+                                    <span class="badge-required-mini">Wajib</span>
                                 </div>
                                 <div class="doc-upload-input">
                                     <label for="suratSehatFile" class="file-upload-label">
@@ -302,7 +305,7 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
                             <div class="doc-upload-wrapper m-0">
                                 <div class="doc-upload-header">
                                     <span class="text-sm font-semibold text-slate-900">Surat Keterangan Psikolog</span>
-                                    <span class="badge-muted-mini">Wajib</span>
+                                    <span class="badge-required-mini">Wajib</span>
                                 </div>
                                 <div class="doc-upload-input">
                                     <label for="suratPsikologFile" class="file-upload-label">
@@ -374,7 +377,27 @@ $citizenId = (string)($gate['citizen_id'] ?? '');
             color: #64748b;
             font-size: 13px;
         }
+
+        .badge-required-mini {
+            display: inline-flex;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #dc2626;
+            font-size: 12px;
+            font-weight: 800;
+            border: 1px solid #fecaca;
+        }
     </style>
+    <?php
+    ems_public_render_realtime_chat([
+        'userId' => $citizenId !== '' ? 'applicant:' . $citizenId : '',
+        'name' => $chatViewerName,
+        'role' => 'Calon Pelamar',
+        'unit' => 'Recruitment',
+        'pageTitle' => $profile['title'],
+    ]);
+    ?>
     <script>
         const MAX_UPLOAD_BYTES = 1024 * 1024;
 

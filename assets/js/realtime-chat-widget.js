@@ -58,6 +58,7 @@ import {
     let scrolledToBottom = true;
     let editingMessageId = '';
     let editingOriginalText = '';
+    let replyingMessage = null;
 
     toggleButton?.addEventListener('click', function () {
         root.classList.toggle('is-open');
@@ -87,6 +88,7 @@ import {
 
     editCancelButton?.addEventListener('click', function () {
         resetEditingState(true);
+        resetReplyingState(false);
     });
 
     messagesEl?.addEventListener('scroll', function () {
@@ -94,32 +96,71 @@ import {
         scrolledToBottom = messagesEl.scrollTop + messagesEl.clientHeight >= messagesEl.scrollHeight - threshold;
     });
 
-    messagesEl?.addEventListener('click', function (event) {
+    messagesEl?.addEventListener('click', async function (event) {
         const button = event.target instanceof Element
-            ? event.target.closest('[data-ems-chat-action="edit"]')
+            ? event.target.closest('[data-ems-chat-action]')
             : null;
 
         if (!button) {
             return;
         }
 
+        const action = String(button.getAttribute('data-ems-chat-action') || '').trim();
         const messageId = String(button.getAttribute('data-message-id') || '').trim();
         const messageText = String(button.getAttribute('data-message-text') || '');
+        const messageSenderId = String(button.getAttribute('data-message-sender-id') || '').trim();
+        const messageSenderName = String(button.getAttribute('data-message-sender-name') || '').trim();
+        const messageSenderRole = String(button.getAttribute('data-message-sender-role') || '').trim();
 
         if (!messageId) {
             return;
         }
 
-        editingMessageId = messageId;
-        editingOriginalText = messageText;
+        if (action === 'edit') {
+            editingMessageId = messageId;
+            editingOriginalText = messageText;
+            resetReplyingState(false);
 
-        if (input) {
-            input.value = messageText;
-            input.focus();
-            input.setSelectionRange(messageText.length, messageText.length);
+            if (input) {
+                input.value = messageText;
+                input.focus();
+                input.setSelectionRange(messageText.length, messageText.length);
+            }
+
+            renderEditingState();
+            return;
         }
 
-        renderEditingState();
+        if (action === 'reply') {
+            resetEditingState(false);
+            replyingMessage = {
+                id: messageId,
+                text: messageText,
+                senderId: messageSenderId,
+                senderName: messageSenderName,
+                senderRole: messageSenderRole
+            };
+
+            if (input) {
+                input.focus();
+            }
+
+            renderReplyingState();
+            return;
+        }
+
+        if (action === 'delete' && canDeleteMessages()) {
+            if (!window.confirm('Hapus pesan live chat ini?')) {
+                return;
+            }
+
+            try {
+                await remove(ref(database, roomPath + '/' + messageId));
+            } catch (error) {
+                console.error('Failed to delete realtime chat message.', error);
+                setStatus('Gagal menghapus pesan.', true);
+            }
+        }
     });
 
     form?.addEventListener('submit', async function (event) {
@@ -140,6 +181,7 @@ import {
                 });
                 resetEditingState(false);
             } else {
+                const replyPayload = buildReplyPayload();
                 await push(ref(database, roomPath), {
                     authUid,
                     sessionId,
@@ -150,10 +192,12 @@ import {
                     pageTitle: visitorProfile.pageTitle,
                     pagePath: visitorProfile.pagePath,
                     text: text.slice(0, 500),
+                    ...replyPayload,
                     createdAt: serverTimestamp()
                 });
 
                 input.value = '';
+                resetReplyingState(false);
             }
 
             scrolledToBottom = true;
@@ -271,9 +315,16 @@ import {
                     senderId: sanitizeText(value.senderId || ''),
                     senderName: sanitizeText(value.senderName || 'Visitor'),
                     senderRole: sanitizeText(value.senderRole || ''),
+                    senderUnit: sanitizeText(value.senderUnit || ''),
                     pageTitle: sanitizeText(value.pageTitle || ''),
                     pagePath: sanitizeText(value.pagePath || ''),
                     text: sanitizeText(value.text || ''),
+                    replyToMessageId: sanitizeText(value.replyToMessageId || ''),
+                    replyToSenderId: sanitizeText(value.replyToSenderId || ''),
+                    replyToSenderName: sanitizeText(value.replyToSenderName || ''),
+                    replyToText: sanitizeText(value.replyToText || ''),
+                    recipientSenderId: sanitizeText(value.recipientSenderId || ''),
+                    recipientName: sanitizeText(value.recipientName || ''),
                     createdAt: Number(value.createdAt || 0),
                     editedAt: Number(value.editedAt || 0)
                 });
@@ -283,7 +334,7 @@ import {
                 resetEditingState(false);
             }
 
-            renderMessages(messages);
+            renderMessages(filterMessagesForViewer(messages));
         });
     }
 
@@ -302,12 +353,16 @@ import {
             const bubbleClass = isSelf ? 'ems-live-chat-message is-self' : 'ems-live-chat-message';
             const timeLabel = message.createdAt ? formatClockTime(message.createdAt) : '';
             const editedLabel = message.editedAt ? '<span class="ems-live-chat-message-status">diedit</span>' : '';
+            const roleMarkup = isApplicantRole(message.senderRole)
+                ? '<span class="ems-live-chat-message-role">' + escapeHtml(message.senderRole) + '</span>'
+                : '';
             const nameMarkup = isSelf
                 ? ''
-                : '<div class="ems-live-chat-message-head"><div class="ems-live-chat-message-name">' + escapeHtml(message.senderName) + '</div></div>';
-            const actionMarkup = isSelf
-                ? '<div class="ems-live-chat-message-actions"><button class="ems-live-chat-message-action" type="button" data-ems-chat-action="edit" data-message-id="' + escapeHtml(message.id) + '" data-message-text="' + escapeHtml(message.text) + '">Edit</button></div>'
+                : '<div class="ems-live-chat-message-head"><div class="ems-live-chat-message-name">' + escapeHtml(message.senderName) + '</div>' + roleMarkup + '</div>';
+            const replyMarkup = message.replyToMessageId
+                ? '<div class="ems-live-chat-reply-preview"><strong>' + escapeHtml(message.replyToSenderName || 'Pesan') + '</strong><span>' + escapeHtml(message.replyToText || '') + '</span></div>'
                 : '';
+            const actionMarkup = buildMessageActions(message, isSelf);
             const separatorMarkup = shouldRenderDateSeparator(messages, index)
                 ? '<div class="ems-live-chat-date-separator"><span>' + escapeHtml(formatDateSeparator(message.createdAt)) + '</span></div>'
                 : '';
@@ -316,6 +371,7 @@ import {
                 '<div class="' + bubbleClass + '">' +
                     '<div class="ems-live-chat-bubble">' +
                         nameMarkup +
+                        replyMarkup +
                         '<div class="ems-live-chat-message-content">' +
                             '<div class="ems-live-chat-message-body">' + escapeHtml(message.text) + '</div>' +
                             '<div class="ems-live-chat-message-meta">' + editedLabel + '<span class="ems-live-chat-message-time">' + escapeHtml(timeLabel) + '</span></div>' +
@@ -424,14 +480,123 @@ import {
 
         if (!editingMessageId) {
             editBarEl.classList.add('hidden');
+            editBarEl.classList.remove('is-replying');
+            editBarEl.querySelector('strong').textContent = 'Mengedit pesan';
             editPreviewEl.textContent = '';
             sendButton.setAttribute('aria-label', 'Kirim pesan');
             return;
         }
 
+        editBarEl.classList.remove('is-replying');
+        editBarEl.querySelector('strong').textContent = 'Mengedit pesan';
         editBarEl.classList.remove('hidden');
         editPreviewEl.textContent = editingOriginalText;
         sendButton.setAttribute('aria-label', 'Simpan edit pesan');
+    }
+
+    function resetReplyingState(focusInput) {
+        replyingMessage = null;
+        renderReplyingState();
+
+        if (focusInput && input) {
+            input.focus();
+        }
+    }
+
+    function renderReplyingState() {
+        if (!editBarEl || !editPreviewEl || !sendButton) {
+            return;
+        }
+
+        if (!replyingMessage || editingMessageId) {
+            if (!editingMessageId) {
+                editBarEl.classList.add('hidden');
+                editPreviewEl.textContent = '';
+                sendButton.setAttribute('aria-label', 'Kirim pesan');
+            }
+            return;
+        }
+
+        editBarEl.classList.remove('hidden');
+        editBarEl.classList.add('is-replying');
+        editBarEl.querySelector('strong').textContent = 'Membalas ' + (replyingMessage.senderName || 'pesan');
+        editPreviewEl.textContent = replyingMessage.text || '';
+        sendButton.setAttribute('aria-label', 'Kirim balasan');
+    }
+
+    function buildReplyPayload() {
+        if (!replyingMessage) {
+            return {};
+        }
+
+        const payload = {
+            replyToMessageId: replyingMessage.id,
+            replyToSenderId: replyingMessage.senderId,
+            replyToSenderName: replyingMessage.senderName,
+            replyToText: replyingMessage.text.slice(0, 140)
+        };
+
+        if (isApplicantIdentity(replyingMessage.senderId, replyingMessage.senderRole)) {
+            payload.recipientSenderId = replyingMessage.senderId;
+            payload.recipientName = replyingMessage.senderName;
+        }
+
+        return payload;
+    }
+
+    function buildMessageActions(message, isSelf) {
+        const attrs = ' data-message-id="' + escapeHtml(message.id) + '"' +
+            ' data-message-text="' + escapeHtml(message.text) + '"' +
+            ' data-message-sender-id="' + escapeHtml(message.senderId) + '"' +
+            ' data-message-sender-name="' + escapeHtml(message.senderName) + '"' +
+            ' data-message-sender-role="' + escapeHtml(message.senderRole) + '"';
+        const actions = [];
+
+        if (isSelf) {
+            actions.push('<button class="ems-live-chat-message-action" type="button" data-ems-chat-action="edit"' + attrs + '>Edit</button>');
+        }
+
+        actions.push('<button class="ems-live-chat-message-action" type="button" data-ems-chat-action="reply"' + attrs + '>Balas</button>');
+
+        if (canDeleteMessages()) {
+            actions.push('<button class="ems-live-chat-message-action is-danger" type="button" data-ems-chat-action="delete"' + attrs + '>Hapus</button>');
+        }
+
+        return '<div class="ems-live-chat-message-actions">' + actions.join('') + '</div>';
+    }
+
+    function filterMessagesForViewer(messages) {
+        if (!isCurrentViewerApplicant()) {
+            return messages;
+        }
+
+        return messages.filter(function (message) {
+            return message.senderId === visitorProfile.senderId
+                || message.recipientSenderId === visitorProfile.senderId
+                || message.replyToSenderId === visitorProfile.senderId;
+        });
+    }
+
+    function isCurrentViewerApplicant() {
+        return isApplicantIdentity(visitorProfile.senderId, visitorProfile.role);
+    }
+
+    function isApplicantIdentity(senderId, role) {
+        return String(senderId || '').indexOf('applicant:') === 0 || isApplicantRole(role);
+    }
+
+    function isApplicantRole(role) {
+        return sanitizeText(role).toLowerCase() === 'calon pelamar';
+    }
+
+    function canDeleteMessages() {
+        const role = sanitizeText(visitorProfile.role).toLowerCase();
+        const name = sanitizeText(visitorProfile.name).toLowerCase();
+
+        return role === 'director'
+            || role === 'vice director'
+            || role === 'programmer roxwood'
+            || name === 'programmer roxwood';
     }
 
     function buildVisitorProfile(localGuestId, localSessionId) {
