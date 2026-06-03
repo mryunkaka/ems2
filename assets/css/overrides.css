@@ -1075,10 +1075,54 @@ table.dataTable td + td {
 }
 
 .modal-box,
-.modal-shell,
+.modal-card,
+.inbox-modal-box,
+.ems-modal-card {
+  width: min(100%, calc(100vw - 24px));
+  max-width: 42rem;
+}
+
+.modal-box.modal-frame-md,
+.modal-card.modal-frame-md,
+.inbox-modal-box.modal-frame-md,
+.ems-modal-card.modal-frame-md {
+  max-width: min(520px, calc(100vw - 24px));
+}
+
+.modal-box.modal-frame-lg,
+.modal-card.modal-frame-lg,
+.inbox-modal-box.modal-frame-lg,
+.ems-modal-card.modal-frame-lg,
+.request-modal-card.modal-frame-lg,
+.forensic-detail-modal.modal-frame-lg {
+  max-width: min(900px, calc(100vw - 24px));
+}
+
+.modal-box.max-w-md,
+.modal-card.max-w-md,
+.inbox-modal-box.max-w-md,
+.ems-modal-card.max-w-md {
+  max-width: min(28rem, calc(100vw - 24px));
+}
+
+.modal-box.max-w-2xl,
+.modal-card.max-w-2xl,
+.inbox-modal-box.max-w-2xl,
+.ems-modal-card.max-w-2xl {
+  max-width: min(42rem, calc(100vw - 24px));
+}
+
 .request-modal-card,
 .forensic-detail-modal {
-  max-width: min(100%, calc(100vw - 24px));
+  width: min(100%, calc(100vw - 24px));
+}
+
+.modal-box.modal-frame-lg.edit-user-modal {
+  max-width: min(980px, calc(100vw - 24px));
+}
+
+.modal-box.modal-frame-lg.surat-modal-box {
+  max-width: min(860px, calc(100vw - 24px));
 }
 
 img,

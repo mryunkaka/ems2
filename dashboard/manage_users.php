@@ -132,6 +132,97 @@ function manageUsersMemberStatus(array $userRow): string
     return 'active';
 }
 
+function manageUsersBuildDocumentList(array $userRow, array $documentConfigs): array
+{
+    $docs = [];
+
+    foreach ($documentConfigs as $field => $label) {
+        $path = trim((string)($userRow[$field] ?? ''));
+        if ($path === '') {
+            continue;
+        }
+
+        $docs[] = [
+            'key' => $field,
+            'label' => $label,
+            'path' => $path,
+        ];
+    }
+
+    foreach (($userRow['_other_docs'] ?? []) as $otherDoc) {
+        $label = trim((string)($otherDoc['name'] ?? 'File Lainnya'));
+        $path = trim((string)($otherDoc['path'] ?? ''));
+        if ($path === '') {
+            continue;
+        }
+
+        $docs[] = [
+            'key' => 'other:' . ($otherDoc['id'] ?? sha1($label . '|' . $path)),
+            'label' => $label !== '' ? $label : 'File Lainnya',
+            'path' => $path,
+        ];
+    }
+
+    return $docs;
+}
+
+function manageUsersDocumentHash(array $docs): string
+{
+    $payload = [];
+    foreach ($docs as $doc) {
+        $payload[] = [
+            'key' => (string)($doc['key'] ?? ''),
+            'label' => (string)($doc['label'] ?? ''),
+            'path' => (string)($doc['path'] ?? ''),
+        ];
+    }
+
+    usort($payload, static function (array $left, array $right): int {
+        return strcmp(($left['key'] ?? '') . '|' . ($left['path'] ?? ''), ($right['key'] ?? '') . '|' . ($right['path'] ?? ''));
+    });
+
+    return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
+}
+
+function manageUsersDocumentsAreVerified(array $userRow, string $currentHash, bool $hasVerificationColumns): bool
+{
+    if (!$hasVerificationColumns) {
+        return false;
+    }
+
+    $verifiedHash = trim((string)($userRow['documents_verified_hash'] ?? ''));
+    return $verifiedHash !== '' && hash_equals($verifiedHash, $currentHash);
+}
+
+function manageUsersRenderDocumentBadges(array $docs, bool $documentsVerified): void
+{
+    if (empty($docs)) {
+        echo '<span class="muted-placeholder">-</span>';
+        return;
+    }
+
+    $stateClass = $documentsVerified ? 'is-verified' : 'is-pending';
+    $stateTitle = $documentsVerified ? 'Dokumen sudah diverifikasi' : 'Dokumen perlu dicek manual';
+
+    foreach ($docs as $doc) {
+        $label = (string)($doc['label'] ?? 'Dokumen');
+        $path = (string)($doc['path'] ?? '');
+        if ($path === '') {
+            continue;
+        }
+
+        ?>
+        <a href="#"
+            class="doc-badge <?= htmlspecialchars($stateClass, ENT_QUOTES, 'UTF-8') ?> btn-preview-doc"
+            data-src="<?= htmlspecialchars(ems_secure_file_url($path), ENT_QUOTES, 'UTF-8') ?>"
+            data-title="<?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>"
+            title="<?= htmlspecialchars($stateTitle . ': ' . $label, ENT_QUOTES, 'UTF-8') ?>">
+            <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+        </a>
+        <?php
+    }
+}
+
 // FLASH NOTIF EMS
 $messages = $_SESSION['flash_messages'] ?? [];
 $warnings = $_SESSION['flash_warnings'] ?? [];
@@ -151,6 +242,9 @@ $hasCitizenIdColumn = manageUsersHasColumn($pdo, 'citizen_id');
 $hasNoHpIcColumn = manageUsersHasColumn($pdo, 'no_hp_ic');
 $hasJenisKelaminColumn = manageUsersHasColumn($pdo, 'jenis_kelamin');
 $hasTanggalLahirIcColumn = manageUsersHasColumn($pdo, 'tanggal_lahir_ic');
+$hasDocumentVerificationColumns = manageUsersHasColumn($pdo, 'documents_verified_hash')
+    && manageUsersHasColumn($pdo, 'documents_verified_at')
+    && manageUsersHasColumn($pdo, 'documents_verified_by');
 $divisionSelect = $hasDivisionColumn ? "u.division," : "NULL AS division,";
 $unitSelect = $hasUnitCodeColumn ? "u.unit_code," : "'roxwood' AS unit_code,";
 $allUnitsSelect = $hasCanViewAllUnitsColumn ? "u.can_view_all_units," : "NULL AS can_view_all_units,";
@@ -158,6 +252,36 @@ $citizenIdSelect = $hasCitizenIdColumn ? "u.citizen_id," : "NULL AS citizen_id,"
 $noHpIcSelect = $hasNoHpIcColumn ? "u.no_hp_ic," : "NULL AS no_hp_ic,";
 $jenisKelaminSelect = $hasJenisKelaminColumn ? "u.jenis_kelamin," : "NULL AS jenis_kelamin,";
 $tanggalLahirIcSelect = $hasTanggalLahirIcColumn ? "u.tanggal_lahir_ic," : "NULL AS tanggal_lahir_ic,";
+$manageUsersDocumentColumnLabels = [
+    'file_ktp' => 'KTP',
+    'file_sim' => 'SIM',
+    'file_kta' => 'KTA',
+    'file_skb' => 'SKB',
+    'file_kontrak_kerja' => 'KONTRAK KERJA',
+    'sertifikat_heli' => 'SERTIFIKAT HELI',
+    'sertifikat_operasi' => 'SERTIFIKAT OPERASI',
+    'sertifikat_operasi_plastik' => 'SERTIFIKAT OPERASI PLASTIK',
+    'sertifikat_operasi_kecil' => 'SERTIFIKAT OPERASI KECIL',
+    'sertifikat_operasi_besar' => 'SERTIFIKAT OPERASI BESAR',
+    'sertifikat_class_co_asst' => 'SERTIFIKAT CLASS CO. ASST',
+    'sertifikat_class_paramedic' => 'SERTIFIKAT CLASS PARAMEDIC',
+];
+$availableDocumentColumns = [];
+foreach ($manageUsersDocumentColumnLabels as $documentColumn => $documentLabel) {
+    if (manageUsersHasColumn($pdo, $documentColumn)) {
+        $availableDocumentColumns[$documentColumn] = $documentLabel;
+    }
+}
+$documentSelectSql = '';
+if (!empty($availableDocumentColumns)) {
+    $documentSelectSql = implode(",\n        ", array_map(
+        static fn(string $column): string => "u.{$column}",
+        array_keys($availableDocumentColumns)
+    )) . ",";
+}
+$documentVerificationSelectSql = $hasDocumentVerificationColumns
+    ? "u.documents_verified_hash,\n        u.documents_verified_at,\n        u.documents_verified_by,"
+    : "NULL AS documents_verified_hash,\n        NULL AS documents_verified_at,\n        NULL AS documents_verified_by,";
 $optionalSelectParts = [];
 foreach ($editOptionalColumns as $optionalColumn) {
     $optionalSelectParts[] = manageUsersHasColumn($pdo, $optionalColumn)
@@ -192,12 +316,8 @@ $stmtUsers = $pdo->prepare("
         u.batch,
         u.kode_nomor_induk_rs,
 
-        u.file_ktp,
-        u.file_sim,
-        u.file_kta,
-        u.file_skb,
-        u.sertifikat_heli,
-        u.sertifikat_operasi,
+        {$documentSelectSql}
+        {$documentVerificationSelectSql}
         u.dokumen_lainnya,
 
         u.resign_reason,
@@ -242,6 +362,9 @@ foreach ($users as &$userRow) {
     }
 
     $userRow['_other_doc_names'] = array_values(array_unique($userRow['_other_doc_names']));
+    $userRow['_documents'] = manageUsersBuildDocumentList($userRow, $availableDocumentColumns);
+    $userRow['_documents_hash'] = manageUsersDocumentHash($userRow['_documents']);
+    $userRow['_documents_verified'] = manageUsersDocumentsAreVerified($userRow, $userRow['_documents_hash'], $hasDocumentVerificationColumns);
 }
 unset($userRow);
 
@@ -648,6 +771,28 @@ uksort($usersByBatch, function ($a, $b) {
         font-size: 0.85rem;
     }
 
+    .doc-badge.is-pending {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid rgba(248, 113, 113, 0.6);
+    }
+
+    .doc-badge.is-pending:hover {
+        background: #fecaca;
+        color: #7f1d1d;
+    }
+
+    .doc-badge.is-verified {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid rgba(74, 222, 128, 0.62);
+    }
+
+    .doc-badge.is-verified:hover {
+        background: #bbf7d0;
+        color: #14532d;
+    }
+
     @media (min-width: 1024px) {
         .edit-user-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -963,26 +1108,16 @@ uksort($usersByBatch, function ($a, $b) {
 	                                <tbody>
 	                                    <?php foreach ($batchUsers as $i => $u): ?>
 	                                        <?php
-	                                        $docs = [
-	                                            'KTP' => $u['file_ktp'] ?? null,
-	                                            'SIM' => $u['file_sim'] ?? null,
-	                                            'KTA' => $u['file_kta'] ?? null,
-	                                            'SKB' => $u['file_skb'] ?? null,
-	                                            'SERTIFIKAT HELI' => $u['sertifikat_heli'] ?? null,
-	                                            'SERTIFIKAT OPERASI' => $u['sertifikat_operasi'] ?? null,
-	                                        ];
-
-	                                        $academyDocs = $u['_other_docs'] ?? [];
-	                                        foreach ($academyDocs as $ad) {
-	                                            $label = trim((string)($ad['name'] ?? 'File Lainnya'));
-	                                            $docs[$label] = $ad['path'] ?? null;
-	                                        }
+	                                        $docs = $u['_documents'] ?? [];
+	                                        $documentsHash = (string)($u['_documents_hash'] ?? '');
+	                                        $documentsVerified = !empty($u['_documents_verified']);
 
 	                                        $docSearchTokens = [];
-		                                        foreach ($docs as $label => $path) {
-		                                            if (empty($path)) continue;
-		                                            $docSearchTokens[] = strtolower($label);
-		                                            $docSearchTokens[] = strtolower(basename((string)$path));
+		                                        foreach ($docs as $doc) {
+		                                            $path = (string)($doc['path'] ?? '');
+		                                            if ($path === '') continue;
+		                                            $docSearchTokens[] = strtolower((string)($doc['label'] ?? ''));
+		                                            $docSearchTokens[] = strtolower(basename($path));
 		                                        }
 			                                        $docSearch = trim(implode(' ', $docSearchTokens));
 
@@ -1017,13 +1152,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                        $hasSertifikatHeli = !empty($u['sertifikat_heli']);
 		                                        $hasSertifikatOperasi = !empty($u['sertifikat_operasi']);
 		                                        $otherDocNames = $u['_other_doc_names'] ?? [];
-		                                        $hasAnyDoc = false;
-		                                        foreach ($docs as $path) {
-		                                            if (!empty($path)) {
-		                                                $hasAnyDoc = true;
-		                                                break;
-		                                            }
-		                                        }
+		                                        $hasAnyDoc = !empty($docs);
 		                                        $memberStatus = manageUsersMemberStatus($u);
 		                                        $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
                                                 $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
@@ -1044,6 +1173,8 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
 			                                            data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
 			                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
+                                                        data-docs-hash="<?= htmlspecialchars($documentsHash, ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-docs-verified="<?= $documentsVerified ? '1' : '0' ?>"
                                                         data-member-status="<?= htmlspecialchars($memberStatus) ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
@@ -1093,27 +1224,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <?php endif; ?>
                                                 </td>
 	                                            <td>
-	                                                <?php
-	                                                foreach ($docs as $label => $path):
-	                                                    if (!empty($path)):
-	                                                ?>
-                                                        <a href="#"
-                                                            class="doc-badge btn-preview-doc"
-                                                            data-src="<?= htmlspecialchars(ems_secure_file_url($path)) ?>"
-                                                            data-title="<?= htmlspecialchars($label) ?>"
-                                                            title="Lihat <?= htmlspecialchars($label) ?>">
-                                                            <?= $label ?>
-                                                        </a>
-                                                <?php
-                                                    endif;
-                                                endforeach;
-
-	                                                if (!$hasAnyDoc):
-	                                                ?>
-                                                        <span class="muted-placeholder">-</span>
-                                                <?php
-	                                                endif;
-                                                ?>
+	                                                <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
                                             </td>
                                             <td>
                                                 <div class="manage-user-action-horizontal">
@@ -1147,6 +1258,23 @@ uksort($usersByBatch, function ($a, $b) {
                                                         <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini" aria-label="Akun dilindungi">
                                                             <?= ems_icon('shield-check', 'h-4 w-4') ?>
                                                         </button>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($hasAnyDoc && $hasDocumentVerificationColumns): ?>
+                                                        <?php if ($documentsVerified): ?>
+                                                            <button class="btn-success btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Dokumen sudah diverifikasi" aria-label="Dokumen sudah diverifikasi">
+                                                                <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button class="btn-success btn-sm candidate-action-btn action-icon-btn btn-verify-docs"
+                                                                type="button"
+                                                                data-id="<?= (int)$u['id'] ?>"
+                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                                title="Verifikasi dokumen"
+                                                                aria-label="Verifikasi dokumen">
+                                                                <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php endif; ?>
 
                                                     <?php if ($u['is_active']): ?>
@@ -1226,26 +1354,16 @@ uksort($usersByBatch, function ($a, $b) {
                                 <tbody>
                                     <?php foreach ($users as $i => $u): ?>
                                         <?php
-                                        $docs = [
-                                            'KTP' => $u['file_ktp'] ?? null,
-                                            'SIM' => $u['file_sim'] ?? null,
-                                            'KTA' => $u['file_kta'] ?? null,
-                                            'SKB' => $u['file_skb'] ?? null,
-                                            'SERTIFIKAT HELI' => $u['sertifikat_heli'] ?? null,
-                                            'SERTIFIKAT OPERASI' => $u['sertifikat_operasi'] ?? null,
-                                        ];
-
-                                        $academyDocs = $u['_other_docs'] ?? [];
-                                        foreach ($academyDocs as $ad) {
-                                            $label = trim((string)($ad['name'] ?? 'File Lainnya'));
-                                            $docs[$label] = $ad['path'] ?? null;
-                                        }
+                                        $docs = $u['_documents'] ?? [];
+                                        $documentsHash = (string)($u['_documents_hash'] ?? '');
+                                        $documentsVerified = !empty($u['_documents_verified']);
 
                                         $docSearchTokens = [];
-                                        foreach ($docs as $label => $path) {
-                                            if (empty($path)) continue;
-                                            $docSearchTokens[] = strtolower($label);
-                                            $docSearchTokens[] = strtolower(basename((string)$path));
+                                        foreach ($docs as $doc) {
+                                            $path = (string)($doc['path'] ?? '');
+                                            if ($path === '') continue;
+                                            $docSearchTokens[] = strtolower((string)($doc['label'] ?? ''));
+                                            $docSearchTokens[] = strtolower(basename($path));
                                         }
                                         $docSearch = trim(implode(' ', $docSearchTokens));
 
@@ -1282,13 +1400,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         $hasSertifikatHeli = !empty($u['sertifikat_heli']);
                                         $hasSertifikatOperasi = !empty($u['sertifikat_operasi']);
                                         $otherDocNames = $u['_other_doc_names'] ?? [];
-                                        $hasAnyDoc = false;
-                                        foreach ($docs as $path) {
-                                            if (!empty($path)) {
-                                                $hasAnyDoc = true;
-                                                break;
-                                            }
-                                        }
+                                        $hasAnyDoc = !empty($docs);
                                         $memberStatus = manageUsersMemberStatus($u);
                                         $isProtectedUser = manageUsersIsProtectedUser($u['full_name'] ?? '');
                                         $canManageProtectedUser = manageUsersCanManageProtectedUser($user, $u);
@@ -1310,6 +1422,8 @@ uksort($usersByBatch, function ($a, $b) {
                                             data-has-sertifikat-heli="<?= $hasSertifikatHeli ? '1' : '0' ?>"
                                             data-has-sertifikat-operasi="<?= $hasSertifikatOperasi ? '1' : '0' ?>"
                                             data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
+                                            data-docs-hash="<?= htmlspecialchars($documentsHash, ENT_QUOTES, 'UTF-8') ?>"
+                                            data-docs-verified="<?= $documentsVerified ? '1' : '0' ?>"
                                             data-member-status="<?= htmlspecialchars($memberStatus) ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td>
@@ -1365,27 +1479,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <?php
-                                                foreach ($docs as $label => $path):
-                                                    if (!empty($path)):
-                                                ?>
-                                                        <a href="#"
-                                                            class="doc-badge btn-preview-doc"
-                                                            data-src="<?= htmlspecialchars(ems_secure_file_url($path)) ?>"
-                                                            data-title="<?= htmlspecialchars($label) ?>"
-                                                            title="Lihat <?= htmlspecialchars($label) ?>">
-                                                            <?= $label ?>
-                                                        </a>
-                                                <?php
-                                                    endif;
-                                                endforeach;
-
-                                                if (!$hasAnyDoc):
-                                                ?>
-                                                        <span class="muted-placeholder">-</span>
-                                                <?php
-                                                endif;
-                                                ?>
+                                                <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
                                             </td>
                                             <td>
                                                 <div class="manage-user-action-horizontal">
@@ -1419,6 +1513,23 @@ uksort($usersByBatch, function ($a, $b) {
                                                         <button class="btn-secondary btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Hanya pemilik akun yang bisa edit akun ini" aria-label="Akun dilindungi">
                                                             <?= ems_icon('shield-check', 'h-4 w-4') ?>
                                                         </button>
+                                                    <?php endif; ?>
+
+                                                    <?php if ($hasAnyDoc && $hasDocumentVerificationColumns): ?>
+                                                        <?php if ($documentsVerified): ?>
+                                                            <button class="btn-success btn-sm candidate-action-btn action-icon-btn" type="button" disabled title="Dokumen sudah diverifikasi" aria-label="Dokumen sudah diverifikasi">
+                                                                <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <button class="btn-success btn-sm candidate-action-btn action-icon-btn btn-verify-docs"
+                                                                type="button"
+                                                                data-id="<?= (int)$u['id'] ?>"
+                                                                data-name="<?= htmlspecialchars($u['full_name'], ENT_QUOTES) ?>"
+                                                                title="Verifikasi dokumen"
+                                                                aria-label="Verifikasi dokumen">
+                                                                <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php endif; ?>
 
                                                     <?php if ($u['is_active']): ?>
@@ -1494,6 +1605,7 @@ uksort($usersByBatch, function ($a, $b) {
                             'delete' => 'telah menghapus akun medis',
                             'resign' => 'telah menonaktifkan akun medis',
                             'reactivate' => 'telah mengaktifkan kembali akun medis',
+                            'verify_documents' => 'telah memverifikasi dokumen medis',
                         ];
                         $actionText = $actionTextMap[$actionType] ?? 'telah memperbarui akun medis';
                         ?>
@@ -1581,6 +1693,40 @@ uksort($usersByBatch, function ($a, $b) {
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary btn-cancel">Batal</button>
                     <button type="submit" class="btn-success action-icon-btn" title="Aktifkan user" aria-label="Aktifkan user"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="verifyDocsModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Verifikasi Dokumen Medis</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+
+        <form method="POST" action="manage_users_action.php" class="form modal-form">
+            <div class="modal-content">
+                <?= csrfField() ?>
+                <input type="hidden" name="action" value="verify_documents">
+                <input type="hidden" name="user_id" id="verifyDocsUserId">
+
+                <p>
+                    Yakin dokumen medis
+                    <strong id="verifyDocsUserName"></strong>
+                    sudah sesuai dengan berkas yang diupload?
+                </p>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-success action-icon-btn" title="Ya, dokumen sesuai" aria-label="Ya, dokumen sesuai">
+                        <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                    </button>
                 </div>
             </div>
         </form>
@@ -2218,6 +2364,36 @@ uksort($usersByBatch, function ($a, $b) {
                 setTimeout(() => el.remove(), 600);
             });
         }, 5000);
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const verifyDocsModal = document.getElementById('verifyDocsModal');
+
+        document.body.addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-verify-docs');
+            if (!btn || !verifyDocsModal) return;
+
+            document.getElementById('verifyDocsUserId').value = btn.dataset.id;
+            document.getElementById('verifyDocsUserName').innerText = btn.dataset.name;
+
+            verifyDocsModal.classList.remove('hidden');
+            verifyDocsModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        });
+
+        document.body.addEventListener('click', function(e) {
+            if (!verifyDocsModal) return;
+            if (
+                e.target === verifyDocsModal ||
+                (verifyDocsModal.contains(e.target) && e.target.closest('.btn-cancel'))
+            ) {
+                verifyDocsModal.classList.add('hidden');
+                verifyDocsModal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+            }
+        });
     });
 </script>
 

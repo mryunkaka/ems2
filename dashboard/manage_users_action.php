@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../helpers/user_docs_helper.php';
 
 $sessionUser = $_SESSION['user_rh'] ?? [];
 $sessionRole = $sessionUser['role'] ?? '';
@@ -204,6 +205,83 @@ function manageUsersActionCanSelfManageProtectedUser(array $sessionUser, array $
 
     return (int)($sessionUser['id'] ?? 0) > 0
         && (int)($sessionUser['id'] ?? 0) === (int)($targetUser['id'] ?? 0);
+}
+
+function manageUsersActionDocumentColumns(PDO $pdo): array
+{
+    $labels = [
+        'file_ktp' => 'KTP',
+        'file_sim' => 'SIM',
+        'file_kta' => 'KTA',
+        'file_skb' => 'SKB',
+        'file_kontrak_kerja' => 'KONTRAK KERJA',
+        'sertifikat_heli' => 'SERTIFIKAT HELI',
+        'sertifikat_operasi' => 'SERTIFIKAT OPERASI',
+        'sertifikat_operasi_plastik' => 'SERTIFIKAT OPERASI PLASTIK',
+        'sertifikat_operasi_kecil' => 'SERTIFIKAT OPERASI KECIL',
+        'sertifikat_operasi_besar' => 'SERTIFIKAT OPERASI BESAR',
+        'sertifikat_class_co_asst' => 'SERTIFIKAT CLASS CO. ASST',
+        'sertifikat_class_paramedic' => 'SERTIFIKAT CLASS PARAMEDIC',
+    ];
+
+    return array_filter(
+        $labels,
+        static fn(string $label, string $column): bool => manageUsersActionHasColumn($pdo, $column),
+        ARRAY_FILTER_USE_BOTH
+    );
+}
+
+function manageUsersActionBuildDocumentList(array $userRow, array $documentColumns): array
+{
+    $docs = [];
+
+    foreach ($documentColumns as $field => $label) {
+        $path = trim((string)($userRow[$field] ?? ''));
+        if ($path === '') {
+            continue;
+        }
+
+        $docs[] = [
+            'key' => $field,
+            'label' => $label,
+            'path' => $path,
+        ];
+    }
+
+    $otherDocs = ensureAcademyDocIds(parseAcademyDocs($userRow['dokumen_lainnya'] ?? ''));
+    foreach ($otherDocs as $otherDoc) {
+        $label = trim((string)($otherDoc['name'] ?? 'File Lainnya'));
+        $path = trim((string)($otherDoc['path'] ?? ''));
+        if ($path === '') {
+            continue;
+        }
+
+        $docs[] = [
+            'key' => 'other:' . ($otherDoc['id'] ?? sha1($label . '|' . $path)),
+            'label' => $label !== '' ? $label : 'File Lainnya',
+            'path' => $path,
+        ];
+    }
+
+    return $docs;
+}
+
+function manageUsersActionDocumentHash(array $docs): string
+{
+    $payload = [];
+    foreach ($docs as $doc) {
+        $payload[] = [
+            'key' => (string)($doc['key'] ?? ''),
+            'label' => (string)($doc['label'] ?? ''),
+            'path' => (string)($doc['path'] ?? ''),
+        ];
+    }
+
+    usort($payload, static function (array $left, array $right): int {
+        return strcmp(($left['key'] ?? '') . '|' . ($left['path'] ?? ''), ($right['key'] ?? '') . '|' . ($right['path'] ?? ''));
+    });
+
+    return hash('sha256', json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]');
 }
 
 /* =========================================================
@@ -420,6 +498,97 @@ function generateKodeMedis(int $userId, string $fullName, int $batch): string
     // 5. FINAL FORMAT
     // ===============================
     return 'RH' . $batchCode . '-' . $idPart . $numberPart;
+}
+
+if ($action === 'verify_documents') {
+    if (
+        !manageUsersActionHasColumn($pdo, 'documents_verified_hash')
+        || !manageUsersActionHasColumn($pdo, 'documents_verified_at')
+        || !manageUsersActionHasColumn($pdo, 'documents_verified_by')
+    ) {
+        $_SESSION['flash_errors'][] = 'Kolom verifikasi dokumen belum tersedia. Jalankan migrasi verifikasi dokumen terlebih dahulu.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $userId = (int)($_POST['user_id'] ?? 0);
+    if ($userId <= 0) {
+        $_SESSION['flash_errors'][] = 'User tidak valid.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    if (!manageUsersActionTargetExists($pdo, $userId, $hasUnitCodeColumn, $effectiveUnit)) {
+        $_SESSION['flash_errors'][] = 'User di luar unit aktif tidak dapat diakses.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $documentColumns = manageUsersActionDocumentColumns($pdo);
+    $selectColumns = ['id', 'full_name', 'dokumen_lainnya'];
+    foreach (array_keys($documentColumns) as $documentColumn) {
+        $selectColumns[] = $documentColumn;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT " . implode(', ', $selectColumns) . "
+        FROM user_rh
+        WHERE id = ?
+        " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
+        LIMIT 1
+    ");
+    $params = [$userId];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
+    $targetUser = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    if (!$targetUser) {
+        $_SESSION['flash_errors'][] = 'User tidak ditemukan.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $docs = manageUsersActionBuildDocumentList($targetUser, $documentColumns);
+    if (empty($docs)) {
+        $_SESSION['flash_errors'][] = 'User belum memiliki dokumen yang bisa diverifikasi.';
+        header('Location: manage_users.php');
+        exit;
+    }
+
+    $documentHash = manageUsersActionDocumentHash($docs);
+
+    $stmt = $pdo->prepare("
+        UPDATE user_rh
+        SET documents_verified_hash = ?,
+            documents_verified_at = NOW(),
+            documents_verified_by = ?
+        WHERE id = ?
+        " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
+    ");
+    $params = [
+        $documentHash,
+        (int)($sessionUser['id'] ?? 0) ?: null,
+        $userId,
+    ];
+    if ($hasUnitCodeColumn) {
+        $params[] = $effectiveUnit;
+    }
+    $stmt->execute($params);
+
+    manageUsersActionWriteHistory(
+        $pdo,
+        $sessionUser,
+        $userId,
+        $targetUser['full_name'] ?? 'User',
+        'verify_documents',
+        'Dokumen medis diverifikasi sesuai berkas upload.'
+    );
+
+    $_SESSION['flash_messages'][] = 'Dokumen medis berhasil diverifikasi.';
+    header('Location: manage_users.php');
+    exit;
 }
 
 if ($action === 'delete_kode_medis') {

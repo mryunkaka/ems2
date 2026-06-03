@@ -33,6 +33,21 @@ function secureFileIsInside(string $fullPath, string $basePath): bool
     return str_starts_with(str_replace('\\', '/', $fullPath), str_replace('\\', '/', $basePath));
 }
 
+function secureFileUserRhHasColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+
+    if (array_key_exists($column, $cache)) {
+        return $cache[$column];
+    }
+
+    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
+    $stmt->execute([$column]);
+    $cache[$column] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $cache[$column];
+}
+
 $relativePath = secureFileNormalizedPath((string)($_GET['path'] ?? ''));
 if ($relativePath === '' || !str_starts_with($relativePath, 'storage/')) {
     secureFileAbort(400, 'Path file tidak valid.');
@@ -126,20 +141,40 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/user_docs/')) {
+    $userDocColumns = [
+        'file_ktp',
+        'file_sim',
+        'file_kta',
+        'file_skb',
+        'file_kontrak_kerja',
+        'sertifikat_heli',
+        'sertifikat_operasi',
+        'sertifikat_operasi_plastik',
+        'sertifikat_operasi_kecil',
+        'sertifikat_operasi_besar',
+        'sertifikat_class_co_asst',
+        'sertifikat_class_paramedic',
+    ];
+    $userDocConditions = [];
+    $userDocParams = [];
+    foreach ($userDocColumns as $column) {
+        if (!secureFileUserRhHasColumn($pdo, $column)) {
+            continue;
+        }
+
+        $userDocConditions[] = "{$column} = ?";
+        $userDocParams[] = $relativePath;
+    }
+    $userDocConditions[] = "COALESCE(dokumen_lainnya, '') LIKE ?";
+    $userDocParams[] = '%' . $relativePath . '%';
+
     $stmt = $pdo->prepare("
         SELECT id
         FROM user_rh
-        WHERE file_ktp = ?
-           OR file_sim = ?
-           OR file_kta = ?
-           OR file_skb = ?
-           OR sertifikat_heli = ?
-           OR sertifikat_operasi = ?
-           OR COALESCE(dokumen_lainnya, '') LIKE ?
+        WHERE " . implode("\n           OR ", $userDocConditions) . "
         LIMIT 1
     ");
-    $likePath = '%' . $relativePath . '%';
-    $stmt->execute([$relativePath, $relativePath, $relativePath, $relativePath, $relativePath, $relativePath, $likePath]);
+    $stmt->execute($userDocParams);
     $ownerId = (int)$stmt->fetchColumn();
     if ($ownerId <= 0 || ($ownerId !== $userId && ems_is_staff_role($userRole))) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
