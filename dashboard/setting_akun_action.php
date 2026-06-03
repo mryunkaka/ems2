@@ -333,6 +333,9 @@ $userRhColumns = settingAkunActionUserRhColumns($pdo);
 if (isset($userRhColumns['tanggal_lahir_ic'])) {
     $settingAkunSelectColumns[] = 'tanggal_lahir_ic';
 }
+if (isset($userRhColumns['file_kontrak_kerja'])) {
+    $settingAkunSelectColumns[] = 'file_kontrak_kerja';
+}
 foreach (array_merge($settingAkunExtraDocFields, $settingAkunIssuedDateFields, $settingAkunDateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $settingAkunSelectColumns[] = $optionalColumn;
@@ -368,6 +371,9 @@ $requiredDocFields = [
     'file_skb' => 'Upload SKB wajib diunggah.',
     'file_kta' => 'Upload KTA wajib diunggah.',
 ];
+if (array_key_exists('file_kontrak_kerja', $userDb)) {
+    $requiredDocFields['file_kontrak_kerja'] = 'Kontrak kerja wajib diunggah.';
+}
 
 foreach ($requiredDocFields as $field => $message) {
     $hasExistingFile = !empty($userDb[$field]);
@@ -456,6 +462,9 @@ $docFields = [
     'sertifikat_heli',
     'sertifikat_operasi',
 ];
+if (array_key_exists('file_kontrak_kerja', $userDb)) {
+    $docFields[] = 'file_kontrak_kerja';
+}
 foreach ($settingAkunExtraDocFields as $extraDocField) {
     if (array_key_exists($extraDocField, $userDb)) {
         $docFields[] = $extraDocField;

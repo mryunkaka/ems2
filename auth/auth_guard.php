@@ -70,9 +70,25 @@ function authGuardRequiresTanggalLahirIc(string $scriptName): bool
     ], true);
 }
 
+function authGuardRequiresKontrakKerja(string $scriptName): bool
+{
+    return !in_array($scriptName, [
+        'setting_akun.php',
+        'setting_akun_action.php',
+        'setting_akun_quick_save.php',
+    ], true);
+}
+
 function authGuardRedirectTanggalLahirIcRequired(): void
 {
     $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi terlebih dahulu sebelum mengakses halaman dashboard.';
+    header('Location: /dashboard/setting_akun.php');
+    exit;
+}
+
+function authGuardRedirectKontrakKerjaRequired(): void
+{
+    $_SESSION['flash_errors'][] = 'Kontrak kerja wajib diunggah terlebih dahulu sebelum mengakses halaman dashboard.';
     header('Location: /dashboard/setting_akun.php');
     exit;
 }
@@ -85,12 +101,14 @@ if (isset($_SESSION['user_rh'])) {
             $hasUnitCodeColumn = authGuardUserRhHasColumn($pdo, 'unit_code');
             $hasCanViewAllUnitsColumn = authGuardUserRhHasColumn($pdo, 'can_view_all_units');
             $hasTanggalLahirIcColumn = authGuardUserRhHasColumn($pdo, 'tanggal_lahir_ic');
+            $hasKontrakKerjaColumn = authGuardUserRhHasColumn($pdo, 'file_kontrak_kerja');
             $divisionSelect = $hasDivisionColumn ? ', division' : '';
             $unitSelect = $hasUnitCodeColumn ? ', unit_code' : '';
             $canViewAllUnitsSelect = $hasCanViewAllUnitsColumn ? ', can_view_all_units' : '';
             $tanggalLahirIcSelect = $hasTanggalLahirIcColumn ? ', tanggal_lahir_ic' : '';
+            $kontrakKerjaSelect = $hasKontrakKerjaColumn ? ', file_kontrak_kerja' : '';
             $stmt = $pdo->prepare("
-                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}{$tanggalLahirIcSelect}
+                SELECT role, position, full_name, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}{$tanggalLahirIcSelect}{$kontrakKerjaSelect}
                 FROM user_rh
                 WHERE id = ?
                 LIMIT 1
@@ -114,6 +132,9 @@ if (isset($_SESSION['user_rh'])) {
                 if (array_key_exists('tanggal_lahir_ic', $row)) {
                     $_SESSION['user_rh']['tanggal_lahir_ic'] = $row['tanggal_lahir_ic'] ?? null;
                 }
+                if (array_key_exists('file_kontrak_kerja', $row)) {
+                    $_SESSION['user_rh']['file_kontrak_kerja'] = $row['file_kontrak_kerja'] ?? null;
+                }
                 if (!empty($row['full_name'])) {
                     $_SESSION['user_rh']['name'] = $row['full_name'];
                     $_SESSION['user_rh']['full_name'] = $row['full_name'];
@@ -136,6 +157,14 @@ if (isset($_SESSION['user_rh'])) {
             $tanggalLahirIc = trim((string)($_SESSION['user_rh']['tanggal_lahir_ic'] ?? ''));
             if ($tanggalLahirIc === '') {
                 authGuardRedirectTanggalLahirIcRequired();
+            }
+        }
+
+        $hasKontrakKerjaColumn = authGuardUserRhHasColumn($pdo, 'file_kontrak_kerja');
+        if ($hasKontrakKerjaColumn && authGuardRequiresKontrakKerja($currentScript)) {
+            $kontrakKerja = trim((string)($_SESSION['user_rh']['file_kontrak_kerja'] ?? ''));
+            if ($kontrakKerja === '') {
+                authGuardRedirectKontrakKerjaRequired();
             }
         }
 
@@ -188,6 +217,7 @@ if (!empty($_COOKIE['remember_login'])) {
                     'cuti_start_date' => $user['cuti_start_date'] ?? null,
                     'cuti_end_date' => $user['cuti_end_date'] ?? null,
                     'tanggal_lahir_ic' => $user['tanggal_lahir_ic'] ?? null,
+                    'file_kontrak_kerja' => $user['file_kontrak_kerja'] ?? null,
                 ];
                 return;
             }

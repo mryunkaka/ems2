@@ -41,6 +41,7 @@ $baseSelectColumns = [
 
 $optionalSettingAkunColumns = [
     'tanggal_lahir_ic',
+    'file_kontrak_kerja',
     'sertifikat_operasi_plastik',
     'sertifikat_operasi_kecil',
     'sertifikat_operasi_besar',
@@ -514,6 +515,9 @@ DOKUMEN PENDUKUNG
                     renderDocInput('Upload SKB', 'file_skb', $userDb['file_skb'], true);
                     renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
                     renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
+                    if (array_key_exists('file_kontrak_kerja', $userDb)) {
+                        renderDocInput('Kontrak Kerja', 'file_kontrak_kerja', $userDb['file_kontrak_kerja'], true);
+                    }
                     renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
                     renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
                     if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {

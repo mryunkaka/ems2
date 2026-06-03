@@ -215,6 +215,9 @@ if (isset($userRhColumns['tanggal_lahir_ic'])) {
         quickSaveRespond(false, 'Format tanggal lahir IC tidak valid.', [], 422);
     }
 }
+if (isset($userRhColumns['file_kontrak_kerja'])) {
+    $selectColumns[] = 'file_kontrak_kerja';
+}
 foreach (array_merge($extraDocFields, $issuedDateFields, $dateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $selectColumns[] = $optionalColumn;
@@ -238,6 +241,21 @@ if (empty($userDb)) {
     quickSaveRespond(false, 'User tidak ditemukan.', [], 404);
 }
 
+$requiredDocFields = [
+    'file_ktp' => 'Upload KTP wajib diunggah.',
+    'file_skb' => 'Upload SKB wajib diunggah.',
+    'file_kta' => 'Upload KTA wajib diunggah.',
+];
+if (array_key_exists('file_kontrak_kerja', $userDb)) {
+    $requiredDocFields['file_kontrak_kerja'] = 'Kontrak kerja wajib diunggah.';
+}
+foreach ($requiredDocFields as $field => $message) {
+    $hasExistingFile = trim((string)($userDb[$field] ?? '')) !== '';
+    if (!$hasExistingFile) {
+        quickSaveRespond(false, $message, [], 422);
+    }
+}
+
 if ($willChangePin && !password_verify($oldPin, (string)($userDb['pin'] ?? ''))) {
     quickSaveRespond(false, 'PIN lama salah.', [], 422);
 }
@@ -256,6 +274,9 @@ $docFields = [
     'sertifikat_heli',
     'sertifikat_operasi',
 ];
+if (array_key_exists('file_kontrak_kerja', $userDb)) {
+    $docFields[] = 'file_kontrak_kerja';
+}
 foreach ($extraDocFields as $extraDocField) {
     if (array_key_exists($extraDocField, $userDb)) {
         $docFields[] = $extraDocField;
