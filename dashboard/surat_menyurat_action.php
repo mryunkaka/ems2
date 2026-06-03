@@ -310,10 +310,19 @@ function surat_require_revision_columns(PDO $pdo, string $table): void
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
+$userDivision = trim((string)($user['division'] ?? ''));
 $action = trim((string)($_POST['action'] ?? ''));
+$isSecretaryDivision = strcasecmp($userDivision, 'Secretary') === 0;
+$secretaryAllowedActions = [
+    'mark_incoming_read',
+    'add_outgoing_letter',
+    'edit_outgoing_letter',
+    'add_meeting_minutes',
+    'edit_meeting_minutes',
+];
 
-if (!ems_is_letter_receiver_role($userRole)) {
-    $_SESSION['flash_errors'][] = 'Akses surat hanya untuk role manager.';
+if (!ems_is_letter_receiver_role($userRole) && (!$isSecretaryDivision || !in_array($action, $secretaryAllowedActions, true))) {
+    $_SESSION['flash_errors'][] = 'Akses surat hanya untuk role manager atau divisi Secretary.';
     surat_redirect('../dashboard/rekap_farmasi.php');
 }
 

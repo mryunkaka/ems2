@@ -118,10 +118,13 @@ try {
         $summary['archived'] = (int) ($summaryRow['archived_count'] ?? 0);
 
         $rowStmt = $pdo->prepare("
-            SELECT *
-            FROM secretary_file_records
+            SELECT
+                sfr.*,
+                updater.full_name AS updated_by_name
+            FROM secretary_file_records sfr
+            LEFT JOIN user_rh updater ON updater.id = sfr.updated_by
             WHERE COALESCE(keywords, '') NOT LIKE :hidden_marker
-            ORDER BY document_date DESC, id DESC
+            ORDER BY sfr.document_date DESC, sfr.id DESC
         ");
         $rowStmt->execute([':hidden_marker' => $hiddenMarkerLike]);
         $rows = $rowStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -334,6 +337,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Detail File</th>
                                 <th>Tanggal</th>
                                 <th>Status</th>
+                                <th>Terakhir Diedit</th>
                                 <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
@@ -371,6 +375,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><?= htmlspecialchars((string) $row['document_date'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <strong><?= htmlspecialchars((string)($row['updated_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <?php if (!empty($row['updated_by'])): ?>
+                                            <div class="meta-text-xs"><?= htmlspecialchars((string)($row['updated_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">

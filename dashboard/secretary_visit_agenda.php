@@ -86,9 +86,11 @@ try {
     $agendas = $pdo->query("
         SELECT
             sva.*,
-            pic.full_name AS pic_name
+            pic.full_name AS pic_name,
+            updater.full_name AS updated_by_name
         FROM secretary_visit_agendas sva
         INNER JOIN user_rh pic ON pic.id = sva.pic_user_id
+        LEFT JOIN user_rh updater ON updater.id = sva.updated_by
         ORDER BY sva.visit_date DESC, sva.visit_time DESC, sva.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -265,6 +267,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Jadwal</th>
                                 <th>PIC</th>
                                 <th>Status</th>
+                                <th>Terakhir Diedit</th>
                                 <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
@@ -302,6 +305,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><?= htmlspecialchars((string) $agenda['pic_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <strong><?= htmlspecialchars((string)($agenda['updated_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <?php if (!empty($agenda['updated_by'])): ?>
+                                            <div class="meta-text-xs"><?= htmlspecialchars((string)($agenda['updated_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">

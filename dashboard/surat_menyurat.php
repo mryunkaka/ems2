@@ -12,11 +12,14 @@ $pageTitle = 'Surat Masuk, Keluar, dan Notulen';
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
+$userDivision = trim((string)($user['division'] ?? ''));
 $medicName = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $avatarInitials = initialsFromName($medicName);
 $avatarColor = avatarColorFromName($medicName);
-$canAcknowledge = ems_is_letter_receiver_role($userRole);
+$isSecretaryDivision = strcasecmp($userDivision, 'Secretary') === 0;
+$canAcknowledge = ems_is_letter_receiver_role($userRole) || $isSecretaryDivision;
+$canEditRecords = $canAcknowledge;
 $canManageRecords = ems_is_letter_receiver_role($userRole);
 $divisionScopeOptions = ems_division_scope_options();
 $allDivisionValue = ems_all_division_scope_value();
@@ -217,10 +220,12 @@ try {
         SELECT
             o.*,
             u.full_name AS created_by_name,
+            " . ($hasOutgoingRevisionColumns ? "updater.full_name" : "NULL") . " AS updated_by_name,
             " . ($hasOutgoingDivisionScope ? "o.division_scope" : "'All Divisi' AS division_scope") . ",
             " . ($hasOutgoingRevisionColumns ? "o.revision_count, o.revision_label, o.updated_at" : "0 AS revision_count, NULL AS revision_label, NULL AS updated_at") . "
         FROM outgoing_letters o
         LEFT JOIN user_rh u ON u.id = o.created_by
+        " . ($hasOutgoingRevisionColumns ? "LEFT JOIN user_rh updater ON updater.id = o.updated_by" : "") . "
         ORDER BY
             COALESCE(o.appointment_date, DATE(o.created_at)) DESC,
             COALESCE(o.appointment_time, TIME(o.created_at)) DESC,
@@ -233,11 +238,13 @@ try {
         SELECT
             m.*,
             u.full_name AS created_by_name,
+            " . ($hasMinutesRevisionColumns ? "updater.full_name" : "NULL") . " AS updated_by_name,
             " . ($hasMinutesDivisionScope ? "m.division_scope" : "'All Divisi' AS division_scope") . ",
             " . ($hasMinutesCodeColumn ? "m.minutes_code" : "NULL AS minutes_code") . ",
             " . ($hasMinutesRevisionColumns ? "m.revision_count, m.revision_label, m.updated_at" : "0 AS revision_count, NULL AS revision_label, NULL AS updated_at") . "
         FROM meeting_minutes m
         LEFT JOIN user_rh u ON u.id = m.created_by
+        " . ($hasMinutesRevisionColumns ? "LEFT JOIN user_rh updater ON updater.id = m.updated_by" : "") . "
         ORDER BY m.meeting_date DESC, m.meeting_time DESC, m.created_at DESC
         LIMIT 100
     ");
@@ -719,6 +726,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($row['updated_at'])): ?>
                                                 <div class="meta-text-xs">Edit <?= htmlspecialchars((string)$row['updated_at']) ?></div>
                                             <?php endif; ?>
+                                            <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['updated_by_name'] ?? '-')) ?></div>
                                         </td>
                                         <td>
                                             <?= htmlspecialchars((string)($row['appointment_date'] ?: '-')) ?><br>
@@ -760,8 +768,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     aria-label="Lihat detail surat keluar">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 </button>
-                                            <?php if ($canManageRecords): ?>
+                                            <?php if ($canEditRecords || $canManageRecords): ?>
                                                     <?php if ($hasOutgoingRevisionColumns): ?>
+                                                        <?php if ($canEditRecords): ?>
                                                         <button
                                                             type="button"
                                                             class="btn-secondary action-icon-btn btn-edit-outgoing"
@@ -781,9 +790,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             aria-label="Edit surat keluar">
                                                             <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <span class="meta-text-xs">Edit butuh SQL revisi</span>
                                                     <?php endif; ?>
+                                                    <?php if ($canManageRecords): ?>
                                                     <form method="POST" action="surat_menyurat_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus surat keluar ini? Relasi notulen akan dilepas.">
                                                         <?= csrfField(); ?>
                                                         <input type="hidden" name="action" value="delete_outgoing_letter">
@@ -792,6 +803,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
+                                                    <?php endif; ?>
                                             <?php endif; ?>
                                             </div>
                                         </td>
@@ -842,6 +854,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($row['updated_at'])): ?>
                                                 <div class="meta-text-xs">Edit <?= htmlspecialchars((string)$row['updated_at']) ?></div>
                                             <?php endif; ?>
+                                            <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['updated_by_name'] ?? '-')) ?></div>
                                         </td>
                                         <td>
                                             <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['participants'], 90)) ?></div>
@@ -887,8 +900,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     aria-label="Lihat detail notulen">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 </button>
-                                                <?php if ($canManageRecords): ?>
+                                                <?php if ($canEditRecords || $canManageRecords): ?>
                                                     <?php if ($hasMinutesRevisionColumns): ?>
+                                                        <?php if ($canEditRecords): ?>
                                                         <button
                                                             type="button"
                                                             class="btn-secondary action-icon-btn btn-edit-minutes"
@@ -909,9 +923,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             aria-label="Edit notulen">
                                                             <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <span class="meta-text-xs">Edit butuh SQL revisi</span>
                                                     <?php endif; ?>
+                                                    <?php if ($canManageRecords): ?>
                                                     <form method="POST" action="surat_menyurat_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus notulen ini?">
                                                         <?= csrfField(); ?>
                                                         <input type="hidden" name="action" value="delete_meeting_minutes">
@@ -920,6 +936,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -970,6 +987,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php if (!empty($row['updated_at'])): ?>
                                                 <div class="meta-text-xs">Edit <?= htmlspecialchars((string)$row['updated_at']) ?></div>
                                             <?php endif; ?>
+                                            <div class="meta-text-xs">Oleh <?= htmlspecialchars((string)($row['updated_by_name'] ?? '-')) ?></div>
                                         </td>
                                         <td>
                                             <div class="text-sm text-slate-700"><?= htmlspecialchars(surat_excerpt((string)$row['participants'], 90)) ?></div>
@@ -1015,8 +1033,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     aria-label="Lihat detail notulen">
                                                     <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 </button>
-                                                <?php if ($canManageRecords): ?>
+                                                <?php if ($canEditRecords || $canManageRecords): ?>
                                                     <?php if ($hasMinutesRevisionColumns): ?>
+                                                        <?php if ($canEditRecords): ?>
                                                         <button
                                                             type="button"
                                                             class="btn-secondary action-icon-btn btn-edit-minutes"
@@ -1037,9 +1056,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             aria-label="Edit notulen">
                                                             <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                         </button>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <span class="meta-text-xs">Edit butuh SQL revisi</span>
                                                     <?php endif; ?>
+                                                    <?php if ($canManageRecords): ?>
                                                     <form method="POST" action="surat_menyurat_action.php" class="inline js-delete-form" data-confirm="Yakin ingin menghapus notulen ini?">
                                                         <?= csrfField(); ?>
                                                         <input type="hidden" name="action" value="delete_meeting_minutes">
@@ -1048,6 +1069,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                             <?= ems_icon('trash', 'h-4 w-4') ?>
                                                         </button>
                                                     </form>
+                                                    <?php endif; ?>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -1913,6 +1935,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         if (outgoingEditModal) {
+            const outgoingEditRevisionLabel = document.getElementById('outgoingEditRevisionLabel');
             document.querySelectorAll('.btn-edit-outgoing').forEach(function(button) {
                 button.addEventListener('click', function() {
                     document.getElementById('editOutgoingLetterId').value = button.dataset.id || '';
@@ -1928,7 +1951,9 @@ include __DIR__ . '/../partials/sidebar.php';
                     document.getElementById('editOutgoingAppointmentTime').value = button.dataset.appointmentTime || '';
                     document.getElementById('editOutgoingDivisionScope').value = button.dataset.divisionScope || 'All Divisi';
                     document.getElementById('editOutgoingLetterBody').value = button.dataset.letterBody || '';
-                    document.getElementById('outgoingEditRevisionLabel').textContent = button.dataset.revisionLabel || 'draft-awal';
+                    if (outgoingEditRevisionLabel) {
+                        outgoingEditRevisionLabel.textContent = button.dataset.revisionLabel || 'draft-awal';
+                    }
 
                     openModal(outgoingEditModal);
                     editOutgoingCodeControl.refresh(false);
@@ -1937,6 +1962,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
 
         if (minutesEditModal) {
+            const minutesEditRevisionLabel = document.getElementById('minutesEditRevisionLabel');
             document.querySelectorAll('.btn-edit-minutes').forEach(function(button) {
                 button.addEventListener('click', function() {
                     document.getElementById('editMinutesId').value = button.dataset.id || '';
@@ -1953,7 +1979,9 @@ include __DIR__ . '/../partials/sidebar.php';
                     document.getElementById('editMinutesSummary').value = button.dataset.summary || '';
                     document.getElementById('editMinutesDecisions').value = button.dataset.decisions || '';
                     document.getElementById('editMinutesFollowUp').value = button.dataset.followUp || '';
-                    document.getElementById('minutesEditRevisionLabel').textContent = button.dataset.revisionLabel || 'draft-awal';
+                    if (minutesEditRevisionLabel) {
+                        minutesEditRevisionLabel.textContent = button.dataset.revisionLabel || 'draft-awal';
+                    }
 
                     openModal(minutesEditModal);
                     syncEditMinutesDivisionField();

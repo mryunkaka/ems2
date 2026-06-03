@@ -93,9 +93,12 @@ try {
     $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_confidential_letters WHERE status = 'archived'")->fetchColumn();
 
     $rows = $pdo->query("
-        SELECT *
-        FROM secretary_confidential_letters
-        ORDER BY letter_date DESC, id DESC
+        SELECT
+            scl.*,
+            updater.full_name AS updated_by_name
+        FROM secretary_confidential_letters scl
+        LEFT JOIN user_rh updater ON updater.id = scl.updated_by
+        ORDER BY scl.letter_date DESC, scl.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
     if ($hasAttachmentTable && !empty($rows)) {
@@ -276,6 +279,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Subjek</th>
                                 <th>Level</th>
                                 <th>Status</th>
+                                <th>Terakhir Diedit</th>
                                 <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
@@ -312,6 +316,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><span class="<?= htmlspecialchars($levelMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($levelMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <strong><?= htmlspecialchars((string)($row['updated_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <?php if (!empty($row['updated_by'])): ?>
+                                            <div class="meta-text-xs"><?= htmlspecialchars((string)($row['updated_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">

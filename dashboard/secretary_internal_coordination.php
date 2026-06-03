@@ -80,9 +80,11 @@ try {
     $rows = $pdo->query("
         SELECT
             sic.*,
-            host.full_name AS host_name
+            host.full_name AS host_name,
+            updater.full_name AS updated_by_name
         FROM secretary_internal_coordinations sic
         INNER JOIN user_rh host ON host.id = sic.host_user_id
+        LEFT JOIN user_rh updater ON updater.id = sic.updated_by
         ORDER BY sic.coordination_date DESC, sic.start_time DESC, sic.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -252,6 +254,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Jadwal</th>
                                 <th>Host</th>
                                 <th>Status</th>
+                                <th>Terakhir Diedit</th>
                                 <th>Lampiran</th>
                                 <th>Aksi</th>
                             </tr>
@@ -288,6 +291,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                     </td>
                                     <td><?= htmlspecialchars((string) $row['host_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="<?= htmlspecialchars($statusMeta['class'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($statusMeta['label'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <strong><?= htmlspecialchars((string)($row['updated_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <?php if (!empty($row['updated_by'])): ?>
+                                            <div class="meta-text-xs"><?= htmlspecialchars((string)($row['updated_at'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <?php if (!empty($attachments)): ?>
                                             <div class="flex flex-wrap gap-2">
