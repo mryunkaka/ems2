@@ -35,7 +35,7 @@ if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
 // ==================
 // LOCK FILE (ANTI DOUBLE RUN)
 // ==================
-$lock = fopen(__DIR__ . '/../cron/salary_manual.lock', 'c');
+$lock = fopen(__DIR__ . '/../cron/salary_generate.lock', 'c');
 if (!flock($lock, LOCK_EX | LOCK_NB)) {
     exit('Proses generate sedang berjalan');
 }

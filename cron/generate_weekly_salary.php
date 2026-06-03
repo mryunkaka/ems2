@@ -54,7 +54,7 @@ $today = new DateTime();
 $today->modify('monday this week');
 $now = new DateTime();
 
-$lockPath = __DIR__ . '/salary_cli.lock';
+$lockPath = __DIR__ . '/salary_generate.lock';
 $lockHandle = fopen($lockPath, 'c');
 if (!$lockHandle || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
     out('Proses generate salary sedang berjalan.');

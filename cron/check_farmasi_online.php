@@ -6,6 +6,7 @@
  */
 
 require __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/farmasi_cleanup.php';
 date_default_timezone_set('Asia/Jakarta');
 
 $lockPath = __DIR__ . '/check_farmasi_online.lock';
@@ -239,6 +240,17 @@ try {
         $pdo->rollBack();
     }
     throw $e;
+}
+
+try {
+    $cleanupResult = farmasi_cleanup_old_data($pdo);
+    echo sprintf(
+        "CLEANUP activities=%d quiz_questions=%d\n",
+        (int)($cleanupResult['farmasi_activities_deleted'] ?? 0),
+        (int)($cleanupResult['farmasi_quiz_session_questions_deleted'] ?? 0)
+    );
+} catch (Throwable $e) {
+    error_log('[farmasi_cleanup] ' . $e->getMessage());
 }
 
 /* =========================================================
