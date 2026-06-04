@@ -8,6 +8,7 @@ import {
     query,
     ref,
     remove,
+    runTransaction,
     serverTimestamp,
     set
 } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js';
@@ -86,6 +87,7 @@ import {
     let pendingBootstrapQueueId = '';
     let serverTimeOffsetMs = 0;
     let syncLoopTimer = null;
+    let autoAdvanceQueueId = '';
 
     setManagedPlaybackControlsUi();
     restoreCachedUi();
@@ -297,8 +299,8 @@ import {
     });
 
     audioEl?.addEventListener('ended', function () {
-        if (canManagePlayback && currentState && currentState.queueId && currentState.playbackType === 'audio') {
-            skipCurrentTrack().catch(function () {
+        if (currentState && currentState.queueId && currentState.playbackType === 'audio') {
+            autoAdvanceFinishedTrack(currentState.queueId, 'audio').catch(function () {
                 return null;
             });
         }
@@ -529,6 +531,9 @@ import {
         onValue(ref(database, statePath), function (snapshot) {
             currentState = snapshot.val() || null;
             stateLoaded = true;
+            if (!currentState || String(currentState.queueId || '') !== autoAdvanceQueueId) {
+                autoAdvanceQueueId = '';
+            }
             if (currentState && currentState.queueId) {
                 pendingBootstrapQueueId = String(currentState.queueId);
             }
@@ -540,6 +545,7 @@ import {
             applyPlaybackState().catch(function (error) {
                 console.error('Failed to apply shared music state.', error);
             });
+            maybeRecoverStaleAdvanceLock();
             scheduleSyncPass(100);
         });
     }
@@ -583,6 +589,10 @@ import {
             return;
         }
 
+        await writePlaybackState(item, positionMs, 'manual');
+    }
+
+    async function writePlaybackState(item, positionMs, advanceMode) {
         if (!item || !item.id || !item.isPlayable) {
             return;
         }
@@ -603,6 +613,7 @@ import {
             addedByName: item.addedByName || viewer.name,
             addedByRole: item.addedByRole || viewer.role,
             activatedByName: viewer.name,
+            advanceMode: advanceMode || 'manual',
             updatedAt: serverTimestamp()
         });
     }
@@ -646,6 +657,111 @@ import {
         }
 
         await remove(ref(database, queuePath + '/' + item.id));
+    }
+
+    async function autoAdvanceFinishedTrack(queueId, playbackType) {
+        const finishedQueueId = String(queueId || '');
+        const finishedPlaybackType = String(playbackType || '');
+        if (!finishedQueueId || autoAdvanceQueueId === finishedQueueId) {
+            return;
+        }
+
+        if (
+            !currentState ||
+            String(currentState.queueId || '') !== finishedQueueId ||
+            String(currentState.playbackType || '') !== finishedPlaybackType
+        ) {
+            return;
+        }
+
+        autoAdvanceQueueId = finishedQueueId;
+        pauseCurrentMediaForAdvance(finishedPlaybackType);
+
+        try {
+            const lockId = (authUid || viewer.id || 'visitor') + ':' + Date.now() + ':' + Math.random().toString(16).slice(2);
+            const lockResult = await runTransaction(ref(database, statePath), function (state) {
+                if (!state || String(state.queueId || '') !== finishedQueueId) {
+                    return state;
+                }
+
+                const lockAt = Number(state.advanceLockAt || 0);
+                const lockIsFresh = lockAt > 0 && Math.abs(getServerNowMs() - lockAt) < 12000;
+                if (state.advanceLockId && state.advanceLockQueueId === finishedQueueId && lockIsFresh) {
+                    return state;
+                }
+
+                return {
+                    ...state,
+                    status: 'advancing',
+                    advanceLockId: lockId,
+                    advanceLockQueueId: finishedQueueId,
+                    advanceLockAt: getServerNowMs(),
+                    updatedAt: getServerNowMs()
+                };
+            });
+
+            const lockedState = lockResult.snapshot.val() || null;
+            if (!lockResult.committed || !lockedState || lockedState.advanceLockId !== lockId) {
+                return;
+            }
+
+            const nextPlayable = queueItems.find(function (item) {
+                return item.id !== finishedQueueId && item.isPlayable;
+            });
+
+            await remove(ref(database, queuePath + '/' + finishedQueueId));
+
+            if (nextPlayable) {
+                await writePlaybackState(nextPlayable, 0, 'auto');
+                return;
+            }
+
+            await remove(ref(database, statePath));
+        } catch (error) {
+            console.error('Failed to auto advance live music.', error);
+        } finally {
+            window.setTimeout(function () {
+                if (autoAdvanceQueueId === finishedQueueId) {
+                    autoAdvanceQueueId = '';
+                }
+            }, 2500);
+        }
+    }
+
+    function maybeRecoverStaleAdvanceLock() {
+        if (
+            !currentState ||
+            !currentState.queueId ||
+            currentState.status !== 'advancing' ||
+            !currentState.advanceLockId
+        ) {
+            return;
+        }
+
+        const lockAt = Number(currentState.advanceLockAt || 0);
+        if (!lockAt || Math.abs(getServerNowMs() - lockAt) < 12000) {
+            return;
+        }
+
+        autoAdvanceFinishedTrack(currentState.queueId, currentState.playbackType).catch(function () {
+            return null;
+        });
+    }
+
+    function pauseCurrentMediaForAdvance(playbackType) {
+        if (playbackType === 'audio' && audioEl) {
+            syncingAudio = true;
+            try {
+                audioEl.pause();
+            } finally {
+                syncingAudio = false;
+            }
+            return;
+        }
+
+        if (playbackType === 'youtube') {
+            pauseYoutubePlayer();
+        }
     }
 
     async function applyPlaybackState() {
@@ -1157,12 +1273,11 @@ import {
                     onStateChange: function (event) {
                         if (
                             event.data === window.YT.PlayerState.ENDED &&
-                            canManagePlayback &&
                             currentState &&
                             currentState.queueId &&
                             currentState.playbackType === 'youtube'
                         ) {
-                            skipCurrentTrack().catch(function () {
+                            autoAdvanceFinishedTrack(currentState.queueId, 'youtube').catch(function () {
                                 return null;
                             });
                         }
