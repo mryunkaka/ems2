@@ -9,8 +9,7 @@ import {
     ref,
     remove,
     serverTimestamp,
-    set,
-    update
+    set
 } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-database.js';
 
 (function bootstrapRealtimeMusicWidget() {
@@ -50,6 +49,7 @@ import {
         role: String(config.viewer?.role || '').trim(),
         unit: String(config.viewer?.unit || '').trim()
     };
+    const canManagePlayback = canManageLiveMusicPlayback();
 
     const queuePath = String(config.paths?.queue || 'ems_live_music/global_room/queue');
     const statePath = String(config.paths?.state || 'ems_live_music/global_room/state');
@@ -87,6 +87,7 @@ import {
     let serverTimeOffsetMs = 0;
     let syncLoopTimer = null;
 
+    setManagedPlaybackControlsUi();
     restoreCachedUi();
     restorePlaybackSnapshot();
     setAudioUnlockUi();
@@ -161,6 +162,10 @@ import {
     });
 
     primaryActionBtn?.addEventListener('click', async function () {
+        if (!canManagePlayback) {
+            return;
+        }
+
         if (!currentState || !currentState.queueId) {
             return;
         }
@@ -193,6 +198,10 @@ import {
     });
 
     skipBtn?.addEventListener('click', async function () {
+        if (!canManagePlayback) {
+            return;
+        }
+
         await skipCurrentTrack();
     });
 
@@ -251,6 +260,10 @@ import {
         }
 
         const action = String(actionButton.getAttribute('data-music-action') || '');
+        if ((action === 'play' || action === 'remove') && !canManagePlayback) {
+            return;
+        }
+
         const itemId = String(actionButton.getAttribute('data-track-id') || '');
         const item = queueItems.find(function (entry) {
             return entry.id === itemId;
@@ -284,11 +297,21 @@ import {
     });
 
     audioEl?.addEventListener('ended', function () {
-        if (currentState && currentState.queueId) {
+        if (canManagePlayback && currentState && currentState.queueId && currentState.playbackType === 'audio') {
             skipCurrentTrack().catch(function () {
                 return null;
             });
         }
+    });
+
+    ['pause', 'stalled', 'suspend', 'error'].forEach(function (eventName) {
+        audioEl?.addEventListener(eventName, function () {
+            if (syncingAudio || !shouldPlayLocally() || !currentState || currentState.playbackType !== 'audio') {
+                return;
+            }
+
+            schedulePlaybackRecovery(600);
+        });
     });
 
     window.addEventListener('pagehide', function () {
@@ -522,7 +545,7 @@ import {
     }
 
     function maybeBootstrapFirstPlayable() {
-        if (!stateLoaded) {
+        if (!canManagePlayback || !stateLoaded) {
             return;
         }
 
@@ -556,6 +579,10 @@ import {
     }
 
     async function activateTrack(item, positionMs) {
+        if (!canManagePlayback) {
+            return;
+        }
+
         if (!item || !item.id || !item.isPlayable) {
             return;
         }
@@ -581,6 +608,10 @@ import {
     }
 
     async function skipCurrentTrack() {
+        if (!canManagePlayback) {
+            return;
+        }
+
         if (!currentState || !currentState.queueId) {
             return;
         }
@@ -601,6 +632,10 @@ import {
     }
 
     async function removeQueueItem(item) {
+        if (!canManagePlayback) {
+            return;
+        }
+
         if (!item || !item.id) {
             return;
         }
@@ -655,18 +690,12 @@ import {
         }
 
         if (currentState.playbackType === 'youtube') {
-            audioEl.pause();
-            audioEl.classList.add('hidden');
-            audioEl.removeAttribute('src');
-            audioEl.load();
+            clearAudioElement();
             await syncYoutubePlayback();
             return;
         }
 
-        audioEl.pause();
-        audioEl.classList.add('hidden');
-        audioEl.removeAttribute('src');
-        audioEl.load();
+        clearAudioElement();
         renderReferenceEmbed();
     }
 
@@ -681,6 +710,7 @@ import {
             primaryActionBtn.textContent = 'Putar';
             primaryActionBtn.disabled = true;
             skipBtn.disabled = true;
+            setManagedPlaybackControlsUi();
             setAudioUnlockUi();
             hintEl.textContent = 'Link Spotify atau TikTok akan masuk antrian sebagai referensi. Audio sinkron realtime saat ini hanya untuk audio direct dan YouTube.';
             return;
@@ -695,6 +725,7 @@ import {
         primaryActionBtn.textContent = (!localListeningEnabled || localPlaybackPaused || state.status !== 'playing') ? 'Putar' : 'Jeda';
         primaryActionBtn.disabled = state.playbackType === 'unsupported';
         skipBtn.disabled = false;
+        setManagedPlaybackControlsUi();
         setAudioUnlockUi();
 
         if (state.playbackType === 'unsupported') {
@@ -735,6 +766,12 @@ import {
                 ? '<span class="ems-live-music-chip">Sinkron</span>'
                 : '<span class="ems-live-music-chip is-muted">Referensi</span>';
             const playDisabled = item.isPlayable ? '' : ' disabled';
+            const actionsMarkup = canManagePlayback
+                ? '<div class="ems-live-music-item-actions">' +
+                    '<button type="button" class="ems-live-music-btn-mini" data-music-action="play" data-track-id="' + escapeHtml(item.id) + '"' + playDisabled + '>Putar</button>' +
+                    '<button type="button" class="ems-live-music-btn-mini is-danger" data-music-action="remove" data-track-id="' + escapeHtml(item.id) + '">Hapus</button>' +
+                '</div>'
+                : '';
 
             return '' +
                 '<div class="' + itemClass + '">' +
@@ -747,10 +784,7 @@ import {
                         '<div class="ems-live-music-item-meta">Ditambahkan ' + escapeHtml(compactUserLabel(item.addedByName, item.addedByRole)) + '</div>' +
                         '<a class="ems-live-music-item-url" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.url) + '</a>' +
                     '</div>' +
-                    '<div class="ems-live-music-item-actions">' +
-                        '<button type="button" class="ems-live-music-btn-mini" data-music-action="play" data-track-id="' + escapeHtml(item.id) + '"' + playDisabled + '>Putar</button>' +
-                        '<button type="button" class="ems-live-music-btn-mini is-danger" data-music-action="remove" data-track-id="' + escapeHtml(item.id) + '">Hapus</button>' +
-                    '</div>' +
+                    actionsMarkup +
                 '</div>';
         }).join('');
     }
@@ -771,6 +805,24 @@ import {
 
         enableAudioBtn.textContent = playerUnlocked && localListeningEnabled ? 'Audio Nonaktif' : 'Audio Aktif';
         enableAudioBtn.classList.toggle('is-muted', playerUnlocked && !localListeningEnabled);
+    }
+
+    function setManagedPlaybackControlsUi() {
+        [primaryActionBtn, skipBtn].forEach(function (button) {
+            if (!button) {
+                return;
+            }
+
+            button.hidden = !canManagePlayback;
+            button.setAttribute('aria-hidden', canManagePlayback ? 'false' : 'true');
+
+            if (canManagePlayback) {
+                button.style.removeProperty('display');
+                return;
+            }
+
+            button.style.setProperty('display', 'none', 'important');
+        });
     }
 
     function maybeShowTutorialModal() {
@@ -831,13 +883,19 @@ import {
             audioEl.pause();
         }
 
-        if (youtubePlayer && youtubeReady) {
-            try {
-                youtubePlayer.pauseVideo();
-            } catch (error) {
+        pauseYoutubePlayer();
+    }
+
+    function schedulePlaybackRecovery(delayMs) {
+        window.setTimeout(function () {
+            if (!shouldPlayLocally() || !currentState || currentState.playbackType !== 'audio') {
                 return;
             }
-        }
+
+            applyPlaybackState().catch(function (error) {
+                console.warn('Failed to recover live music playback.', error);
+            });
+        }, Math.max(0, Number(delayMs || 0)));
     }
 
     function isAutoplayBlockedError(error) {
@@ -1066,20 +1124,10 @@ import {
             return;
         }
 
-        const videoId = String(currentState.youtubeId || '');
+        const videoId = await prepareYoutubeEmbed();
         if (!videoId) {
             return;
         }
-
-        embedWrapEl.classList.remove('hidden');
-        if (!embedWrapEl.querySelector('#emsLiveMusicYoutubePlayer')) {
-            embedWrapEl.innerHTML =
-                '<div class="ems-live-music-player-loading">Memuat live YouTube...</div>' +
-                '<div id="emsLiveMusicYoutubePlayer" class="ems-live-music-youtube"></div>';
-        }
-
-        await ensureYoutubeApi();
-
         const targetSeconds = computeTargetPositionMs(currentState) / 1000;
         pendingYoutubeState = { videoId, targetSeconds };
 
@@ -1107,7 +1155,13 @@ import {
                         });
                     },
                     onStateChange: function (event) {
-                        if (event.data === window.YT.PlayerState.ENDED && currentState && currentState.queueId) {
+                        if (
+                            event.data === window.YT.PlayerState.ENDED &&
+                            canManagePlayback &&
+                            currentState &&
+                            currentState.queueId &&
+                            currentState.playbackType === 'youtube'
+                        ) {
                             skipCurrentTrack().catch(function () {
                                 return null;
                             });
@@ -1123,6 +1177,31 @@ import {
         }
 
         await applyYoutubeState(videoId, targetSeconds);
+    }
+
+    async function prepareYoutubeEmbed() {
+        if (!embedWrapEl || !currentState || currentState.playbackType !== 'youtube') {
+            return '';
+        }
+
+        const videoId = String(currentState.youtubeId || '');
+        if (!videoId) {
+            return '';
+        }
+
+        embedWrapEl.classList.remove('hidden');
+        if (!embedWrapEl.querySelector('#emsLiveMusicYoutubePlayer')) {
+            embedWrapEl.innerHTML =
+                '<div class="ems-live-music-player-loading">Memuat live YouTube...</div>' +
+                '<div id="emsLiveMusicYoutubePlayer" class="ems-live-music-youtube"></div>';
+        }
+
+        await ensureYoutubeApi();
+        if (!currentState || currentState.playbackType !== 'youtube' || String(currentState.youtubeId || '') !== videoId) {
+            return '';
+        }
+
+        return videoId;
     }
 
     async function applyYoutubeState(videoId, targetSeconds) {
@@ -1204,19 +1283,49 @@ import {
             return;
         }
 
-        embedWrapEl.classList.add('hidden');
-        embedWrapEl.innerHTML = '';
-
         if (youtubePlayer) {
             try {
+                youtubePlayer.stopVideo();
                 youtubePlayer.destroy();
             } catch (error) {
-                return;
+                console.warn('Failed to destroy live music YouTube player.', error);
             } finally {
                 youtubePlayer = null;
                 youtubeReady = false;
                 currentYoutubeVideoId = '';
+                pendingYoutubeState = null;
             }
+        }
+
+        embedWrapEl.classList.add('hidden');
+        embedWrapEl.innerHTML = '';
+    }
+
+    function clearAudioElement() {
+        if (!audioEl) {
+            return;
+        }
+
+        syncingAudio = true;
+        try {
+            audioEl.pause();
+            audioEl.classList.add('hidden');
+            audioEl.removeAttribute('src');
+            audioEl.load();
+        } finally {
+            syncingAudio = false;
+        }
+    }
+
+    function pauseYoutubePlayer() {
+        if (!youtubePlayer || !youtubeReady) {
+            return;
+        }
+
+        try {
+            youtubePlayer.pauseVideo();
+        } catch (error) {
+            return;
         }
     }
 
@@ -1476,6 +1585,16 @@ import {
 
     function sanitizeText(value) {
         return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function canManageLiveMusicPlayback() {
+        const role = sanitizeText(viewer.role).toLowerCase();
+        const name = sanitizeText(viewer.name).toLowerCase();
+
+        return role === 'director'
+            || role === 'vice director'
+            || role === 'programmer roxwood'
+            || name === 'programmer roxwood';
     }
 
     function escapeHtml(value) {
