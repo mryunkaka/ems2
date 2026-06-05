@@ -1,4 +1,8 @@
 {
+    "name": "mryunkaka/ems2",
+    "description": "Open-source emergency medical, HR, recruitment, and administration management system for hospital operations.",
+    "license": "MIT",
+    "type": "project",
     "require": {
         "minishlink/web-push": "^10.0",
         "spipu/html2pdf": "^5.3",

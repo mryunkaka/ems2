@@ -1,7 +1,7 @@
 {
   "name": "ems2",
   "version": "1.0.0",
-  "description": "",
+  "description": "Open-source emergency medical, HR, recruitment, and administration management system for hospital operations.",
   "main": "sw.js",
   "scripts": {
     "build:css": "npx tailwindcss -i ./assets/design/tailwind/app.css -o ./assets/design/tailwind/build.css --minify",
@@ -12,9 +12,16 @@
     "type": "git",
     "url": "git+https://github.com/mryunkaka/ems2.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "ems",
+    "hospital-management",
+    "medical-records",
+    "hris",
+    "php",
+    "mariadb"
+  ],
+  "author": "Sayid Adam",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/mryunkaka/ems2/issues"

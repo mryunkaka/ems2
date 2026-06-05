@@ -1,0 +1,18 @@
+name: Documentation
+description: Request or improve documentation
+title: "[Docs]: "
+labels: ["documentation", "triage"]
+body:
+  - type: input
+    id: document
+    attributes:
+      label: Document or topic
+      placeholder: "Example: installation, Firebase setup, migration notes"
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What should be clarified?
+    validations:
+      required: true

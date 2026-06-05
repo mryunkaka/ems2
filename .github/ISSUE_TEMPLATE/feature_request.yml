@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a scoped EMS2 improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is difficult or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful version of the feature.
+    validations:
+      required: true
+  - type: dropdown
+    id: module
+    attributes:
+      label: Area
+      options:
+        - Medical records
+        - Pharmacy
+        - HR
+        - Recruitment
+        - Secretary
+        - Disciplinary
+        - General affair
+        - Realtime
+        - Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data and privacy notes
+      description: Mention any sensitive data risk. Do not include real private data.
