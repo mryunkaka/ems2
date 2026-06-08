@@ -61,7 +61,7 @@ $chatViewerName = $icName !== '' ? $icName : 'Calon Pelamar';
                     <div class="space-y-2 text-sm leading-6 text-slate-200">
                         <p>&#10003; Berusia minimal 17 tahun pada saat mendaftar,</p>
                         <p>&#10003; Tidak memiliki catatan kriminal, dan dibuktikan dengan SKB</p>
-                        <p>&#10003; Calon Kandidat dinyatakan sehat dan siap melakukan interview, dengan melampirkan surat kesehatan &amp; surat psikologi</p>
+                        <p>&#10003; Calon Kandidat dinyatakan siap mengikuti proses interview</p>
                         <p>&#10003; Tidak sedang bergabung dengan Instansi dan tidak terlibat dengan fraksi manapun</p>
                         <p>&#10003; Jika memiliki kunci sebelumnya baik whitelist maupun fraksi harus mengikuti City Rules ke 21, yaitu harus menunggu masa pemutihan selama 14 hari setelah kunci dilepas</p>
                         <p>&#10003; Apabila pendaftar berasal dari instansi swasta, maka proses administrasi pendaftaran EMS baru tidak diwajibkan menunggu masa 14 (empat belas) hari sebagaimana City Rules, dan dapat diproses sesuai dengan kebijakan yang berlaku.</p>
@@ -284,41 +284,6 @@ $chatViewerName = $icName !== '' ? $icName : 'Calon Pelamar';
                                 </div>
                             </div>
 
-                            <div class="doc-upload-wrapper m-0">
-                                <div class="doc-upload-header">
-                                    <span class="text-sm font-semibold text-slate-900">Surat Keterangan Sehat</span>
-                                    <span class="badge-required-mini">Wajib</span>
-                                </div>
-                                <div class="doc-upload-input">
-                                    <label for="suratSehatFile" class="file-upload-label">
-                                        <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                        <span class="file-text">
-                                            <strong>Pilih file</strong>
-                                            <small>PNG atau JPG</small>
-                                        </span>
-                                    </label>
-                                    <input type="file" id="suratSehatFile" name="surat_keterangan_sehat" accept="image/png,image/jpeg" class="sr-only recruitment-file-input" required>
-                                    <div class="file-selected-name" data-for="suratSehatFile"></div>
-                                </div>
-                            </div>
-
-                            <div class="doc-upload-wrapper m-0">
-                                <div class="doc-upload-header">
-                                    <span class="text-sm font-semibold text-slate-900">Surat Keterangan Psikolog</span>
-                                    <span class="badge-required-mini">Wajib</span>
-                                </div>
-                                <div class="doc-upload-input">
-                                    <label for="suratPsikologFile" class="file-upload-label">
-                                        <span class="file-icon"><?= ems_icon('document-text', 'h-5 w-5') ?></span>
-                                        <span class="file-text">
-                                            <strong>Pilih file</strong>
-                                            <small>PNG atau JPG</small>
-                                        </span>
-                                    </label>
-                                    <input type="file" id="suratPsikologFile" name="surat_keterangan_psikolog" accept="image/png,image/jpeg" class="sr-only recruitment-file-input" required>
-                                    <div class="file-selected-name" data-for="suratPsikologFile"></div>
-                                </div>
-                            </div>
                         </div>
                     </section>
 

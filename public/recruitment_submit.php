@@ -79,7 +79,7 @@ function recruitmentAllowedApplicantDocumentTypes(PDO $pdo): array
         return $cache;
     }
 
-    $cache = ['ktp_ic', 'skb', 'sim', 'kta', 'surat_keterangan_sehat', 'surat_keterangan_psikolog'];
+    $cache = ['ktp_ic', 'skb', 'sim', 'kta'];
     return $cache;
 }
 
@@ -744,7 +744,7 @@ try {
             throw new Exception('Gagal membuat folder upload');
         }
 
-        foreach (['ktp_ic', 'skb', 'sim', 'surat_keterangan_sehat', 'surat_keterangan_psikolog'] as $doc) {
+        foreach (['ktp_ic', 'skb', 'sim'] as $doc) {
             $existingDocPath = recruitmentResolveExistingUserDoc(
                 $pdo,
                 $citizenId,
