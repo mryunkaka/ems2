@@ -70,6 +70,7 @@ $userDivision = ems_normalize_division($user['division'] ?? '');
 if ($userId <= 0) {
     secureFileAbort(401, 'Session user tidak valid.');
 }
+$canViewSecretaryProtectedFiles = $userDivision === 'Secretary' || ems_is_manager_plus_role($userRole);
 
 if (str_starts_with($relativePath, 'storage/identity/')) {
     // Identity wajib lewat endpoint terproteksi, session login sudah cukup untuk akses internal.
@@ -108,7 +109,7 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/file_records/')) {
-    if (!ems_is_management_division($userDivision)) {
+    if (!ems_is_management_division($userDivision) && !$canViewSecretaryProtectedFiles) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 
@@ -124,7 +125,7 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/visit_agendas/')) {
-    if ($userDivision !== 'Secretary') {
+    if (!$canViewSecretaryProtectedFiles) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 
@@ -151,12 +152,12 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
 
     if (
         $coordinationScope === ''
-        || ($userDivision !== 'Secretary' && !ems_division_scope_matches_division($coordinationScope, $userDivision))
+        || (!$canViewSecretaryProtectedFiles && !ems_division_scope_matches_division($coordinationScope, $userDivision))
     ) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/confidential_letters/')) {
-    if ($userDivision !== 'Secretary') {
+    if (!$canViewSecretaryProtectedFiles) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 
