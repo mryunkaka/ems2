@@ -222,11 +222,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <div class="medical-document-card__head">
                                     <span class="medical-side-card__label">KTP</span>
                                     <?php if (!empty($record['ktp_file_path'])): ?>
-                                        <a href="<?= htmlspecialchars(ems_asset((string)$record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka</a>
+                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string)$record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka</a>
                                     <?php endif; ?>
                                 </div>
                                 <?php if (!empty($record['ktp_file_path'])): ?>
-                                    <img src="<?= htmlspecialchars(ems_asset((string)$record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="KTP" class="medical-document-card__image">
+                                    <img src="<?= htmlspecialchars(ems_secure_file_url((string)$record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="KTP" class="medical-document-card__image">
                                 <?php else: ?>
                                     <div class="medical-document-card__empty">Dokumen KTP belum tersedia.</div>
                                 <?php endif; ?>
@@ -241,8 +241,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php foreach ($supportingImages as $image): ?>
                                             <?php $imagePath = trim((string)($image['file_path'] ?? '')); ?>
                                             <?php if ($imagePath === '') continue; ?>
-                                            <a href="<?= htmlspecialchars(ems_asset($imagePath), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="medical-document-gallery__item">
-                                                <img src="<?= htmlspecialchars(ems_asset($imagePath), ENT_QUOTES, 'UTF-8') ?>" alt="Foto pendukung" class="medical-document-card__image">
+                                            <a href="<?= htmlspecialchars(ems_secure_file_url($imagePath), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="medical-document-gallery__item">
+                                                <img src="<?= htmlspecialchars(ems_secure_file_url($imagePath), ENT_QUOTES, 'UTF-8') ?>" alt="Foto pendukung" class="medical-document-card__image">
                                             </a>
                                         <?php endforeach; ?>
                                     </div>

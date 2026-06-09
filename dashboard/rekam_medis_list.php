@@ -496,10 +496,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <div class="forensic-detail-label">Lampiran KTP</div>
                                                 <?php if (!empty($record['ktp_file_path'])): ?>
                                                     <div class="forensic-detail-value">
-                                                        <a href="<?= htmlspecialchars(ems_asset((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
+                                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka KTP</a>
                                                     </div>
                                                     <div class="mt-3">
-                                                        <img src="<?= htmlspecialchars(ems_asset((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                                        <img src="<?= htmlspecialchars(ems_secure_file_url((string) $record['ktp_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran KTP" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
                                                     </div>
                                                 <?php else: ?>
                                                     <div class="forensic-detail-value is-muted">Lampiran KTP belum tersedia.</div>
@@ -510,10 +510,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <div class="forensic-detail-label">Lampiran MRI</div>
                                                 <?php if (!empty($record['mri_file_path'])): ?>
                                                     <div class="forensic-detail-value">
-                                                        <a href="<?= htmlspecialchars(ems_asset((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
+                                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka MRI</a>
                                                     </div>
                                                     <div class="mt-3">
-                                                        <img src="<?= htmlspecialchars(ems_asset((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
+                                                        <img src="<?= htmlspecialchars(ems_secure_file_url((string) $record['mri_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Lampiran MRI" style="width:100%;max-height:260px;object-fit:cover;border-radius:0.9rem;border:1px solid rgba(148,163,184,0.2);">
                                                     </div>
                                                 <?php else: ?>
                                                     <div class="forensic-detail-value is-muted">Lampiran MRI belum tersedia.</div>

@@ -201,7 +201,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <label class="form-label">KTP <span class="text-danger">*</span></label>
                             <?php if ($record['ktp_file_path'] && file_exists(__DIR__ . '/../' . $record['ktp_file_path'])): ?>
                                 <div class="mb-2">
-                                    <img src="<?= htmlspecialchars(ems_asset($record['ktp_file_path'])) ?>"
+                                    <img src="<?= htmlspecialchars(ems_secure_file_url((string)$record['ktp_file_path'])) ?>"
                                          alt="KTP" class="max-h-48 rounded border" />
                                     <p class="text-xs text-gray-500 mt-1">File saat ini</p>
                                 </div>
@@ -240,7 +240,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <?php if ($imagePath === '') continue; ?>
                                         <div class="rounded border border-slate-200 bg-white p-2">
                                             <?php if (file_exists(__DIR__ . '/../' . ltrim($imagePath, '/'))): ?>
-                                                <img src="<?= htmlspecialchars(ems_asset($imagePath)) ?>"
+                                                <img src="<?= htmlspecialchars(ems_secure_file_url($imagePath)) ?>"
                                                      alt="Foto pendukung" class="h-32 w-full rounded object-cover" />
                                                 <p class="text-xs text-gray-500 mt-2">
                                                     <?= !empty($image['is_legacy']) ? 'File utama lama' : 'Lampiran tambahan' ?>

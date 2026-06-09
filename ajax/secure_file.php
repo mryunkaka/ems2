@@ -123,6 +123,21 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     if (!(bool)$stmt->fetchColumn()) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
+} elseif (str_starts_with($relativePath, 'storage/secretary/visit_agendas/')) {
+    if ($userDivision !== 'Secretary') {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM secretary_visit_agenda_attachments
+        WHERE file_path = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
 } elseif (str_starts_with($relativePath, 'storage/secretary/internal_coordinations/')) {
     $stmt = $pdo->prepare("
         SELECT sic.division_scope
@@ -138,6 +153,21 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         $coordinationScope === ''
         || ($userDivision !== 'Secretary' && !ems_division_scope_matches_division($coordinationScope, $userDivision))
     ) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/secretary/confidential_letters/')) {
+    if ($userDivision !== 'Secretary') {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM secretary_confidential_letter_attachments
+        WHERE file_path = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/user_docs/')) {
@@ -244,10 +274,13 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
 
 $mime = (string)(@mime_content_type($fullPath) ?: 'application/octet-stream');
 $filename = basename($fullPath);
+clearstatcache(true, $fullPath);
 
 header('Content-Type: ' . $mime);
 header('Content-Length: ' . (string)filesize($fullPath));
 header('X-Content-Type-Options: nosniff');
+header('Cache-Control: private, no-store, max-age=0, must-revalidate');
+header('Pragma: no-cache');
 header('Content-Disposition: inline; filename="' . str_replace('"', '', $filename) . '"');
 readfile($fullPath);
 exit;

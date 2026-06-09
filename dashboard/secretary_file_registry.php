@@ -70,8 +70,9 @@ function secretaryFileGroupAttachments(array $rows, string $foreignKey): array
 function secretaryFileAttachmentPayload(array $attachments): array
 {
     return array_map(static function (array $attachment): array {
+        $path = (string) ($attachment['file_path'] ?? '');
         return [
-            'src' => '/' . ltrim((string) ($attachment['file_path'] ?? ''), '/'),
+            'src' => ems_secure_file_url($path),
             'name' => (string) (($attachment['file_name'] ?? '') ?: 'Lampiran'),
         ];
     }, $attachments);
@@ -387,7 +388,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?php foreach ($attachments as $attachment): ?>
                                                     <a href="#"
                                                         class="doc-badge btn-preview-doc"
-                                                        data-src="/<?= htmlspecialchars(ltrim((string) $attachment['file_path'], '/'), ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-src="<?= htmlspecialchars(ems_secure_file_url((string) $attachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
                                                         data-title="<?= htmlspecialchars((string) ($attachment['file_name'] ?: ('Lampiran ' . $row['reference_number'])), ENT_QUOTES, 'UTF-8') ?>">
                                                         <?= ems_icon('paper-clip', 'h-4 w-4') ?>
                                                         <span><?= htmlspecialchars((string) ($attachment['file_name'] ?: 'Lampiran'), ENT_QUOTES, 'UTF-8') ?></span>

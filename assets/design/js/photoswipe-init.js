@@ -70,17 +70,30 @@
     return /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url);
   }
 
-  function getImageSize(src) {
+  function withCacheBust(src) {
+    if (!src || /^(blob:|data:image\/)/i.test(src)) return src;
+    var separator = src.indexOf("?") === -1 ? "?" : "&";
+    return src + separator + "_pswp_retry=" + Date.now();
+  }
+
+  function getImageSize(src, retried) {
     return new Promise(function (resolve) {
       var img = new Image();
       img.onload = function () {
         resolve({
+          src: img.src || src,
+          ok: true,
           width: img.naturalWidth || 1600,
           height: img.naturalHeight || 1200,
         });
       };
       img.onerror = function () {
-        resolve({ width: 1600, height: 1200 });
+        if (!retried) {
+          getImageSize(withCacheBust(src), true).then(resolve);
+          return;
+        }
+
+        resolve({ src: src, ok: false, width: 1600, height: 1200 });
       };
       img.src = src;
     });
@@ -100,12 +113,17 @@
 
   async function openPhotoSwipe(src, title, initialPoint) {
     var size = await getImageSize(src);
+    if (!size.ok) {
+      window.open(src, "_blank", "noopener");
+      return;
+    }
+
     // PhotoSwipe v5 accepts dataSource as an array of items.
     lightbox.loadAndOpen(
       0,
       [
         {
-          src: src,
+          src: size.src || src,
           width: size.width,
           height: size.height,
           alt: title || "Gambar",
