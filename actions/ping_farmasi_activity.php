@@ -9,6 +9,9 @@ if (empty($_SESSION['user_rh']['id'])) {
 }
 
 $userId = (int)$_SESSION['user_rh']['id'];
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 $pdo->prepare("
     UPDATE user_farmasi_status

@@ -86,10 +86,14 @@ function formatActivityTimeAgo(int $timestamp): string
 
 try {
     $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+    $sessionUser = $_SESSION['user_rh'] ?? [];
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     emsRequireRateLimit('get_activities', emsCurrentRequestIdentifier($userId), 30, 60, 'Aktivitas dipanggil terlalu sering. Coba lagi sebentar.');
     $maxItems = 30;
     $activities = [];
-    $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+    $effectiveUnit = ems_effective_unit($pdo, $sessionUser);
     $userHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
     $emsSalesHasUnitCode = ems_table_exists($pdo, 'ems_sales') && ems_column_exists($pdo, 'ems_sales', 'unit_code');
     $isAltaUnit = $effectiveUnit === 'alta';

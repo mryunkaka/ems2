@@ -32,6 +32,9 @@ if (!$user || empty($user['id'])) {
 
 // Hanya divisi tertentu yang boleh mengedit settings
 $canAccessSettings = canAccessFarmasiSettingsByDivision($user['division'] ?? '');
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 try {
     $stmt = $pdo->prepare("SELECT max_online_medics, max_duty_minutes, cooldown_minutes, updated_at FROM farmasi_online_settings LIMIT 1");

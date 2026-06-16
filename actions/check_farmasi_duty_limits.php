@@ -14,6 +14,9 @@ if (!$user || empty($user['id'])) {
 }
 
 $userId = (int)$user['id'];
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
 
 try {
     ems_auto_offline_expired_farmasi_sessions($pdo, $userId);

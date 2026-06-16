@@ -9,6 +9,9 @@ require_once __DIR__ . '/../config/farmasi_quiz.php';
 
 try {
     $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     if ($userId <= 0) {
         ems_json_error('Unauthorized', 401);
     }

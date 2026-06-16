@@ -7,6 +7,9 @@ require_once __DIR__ . '/../config/helpers.php';
 try {
     $medicName = $_SESSION['user_rh']['name'] ?? '';
     $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
 
     if ($medicName === '') {
         ems_json_response(['status' => 'offline']);

@@ -6,6 +6,9 @@ require_once __DIR__ . '/../config/helpers.php';
 
 try {
     $userId = (int)($_SESSION['user_rh']['id'] ?? 0);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
 
     date_default_timezone_set('Asia/Jakarta');
 

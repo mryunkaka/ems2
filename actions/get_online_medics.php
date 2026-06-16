@@ -38,9 +38,14 @@ function onlineMedicsJoinDurationText(?string $tanggalMasuk): string
 }
 
 try {
+    $sessionUser = $_SESSION['user_rh'] ?? [];
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
     ems_auto_offline_expired_farmasi_sessions($pdo);
 
-    $effectiveUnit = ems_effective_unit($pdo, $_SESSION['user_rh'] ?? []);
+    $effectiveUnit = ems_effective_unit($pdo, $sessionUser);
     $salesHasUnitCode = ems_column_exists($pdo, 'sales', 'unit_code');
     $userHasUnitCode = ems_column_exists($pdo, 'user_rh', 'unit_code');
 
