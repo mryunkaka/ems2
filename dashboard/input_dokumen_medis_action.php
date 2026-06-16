@@ -83,26 +83,6 @@ function managerDocNormalizeName(?string $name): string
     return strtolower(trim(preg_replace('/\s+/', ' ', (string)$name)));
 }
 
-function managerDocUserRhColumns(PDO $pdo): array
-{
-    static $columns = null;
-    if (is_array($columns)) {
-        return $columns;
-    }
-
-    $stmt = $pdo->query('SHOW COLUMNS FROM user_rh');
-    $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-    $columns = [];
-    foreach ($rows as $row) {
-        $field = strtolower(trim((string)($row['Field'] ?? '')));
-        if ($field !== '') {
-            $columns[$field] = true;
-        }
-    }
-
-    return $columns;
-}
-
 $targetUserId = (int)($_POST['medic_user_id'] ?? 0);
 if ($targetUserId <= 0) {
     $_SESSION['flash_errors'][] = 'Pilih medis aktif terlebih dahulu.';
@@ -110,55 +90,19 @@ if ($targetUserId <= 0) {
     exit;
 }
 
-$extraDocFields = [
-    'file_kontrak_kerja',
-    'sertifikat_operasi_plastik',
-    'sertifikat_operasi_kecil',
-    'sertifikat_operasi_besar',
-    'sertifikat_class_co_asst',
-    'sertifikat_class_paramedic',
-];
-$issuedDateFields = [
-    'tanggal_dikeluarkan_sertifikat_heli',
-    'tanggal_dikeluarkan_sertifikat_operasi',
-    'tanggal_dikeluarkan_sertifikat_operasi_plastik',
-    'tanggal_dikeluarkan_sertifikat_operasi_kecil',
-    'tanggal_dikeluarkan_sertifikat_operasi_besar',
-    'tanggal_dikeluarkan_sertifikat_class_co_asst',
-    'tanggal_dikeluarkan_sertifikat_class_paramedic',
-];
-$docIssuedDateMap = [
-    'sertifikat_heli' => 'tanggal_dikeluarkan_sertifikat_heli',
-    'sertifikat_operasi' => 'tanggal_dikeluarkan_sertifikat_operasi',
-    'sertifikat_operasi_plastik' => 'tanggal_dikeluarkan_sertifikat_operasi_plastik',
-    'sertifikat_operasi_kecil' => 'tanggal_dikeluarkan_sertifikat_operasi_kecil',
-    'sertifikat_operasi_besar' => 'tanggal_dikeluarkan_sertifikat_operasi_besar',
-    'sertifikat_class_co_asst' => 'tanggal_dikeluarkan_sertifikat_class_co_asst',
-    'sertifikat_class_paramedic' => 'tanggal_dikeluarkan_sertifikat_class_paramedic',
-];
-$userRhColumns = managerDocUserRhColumns($pdo);
-$targetSelectColumns = [
-    'id',
-    'full_name',
-    'kode_nomor_induk_rs',
-    'is_active',
-    'file_ktp',
-    'file_sim',
-    'file_kta',
-    'file_skb',
-    'sertifikat_heli',
-    'sertifikat_operasi',
-    'dokumen_lainnya',
-];
-foreach (array_merge($extraDocFields, $issuedDateFields) as $optionalColumn) {
-    if (isset($userRhColumns[strtolower($optionalColumn)])) {
-        $targetSelectColumns[] = $optionalColumn;
-    }
-}
-
 $stmtTarget = $pdo->prepare("
     SELECT
-        " . implode(",\n        ", $targetSelectColumns) . "
+        id,
+        full_name,
+        kode_nomor_induk_rs,
+        is_active,
+        file_ktp,
+        file_sim,
+        file_kta,
+        file_skb,
+        sertifikat_heli,
+        sertifikat_operasi,
+        dokumen_lainnya
     FROM user_rh
     WHERE id = ?
     LIMIT 1
@@ -180,11 +124,6 @@ $docFields = [
     'sertifikat_heli',
     'sertifikat_operasi',
 ];
-foreach ($extraDocFields as $extraDocField) {
-    if (array_key_exists($extraDocField, $targetUser)) {
-        $docFields[] = $extraDocField;
-    }
-}
 
 $hasAnyUpload = false;
 foreach ($docFields as $field) {
@@ -227,27 +166,6 @@ foreach ($docFields as $field) {
         continue;
     }
 
-    $issuedDateField = $docIssuedDateMap[$field] ?? null;
-    if ($issuedDateField !== null && array_key_exists($issuedDateField, $targetUser)) {
-        $postedIssuedDate = trim((string)($_POST[$issuedDateField] ?? ''));
-        if ($postedIssuedDate === '') {
-            $_SESSION['flash_errors'][] = 'Tanggal dikeluarkan wajib diisi saat upload dokumen sertifikat.';
-            header('Location: /dashboard/input_dokumen_medis.php?medic_id=' . $targetUserId);
-            exit;
-        }
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $postedIssuedDate)) {
-            $_SESSION['flash_errors'][] = 'Format tanggal dikeluarkan sertifikat tidak valid.';
-            header('Location: /dashboard/input_dokumen_medis.php?medic_id=' . $targetUserId);
-            exit;
-        }
-    }
-
-    if (emsUploadedFileExceedsLimit($_FILES[$field])) {
-        $_SESSION['flash_errors'][] = "Ukuran {$field} maksimal " . emsUploadLimitLabel() . '.';
-        header('Location: /dashboard/input_dokumen_medis.php?medic_id=' . $targetUserId);
-        exit;
-    }
-
     deleteManagerDocIfExists($targetUser[$field] ?? null);
 
     $tmp = $_FILES[$field]['tmp_name'];
@@ -267,16 +185,6 @@ foreach ($docFields as $field) {
     }
 
     $uploadedPaths[$field] = 'storage/user_docs/' . $folderName . '/' . $field . '.' . $ext;
-}
-
-$issuedDateValues = [];
-foreach ($docIssuedDateMap as $docField => $issuedDateField) {
-    if (!isset($uploadedPaths[$docField]) || !array_key_exists($issuedDateField, $targetUser)) {
-        continue;
-    }
-
-    $postedValue = trim((string)($_POST[$issuedDateField] ?? ''));
-    $issuedDateValues[$issuedDateField] = $postedValue !== '' ? $postedValue : null;
 }
 
 $existingOtherDocs = ensureAcademyDocIds(parseAcademyDocs($targetUser['dokumen_lainnya'] ?? ''));
@@ -306,14 +214,6 @@ for ($i = 0; $i < $maxRows; $i++) {
 
     if ((int)$fileErr !== UPLOAD_ERR_OK || $fileTmp === '') {
         continue;
-    }
-
-    if (emsUploadedFileExceedsLimit([
-        'size' => (int)($fileBag['size'][$i] ?? 0),
-    ])) {
-        $_SESSION['flash_errors'][] = 'Ukuran file lainnya maksimal ' . emsUploadLimitLabel() . '.';
-        header('Location: /dashboard/input_dokumen_medis.php?medic_id=' . $targetUserId);
-        exit;
     }
 
     $info = getimagesize($fileTmp);
@@ -378,10 +278,6 @@ $params = [$otherDocsJson];
 foreach ($uploadedPaths as $column => $path) {
     $sql .= ", {$column} = ?";
     $params[] = $path;
-}
-foreach ($issuedDateValues as $column => $value) {
-    $sql .= ", {$column} = ?";
-    $params[] = $value;
 }
 $sql .= " WHERE id = ?";
 $params[] = $targetUserId;

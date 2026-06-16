@@ -47,6 +47,18 @@ if (!$tablesExist) {
     exit;
 }
 
+// Auto-add settings_id column to registrations if not exists (runtime migration)
+$hasSettingsId = $pdo->query("
+    SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'sertifikat_heli_registrations'
+      AND COLUMN_NAME = 'settings_id'
+")->fetchColumn() > 0;
+
+if (!$hasSettingsId) {
+    $pdo->exec("ALTER TABLE sertifikat_heli_registrations ADD COLUMN settings_id INT NULL DEFAULT NULL AFTER user_id");
+}
+
 if ($action === 'register') {
     // Get current settings
     $settingsStmt = $pdo->query("SELECT * FROM sertifikat_heli_settings ORDER BY id DESC LIMIT 1");
@@ -58,6 +70,7 @@ if ($action === 'register') {
         exit;
     }
 
+    $activeSettingsId = (int)$settings['id'];
     $now = new DateTime();
     $startDatetime = new DateTime($settings['start_datetime']);
     $endDatetime = new DateTime($settings['end_datetime']);
@@ -77,8 +90,9 @@ if ($action === 'register') {
         exit;
     }
 
-    // Check if slots are available
-    $countStmt = $pdo->query("SELECT COUNT(*) FROM sertifikat_heli_registrations WHERE status = 'registered'");
+    // Check if slots are available for current period only
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sertifikat_heli_registrations WHERE status = 'registered' AND settings_id = ?");
+    $countStmt->execute([$activeSettingsId]);
     $registeredCount = (int)$countStmt->fetchColumn();
 
     if ($registeredCount >= $maxSlots) {
@@ -87,13 +101,23 @@ if ($action === 'register') {
         exit;
     }
 
-    // Check if user already registered
-    $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ?");
-    $checkStmt->execute([$userId]);
-    if ($checkStmt->fetch()) {
-        $_SESSION['flash_errors'][] = 'Anda sudah terdaftar untuk pendaftaran sertifikat heli.';
-        header('Location: ' . $redirectTo);
-        exit;
+    // Check if user already registered in current period — if so, remove old record so they can re-register
+    $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ?");
+    $checkStmt->execute([$userId, $activeSettingsId]);
+    $existingReg = $checkStmt->fetch();
+    if ($existingReg) {
+        // Delete previous registration in this period so user can register again
+        $delStmt = $pdo->prepare("DELETE FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ?");
+        $delStmt->execute([$userId, $activeSettingsId]);
+        // Recount after deletion
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sertifikat_heli_registrations WHERE status = 'registered' AND settings_id = ?");
+        $countStmt->execute([$activeSettingsId]);
+        $registeredCount = (int)$countStmt->fetchColumn();
+        if ($registeredCount >= $maxSlots) {
+            $_SESSION['flash_errors'][] = 'Slot pendaftaran sudah penuh.';
+            header('Location: ' . $redirectTo);
+            exit;
+        }
     }
 
     // Check position requirement (hierarchical check)
@@ -129,21 +153,24 @@ if ($action === 'register') {
     }
 
     try {
-        // Insert registration
+        // Insert registration with settings_id to scope by period
         $stmt = $pdo->prepare("
             INSERT INTO sertifikat_heli_registrations
-            (user_id, user_name, user_jabatan, user_division, status)
-            VALUES (?, ?, ?, ?, 'registered')
+            (user_id, settings_id, user_name, user_jabatan, user_division, status)
+            VALUES (?, ?, ?, ?, ?, 'registered')
         ");
 
         $stmt->execute([
             $userId,
+            $activeSettingsId,
             $user['full_name'],
             $user['position'],
             $user['division'] ?? null,
         ]);
 
-        $_SESSION['flash_messages'][] = 'Pendaftaran sertifikat heli berhasil!';
+        $_SESSION['flash_messages'][] = $existingReg
+            ? 'Pendaftaran ulang sertifikat heli berhasil!'
+            : 'Pendaftaran sertifikat heli berhasil!';
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Gagal mendaftar: ' . $e->getMessage();
     }
@@ -197,6 +224,9 @@ if ($action === 'save_settings') {
             $maxSlots,
             $minJabatan !== '' ? $minJabatan : null,
         ]);
+
+        // Registrations from previous period are kept in DB but scoped by settings_id.
+        // No need to delete them — they won't show on the new period's page.
 
         $_SESSION['flash_messages'][] = 'Setting sertifikat heli berhasil disimpan.';
     } catch (Throwable $e) {

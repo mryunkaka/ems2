@@ -38,6 +38,35 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $currentUser = $_SESSION['user_rh'] ?? null;
 $currentUserDivision = $currentUser['division'] ?? '';
 
+// Get current settings for pre-filling modal
+$heliSettings = null;
+try {
+    $heliSettingsStmt = $pdo->query("SELECT * FROM sertifikat_heli_settings ORDER BY id DESC LIMIT 1");
+    $heliSettings = $heliSettingsStmt->fetch(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    // Table may not exist yet
+}
+
+// Pre-fill values: start = current_start - 5 days, end = current_end + 5 days
+$modalStartDefault = '';
+$modalEndDefault = '';
+$modalMaxSlots = 10;
+$modalMinJabatan = '';
+if ($heliSettings) {
+    try {
+        $prevStart = new DateTime($heliSettings['start_datetime']);
+        $prevEnd   = new DateTime($heliSettings['end_datetime']);
+        $prevStart->modify('-5 days');
+        $prevEnd->modify('+5 days');
+        $modalStartDefault = $prevStart->format('Y-m-d\TH:i');
+        $modalEndDefault   = $prevEnd->format('Y-m-d\TH:i');
+        $modalMaxSlots     = (int)$heliSettings['max_slots'];
+        $modalMinJabatan   = trim($heliSettings['min_jabatan'] ?? '');
+    } catch (Throwable $e) {
+        // ignore
+    }
+}
+
 $stmt = $pdo->query("
     SELECT
         u.id,
@@ -314,6 +343,7 @@ document.body.addEventListener('click', function(e) {
                     id="start_datetime"
                     name="start_datetime"
                     type="datetime-local"
+                    value="<?= htmlspecialchars($modalStartDefault, ENT_QUOTES, 'UTF-8') ?>"
                     required>
 
                 <label for="end_datetime">Tanggal dan Jam Selesai</label>
@@ -321,6 +351,7 @@ document.body.addEventListener('click', function(e) {
                     id="end_datetime"
                     name="end_datetime"
                     type="datetime-local"
+                    value="<?= htmlspecialchars($modalEndDefault, ENT_QUOTES, 'UTF-8') ?>"
                     required>
 
                 <label for="max_slots">Maksimal Pendaftaran</label>
@@ -330,7 +361,7 @@ document.body.addEventListener('click', function(e) {
                     type="number"
                     min="1"
                     max="100"
-                    value="10"
+                    value="<?= htmlspecialchars((string)$modalMaxSlots, ENT_QUOTES, 'UTF-8') ?>"
                     required>
                 <small class="helper-note">Jumlah maksimal orang yang bisa mendaftar.<br></small>
 
@@ -338,7 +369,7 @@ document.body.addEventListener('click', function(e) {
                 <select id="min_jabatan" name="min_jabatan">
                     <option value="">Semua Position</option>
                     <?php foreach (ems_position_options() as $opt): ?>
-                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>" <?= ($opt['value'] === 'co-asst') ? 'selected' : '' ?>>
+                        <option value="<?= htmlspecialchars($opt['value'], ENT_QUOTES) ?>" <?= ($opt['value'] === $modalMinJabatan && $modalMinJabatan !== '') ? 'selected' : '' ?>>
                             <?= htmlspecialchars($opt['label']) ?>
                         </option>
                     <?php endforeach; ?>

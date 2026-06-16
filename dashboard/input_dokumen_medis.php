@@ -47,32 +47,6 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_warnings'], $_SESSION['flash
 $hasDivisionColumn = inputDokumenHasColumn($pdo, 'division');
 $divisionSelect = $hasDivisionColumn ? 'division,' : "NULL AS division,";
 
-$optionalDocColumns = [
-    'file_kontrak_kerja',
-    'sertifikat_operasi_plastik',
-    'sertifikat_operasi_kecil',
-    'sertifikat_operasi_besar',
-    'sertifikat_class_co_asst',
-    'sertifikat_class_paramedic',
-    'tanggal_dikeluarkan_sertifikat_heli',
-    'tanggal_dikeluarkan_sertifikat_operasi',
-    'tanggal_dikeluarkan_sertifikat_operasi_plastik',
-    'tanggal_dikeluarkan_sertifikat_operasi_kecil',
-    'tanggal_dikeluarkan_sertifikat_operasi_besar',
-    'tanggal_dikeluarkan_sertifikat_class_co_asst',
-    'tanggal_dikeluarkan_sertifikat_class_paramedic',
-];
-
-$availableOptionalDocColumns = [];
-foreach ($optionalDocColumns as $optionalDocColumn) {
-    if (inputDokumenHasColumn($pdo, $optionalDocColumn)) {
-        $availableOptionalDocColumns[] = $optionalDocColumn;
-    }
-}
-$optionalDocSelect = $availableOptionalDocColumns !== []
-    ? ",\n        " . implode(",\n        ", $availableOptionalDocColumns)
-    : '';
-
 $stmtMedics = $pdo->query("
     SELECT
         id,
@@ -89,7 +63,6 @@ $stmtMedics = $pdo->query("
         sertifikat_heli,
         sertifikat_operasi,
         dokumen_lainnya
-        {$optionalDocSelect}
     FROM user_rh
     WHERE is_active = 1
     ORDER BY full_name ASC
@@ -200,7 +173,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
 
                     <?php
-                    function renderManagerDocInput(string $label, string $name, ?string $issuedDateField = null): void
+                    function renderManagerDocInput(string $label, string $name): void
                     {
                         ?>
                         <div class="doc-upload-wrapper">
@@ -219,16 +192,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <input type="file" id="<?= htmlspecialchars($name) ?>" name="<?= htmlspecialchars($name) ?>" accept="image/png,image/jpeg" class="hidden">
                                 <div class="file-selected-name" data-for="<?= htmlspecialchars($name) ?>"></div>
                             </div>
-                            <?php if ($issuedDateField !== null): ?>
-                                <div class="doc-issued-date-row hidden" data-issued-date-row data-for="<?= htmlspecialchars($name) ?>">
-                                    <div>
-                                        <label>Tanggal Dikeluarkan <?= htmlspecialchars($label) ?></label>
-                                        <input type="date"
-                                            name="<?= htmlspecialchars($issuedDateField) ?>"
-                                            data-issued-date-input="<?= htmlspecialchars($name) ?>">
-                                    </div>
-                                </div>
-                            <?php endif; ?>
                         </div>
                         <?php
                     }
@@ -237,26 +200,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     renderManagerDocInput('Upload SKB', 'file_skb');
                     renderManagerDocInput('Upload SIM', 'file_sim');
                     renderManagerDocInput('Upload KTA', 'file_kta');
-                    if (in_array('file_kontrak_kerja', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Kontrak Kerja', 'file_kontrak_kerja');
-                    }
-                    renderManagerDocInput('Sertifikat Heli', 'sertifikat_heli', in_array('tanggal_dikeluarkan_sertifikat_heli', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_heli' : null);
-                    renderManagerDocInput('Sertifikat Operasi', 'sertifikat_operasi', in_array('tanggal_dikeluarkan_sertifikat_operasi', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null);
-                    if (in_array('sertifikat_operasi_plastik', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', in_array('tanggal_dikeluarkan_sertifikat_operasi_plastik', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null);
-                    }
-                    if (in_array('sertifikat_operasi_kecil', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Sertifikat Operasi Kecil', 'sertifikat_operasi_kecil', in_array('tanggal_dikeluarkan_sertifikat_operasi_kecil', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_operasi_kecil' : null);
-                    }
-                    if (in_array('sertifikat_operasi_besar', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Sertifikat Operasi Besar', 'sertifikat_operasi_besar', in_array('tanggal_dikeluarkan_sertifikat_operasi_besar', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_operasi_besar' : null);
-                    }
-                    if (in_array('sertifikat_class_co_asst', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Sertifikat Class Co. Asst', 'sertifikat_class_co_asst', in_array('tanggal_dikeluarkan_sertifikat_class_co_asst', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_class_co_asst' : null);
-                    }
-                    if (in_array('sertifikat_class_paramedic', $availableOptionalDocColumns, true)) {
-                        renderManagerDocInput('Sertifikat Class Paramedic', 'sertifikat_class_paramedic', in_array('tanggal_dikeluarkan_sertifikat_class_paramedic', $availableOptionalDocColumns, true) ? 'tanggal_dikeluarkan_sertifikat_class_paramedic' : null);
-                    }
+                    renderManagerDocInput('Sertifikat Heli', 'sertifikat_heli');
+                    renderManagerDocInput('Sertifikat Operasi', 'sertifikat_operasi');
                     ?>
 
                     <div class="doc-upload-wrapper doc-upload-dashed">
@@ -329,24 +274,6 @@ include __DIR__ . '/../partials/sidebar.php';
             'Sertifikat Heli' => $medic['sertifikat_heli'] ?? '',
             'Sertifikat Operasi' => $medic['sertifikat_operasi'] ?? '',
         ];
-        if (array_key_exists('file_kontrak_kerja', $medic)) {
-            $standardDocs['Kontrak Kerja'] = $medic['file_kontrak_kerja'] ?? '';
-        }
-        if (array_key_exists('sertifikat_operasi_plastik', $medic)) {
-            $standardDocs['Sertifikat Operasi Plastik'] = $medic['sertifikat_operasi_plastik'] ?? '';
-        }
-        if (array_key_exists('sertifikat_operasi_kecil', $medic)) {
-            $standardDocs['Sertifikat Operasi Kecil'] = $medic['sertifikat_operasi_kecil'] ?? '';
-        }
-        if (array_key_exists('sertifikat_operasi_besar', $medic)) {
-            $standardDocs['Sertifikat Operasi Besar'] = $medic['sertifikat_operasi_besar'] ?? '';
-        }
-        if (array_key_exists('sertifikat_class_co_asst', $medic)) {
-            $standardDocs['Sertifikat Class Co. Asst'] = $medic['sertifikat_class_co_asst'] ?? '';
-        }
-        if (array_key_exists('sertifikat_class_paramedic', $medic)) {
-            $standardDocs['Sertifikat Class Paramedic'] = $medic['sertifikat_class_paramedic'] ?? '';
-        }
 
         foreach ($standardDocs as $label => $path) {
             if (!empty($path)) {
@@ -405,17 +332,6 @@ include __DIR__ . '/../partials/sidebar.php';
             nameDisplay.style.display = 'flex';
         } else {
             nameDisplay.style.display = 'none';
-        }
-
-        const issuedDateRow = document.querySelector('.doc-issued-date-row[data-for="' + input.name + '"]');
-        const issuedDateInput = document.querySelector('[data-issued-date-input="' + input.name + '"]');
-        if (issuedDateRow && issuedDateInput) {
-            const hasFile = input.files && input.files.length > 0;
-            issuedDateRow.classList.toggle('hidden', !hasFile);
-            issuedDateInput.required = hasFile;
-            if (!hasFile) {
-                issuedDateInput.value = '';
-            }
         }
     });
 </script>
