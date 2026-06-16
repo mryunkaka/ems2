@@ -5173,8 +5173,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const medicsPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_online_medics.php'),
-                interval: 15000,
-                maxInterval: 60000,
+                interval: 45000,
+                maxInterval: 180000,
                 timeoutMs: 5000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
@@ -5388,8 +5388,8 @@ include __DIR__ . '/../partials/sidebar.php';
             // ===============================
             const activitiesPoller = window.EMSRealtime.createPollingTask({
                 url: window.emsUrl('/actions/get_activities.php'),
-                interval: 20000,
-                maxInterval: 180000,
+                interval: 120000,
+                maxInterval: 300000,
                 timeoutMs: 6000,
                 onSuccess: function(data) {
                     if (!Array.isArray(data)) {
@@ -5569,8 +5569,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const statusPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_farmasi_status.php'),
-            interval: 15000,
-            maxInterval: 60000,
+            interval: 60000,
+            maxInterval: 180000,
             timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.status !== 'string') {
@@ -5680,8 +5680,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
         const fairnessPoller = window.EMSRealtime.createPollingTask({
             url: window.emsUrl('/actions/get_fairness_status.php'),
-            interval: 20000,
-            maxInterval: 120000,
+            interval: 120000,
+            maxInterval: 300000,
             timeoutMs: 5000,
             onSuccess: function(data) {
                 if (!data || typeof data.user_status !== 'string') {
@@ -6846,7 +6846,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
                 renderOnlineCooldownNotice();
                 checkDutyLimits();
-            }, 30000);
+            }, 120000);
             if (!dutyRenderInterval) {
                 dutyRenderInterval = setInterval(renderOnlineCooldownNotice, 1000);
             }

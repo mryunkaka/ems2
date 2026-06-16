@@ -857,5 +857,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  setInterval(sendHeartbeat, 120000);
+  setInterval(sendHeartbeat, 300000);
 });
