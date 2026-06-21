@@ -320,6 +320,7 @@ $settingAkunDateFields = [
     'tanggal_join_manager',
 ];
 $settingAkunSelectColumns = [
+    'position',
     'kode_nomor_induk_rs',
     'file_ktp',
     'file_sim',
@@ -371,7 +372,8 @@ $requiredDocFields = [
     'file_skb' => 'Upload SKB wajib diunggah.',
     'file_kta' => 'Upload KTA wajib diunggah.',
 ];
-if (array_key_exists('file_kontrak_kerja', $userDb)) {
+$isTraineePosition = ems_normalize_position($userDb['position'] ?? $position) === 'trainee';
+if (!$isTraineePosition && array_key_exists('file_kontrak_kerja', $userDb)) {
     $requiredDocFields['file_kontrak_kerja'] = 'Kontrak kerja wajib diunggah.';
 }
 

@@ -161,7 +161,8 @@ if (isset($_SESSION['user_rh'])) {
         }
 
         $hasKontrakKerjaColumn = authGuardUserRhHasColumn($pdo, 'file_kontrak_kerja');
-        if ($hasKontrakKerjaColumn && authGuardRequiresKontrakKerja($currentScript)) {
+        $isTraineePosition = ems_normalize_position($_SESSION['user_rh']['position'] ?? '') === 'trainee';
+        if (!$isTraineePosition && $hasKontrakKerjaColumn && authGuardRequiresKontrakKerja($currentScript)) {
             $kontrakKerja = trim((string)($_SESSION['user_rh']['file_kontrak_kerja'] ?? ''));
             if ($kontrakKerja === '') {
                 authGuardRedirectKontrakKerjaRequired();

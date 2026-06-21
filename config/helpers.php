@@ -552,7 +552,7 @@ function ems_normalize_position(?string $position): string
     $raw = preg_replace('/\s+/', ' ', $raw);
 
     return match ($raw) {
-        'trainee' => 'trainee',
+        'trainee', 'training' => 'trainee',
         'paramedic' => 'paramedic',
         '(co.ast)', '(co. ast)', 'co.ast', 'co. ast', 'co asst', 'co. asst', 'co-ass', 'co_asst', 'coasst' => 'co_asst',
         'dokter umum', 'dr umum', 'general practitioner', 'gp' => 'general_practitioner',

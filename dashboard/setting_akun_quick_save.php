@@ -241,12 +241,13 @@ if (empty($userDb)) {
     quickSaveRespond(false, 'User tidak ditemukan.', [], 404);
 }
 
+$isTraineePosition = ems_normalize_position($userDb['position'] ?? '') === 'trainee';
 $requiredDocFields = [
     'file_ktp' => 'Upload KTP wajib diunggah.',
     'file_skb' => 'Upload SKB wajib diunggah.',
     'file_kta' => 'Upload KTA wajib diunggah.',
 ];
-if (array_key_exists('file_kontrak_kerja', $userDb)) {
+if (!$isTraineePosition && array_key_exists('file_kontrak_kerja', $userDb)) {
     $requiredDocFields['file_kontrak_kerja'] = 'Kontrak kerja wajib diunggah.';
 }
 foreach ($requiredDocFields as $field => $message) {

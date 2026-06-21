@@ -3,6 +3,8 @@
 header('Content-Type: text/plain; charset=UTF-8');
 
 $targets = [
+    __DIR__ . '/auth/auth_guard.php',
+    __DIR__ . '/config/helpers.php',
     __DIR__ . '/dashboard/setting_akun.php',
     __DIR__ . '/dashboard/setting_akun_action.php',
     __DIR__ . '/dashboard/setting_akun_quick_save.php',

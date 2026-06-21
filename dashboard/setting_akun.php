@@ -100,6 +100,7 @@ $stmt = $pdo->prepare("
 
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC);
+$isTraineePosition = ems_normalize_position($userDb['position'] ?? ($userSession['position'] ?? '')) === 'trainee';
 
 $otherDocs = ensureAcademyDocIds(parseAcademyDocs($userDb['dokumen_lainnya'] ?? ''));
 
@@ -286,6 +287,8 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
             <form method="POST"
                 action="setting_akun_action.php"
                 class="form"
+                data-user-position="<?= htmlspecialchars($medicPosNormalized) ?>"
+                novalidate
                 enctype="multipart/form-data">
 
                 <!-- ===============================
@@ -407,6 +410,7 @@ DOKUMEN PENDUKUNG
                     $issuedDateLabel = $label !== '' ? 'Tanggal Dikeluarkan ' . $label : 'Tanggal Dikeluarkan';
                 ?>
                     <div class="doc-upload-wrapper"
+                        data-doc-wrapper="<?= htmlspecialchars($name) ?>"
                         <?php if ($issuedDateField !== null): ?>
                         data-issued-doc-wrapper
                         data-doc-name="<?= htmlspecialchars($name) ?>"
@@ -516,7 +520,7 @@ DOKUMEN PENDUKUNG
                     renderDocInput('Upload SIM', 'file_sim', $userDb['file_sim']);
                     renderDocInput('Upload KTA', 'file_kta', $userDb['file_kta'], true);
                     if (array_key_exists('file_kontrak_kerja', $userDb)) {
-                        renderDocInput('Kontrak Kerja', 'file_kontrak_kerja', $userDb['file_kontrak_kerja'], true);
+                        renderDocInput('Kontrak Kerja', 'file_kontrak_kerja', $userDb['file_kontrak_kerja'], !$isTraineePosition);
                     }
                     renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
                     renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
@@ -808,6 +812,35 @@ DOKUMEN PENDUKUNG
             row.classList.toggle('hidden', !shouldShow);
             dateInput.required = hasSelectedUpload && !markedDelete;
         }
+
+        function syncTraineeKontrakKerjaRequired() {
+            const form = document.querySelector('form[action="setting_akun_action.php"]');
+            if (!form || form.getAttribute('data-user-position') !== 'trainee') {
+                return;
+            }
+
+            const input = form.querySelector('input[type="file"][name="file_kontrak_kerja"]');
+            if (input) {
+                input.required = false;
+                input.removeAttribute('required');
+            }
+
+            const wrapper = form.querySelector('[data-doc-wrapper="file_kontrak_kerja"]');
+            if (wrapper) {
+                const requiredMark = wrapper.querySelector('.doc-label .required');
+                if (requiredMark) {
+                    requiredMark.remove();
+                }
+
+                wrapper.querySelectorAll('.doc-hint').forEach(function(hint) {
+                    if (hint.textContent.trim() === 'Dokumen ini wajib diunggah.') {
+                        hint.remove();
+                    }
+                });
+            }
+        }
+
+        syncTraineeKontrakKerjaRequired();
 
         document.querySelectorAll('[data-issued-doc-wrapper]').forEach(function(wrapper) {
             syncIssuedDateVisibility(wrapper);
@@ -1249,6 +1282,8 @@ DOKUMEN PENDUKUNG
             }
 
             form.addEventListener('submit', function(e) {
+                syncTraineeKontrakKerjaRequired();
+
                 const oldPin = oldPinInput.value.trim();
                 const newPin = newPinInput.value.trim();
                 const confirmPin = confirmPinInput.value.trim();
