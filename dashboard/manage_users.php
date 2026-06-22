@@ -1101,6 +1101,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
+                                        <th>No HP IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
                                     </tr>
@@ -1125,6 +1126,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                        $roleSearch = strtolower(trim((string)($u['role'] ?? '')));
 		                                        $divisionSearch = strtolower(trim((string)ems_normalize_division($u['division'] ?? '')));
 		                                        $unitSearch = strtolower(trim((string)ems_normalize_unit_code($u['unit_code'] ?? 'roxwood')));
+                                                $noHpIcSearch = strtolower(trim((string)($u['no_hp_ic'] ?? '')));
 		                                        $joinSearch = '';
 		                                        if (!empty($u['tanggal_masuk'])) {
 		                                            try {
@@ -1142,6 +1144,7 @@ uksort($usersByBatch, function ($a, $b) {
 		                                            $roleSearch,
 		                                            $divisionSearch,
 		                                            $unitSearch,
+                                                    $noHpIcSearch,
 		                                            $joinSearch,
 		                                            $docSearch,
 		                                        ])));
@@ -1214,15 +1217,16 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
 	                                            </td>
-                                                <td>
-                                                    <?php if (!empty($u['tanggal_lahir_ic'])): ?>
-                                                        <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
-                                                        <small class="meta-text"><?= htmlspecialchars($birthdayCell['age']) ?></small><br>
-                                                        <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
-                                                    <?php else: ?>
-                                                        <span class="muted-placeholder">-</span>
-                                                    <?php endif; ?>
-                                                </td>
+                                            <td>
+                                                <?php if (!empty($u['tanggal_lahir_ic'])): ?>
+                                                    <div><?= htmlspecialchars($birthdayCell['date']) ?></div>
+                                                    <small class="meta-text"><?= htmlspecialchars($birthdayCell['age']) ?></small><br>
+                                                    <small class="meta-text"><?= htmlspecialchars($birthdayCell['countdown']) ?></small>
+                                                <?php else: ?>
+                                                    <span class="muted-placeholder">-</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= htmlspecialchars(trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-') ?></td>
 	                                            <td>
 	                                                <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
                                             </td>
@@ -1347,6 +1351,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
+                                        <th>No HP IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
                                     </tr>
@@ -1371,6 +1376,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         $roleSearch = strtolower(trim((string)($u['role'] ?? '')));
                                         $divisionSearch = strtolower(trim((string)ems_normalize_division($u['division'] ?? '')));
                                         $unitSearch = strtolower(trim((string)ems_normalize_unit_code($u['unit_code'] ?? 'roxwood')));
+                                        $noHpIcSearch = strtolower(trim((string)($u['no_hp_ic'] ?? '')));
                                         $batchSearch = !empty($u['batch']) ? 'batch ' . (int)$u['batch'] : 'tanpa batch';
                                         $joinSearch = '';
                                         if (!empty($u['tanggal_masuk'])) {
@@ -1389,6 +1395,7 @@ uksort($usersByBatch, function ($a, $b) {
                                             $roleSearch,
                                             $divisionSearch,
                                             $unitSearch,
+                                            $noHpIcSearch,
                                             $batchSearch,
                                             $joinSearch,
                                             $docSearch,
@@ -1478,6 +1485,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
                                             </td>
+                                            <td><?= htmlspecialchars(trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-') ?></td>
                                             <td>
                                                 <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
                                             </td>

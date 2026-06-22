@@ -198,7 +198,7 @@ $spreadsheet->getDefaultStyle()->getAlignment()->setVertical(Alignment::VERTICAL
 
 $title = $viewMode === 'per_batch' ? 'DAFTAR USER PER BATCH' : 'DAFTAR SEMUA USER';
 $sheet->setCellValue('A1', $title);
-$sheet->mergeCells('A1:J1');
+$sheet->mergeCells('A1:L1');
 $sheet->getStyle('A1')->applyFromArray([
     'font' => [
         'bold' => true,
@@ -212,7 +212,7 @@ $sheet->getStyle('A1')->applyFromArray([
 ]);
 
 $sheet->setCellValue('A2', 'Unit: ' . ems_unit_label($effectiveUnit));
-$sheet->mergeCells('A2:J2');
+$sheet->mergeCells('A2:L2');
 $sheet->getStyle('A2')->applyFromArray([
     'font' => [
         'size' => 11,
@@ -239,12 +239,13 @@ $headers = [
     'Tanggal Join',
     'Durasi',
     'Status',
+    'No HP IC',
     'Dokumen',
 ];
 
 $sheet->fromArray($headers, null, 'A4');
 
-$headerRange = 'A4:K4';
+$headerRange = 'A4:L4';
 $sheet->getStyle($headerRange)->applyFromArray([
     'font' => [
         'bold' => true,
@@ -274,7 +275,7 @@ if ($viewMode === 'per_batch') {
     foreach ($usersByBatch as $batchName => $batchUsers) {
         // Batch header row
         $sheet->setCellValue('A' . $currentRow, $batchName);
-        $sheet->mergeCells('A' . $currentRow . ':K' . $currentRow);
+        $sheet->mergeCells('A' . $currentRow . ':L' . $currentRow);
         $sheet->getStyle('A' . $currentRow)->applyFromArray([
             'font' => [
                 'bold' => true,
@@ -312,10 +313,11 @@ if ($viewMode === 'per_batch') {
                 !empty($u['tanggal_masuk']) ? (new DateTime($u['tanggal_masuk']))->format('d M Y') : '-',
                 formatDurasiMedisExport($u['tanggal_masuk'] ?? null),
                 getStatusLabel($u),
+                trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-',
                 getDocumentList($u),
             ], null, 'A' . $currentRow);
 
-            $rowRange = 'A' . $currentRow . ':K' . $currentRow;
+            $rowRange = 'A' . $currentRow . ':L' . $currentRow;
             $sheet->getStyle($rowRange)->applyFromArray([
                 'borders' => [
                     'allBorders' => [
@@ -346,7 +348,8 @@ if ($viewMode === 'per_batch') {
             $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
             $sheet->getStyle('C' . $currentRow . ':G' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle('H' . $currentRow . ':J' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->getStyle('K' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            $sheet->getStyle('K' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle('L' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
             $currentRow++;
         }
@@ -368,10 +371,11 @@ if ($viewMode === 'per_batch') {
             !empty($u['tanggal_masuk']) ? (new DateTime($u['tanggal_masuk']))->format('d M Y') : '-',
             formatDurasiMedisExport($u['tanggal_masuk'] ?? null),
             getStatusLabel($u),
+            trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-',
             getDocumentList($u),
         ], null, 'A' . $currentRow);
 
-        $rowRange = 'A' . $currentRow . ':K' . $currentRow;
+        $rowRange = 'A' . $currentRow . ':L' . $currentRow;
         $sheet->getStyle($rowRange)->applyFromArray([
             'borders' => [
                 'allBorders' => [
@@ -402,7 +406,8 @@ if ($viewMode === 'per_batch') {
         $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
         $sheet->getStyle('C' . $currentRow . ':G' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle('H' . $currentRow . ':J' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle('K' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $sheet->getStyle('K' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('L' . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
         $currentRow++;
     }
@@ -477,7 +482,8 @@ $sheet->getColumnDimension('G')->setWidth(14);
 $sheet->getColumnDimension('H')->setWidth(14);
 $sheet->getColumnDimension('I')->setWidth(12);
 $sheet->getColumnDimension('J')->setWidth(22);
-$sheet->getColumnDimension('K')->setWidth(35);
+$sheet->getColumnDimension('K')->setWidth(18);
+$sheet->getColumnDimension('L')->setWidth(35);
 
 $viewModeSlug = $viewMode === 'per_batch' ? 'per_batch' : 'semua';
 $filename = 'manage_users_' . $viewModeSlug . '_' . date('Y-m-d_H-i-s') . '.xlsx';
