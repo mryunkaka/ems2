@@ -384,6 +384,14 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="card card-section">
             <div class="card-header">
                 <span>Daftar Medis (Read-Only)</span>
+                <?php
+                $exportUrl = $positionFilter === ''
+                    ? ems_url('/dashboard/specialist_medics_export.php')
+                    : ems_url('/dashboard/specialist_medics_export.php?position=' . urlencode($positionFilter));
+                ?>
+                <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                    Export Excel
+                </a>
             </div>
             <p class="meta-text mb-4">Halaman ini hanya untuk melihat data. Tidak ada fitur edit, tambah, atau hapus. Data diambil dari tabel `user_rh`.</p>
 

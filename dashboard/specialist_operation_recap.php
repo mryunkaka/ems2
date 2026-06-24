@@ -280,7 +280,20 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
 
         <div class="card card-section">
-            <div class="card-header">Daftar Rekap Operasi Medis</div>
+            <div class="card-header">
+                <span>Daftar Rekap Operasi Medis</span>
+                <?php
+                $exportParams = [];
+                if ($search !== '') {
+                    $exportParams['search'] = $search;
+                }
+                $exportUrl = ems_url('/dashboard/specialist_operation_recap_export.php' . ($exportParams ? '?' . http_build_query($exportParams) : ''));
+                ?>
+                <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
+                    <span>Export Excel</span>
+                </a>
+            </div>
             <div class="card-body">
                 <?php if ($staffRecap === []): ?>
                     <div class="text-center py-8 text-gray-500">
