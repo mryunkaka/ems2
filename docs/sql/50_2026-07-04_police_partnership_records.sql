@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS `police_partnership_records` (
   `amount` int(11) NOT NULL DEFAULT 1000,
   `amount_updated_by` varchar(150) DEFAULT NULL,
   `amount_updated_at` datetime DEFAULT NULL,
+  `pricing_mode` varchar(20) NOT NULL DEFAULT 'per_qty',
+  `payment_status` varchar(20) NOT NULL DEFAULT 'pending',
+  `paid_at` datetime DEFAULT NULL,
+  `paid_by` varchar(200) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY (`id`),
@@ -57,3 +61,47 @@ DEALLOCATE PREPARE stmt;
 UPDATE `police_partnership_records`
 SET `service_at` = CONCAT(`service_date`, ' 00:00:00')
 WHERE `service_at` IS NULL;
+
+SET @has_pricing_mode := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'police_partnership_records'
+    AND COLUMN_NAME = 'pricing_mode'
+);
+SET @sql := IF(@has_pricing_mode = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `pricing_mode` varchar(20) NOT NULL DEFAULT ''per_qty'' AFTER `amount_updated_at`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @has_payment_status := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'police_partnership_records'
+    AND COLUMN_NAME = 'payment_status'
+);
+SET @sql := IF(@has_payment_status = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `payment_status` varchar(20) NOT NULL DEFAULT ''pending'' AFTER `pricing_mode`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @has_paid_at := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'police_partnership_records'
+    AND COLUMN_NAME = 'paid_at'
+);
+SET @sql := IF(@has_paid_at = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `paid_at` datetime DEFAULT NULL AFTER `payment_status`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @has_paid_by := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'police_partnership_records'
+    AND COLUMN_NAME = 'paid_by'
+);
+SET @sql := IF(@has_paid_by = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `paid_by` varchar(200) DEFAULT NULL AFTER `paid_at`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

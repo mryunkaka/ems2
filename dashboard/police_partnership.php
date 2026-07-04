@@ -39,23 +39,19 @@ $recentStmt = $pdo->prepare("
 $recentStmt->execute([$effectiveUnit]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$personStmt = $pdo->prepare("
-    SELECT
-        input_by_name,
-        COUNT(*) AS total_input,
-        COUNT(DISTINCT police_badge_no) AS total_badges
+$filteredStmt = $pdo->prepare("
+    SELECT *
     FROM police_partnership_records
     WHERE unit_code = ?
       AND DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN ? AND ?
-    GROUP BY input_by_name
-    ORDER BY total_input DESC, input_by_name ASC
+    ORDER BY COALESCE(service_at, CONCAT(service_date, ' 00:00:00')) DESC, id DESC
 ");
-$personStmt->execute([
+$filteredStmt->execute([
     $effectiveUnit,
     substr($rangeStart, 0, 10),
     substr($rangeEnd, 0, 10),
 ]);
-$personRows = $personStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$filteredRows = $filteredStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
@@ -174,19 +170,31 @@ include __DIR__ . '/../partials/sidebar.php';
                 <table id="policePersonRecapTable" class="table-custom">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>Nama Penginput</th>
-                            <th>Total Input</th>
-                            <th>Badge Police Unik</th>
+                            <th>Jam dan Tanggal</th>
+                            <th>Badge</th>
+                            <th>Tindakan</th>
+                            <th>Input</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($personRows as $index => $row): ?>
+                        <?php foreach ($filteredRows as $row): ?>
                             <tr>
-                                <td><?= $index + 1 ?></td>
+                                <td data-order="<?= htmlspecialchars((string)($row['service_at'] ?? $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(policePartnershipDateTimeLabel($row['service_at'] ?? '', $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars((string)$row['police_badge_no'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars((string)$row['action_type'], ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td><?= (int)$row['total_input'] ?></td>
-                                <td><?= (int)$row['total_badges'] ?></td>
+                                <td>
+                                    <form method="POST" action="police_partnership_action.php" onsubmit="return confirm('Hapus data input Police ini?')" class="inline-flex">
+                                        <?= csrfField(); ?>
+                                        <input type="hidden" name="action" value="delete_record">
+                                        <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+                                        <input type="hidden" name="redirect" value="<?= htmlspecialchars((string)($_SERVER['REQUEST_URI'] ?? 'police_partnership.php'), ENT_QUOTES, 'UTF-8') ?>">
+                                        <button type="submit" class="btn btn-danger btn-sm" title="Hapus data" aria-label="Hapus data">
+                                            <?= ems_icon('trash', 'h-4 w-4') ?>
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -227,7 +235,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         jQuery('#policePersonRecapTable').DataTable({
             pageLength: 10,
-            order: [[2, 'desc']],
+            order: [[0, 'desc']],
             language: {
                 url: '/assets/design/js/datatables-id.json',
                 emptyTable: 'Belum ada rekap perorangan.'

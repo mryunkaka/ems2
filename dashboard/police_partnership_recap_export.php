@@ -47,11 +47,22 @@ $summaryStmt->execute([
 $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
 $rowsStmt = $pdo->prepare("
-    SELECT *
+    SELECT
+        COALESCE(input_by_user_id, 0) AS input_by_user_id,
+        input_by_name,
+        COUNT(*) AS total_input,
+        COUNT(DISTINCT police_badge_no) AS total_badges,
+        COALESCE(SUM(amount), 0) AS total_amount,
+        MIN(payment_status) AS min_payment_status,
+        MAX(payment_status) AS max_payment_status,
+        MAX(paid_at) AS paid_at,
+        MAX(paid_by) AS paid_by,
+        MAX(pricing_mode) AS pricing_mode
     FROM police_partnership_records
     WHERE DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN :start AND :end
       AND unit_code = :unit_code
-    ORDER BY COALESCE(service_at, CONCAT(service_date, ' 00:00:00')) ASC, id ASC
+    GROUP BY COALESCE(input_by_user_id, 0), input_by_name
+    ORDER BY total_amount DESC, total_input DESC, input_by_name ASC
 ");
 $rowsStmt->execute([
     ':start' => $rangeStart,
@@ -93,7 +104,7 @@ $sheet->getStyle('A4:G4')->applyFromArray([
     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BAE6FD']]],
 ]);
 
-$headers = ['No', 'Jam dan Tanggal', 'No Badge', 'Tindakan', 'Diinput Oleh', 'Biaya Per Input', 'Waktu Input'];
+$headers = ['No', 'Nama Medis', 'Total Input', 'Badge Police Unik', 'Hasil Diterima', 'Status', 'Dibayar Oleh'];
 $sheet->fromArray($headers, null, 'A7');
 $sheet->getStyle('A7:G7')->applyFromArray([
     'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
@@ -104,13 +115,15 @@ $sheet->getStyle('A7:G7')->applyFromArray([
 
 $rowNum = 8;
 foreach ($rows as $index => $row) {
+    $isPaid = (string)($row['min_payment_status'] ?? '') === 'paid'
+        && (string)($row['max_payment_status'] ?? '') === 'paid';
     $sheet->setCellValue('A' . $rowNum, $index + 1);
-    $sheet->setCellValue('B' . $rowNum, policePartnershipDateTimeLabel($row['service_at'] ?? '', $row['service_date'] ?? ''));
-    $sheet->setCellValue('C' . $rowNum, (string)($row['police_badge_no'] ?? ''));
-    $sheet->setCellValue('D' . $rowNum, (string)($row['action_type'] ?? ''));
-    $sheet->setCellValue('E' . $rowNum, (string)($row['input_by_name'] ?? ''));
-    $sheet->setCellValue('F' . $rowNum, (int)($row['amount'] ?? 0));
-    $sheet->setCellValue('G' . $rowNum, policePartnershipDateTimeLabel($row['created_at'] ?? '', null));
+    $sheet->setCellValue('B' . $rowNum, (string)($row['input_by_name'] ?? ''));
+    $sheet->setCellValue('C' . $rowNum, (int)($row['total_input'] ?? 0));
+    $sheet->setCellValue('D' . $rowNum, (int)($row['total_badges'] ?? 0));
+    $sheet->setCellValue('E' . $rowNum, (int)($row['total_amount'] ?? 0));
+    $sheet->setCellValue('F' . $rowNum, $isPaid ? 'Dibayar' : 'Pending');
+    $sheet->setCellValue('G' . $rowNum, (string)($row['paid_by'] ?? '-'));
     $rowNum++;
 }
 
@@ -125,9 +138,8 @@ $sheet->getStyle('A8:G' . $lastRow)->applyFromArray([
     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
 ]);
 $sheet->getStyle('A8:A' . $lastRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-$sheet->getStyle('F4')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 $sheet->getStyle('G4')->getNumberFormat()->setFormatCode('"$"#,##0');
-$sheet->getStyle('F8:F' . $lastRow)->getNumberFormat()->setFormatCode('"$"#,##0');
+$sheet->getStyle('E8:E' . $lastRow)->getNumberFormat()->setFormatCode('"$"#,##0');
 
 foreach (range('A', 'G') as $column) {
     $sheet->getColumnDimension($column)->setAutoSize(true);

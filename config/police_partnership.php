@@ -23,6 +23,10 @@ function policePartnershipEnsureTable(PDO $pdo): void
             amount INT(11) NOT NULL DEFAULT 1000,
             amount_updated_by VARCHAR(150) NULL,
             amount_updated_at DATETIME NULL,
+            pricing_mode VARCHAR(20) NOT NULL DEFAULT 'per_qty',
+            payment_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            paid_at DATETIME NULL,
+            paid_by VARCHAR(200) NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
@@ -38,6 +42,19 @@ function policePartnershipEnsureTable(PDO $pdo): void
         $pdo->exec("ALTER TABLE police_partnership_records ADD COLUMN service_at DATETIME NULL AFTER service_date");
         $pdo->exec("ALTER TABLE police_partnership_records ADD KEY idx_ppr_service_at (service_at)");
         $pdo->exec("UPDATE police_partnership_records SET service_at = CONCAT(service_date, ' 00:00:00') WHERE service_at IS NULL");
+    }
+
+    $columnAdds = [
+        'pricing_mode' => "ALTER TABLE police_partnership_records ADD COLUMN pricing_mode VARCHAR(20) NOT NULL DEFAULT 'per_qty' AFTER amount_updated_at",
+        'payment_status' => "ALTER TABLE police_partnership_records ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'pending' AFTER pricing_mode",
+        'paid_at' => "ALTER TABLE police_partnership_records ADD COLUMN paid_at DATETIME NULL AFTER payment_status",
+        'paid_by' => "ALTER TABLE police_partnership_records ADD COLUMN paid_by VARCHAR(200) NULL AFTER paid_at",
+    ];
+
+    foreach ($columnAdds as $column => $sql) {
+        if (!policePartnershipColumnExists($pdo, $column)) {
+            $pdo->exec($sql);
+        }
     }
 
     $ensured = true;
@@ -101,4 +118,13 @@ function policePartnershipDateTimeLabel(?string $value, ?string $fallbackDate = 
     } catch (Throwable $e) {
         return $value;
     }
+}
+
+function policePartnershipPricingModeLabel(?string $mode): string
+{
+    return match ((string)$mode) {
+        'per_week' => 'Per Minggu',
+        'per_month' => 'Per Bulan',
+        default => 'Per Qty',
+    };
 }

@@ -121,6 +121,120 @@ if ($action === 'update_amount') {
     exit;
 }
 
+if ($action === 'delete_record') {
+    $id = (int)($_POST['id'] ?? 0);
+    $redirect = (string)($_POST['redirect'] ?? 'police_partnership.php');
+    if (!str_starts_with($redirect, '/dashboard/') && !str_starts_with($redirect, 'police_partnership.php')) {
+        $redirect = 'police_partnership.php';
+    }
+
+    if ($id <= 0) {
+        $_SESSION['flash_errors'][] = 'Data input tidak valid.';
+        header('Location: ' . $redirect);
+        exit;
+    }
+
+    $params = [$id, $effectiveUnit];
+    $ownerSql = '';
+    if (!ems_is_manager_plus_role($user['role'] ?? '')) {
+        $ownerSql = ' AND input_by_user_id = ?';
+        $params[] = (int)($user['id'] ?? 0);
+    }
+
+    $stmt = $pdo->prepare("DELETE FROM police_partnership_records WHERE id = ? AND unit_code = ? {$ownerSql}");
+    $stmt->execute($params);
+
+    if ($stmt->rowCount() > 0) {
+        $_SESSION['flash_messages'][] = 'Data input Police berhasil dihapus.';
+    } else {
+        $_SESSION['flash_errors'][] = 'Data tidak ditemukan atau Anda tidak memiliki akses hapus.';
+    }
+
+    header('Location: ' . $redirect);
+    exit;
+}
+
+if ($action === 'update_pricing') {
+    if (!ems_is_manager_plus_role($user['role'] ?? '')) {
+        http_response_code(403);
+        exit('Akses ditolak');
+    }
+
+    $pricingMode = (string)($_POST['pricing_mode'] ?? 'per_qty');
+    if (!in_array($pricingMode, ['per_qty', 'per_week', 'per_month'], true)) {
+        $pricingMode = 'per_qty';
+    }
+
+    $totalAmount = max(0, (int)($_POST['total_amount'] ?? 0));
+    $rangeStartPost = (string)($_POST['range_start'] ?? '');
+    $rangeEndPost = (string)($_POST['range_end'] ?? '');
+    $redirect = (string)($_POST['redirect'] ?? 'police_partnership_recap.php');
+    if (!str_starts_with($redirect, '/dashboard/') && !str_starts_with($redirect, 'police_partnership_recap.php')) {
+        $redirect = 'police_partnership_recap.php';
+    }
+
+    $startDate = substr($rangeStartPost, 0, 10);
+    $endDate = substr($rangeEndPost, 0, 10);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+        $_SESSION['flash_errors'][] = 'Rentang tanggal harga tidak valid.';
+        header('Location: ' . $redirect);
+        exit;
+    }
+
+    $rowsStmt = $pdo->prepare("
+        SELECT id
+        FROM police_partnership_records
+        WHERE unit_code = ?
+          AND DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN ? AND ?
+        ORDER BY COALESCE(service_at, CONCAT(service_date, ' 00:00:00')) ASC, id ASC
+    ");
+    $rowsStmt->execute([$effectiveUnit, $startDate, $endDate]);
+    $recordIds = array_map('intval', $rowsStmt->fetchAll(PDO::FETCH_COLUMN) ?: []);
+
+    if ($recordIds === []) {
+        $_SESSION['flash_errors'][] = 'Tidak ada data pada rentang ini untuk diperbarui.';
+        header('Location: ' . $redirect);
+        exit;
+    }
+
+    $baseAmount = $pricingMode === 'per_qty' ? $totalAmount : intdiv($totalAmount, count($recordIds));
+    $remainder = $pricingMode === 'per_qty' ? 0 : ($totalAmount % count($recordIds));
+
+    $pdo->beginTransaction();
+    try {
+        $updateStmt = $pdo->prepare("
+            UPDATE police_partnership_records
+            SET amount = ?,
+                pricing_mode = ?,
+                amount_updated_by = ?,
+                amount_updated_at = NOW(),
+                payment_status = 'pending',
+                paid_at = NULL,
+                paid_by = NULL
+            WHERE id = ? AND unit_code = ?
+        ");
+
+        foreach ($recordIds as $index => $recordId) {
+            $amount = $baseAmount;
+            if ($pricingMode !== 'per_qty' && $index < $remainder) {
+                $amount++;
+            }
+            $updateStmt->execute([$amount, $pricingMode, $inputName, $recordId, $effectiveUnit]);
+        }
+
+        $pdo->commit();
+        $_SESSION['flash_messages'][] = 'Harga kerja sama Police berhasil diperbarui (' . policePartnershipPricingModeLabel($pricingMode) . ').';
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        $_SESSION['flash_errors'][] = 'Gagal memperbarui harga: ' . $e->getMessage();
+    }
+
+    header('Location: ' . $redirect);
+    exit;
+}
+
 $_SESSION['flash_errors'][] = 'Action kerja sama Police tidak dikenali.';
 header('Location: police_partnership.php');
 exit;

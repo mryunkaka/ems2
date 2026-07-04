@@ -48,11 +48,22 @@ $summaryStmt->execute([
 $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
 $rowsStmt = $pdo->prepare("
-    SELECT *
+    SELECT
+        COALESCE(input_by_user_id, 0) AS input_by_user_id,
+        input_by_name,
+        COUNT(*) AS total_input,
+        COUNT(DISTINCT police_badge_no) AS total_badges,
+        COALESCE(SUM(amount), 0) AS total_amount,
+        MIN(payment_status) AS min_payment_status,
+        MAX(payment_status) AS max_payment_status,
+        MAX(paid_at) AS paid_at,
+        MAX(paid_by) AS paid_by,
+        MAX(pricing_mode) AS pricing_mode
     FROM police_partnership_records
     WHERE DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN :start AND :end
       AND unit_code = :unit_code
-    ORDER BY COALESCE(service_at, CONCAT(service_date, ' 00:00:00')) DESC, id DESC
+    GROUP BY COALESCE(input_by_user_id, 0), input_by_name
+    ORDER BY total_amount DESC, total_input DESC, input_by_name ASC
 ");
 $rowsStmt->execute([
     ':start' => $rangeStart,
@@ -78,8 +89,12 @@ include __DIR__ . '/../partials/sidebar.php';
                 <p class="page-subtitle"><?= htmlspecialchars(ems_unit_label($effectiveUnit), ENT_QUOTES, 'UTF-8') ?> &bull; <?= htmlspecialchars($rangeLabel ?? '-', ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <div class="flex flex-wrap gap-2">
+                <button type="button" class="btn btn-warning" onclick="openPricingModal()">
+                    <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                    <span>Edit Harga</span>
+                </button>
                 <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-success">
-                    <?= ems_icon('arrow-down-tray', 'h-4 w-4') ?>
+                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
                     <span>Export Excel</span>
                 </a>
                 <a href="police_partnership.php" class="btn-secondary">
@@ -147,66 +162,200 @@ include __DIR__ . '/../partials/sidebar.php';
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th>Jam dan Tanggal</th>
-                            <th>No Badge</th>
-                            <th>Tindakan</th>
-                            <th>Diinput Oleh</th>
-                            <th>Biaya Per Input</th>
-                            <?php if ($canEditAmount): ?>
-                                <th>Aksi</th>
-                            <?php endif; ?>
+                            <th>Nama Medis</th>
+                            <th>Total Input</th>
+                            <th>Badge Police Unik</th>
+                            <th>Hasil Diterima</th>
+                            <th>Status</th>
+                            <th>Dibayar Oleh</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($rows as $index => $row): ?>
+                            <?php
+                            $isPaid = (string)($row['min_payment_status'] ?? '') === 'paid'
+                                && (string)($row['max_payment_status'] ?? '') === 'paid';
+                            ?>
                             <tr>
                                 <td><?= $index + 1 ?></td>
-                                <td data-order="<?= htmlspecialchars((string)($row['service_at'] ?? $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(policePartnershipDateTimeLabel($row['service_at'] ?? '', $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                                <td><?= htmlspecialchars((string)$row['police_badge_no'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td><?= htmlspecialchars((string)$row['action_type'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= (int)$row['total_input'] ?></td>
+                                <td><?= (int)$row['total_badges'] ?></td>
+                                <td data-order="<?= (int)$row['total_amount'] ?>"><strong><?= dollar((int)$row['total_amount']) ?></strong></td>
                                 <td>
-                                    <?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?>
-                                    <?php if (!empty($row['created_at'])): ?>
-                                        <div class="status-meta"><?= htmlspecialchars(formatTanggalID($row['created_at']), ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php if ($isPaid): ?>
+                                        <div class="status-box verified">Dibayar</div>
+                                    <?php else: ?>
+                                        <div class="status-box pending">Pending</div>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <strong><?= dollar((int)$row['amount']) ?></strong>
-                                    <?php if (!empty($row['amount_updated_by'])): ?>
-                                        <div class="status-meta">Edit: <?= htmlspecialchars((string)$row['amount_updated_by'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?= htmlspecialchars((string)($row['paid_by'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if (!empty($row['paid_at'])): ?>
+                                        <div class="status-meta"><?= htmlspecialchars(formatTanggalID($row['paid_at']), ENT_QUOTES, 'UTF-8') ?></div>
                                     <?php endif; ?>
                                 </td>
-                                <?php if ($canEditAmount): ?>
-                                    <td>
-                                        <form method="POST" action="police_partnership_action.php" class="inline-flex items-center gap-2">
-                                            <?= csrfField(); ?>
-                                            <input type="hidden" name="action" value="update_amount">
-                                            <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
-                                            <input type="hidden" name="redirect" value="<?= htmlspecialchars((string)($_SERVER['REQUEST_URI'] ?? 'police_partnership_recap.php'), ENT_QUOTES, 'UTF-8') ?>">
-                                            <input type="number" name="amount" min="0" step="1" value="<?= (int)$row['amount'] ?>" class="form-control" style="width: 120px;">
-                                            <button type="submit" class="btn btn-primary btn-sm" title="Simpan biaya" aria-label="Simpan biaya">
-                                                <?= ems_icon('check', 'h-4 w-4') ?>
-                                            </button>
-                                        </form>
-                                    </td>
-                                <?php endif; ?>
+                                <td>
+                                    <?php if (!$isPaid && (int)$row['total_amount'] > 0): ?>
+                                        <button type="button"
+                                            class="btn btn-success btn-sm action-icon-btn"
+                                            onclick="openPolicePayModal(<?= (int)$row['input_by_user_id'] ?>, <?= json_encode((string)$row['input_by_name'], JSON_UNESCAPED_UNICODE) ?>, <?= (int)$row['total_amount'] ?>)"
+                                            title="Bayarkan"
+                                            aria-label="Bayarkan">
+                                            <?= ems_icon('banknotes', 'h-4 w-4') ?>
+                                        </button>
+                                    <?php else: ?>-<?php endif; ?>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="5" class="table-align-right font-semibold">TOTAL :</th>
+                            <th colspan="4" class="table-align-right font-semibold">TOTAL :</th>
                             <th><?= dollar((int)($summary['total_amount'] ?? 0)) ?></th>
-                            <?php if ($canEditAmount): ?><th></th><?php endif; ?>
+                            <th colspan="3"></th>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
     </div>
+
+    <div id="pricingModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('banknotes', 'h-5 w-5') ?>
+                    <span>Edit Harga Kerja Sama Police</span>
+                </div>
+                <button type="button" class="modal-close-btn" onclick="closePricingModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+            <form method="POST" action="police_partnership_action.php" class="form modal-form">
+                <?= csrfField(); ?>
+                <input type="hidden" name="action" value="update_pricing">
+                <input type="hidden" name="range_start" value="<?= htmlspecialchars($rangeStart, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="range_end" value="<?= htmlspecialchars($rangeEnd, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="redirect" value="<?= htmlspecialchars((string)($_SERVER['REQUEST_URI'] ?? 'police_partnership_recap.php'), ENT_QUOTES, 'UTF-8') ?>">
+                <div class="modal-content">
+                    <label>Mode Harga</label>
+                    <select name="pricing_mode" required>
+                        <option value="per_qty">Per Qty / Per Input</option>
+                        <option value="per_week">Per Minggu</option>
+                        <option value="per_month">Per Bulan</option>
+                    </select>
+                    <label>Total</label>
+                    <input type="number" name="total_amount" min="0" step="1" required value="<?= (int)($summary['total_amount'] ?? 0) ?>">
+                    <p class="meta-text-xs">Per Qty akan mengisi nominal yang sama untuk setiap input. Per Minggu dan Per Bulan akan membagi total ke seluruh input pada filter aktif.</p>
+                </div>
+                <div class="modal-foot">
+                    <div class="modal-actions">
+                        <button type="button" onclick="closePricingModal()" class="btn-secondary">Batal</button>
+                        <button type="submit" class="btn-success"><?= ems_icon('check', 'h-4 w-4') ?> <span>Simpan Harga</span></button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="policePayModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('banknotes', 'h-5 w-5') ?>
+                    <span>Konfirmasi Pembayaran Police</span>
+                </div>
+                <button type="button" class="modal-close-btn" onclick="closePolicePayModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+            <form id="policePayForm" class="form modal-form">
+                <div class="modal-content">
+                    <input type="hidden" id="policePayUserId" name="input_by_user_id">
+                    <input type="hidden" id="policePayUserName" name="input_by_name">
+                    <div class="pay-target-box">
+                        <div class="pay-target-label">Target Pembayaran:</div>
+                        <div class="pay-target-name" id="policePayTargetName">-</div>
+                        <div class="pay-target-value">$<span id="policePayTargetAmount">0</span></div>
+                    </div>
+                    <div class="payment-extra">
+                        <label class="payment-method-label">Metode Pembayaran:</label>
+                        <div class="payment-method-grid">
+                            <label class="payment-option selected">
+                                <input type="radio" name="pay_method" value="direct" checked>
+                                <span>Langsung Dibayar</span>
+                            </label>
+                            <label class="payment-option">
+                                <input type="radio" name="pay_method" value="titip">
+                                <span>Titip ke:</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="policeTitipSection" class="hidden payment-extra">
+                        <label class="payment-method-label">Titip ke Siapa:</label>
+                        <div class="relative">
+                            <input type="text" id="policeTitipInput" name="titip_to" placeholder="Ketik nama orang..." autocomplete="off" class="payment-input">
+                            <div id="policeTitipDropdown" class="consumer-search-dropdown consumer-search-dropdown-field hidden"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <div class="modal-actions">
+                        <button type="button" onclick="closePolicePayModal()" class="btn-secondary">Batal</button>
+                        <button type="submit" class="btn-success"><?= ems_icon('banknotes', 'h-4 w-4') ?> <span>Proses Pembayaran</span></button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 </section>
 
 <script>
+    function openPricingModal() {
+        const modal = document.getElementById('pricingModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closePricingModal() {
+        const modal = document.getElementById('pricingModal');
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
+    let policeSelectedTitipUserId = null;
+
+    function openPolicePayModal(userId, userName, amount) {
+        document.getElementById('policePayUserId').value = userId;
+        document.getElementById('policePayUserName').value = userName;
+        document.getElementById('policePayTargetName').textContent = userName;
+        document.getElementById('policePayTargetAmount').textContent = Number(amount || 0).toLocaleString('id-ID');
+        document.querySelector('#policePayModal input[name="pay_method"][value="direct"]').checked = true;
+        document.querySelectorAll('#policePayModal .payment-option').forEach(option => option.classList.remove('selected'));
+        document.querySelector('#policePayModal input[name="pay_method"][value="direct"]').closest('.payment-option').classList.add('selected');
+        document.getElementById('policeTitipSection').classList.add('hidden');
+        document.getElementById('policeTitipInput').value = '';
+        document.getElementById('policeTitipDropdown').classList.add('hidden');
+        document.getElementById('policeTitipDropdown').innerHTML = '';
+        policeSelectedTitipUserId = null;
+
+        const modal = document.getElementById('policePayModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closePolicePayModal() {
+        const modal = document.getElementById('policePayModal');
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const rangeSelect = document.getElementById('rangeSelect');
         const customFields = document.querySelectorAll('.filter-custom');
@@ -225,13 +374,97 @@ include __DIR__ . '/../partials/sidebar.php';
         if (window.jQuery && jQuery.fn.DataTable) {
             jQuery('#policePartnershipTable').DataTable({
                 pageLength: 10,
-                order: [[1, 'desc']],
+                order: [[4, 'desc']],
                 language: {
                     url: '/assets/design/js/datatables-id.json',
                     emptyTable: 'Belum ada data pada rentang ini.'
                 }
             });
         }
+
+        document.querySelectorAll('#policePayModal input[name="pay_method"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('#policePayModal .payment-option').forEach(option => option.classList.remove('selected'));
+                this.closest('.payment-option').classList.add('selected');
+                document.getElementById('policeTitipSection').classList.toggle('hidden', this.value !== 'titip');
+                if (this.value !== 'titip') {
+                    policeSelectedTitipUserId = null;
+                }
+            });
+        });
+
+        const titipInput = document.getElementById('policeTitipInput');
+        const titipDropdown = document.getElementById('policeTitipDropdown');
+        let titipController = null;
+        titipInput?.addEventListener('input', function() {
+            const keyword = titipInput.value.trim();
+            policeSelectedTitipUserId = null;
+            if (keyword.length < 2) {
+                titipDropdown.classList.add('hidden');
+                titipDropdown.innerHTML = '';
+                return;
+            }
+            if (titipController) titipController.abort();
+            titipController = new AbortController();
+            fetch('../ajax/search_user_rh.php?q=' + encodeURIComponent(keyword), { signal: titipController.signal })
+                .then(response => response.json())
+                .then(data => {
+                    titipDropdown.innerHTML = '';
+                    if (!Array.isArray(data) || data.length === 0) {
+                        titipDropdown.classList.add('hidden');
+                        return;
+                    }
+                    data.forEach(user => {
+                        const item = document.createElement('div');
+                        item.className = 'consumer-search-item';
+                        item.innerHTML = `<div class="consumer-search-name">${user.full_name ?? '-'}</div><div class="consumer-search-meta">${user.position ?? '-'}</div>`;
+                        item.addEventListener('click', () => {
+                            titipInput.value = user.full_name || '';
+                            policeSelectedTitipUserId = user.id || null;
+                            titipDropdown.classList.add('hidden');
+                            titipDropdown.innerHTML = '';
+                        });
+                        titipDropdown.appendChild(item);
+                    });
+                    titipDropdown.classList.remove('hidden');
+                })
+                .catch(() => {});
+        });
+
+        document.getElementById('policePayForm')?.addEventListener('submit', function(event) {
+            event.preventDefault();
+            const formData = new FormData(this);
+            const method = formData.get('pay_method');
+            if (method === 'titip' && !policeSelectedTitipUserId) {
+                alert('Silakan pilih user titip dari dropdown pencarian.');
+                return;
+            }
+
+            fetch('police_partnership_pay_process.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    input_by_user_id: formData.get('input_by_user_id'),
+                    input_by_name: formData.get('input_by_name'),
+                    range_start: <?= json_encode($rangeStart, JSON_UNESCAPED_SLASHES) ?>,
+                    range_end: <?= json_encode($rangeEnd, JSON_UNESCAPED_SLASHES) ?>,
+                    pay_method: method,
+                    titip_to: policeSelectedTitipUserId,
+                    csrf_token: String(window.EMS_CSRF_TOKEN || '')
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message || 'Pembayaran berhasil diproses.');
+                        closePolicePayModal();
+                        location.reload();
+                    } else {
+                        alert(data.message || 'Pembayaran gagal.');
+                    }
+                })
+                .catch(() => alert('Terjadi kesalahan saat memproses pembayaran.'));
+        });
     });
 </script>
 
