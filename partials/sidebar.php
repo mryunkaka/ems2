@@ -37,6 +37,7 @@ $groupedNav = [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
         sidebarItem('/dashboard/medical_roster.php', 'medical_roster.php', 'Daftar Medis Roxwood', 'user-group'),
         sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket'),
+        sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
         sidebarItem('/dashboard/struktur_organisasi.php', 'struktur_organisasi.php', 'Struktur Organisasi', 'building-office-2'),
     ],
     'Medis' => [
@@ -169,6 +170,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
         $groupedNav = [
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+                sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
                 sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
                 sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
@@ -192,6 +194,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
         $groupedNav = [
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
+                sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
                 sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle'),
                 sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles'),
                 sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
@@ -224,6 +227,26 @@ if ($isAltaUnit && !$canViewAllUnits) {
     }
 }
 
+if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+    if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {
+        $groupedNav['Keuangan'] = [];
+    }
+
+    $hasPoliceRecapMenu = false;
+    foreach ($groupedNav as $items) {
+        foreach ($items as $item) {
+            if (($item['page'] ?? '') === 'police_partnership_recap.php') {
+                $hasPoliceRecapMenu = true;
+                break 2;
+            }
+        }
+    }
+
+    if (!$hasPoliceRecapMenu) {
+        $groupedNav['Keuangan'][] = sidebarItem('/dashboard/police_partnership_recap.php', 'police_partnership_recap.php', 'Rekap Police', 'chart-bar');
+    }
+}
+
 if ($isTrainee) {
     $blockedTraineePages = [
         'rekap_farmasi.php',
@@ -233,6 +256,7 @@ if ($isTrainee) {
         'absensi_ems.php',
         'gaji.php',
         'regulasi_farmasi.php',
+        'police_partnership_recap.php',
     ];
 
     foreach ($groupedNav as $groupTitle => $items) {

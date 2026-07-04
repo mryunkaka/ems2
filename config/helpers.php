@@ -1166,6 +1166,10 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'ranking.php',
             'emt_doj.php',
             'emt_doj_action.php',
+            'police_partnership.php',
+            'police_partnership_recap.php',
+            'police_partnership_recap_export.php',
+            'police_partnership_action.php',
             'general_affair_kerjasama_input.php',
             'general_affair_kerjasama_input_action.php',
             'setting_akun.php',
@@ -1187,6 +1191,10 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'struktur_organisasi.php',
         'event_participants.php',
         'ems_services.php',
+        'police_partnership.php',
+        'police_partnership_recap.php',
+        'police_partnership_recap_export.php',
+        'police_partnership_action.php',
         'rekam_medis_list.php',
         'rekam_medis_view.php',
         'rekam_medis.php',
@@ -1254,6 +1262,11 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
 
     // Exception: medical_roster accessible by all logged-in users
     if ($scriptName === 'medical_roster.php') {
+        return;
+    }
+
+    // Exception: police partnership input accessible by all logged-in users
+    if ($scriptName === 'police_partnership.php' || $scriptName === 'police_partnership_action.php') {
         return;
     }
 
