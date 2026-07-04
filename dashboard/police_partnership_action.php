@@ -35,14 +35,16 @@ if ($inputName === '') {
 }
 
 if ($action === 'create') {
-    $badgeNo = policePartnershipNormalizeBadge($_POST['police_badge_no'] ?? '');
+    $badgeFile = $_FILES['badge_file'] ?? null;
+    $badgePath = is_array($badgeFile) ? policePartnershipUploadBadgeFile($badgeFile) : null;
+    $badgeNo = 'ATTACH-' . date('YmdHis') . '-' . bin2hex(random_bytes(3));
     $actionType = trim((string)($_POST['action_type'] ?? ''));
     $serviceAtInput = trim((string)($_POST['service_at'] ?? ''));
     $allowedActions = policePartnershipActionOptions();
     $errors = [];
 
-    if ($badgeNo === '') {
-        $errors[] = 'No badge police wajib diisi.';
+    if ($badgePath === null) {
+        $errors[] = 'Foto badge police wajib diupload dalam format JPG, PNG, atau WebP maksimal 5 MB.';
     }
 
     if (!in_array($actionType, $allowedActions, true)) {
@@ -70,12 +72,13 @@ if ($action === 'create') {
 
     $stmt = $pdo->prepare("
         INSERT INTO police_partnership_records
-            (police_badge_no, action_type, treatment_detail, service_date, service_at, input_by_user_id, input_by_name, input_by_position, unit_code, amount)
+            (police_badge_no, badge_file_path, action_type, treatment_detail, service_date, service_at, input_by_user_id, input_by_name, input_by_position, unit_code, amount)
         VALUES
-            (?, ?, NULL, ?, ?, ?, ?, ?, ?, 1000)
+            (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1000)
     ");
     $stmt->execute([
         $badgeNo,
+        $badgePath,
         $actionType,
         $serviceDate,
         $serviceAt,
@@ -141,10 +144,21 @@ if ($action === 'delete_record') {
         $params[] = (int)($user['id'] ?? 0);
     }
 
+    $fileStmt = $pdo->prepare("SELECT badge_file_path FROM police_partnership_records WHERE id = ? AND unit_code = ? {$ownerSql} LIMIT 1");
+    $fileStmt->execute($params);
+    $badgePath = (string)($fileStmt->fetchColumn() ?: '');
+
     $stmt = $pdo->prepare("DELETE FROM police_partnership_records WHERE id = ? AND unit_code = ? {$ownerSql}");
     $stmt->execute($params);
 
     if ($stmt->rowCount() > 0) {
+        if ($badgePath !== '') {
+            $fullPath = realpath(__DIR__ . '/../' . ltrim(str_replace('\\', '/', $badgePath), '/'));
+            $storageRoot = realpath(__DIR__ . '/../storage/police_badges');
+            if ($fullPath && $storageRoot && str_starts_with(str_replace('\\', '/', $fullPath), str_replace('\\', '/', $storageRoot))) {
+                @unlink($fullPath);
+            }
+        }
         $_SESSION['flash_messages'][] = 'Data input Police berhasil dihapus.';
     } else {
         $_SESSION['flash_errors'][] = 'Data tidak ditemukan atau Anda tidak memiliki akses hapus.';

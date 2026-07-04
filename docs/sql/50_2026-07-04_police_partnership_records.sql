@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS `police_partnership_records` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `police_badge_no` varchar(50) NOT NULL,
+  `badge_file_path` varchar(255) DEFAULT NULL,
   `action_type` varchar(100) NOT NULL,
   `treatment_detail` text DEFAULT NULL,
   `service_date` date NOT NULL,
@@ -69,6 +70,17 @@ SET @has_pricing_mode := (
     AND COLUMN_NAME = 'pricing_mode'
 );
 SET @sql := IF(@has_pricing_mode = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `pricing_mode` varchar(20) NOT NULL DEFAULT ''per_qty'' AFTER `amount_updated_at`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @has_badge_file_path := (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'police_partnership_records'
+    AND COLUMN_NAME = 'badge_file_path'
+);
+SET @sql := IF(@has_badge_file_path = 0, 'ALTER TABLE `police_partnership_records` ADD COLUMN `badge_file_path` varchar(255) DEFAULT NULL AFTER `police_badge_no`', 'SELECT 1');
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;

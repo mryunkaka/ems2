@@ -34,7 +34,7 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $summaryStmt = $pdo->prepare("
     SELECT
         COUNT(*) AS total_input,
-        COUNT(DISTINCT police_badge_no) AS total_badge,
+        COUNT(badge_file_path) AS total_badge,
         COALESCE(SUM(amount), 0) AS total_amount
     FROM police_partnership_records
     WHERE DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN :start AND :end
@@ -52,7 +52,7 @@ $rowsStmt = $pdo->prepare("
         COALESCE(input_by_user_id, 0) AS input_by_user_id,
         input_by_name,
         COUNT(*) AS total_input,
-        COUNT(DISTINCT police_badge_no) AS total_badges,
+        COUNT(badge_file_path) AS total_badges,
         COALESCE(SUM(amount), 0) AS total_amount,
         MIN(payment_status) AS min_payment_status,
         MAX(payment_status) AS max_payment_status,
@@ -71,6 +71,30 @@ $rowsStmt->execute([
     ':unit_code' => $effectiveUnit,
 ]);
 $rows = $rowsStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+$detailStmt = $pdo->prepare("
+    SELECT *
+    FROM police_partnership_records
+    WHERE DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN :start AND :end
+      AND unit_code = :unit_code
+    ORDER BY COALESCE(service_at, CONCAT(service_date, ' 00:00:00')) DESC, id DESC
+");
+$detailStmt->execute([
+    ':start' => $rangeStart,
+    ':end' => $rangeEnd,
+    ':unit_code' => $effectiveUnit,
+]);
+$detailRowsByInput = [];
+foreach (($detailStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $detailRow) {
+    $key = ((int)($detailRow['input_by_user_id'] ?? 0)) . '|' . (string)($detailRow['input_by_name'] ?? '');
+    $detailRowsByInput[$key][] = [
+        'service_at' => policePartnershipDateTimeLabel($detailRow['service_at'] ?? '', $detailRow['service_date'] ?? ''),
+        'action_type' => (string)($detailRow['action_type'] ?? ''),
+        'amount' => dollar((int)($detailRow['amount'] ?? 0)),
+        'status' => (string)($detailRow['payment_status'] ?? 'pending') === 'paid' ? 'Dibayar' : 'Pending',
+        'badge_url' => policePartnershipSecureFileUrl($detailRow['badge_file_path'] ?? ''),
+    ];
+}
 
 $exportParams = $_GET;
 $exportUrl = 'police_partnership_recap_export.php';
@@ -146,7 +170,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="text-2xl font-extrabold text-slate-900"><?= (int)($summary['total_input'] ?? 0) ?></div>
             </div>
             <div class="card card-section">
-                <div class="meta-text-xs">Badge Police Unik</div>
+                            <div class="meta-text-xs">Total Foto Badge</div>
                 <div class="text-2xl font-extrabold text-primary"><?= (int)($summary['total_badge'] ?? 0) ?></div>
             </div>
             <div class="card card-section">
@@ -164,7 +188,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>#</th>
                             <th>Nama Medis</th>
                             <th>Total Input</th>
-                            <th>Badge Police Unik</th>
+                            <th>Total Foto Badge</th>
                             <th>Hasil Diterima</th>
                             <th>Status</th>
                             <th>Dibayar Oleh</th>
@@ -179,7 +203,14 @@ include __DIR__ . '/../partials/sidebar.php';
                             ?>
                             <tr>
                                 <td><?= $index + 1 ?></td>
-                                <td><?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <?php $detailKey = ((int)$row['input_by_user_id']) . '|' . (string)$row['input_by_name']; ?>
+                                <td>
+                                    <button type="button"
+                                        class="btn-link"
+                                        onclick="openPoliceDetailModal(<?= htmlspecialchars(json_encode((string)$row['input_by_name'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>, <?= htmlspecialchars(json_encode($detailRowsByInput[$detailKey] ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)">
+                                        <?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?>
+                                    </button>
+                                </td>
                                 <td><?= (int)$row['total_input'] ?></td>
                                 <td><?= (int)$row['total_badges'] ?></td>
                                 <td data-order="<?= (int)$row['total_amount'] ?>"><strong><?= dollar((int)$row['total_amount']) ?></strong></td>
@@ -200,7 +231,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <?php if (!$isPaid && (int)$row['total_amount'] > 0): ?>
                                         <button type="button"
                                             class="btn btn-success btn-sm action-icon-btn"
-                                            onclick="openPolicePayModal(<?= (int)$row['input_by_user_id'] ?>, <?= json_encode((string)$row['input_by_name'], JSON_UNESCAPED_UNICODE) ?>, <?= (int)$row['total_amount'] ?>)"
+                                            onclick="openPolicePayModal(<?= (int)$row['input_by_user_id'] ?>, <?= htmlspecialchars(json_encode((string)$row['input_by_name'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>, <?= (int)$row['total_amount'] ?>)"
                                             title="Bayarkan"
                                             aria-label="Bayarkan">
                                             <?= ems_icon('banknotes', 'h-4 w-4') ?>
@@ -257,6 +288,41 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="policeDetailModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-lg">
+            <div class="modal-head">
+                <div class="modal-title inline-flex items-center gap-2">
+                    <?= ems_icon('clipboard-document-list', 'h-5 w-5') ?>
+                    <span id="policeDetailTitle">Detail Input Police</span>
+                </div>
+                <button type="button" class="modal-close-btn" onclick="closePoliceDetailModal()" aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="table-wrapper">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>Jam dan Tanggal</th>
+                                <th>Tindakan</th>
+                                <th>Hasil</th>
+                                <th>Status</th>
+                                <th>Foto Badge</th>
+                            </tr>
+                        </thead>
+                        <tbody id="policeDetailRows"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" onclick="closePoliceDetailModal()" class="btn-secondary">Tutup</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -325,6 +391,55 @@ include __DIR__ . '/../partials/sidebar.php';
         modal.style.display = 'none';
         modal.classList.add('hidden');
         document.body.style.overflow = '';
+    }
+
+    function openPoliceDetailModal(name, rows) {
+        document.getElementById('policeDetailTitle').textContent = 'Detail Input Police - ' + name;
+        const tbody = document.getElementById('policeDetailRows');
+        tbody.innerHTML = '';
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Tidak ada data pada filter ini.</td></tr>';
+        } else {
+            rows.forEach(function(row) {
+                const tr = document.createElement('tr');
+                const badgeCell = row.badge_url
+                    ? `<a href="#" class="doc-badge is-verified btn-preview-doc" data-src="${escapeHtml(row.badge_url)}" data-title="Foto Badge Police">Lihat Foto</a>`
+                    : '<span class="muted-placeholder">-</span>';
+                tr.innerHTML = `
+                    <td>${escapeHtml(row.service_at || '-')}</td>
+                    <td>${escapeHtml(row.action_type || '-')}</td>
+                    <td>${escapeHtml(row.amount || '$0')}</td>
+                    <td>${escapeHtml(row.status || '-')}</td>
+                    <td>${badgeCell}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        const modal = document.getElementById('policeDetailModal');
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closePoliceDetailModal() {
+        const modal = document.getElementById('policeDetailModal');
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function(char) {
+            return {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            }[char];
+        });
     }
 
     let policeSelectedTitipUserId = null;

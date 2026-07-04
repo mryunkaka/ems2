@@ -12,6 +12,7 @@ function policePartnershipEnsureTable(PDO $pdo): void
         CREATE TABLE IF NOT EXISTS police_partnership_records (
             id INT(11) NOT NULL AUTO_INCREMENT,
             police_badge_no VARCHAR(50) NOT NULL,
+            badge_file_path VARCHAR(255) NULL,
             action_type VARCHAR(100) NOT NULL,
             treatment_detail TEXT NULL,
             service_date DATE NOT NULL,
@@ -45,6 +46,7 @@ function policePartnershipEnsureTable(PDO $pdo): void
     }
 
     $columnAdds = [
+        'badge_file_path' => "ALTER TABLE police_partnership_records ADD COLUMN badge_file_path VARCHAR(255) NULL AFTER police_badge_no",
         'pricing_mode' => "ALTER TABLE police_partnership_records ADD COLUMN pricing_mode VARCHAR(20) NOT NULL DEFAULT 'per_qty' AFTER amount_updated_at",
         'payment_status' => "ALTER TABLE police_partnership_records ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'pending' AFTER pricing_mode",
         'paid_at' => "ALTER TABLE police_partnership_records ADD COLUMN paid_at DATETIME NULL AFTER payment_status",
@@ -127,4 +129,100 @@ function policePartnershipPricingModeLabel(?string $mode): string
         'per_month' => 'Per Bulan',
         default => 'Per Qty',
     };
+}
+
+function policePartnershipUploadBadgeFile(array $file): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return null;
+    }
+
+    $tmp = (string)($file['tmp_name'] ?? '');
+    $info = $tmp !== '' ? @getimagesize($tmp) : false;
+    $allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!$info || !in_array((string)$info['mime'], $allowedTypes, true)) {
+        return null;
+    }
+
+    $size = (int)($file['size'] ?? 0);
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        return null;
+    }
+
+    $mime = (string)$info['mime'];
+    if ($mime === 'image/jpeg') {
+        $src = @imagecreatefromjpeg($tmp);
+    } elseif ($mime === 'image/png') {
+        $src = @imagecreatefrompng($tmp);
+    } elseif (function_exists('imagecreatefromwebp')) {
+        $src = @imagecreatefromwebp($tmp);
+    } else {
+        $src = false;
+    }
+
+    if (!$src) {
+        return null;
+    }
+
+    $sourceWidth = imagesx($src);
+    $sourceHeight = imagesy($src);
+    if ($sourceWidth <= 0 || $sourceHeight <= 0) {
+        imagedestroy($src);
+        return null;
+    }
+
+    $baseDir = __DIR__ . '/../storage/police_badges';
+    if (!is_dir($baseDir) && !@mkdir($baseDir, 0755, true)) {
+        imagedestroy($src);
+        return null;
+    }
+
+    $filename = uniqid('police_badge_', true) . '_' . time() . '.jpg';
+    $targetPath = $baseDir . '/' . $filename;
+    $targetBytes = 200 * 1024;
+    $maxWidths = [1000, 850, 700, 560];
+    $qualities = [82, 76, 70, 64, 58, 52];
+    $saved = false;
+
+    foreach ($maxWidths as $maxWidth) {
+        $ratio = min(1, $maxWidth / $sourceWidth);
+        $width = max(1, (int)round($sourceWidth * $ratio));
+        $height = max(1, (int)round($sourceHeight * $ratio));
+
+        $dst = imagecreatetruecolor($width, $height);
+        $white = imagecolorallocate($dst, 255, 255, 255);
+        imagefilledrectangle($dst, 0, 0, $width, $height, $white);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $width, $height, $sourceWidth, $sourceHeight);
+
+        foreach ($qualities as $quality) {
+            $saved = imagejpeg($dst, $targetPath, $quality);
+            clearstatcache(true, $targetPath);
+            if ($saved && is_file($targetPath) && filesize($targetPath) <= $targetBytes) {
+                imagedestroy($dst);
+                imagedestroy($src);
+                return 'storage/police_badges/' . $filename;
+            }
+        }
+
+        imagedestroy($dst);
+    }
+
+    imagedestroy($src);
+    clearstatcache(true, $targetPath);
+
+    if ($saved && is_file($targetPath) && filesize($targetPath) > 0 && filesize($targetPath) <= $targetBytes) {
+        return 'storage/police_badges/' . $filename;
+    }
+
+    if (is_file($targetPath)) {
+        @unlink($targetPath);
+    }
+
+    return null;
+}
+
+function policePartnershipSecureFileUrl(?string $path): string
+{
+    $path = trim((string)$path);
+    return $path !== '' ? ems_secure_file_url($path) : '';
 }

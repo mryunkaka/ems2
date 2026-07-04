@@ -33,7 +33,7 @@ $effectiveUnit = ems_effective_unit($pdo, $user);
 $summaryStmt = $pdo->prepare("
     SELECT
         COUNT(*) AS total_input,
-        COUNT(DISTINCT police_badge_no) AS total_badge,
+        COUNT(badge_file_path) AS total_badge,
         COALESCE(SUM(amount), 0) AS total_amount
     FROM police_partnership_records
     WHERE DATE(COALESCE(service_at, CONCAT(service_date, ' 00:00:00'))) BETWEEN :start AND :end
@@ -51,7 +51,7 @@ $rowsStmt = $pdo->prepare("
         COALESCE(input_by_user_id, 0) AS input_by_user_id,
         input_by_name,
         COUNT(*) AS total_input,
-        COUNT(DISTINCT police_badge_no) AS total_badges,
+        COUNT(badge_file_path) AS total_badges,
         COALESCE(SUM(amount), 0) AS total_amount,
         MIN(payment_status) AS min_payment_status,
         MAX(payment_status) AS max_payment_status,
@@ -94,7 +94,7 @@ $sheet->getStyle('A2')->applyFromArray([
 
 $sheet->setCellValue('A4', 'Jumlah Input');
 $sheet->setCellValue('B4', (int)($summary['total_input'] ?? 0));
-$sheet->setCellValue('D4', 'Badge Police Unik');
+$sheet->setCellValue('D4', 'Total Foto Badge');
 $sheet->setCellValue('E4', (int)($summary['total_badge'] ?? 0));
 $sheet->setCellValue('F4', 'Total Nilai');
 $sheet->setCellValue('G4', (int)($summary['total_amount'] ?? 0));
@@ -104,7 +104,7 @@ $sheet->getStyle('A4:G4')->applyFromArray([
     'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BAE6FD']]],
 ]);
 
-$headers = ['No', 'Nama Medis', 'Total Input', 'Badge Police Unik', 'Hasil Diterima', 'Status', 'Dibayar Oleh'];
+$headers = ['No', 'Nama Medis', 'Total Input', 'Total Foto Badge', 'Hasil Diterima', 'Status', 'Dibayar Oleh'];
 $sheet->fromArray($headers, null, 'A7');
 $sheet->getStyle('A7:G7')->applyFromArray([
     'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],

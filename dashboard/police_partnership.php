@@ -81,12 +81,13 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
             <div class="card">
                 <div class="card-header">Input Tindakan Police</div>
-                <form method="POST" action="police_partnership_action.php" class="form">
+                <form method="POST" action="police_partnership_action.php" class="form" enctype="multipart/form-data">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="create">
 
-                    <label>No Badge Police</label>
-                    <input type="text" name="police_badge_no" maxlength="50" required placeholder="Contoh: LSPD-1029">
+                    <label>Foto Badge Police</label>
+                    <input type="file" name="badge_file" accept="image/jpeg,image/png,image/webp" required>
+                    <p class="meta-text-xs">JPG, PNG, atau WebP. Sistem akan kompres otomatis mendekati 200KB.</p>
 
                     <label>Jam dan Tanggal</label>
                     <input type="datetime-local" name="service_at" required value="<?= htmlspecialchars(date('Y-m-d\TH:i'), ENT_QUOTES, 'UTF-8') ?>">
@@ -115,7 +116,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <thead>
                             <tr>
                                 <th>Jam dan Tanggal</th>
-                                <th>Badge</th>
+                                <th>Foto Badge</th>
                                 <th>Tindakan</th>
                                 <th>Input</th>
                             </tr>
@@ -124,7 +125,14 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php foreach ($recentRows as $row): ?>
                                 <tr>
                                     <td data-order="<?= htmlspecialchars((string)($row['service_at'] ?? $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(policePartnershipDateTimeLabel($row['service_at'] ?? '', $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><?= htmlspecialchars((string)$row['police_badge_no'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td>
+                                        <?php $badgeUrl = policePartnershipSecureFileUrl($row['badge_file_path'] ?? ''); ?>
+                                        <?php if ($badgeUrl !== ''): ?>
+                                            <a href="#" class="doc-badge is-verified btn-preview-doc" data-src="<?= htmlspecialchars($badgeUrl, ENT_QUOTES, 'UTF-8') ?>" data-title="Foto Badge Police">Lihat Foto</a>
+                                        <?php else: ?>
+                                            <span class="muted-placeholder">-</span>
+                                        <?php endif; ?>
+                                    </td>
                                     <td><?= htmlspecialchars((string)$row['action_type'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                 </tr>
@@ -171,7 +179,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <thead>
                         <tr>
                             <th>Jam dan Tanggal</th>
-                            <th>Badge</th>
+                            <th>Foto Badge</th>
                             <th>Tindakan</th>
                             <th>Input</th>
                             <th>Aksi</th>
@@ -181,7 +189,14 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?php foreach ($filteredRows as $row): ?>
                             <tr>
                                 <td data-order="<?= htmlspecialchars((string)($row['service_at'] ?? $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(policePartnershipDateTimeLabel($row['service_at'] ?? '', $row['service_date'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                                <td><?= htmlspecialchars((string)$row['police_badge_no'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td>
+                                    <?php $badgeUrl = policePartnershipSecureFileUrl($row['badge_file_path'] ?? ''); ?>
+                                    <?php if ($badgeUrl !== ''): ?>
+                                        <a href="#" class="doc-badge is-verified btn-preview-doc" data-src="<?= htmlspecialchars($badgeUrl, ENT_QUOTES, 'UTF-8') ?>" data-title="Foto Badge Police">Lihat Foto</a>
+                                    <?php else: ?>
+                                        <span class="muted-placeholder">-</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= htmlspecialchars((string)$row['action_type'], ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars((string)$row['input_by_name'], ENT_QUOTES, 'UTF-8') ?></td>
                                 <td>

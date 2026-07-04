@@ -236,6 +236,17 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     if (!in_array($userDivision, ['General Affair', 'Executive', 'Secretary'], true)) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
+} elseif (str_starts_with($relativePath, 'storage/police_badges/')) {
+    $stmt = $pdo->prepare("
+        SELECT 1
+        FROM police_partnership_records
+        WHERE badge_file_path = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
 } elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
     $canAccessForensicMedicalRecord = ems_can_access_division_menu($userDivision, 'Forensic');
     $allowed = false;
