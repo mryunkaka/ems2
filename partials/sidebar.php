@@ -11,6 +11,7 @@ $userUnit = isset($pdo) ? ems_current_user_unit($pdo, $_SESSION['user_rh'] ?? []
 $canViewAllUnits = isset($pdo) ? ems_user_can_view_all_units($pdo, $_SESSION['user_rh'] ?? []) : !empty($_SESSION['user_rh']['can_view_all_units']);
 $isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ?? '');
 $isMedicalDivision = $division === 'Medis';
+$isInterviewerTrainerHr = $division === 'Human Resource' && ems_is_interviewer_trainer_role($_SESSION['user_rh']['role'] ?? '');
 $isAltaUnit = $userUnit === 'alta';
 $currentHospitalName = ems_unit_hospital_name($currentUnit);
 
@@ -89,7 +90,7 @@ if ($division !== 'Medis') {
     $groupedNav['Utama'][] = sidebarItem('/dashboard/surat_monitoring.php', 'surat_monitoring.php', 'Monitoring Surat', 'inbox');
 }
 
-if (ems_can_access_division_menu($division, 'Human Resource')) {
+if (!$isInterviewerTrainerHr && ems_can_access_division_menu($division, 'Human Resource')) {
     $groupedNav['Human Resource'] = [
         sidebarItem('/dashboard/manage_users.php', 'manage_users.php', 'Manajemen User', 'user-group'),
         sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
@@ -99,7 +100,11 @@ if (ems_can_access_division_menu($division, 'Human Resource')) {
     ];
 }
 
-if (!$isMedicalDivision && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+if ($isInterviewerTrainerHr) {
+    $groupedNav['Interview & Training'] = [
+        sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
+    ];
+} elseif (!$isMedicalDivision && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
     $groupedNav['Recruitment'] = [
         sidebarItem('/dashboard/candidates.php', 'candidates.php', 'Calon Kandidat', 'clipboard-document-list'),
         sidebarItem('/dashboard/assistant_manager_candidates.php', 'assistant_manager_candidates.php', 'Calon Asisten Manager', 'briefcase'),

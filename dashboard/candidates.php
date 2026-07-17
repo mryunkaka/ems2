@@ -31,6 +31,10 @@ $pageTitle = 'Calon Kandidat';
 
 function candidateCanHardDelete(array $user, string $userDivision): bool
 {
+    if (ems_is_interviewer_trainer_role($user['role'] ?? '')) {
+        return false;
+    }
+
     if (in_array($userDivision, ['Human Capital', 'Human Resource', 'Executive'], true)) {
         return true;
     }
@@ -41,6 +45,10 @@ function candidateCanHardDelete(array $user, string $userDivision): bool
 
 function candidateCanManageRecruitmentSettings(array $user, string $userDivision): bool
 {
+    if (ems_is_interviewer_trainer_role($user['role'] ?? '')) {
+        return false;
+    }
+
     if (in_array($userDivision, ['Human Resource', 'Executive'], true)) {
         return true;
     }
@@ -51,6 +59,10 @@ function candidateCanManageRecruitmentSettings(array $user, string $userDivision
 
 function candidateCanEditFinalDecision(array $user, string $userDivision): bool
 {
+    if (ems_is_interviewer_trainer_role($user['role'] ?? '')) {
+        return false;
+    }
+
     if (in_array($userDivision, ['Human Resource', 'Human Capital', 'Executive'], true)) {
         return true;
     }

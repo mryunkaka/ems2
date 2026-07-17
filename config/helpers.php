@@ -610,6 +610,7 @@ function ems_normalize_role(?string $role): string
 
     return match ($raw) {
         'staff' => 'staff',
+        'interviewer & trainer', 'interviewer and trainer', 'interviewer trainer', 'i&t', 'i & t', 'it' => 'interviewer & trainer',
         'probation manager', 'probation_manager' => 'probation manager',
         'staff manager', 'assistant manager', 'assisten manager' => 'assisten manager',
         'lead manager' => 'lead manager',
@@ -624,6 +625,7 @@ function ems_role_label(?string $role): string
 {
     return match (ems_normalize_role($role)) {
         'staff' => 'Staff',
+        'interviewer & trainer' => 'INTERVIEWER & TRAINER',
         'probation manager' => 'Probation Manager',
         'assisten manager' => 'Assisten Manager',
         'lead manager' => 'Lead Manager',
@@ -639,6 +641,7 @@ function ems_role_options(): array
 {
     return [
         ['value' => 'Staff', 'label' => 'Staff'],
+        ['value' => 'INTERVIEWER & TRAINER', 'label' => 'INTERVIEWER & TRAINER'],
         ['value' => 'Probation Manager', 'label' => 'Probation Manager'],
         ['value' => 'Assisten Manager', 'label' => 'Assisten Manager'],
         ['value' => 'Lead Manager', 'label' => 'Lead Manager'],
@@ -660,6 +663,11 @@ function ems_is_valid_role(?string $role): bool
 function ems_is_staff_role(?string $role): bool
 {
     return ems_normalize_role($role) === 'staff';
+}
+
+function ems_is_interviewer_trainer_role(?string $role): bool
+{
+    return ems_normalize_role($role) === 'interviewer & trainer';
 }
 
 function ems_is_manager_plus_role(?string $role): bool
@@ -1154,6 +1162,59 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
     $position = ems_normalize_position($sessionUser['position'] ?? '');
+    $role = $sessionUser['role'] ?? '';
+
+    if (ems_is_interviewer_trainer_role($role) && $division === 'Human Resource') {
+        return [
+            'index.php',
+            'farmasi_billing_audit.php',
+            'user_availability.php',
+            'training_group_generator.php',
+            'events.php',
+            'struktur_organisasi.php',
+            'event_participants.php',
+            'ems_services.php',
+            'police_partnership.php',
+            'police_partnership_recap.php',
+            'police_partnership_recap_export.php',
+            'police_partnership_pay_process.php',
+            'police_partnership_action.php',
+            'rekam_medis_list.php',
+            'rekam_medis_view.php',
+            'rekam_medis.php',
+            'rekam_medis_edit.php',
+            'rekam_medis_action.php',
+            'rekam_medis_edit_action.php',
+            'rekam_medis_delete.php',
+            'operasi_plastik.php',
+            'emt_doj.php',
+            'emt_doj_action.php',
+            'rekap_farmasi.php',
+            'rekap_farmasi_v2.php',
+            'konsumen.php',
+            'ranking.php',
+            'absensi_ems.php',
+            'reimbursement.php',
+            'restaurant_consumption.php',
+            'restaurant_consumption_action.php',
+            'general_affair_kerjasama_input.php',
+            'general_affair_kerjasama_input_action.php',
+            'gaji.php',
+            'rekap_gaji.php',
+            'pengajuan_jabatan.php',
+            'pengajuan_jabatan_action.php',
+            'pengajuan_cuti_resign.php',
+            'pengajuan_cuti_resign_action.php',
+            'input_dokumen_medis.php',
+            'input_dokumen_medis_action.php',
+            'sertifikat_heli_pendaftaran.php',
+            'candidates.php',
+            'candidate_detail.php',
+            'candidate_interview_multi.php',
+            'setting_akun.php',
+            'setting_akun_action.php',
+        ];
+    }
 
     if (!$canViewAllUnits && $unitCode === 'alta' && $division === 'Medis' && ems_is_medical_position($position)) {
         return [
