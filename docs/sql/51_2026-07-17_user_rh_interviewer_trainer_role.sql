@@ -1,5 +1,5 @@
 -- Add temporary recruitment role for Human Resource interview/training access.
--- Required before saving user_rh.role = 'INTERVIEWER & TRAINER' from Manajemen User.
+-- Required before saving user_rh.role = 'Interviewer & Trainer' from Manajemen User.
 
 SET @schema_name = DATABASE();
 
@@ -13,11 +13,14 @@ SET @current_role_column = (
 );
 
 SET @sql_alter_user_role = IF(
-    @current_role_column LIKE '%INTERVIEWER & TRAINER%',
+    @current_role_column LIKE '%Interviewer & Trainer%',
     'SELECT 1',
     "ALTER TABLE `user_rh`
-        MODIFY COLUMN `role` ENUM('Staff','INTERVIEWER & TRAINER','Probation Manager','Staff Manager','Manager','Assisten Manager','Lead Manager','Head Manager','Vice Director','Director') NOT NULL DEFAULT 'Staff'"
+        MODIFY COLUMN `role` ENUM('Staff','Interviewer & Trainer','Probation Manager','Staff Manager','Manager','Assisten Manager','Lead Manager','Head Manager','Vice Director','Director') NOT NULL DEFAULT 'Staff'"
 );
 PREPARE stmt FROM @sql_alter_user_role;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+ALTER TABLE `user_rh`
+    MODIFY COLUMN `role` ENUM('Staff','Interviewer & Trainer','Probation Manager','Staff Manager','Manager','Assisten Manager','Lead Manager','Head Manager','Vice Director','Director') NOT NULL DEFAULT 'Staff';

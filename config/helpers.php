@@ -625,7 +625,7 @@ function ems_role_label(?string $role): string
 {
     return match (ems_normalize_role($role)) {
         'staff' => 'Staff',
-        'interviewer & trainer' => 'INTERVIEWER & TRAINER',
+        'interviewer & trainer' => 'Interviewer & Trainer',
         'probation manager' => 'Probation Manager',
         'assisten manager' => 'Assisten Manager',
         'lead manager' => 'Lead Manager',
@@ -641,7 +641,7 @@ function ems_role_options(): array
 {
     return [
         ['value' => 'Staff', 'label' => 'Staff'],
-        ['value' => 'INTERVIEWER & TRAINER', 'label' => 'INTERVIEWER & TRAINER'],
+        ['value' => 'Interviewer & Trainer', 'label' => 'Interviewer & Trainer'],
         ['value' => 'Probation Manager', 'label' => 'Probation Manager'],
         ['value' => 'Assisten Manager', 'label' => 'Assisten Manager'],
         ['value' => 'Lead Manager', 'label' => 'Lead Manager'],
