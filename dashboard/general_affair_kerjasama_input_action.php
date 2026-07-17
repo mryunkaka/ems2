@@ -312,15 +312,7 @@ try {
             throw new RuntimeException('Data input kerja sama wajib lengkap.');
         }
 
-        if (!isset($_FILES['ktp_file'], $_FILES['kta_file'])) {
-            throw new RuntimeException('Upload KTP dan KTA wajib diisi.');
-        }
-
-        if ((int)($_FILES['ktp_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            throw new RuntimeException('Upload KTP wajib diisi.');
-        }
-
-        if ((int)($_FILES['kta_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        if (!isset($_FILES['kta_file']) || (int)($_FILES['kta_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
             throw new RuntimeException('Upload KTA wajib diisi.');
         }
 
@@ -378,8 +370,7 @@ try {
         $storedPaths = [];
 
         try {
-            $storedPaths[] = gaInputStoreAttachment($pdo, $recordId, $_FILES['ktp_file'], 'KTP', 1);
-            $storedPaths[] = gaInputStoreAttachment($pdo, $recordId, $_FILES['kta_file'], 'KTA', 2);
+            $storedPaths[] = gaInputStoreAttachment($pdo, $recordId, $_FILES['kta_file'], 'KTA', 1);
         } catch (Throwable $attachmentError) {
             gaInputDeleteStoredFiles($storedPaths);
             throw $attachmentError;

@@ -439,7 +439,6 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Kuota Periode</th>
                             <th>Input Oleh</th>
                             <th>Obat Regulasi</th>
-                            <th>KTP</th>
                             <th>KTA</th>
                             <th>Status</th>
                             <th>Catatan</th>
@@ -451,7 +450,6 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php
                             $statusMeta = gaInputStatusMeta((string)($row['status'] ?? 'draft'));
                             $attachments = $attachmentsMap[(int)$row['id']] ?? [];
-                            $ktpAttachment = gaInputFindAttachment($attachments, 'KTP');
                             $ktaAttachment = gaInputFindAttachment($attachments, 'KTA');
                             $docDate = (string)($row['document_date'] ?? '');
                             $docTime = $columnReady['document_time'] ? (string)($row['document_time'] ?? '00:00:00') : '00:00:00';
@@ -505,19 +503,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <?php if ($ktpAttachment): ?>
-                                         <a href="#"
-                                           class="doc-badge btn-preview-doc"
-                                           data-src="<?= htmlspecialchars(ems_secure_file_url((string)$ktpAttachment['file_path']), ENT_QUOTES, 'UTF-8') ?>"
-                                           data-title="KTP - <?= htmlspecialchars((string)($row['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                                            <?= ems_icon('document-text', 'h-4 w-4') ?>
-                                            <span>Lihat</span>
-                                        </a>
-                                    <?php else: ?>
-                                        <span class="muted-placeholder">-</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
                                     <?php if ($ktaAttachment): ?>
                                          <a href="#"
                                            class="doc-badge btn-preview-doc"
@@ -544,15 +529,6 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td>
                                     <div class="ga-note-cell">
                                         <div class="meta-text-xs ga-note-excerpt"><?= htmlspecialchars($descriptionExcerpt, ENT_QUOTES, 'UTF-8') ?></div>
-                                        <?php if ($fullDescription !== ''): ?>
-                                            <button type="button"
-                                                    class="btn-secondary btn-sm ga-note-view-btn"
-                                                    data-note="<?= htmlspecialchars($fullDescription, ENT_QUOTES, 'UTF-8') ?>"
-                                                    data-title="<?= htmlspecialchars((string)($row['counterparty_name'] ?? 'Catatan Kerja Sama'), ENT_QUOTES, 'UTF-8') ?>">
-                                                <?= ems_icon('eye', 'h-4 w-4') ?>
-                                                <span>View</span>
-                                            </button>
-                                        <?php endif; ?>
                                     </div>
                                 </td>
                                 <td>
@@ -666,25 +642,6 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 <div class="doc-upload-wrapper">
                     <div class="doc-upload-header">
-                        <label class="doc-label">Upload KTP</label>
-                        <span class="badge-muted-mini">PNG / JPG akan dikompresi otomatis ke ±300KB</span>
-                    </div>
-                    <div class="doc-upload-input">
-                        <label for="gaKtpFile" class="file-upload-label" data-target-input="gaKtpFile">
-                            <span class="file-icon"><?= ems_icon('folder', 'h-5 w-5') ?></span>
-                            <span class="file-text">
-                                <strong>Pilih file</strong>
-                                <small>PNG atau JPG - Otomatis dikompresi</small>
-                            </span>
-                        </label>
-                        <input type="file" id="gaKtpFile" name="ktp_file" accept="image/png,image/jpeg" required class="hidden">
-                        <div class="file-selected-name" data-for="gaKtpFile"></div>
-                        <div id="gaKtpFileSizeInfo" data-for="gaKtpFile" class="file-size-info"></div>
-                    </div>
-                </div>
-
-                <div class="doc-upload-wrapper">
-                    <div class="doc-upload-header">
                         <label class="doc-label">Upload KTA</label>
                         <span class="badge-muted-mini">PNG / JPG akan dikompresi otomatis ke ±300KB</span>
                     </div>
@@ -713,29 +670,6 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </div>
 
-<div id="gaNoteViewModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-md">
-        <div class="modal-head">
-            <div class="min-w-0">
-                <div class="modal-title">Catatan Lengkap</div>
-                <div id="gaNoteViewModalMeta" class="meta-text-xs mt-1 text-slate-500"></div>
-            </div>
-            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
-                <?= ems_icon('x-mark', 'h-5 w-5') ?>
-            </button>
-        </div>
-
-        <div class="modal-content">
-            <div id="gaNoteViewModalBody" class="ga-note-modal-body"></div>
-        </div>
-
-        <div class="modal-foot">
-            <div class="modal-actions">
-                <button type="button" class="btn-secondary btn-cancel">Tutup</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -751,9 +685,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingNotes = document.getElementById('gaSettingNotes');
     const settingPackages = document.getElementById('gaSettingPackages');
     const settingTotalPrice = document.getElementById('gaSettingTotalPrice');
-    const noteViewModal = document.getElementById('gaNoteViewModal');
-    const noteViewModalMeta = document.getElementById('gaNoteViewModalMeta');
-    const noteViewModalBody = document.getElementById('gaNoteViewModalBody');
 
     function toggleCustom() {
         customFields.forEach(function(el) {
@@ -857,36 +788,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.body.classList.remove('modal-open');
         }
 
-        if (noteViewModal && (event.target === noteViewModal || event.target.closest('#gaNoteViewModal .btn-cancel'))) {
-            noteViewModal.classList.add('hidden');
-            noteViewModal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-            return;
-        }
-
-        const noteButton = event.target.closest('.ga-note-view-btn');
-        if (noteButton && noteViewModal) {
-            if (noteViewModalMeta) {
-                noteViewModalMeta.textContent = noteButton.dataset.title || 'Catatan Kerja Sama';
-            }
-            if (noteViewModalBody) {
-                noteViewModalBody.textContent = noteButton.dataset.note || '-';
-            }
-            noteViewModal.classList.remove('hidden');
-            noteViewModal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        }
     });
 
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape' && modal) {
             modal.classList.add('hidden');
             modal.style.display = 'none';
-            document.body.classList.remove('modal-open');
-        }
-        if (event.key === 'Escape' && noteViewModal) {
-            noteViewModal.classList.add('hidden');
-            noteViewModal.style.display = 'none';
             document.body.classList.remove('modal-open');
         }
     });
@@ -960,15 +867,6 @@ document.addEventListener('DOMContentLoaded', function() {
         line-height: 1.6;
     }
 
-    .ga-note-view-btn {
-        width: fit-content;
-    }
-
-    .ga-note-modal-body {
-        white-space: pre-line;
-        line-height: 1.8;
-        color: #334155;
-    }
 </style>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>
