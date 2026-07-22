@@ -530,7 +530,7 @@ DOKUMEN PENDUKUNG
                         renderDocInput('Sertifikat Pelatihan', 'sertifikat_pelatihan', $userDb['sertifikat_pelatihan']);
                     }
                     if (array_key_exists('file_visum', $userDb)) {
-                        renderDocInput('Visum', 'file_visum', $userDb['file_visum']);
+                        renderDocInput('Sertifikat Visum', 'file_visum', $userDb['file_visum']);
                     }
                     if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
                         renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_plastik', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_plastik'] ?? '');

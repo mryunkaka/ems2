@@ -103,6 +103,8 @@ function specialistExportDocList(array $user): string
         'KTA' => $user['file_kta'] ?? null,
         'HELI' => $user['sertifikat_heli'] ?? null,
         'Operasi' => $user['sertifikat_operasi'] ?? null,
+        'Sertifikat Pelatihan' => $user['sertifikat_pelatihan'] ?? null,
+        'Sertifikat Visum' => $user['file_visum'] ?? null,
         'Operasi Plastik' => $user['sertifikat_operasi_plastik'] ?? null,
         'Operasi Kecil' => $user['sertifikat_operasi_kecil'] ?? null,
         'Operasi Besar' => $user['sertifikat_operasi_besar'] ?? null,
@@ -153,6 +155,7 @@ function specialistExportCertificateRequirements(array $user): array
     if ($position === 'specialist') {
         $requirements['sertifikat_operasi_besar'] = 'Operasi Besar';
         $requirements['sertifikat_operasi_plastik'] = 'Operasi Plastik';
+        $requirements['file_visum'] = 'Sertifikat Visum';
     }
 
     return $requirements;
@@ -194,6 +197,8 @@ $baseColumns = [
     'file_sim',
     'sertifikat_heli',
     'sertifikat_operasi',
+    'sertifikat_pelatihan',
+    'file_visum',
     'dokumen_lainnya',
     'sertifikat_operasi_plastik',
     'sertifikat_operasi_kecil',

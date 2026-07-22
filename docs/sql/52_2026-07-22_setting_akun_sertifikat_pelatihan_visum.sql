@@ -1,5 +1,5 @@
 -- EMS2
--- Setting Akun: dokumen Sertifikat Pelatihan dan Visum
+-- Setting Akun: dokumen Sertifikat Pelatihan dan Sertifikat Visum
 -- Date: 2026-07-22
 
 START TRANSACTION;

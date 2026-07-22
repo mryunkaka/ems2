@@ -162,6 +162,7 @@ function specialistMedicCertificateRequirements(array $user): array
     if ($position === 'specialist') {
         $requirements['sertifikat_operasi_besar'] = 'Operasi Besar';
         $requirements['sertifikat_operasi_plastik'] = 'Operasi Plastik';
+        $requirements['file_visum'] = 'Sertifikat Visum';
     }
 
     return $requirements;
@@ -217,6 +218,8 @@ $baseColumns = [
     'file_sim',
     'sertifikat_heli',
     'sertifikat_operasi',
+    'sertifikat_pelatihan',
+    'file_visum',
     'dokumen_lainnya',
     'sertifikat_operasi_plastik',
     'sertifikat_operasi_kecil',
@@ -289,6 +292,8 @@ try {
             'KTA' => $row['file_kta'] ?? null,
             'HELI' => $row['sertifikat_heli'] ?? null,
             'Operasi' => $row['sertifikat_operasi'] ?? null,
+            'Sertifikat Pelatihan' => $row['sertifikat_pelatihan'] ?? null,
+            'Sertifikat Visum' => $row['file_visum'] ?? null,
             'Operasi Plastik' => $row['sertifikat_operasi_plastik'] ?? null,
             'Operasi Kecil' => $row['sertifikat_operasi_kecil'] ?? null,
             'Operasi Besar' => $row['sertifikat_operasi_besar'] ?? null,
