@@ -297,6 +297,8 @@ if ($willChangePin) {
 }
 
 $settingAkunExtraDocFields = [
+    'sertifikat_pelatihan',
+    'file_visum',
     'sertifikat_operasi_plastik',
     'sertifikat_operasi_kecil',
     'sertifikat_operasi_besar',

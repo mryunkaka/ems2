@@ -40,6 +40,8 @@ $baseSelectColumns = [
 ];
 
 $optionalSettingAkunColumns = [
+    'sertifikat_pelatihan',
+    'file_visum',
     'tanggal_lahir_ic',
     'file_kontrak_kerja',
     'sertifikat_operasi_plastik',
@@ -524,6 +526,12 @@ DOKUMEN PENDUKUNG
                     }
                     renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
                     renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
+                    if (array_key_exists('sertifikat_pelatihan', $userDb)) {
+                        renderDocInput('Sertifikat Pelatihan', 'sertifikat_pelatihan', $userDb['sertifikat_pelatihan']);
+                    }
+                    if (array_key_exists('file_visum', $userDb)) {
+                        renderDocInput('Visum', 'file_visum', $userDb['file_visum']);
+                    }
                     if (array_key_exists('sertifikat_operasi_plastik', $userDb)) {
                         renderDocInput('Sertifikat Operasi Plastik', 'sertifikat_operasi_plastik', $userDb['sertifikat_operasi_plastik'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi_plastik', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi_plastik' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi_plastik'] ?? '');
                     }
