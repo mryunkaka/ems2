@@ -32,6 +32,12 @@ $flashErrors = $_SESSION['flash_errors'] ?? [];
 $flashWarnings = $_SESSION['flash_warnings'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors'], $_SESSION['flash_warnings']);
 
+// Konsumen bisa diakses semua user login, jadi abaikan flash error guard division
+// yang mungkin masih tersisa dari redirect halaman lain karena itu menyesatkan pengguna.
+$flashErrors = array_values(array_filter($flashErrors, static function ($error) {
+    return trim((string)$error) !== 'Akses halaman ditolak untuk division Anda.';
+}));
+
 // ===============================
 // FILTER INPUT
 // ===============================

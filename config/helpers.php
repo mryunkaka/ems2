@@ -1213,6 +1213,9 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'candidate_interview_multi.php',
             'setting_akun.php',
             'setting_akun_action.php',
+            'dispatcher.php',
+            'dispatcher_action.php',
+            'dispatcher_monitoring.php',
         ];
     }
 
@@ -1237,6 +1240,9 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'setting_akun.php',
             'setting_akun_action.php',
             'sertifikat_heli_pendaftaran.php',
+            'dispatcher.php',
+            'dispatcher_action.php',
+            'dispatcher_monitoring.php',
         ];
     }
 
@@ -1289,6 +1295,9 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'input_dokumen_medis.php',
         'input_dokumen_medis_action.php',
         'sertifikat_heli_pendaftaran.php',
+        'dispatcher.php',
+        'dispatcher_action.php',
+        'dispatcher_monitoring.php',
     ];
 }
 

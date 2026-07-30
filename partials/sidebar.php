@@ -37,16 +37,15 @@ $groupedNav = [
     'Utama' => [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
         sidebarItem('/dashboard/medical_roster.php', 'medical_roster.php', 'Daftar Medis Roxwood', 'user-group'),
-        sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket'),
         sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
-        sidebarItem('/dashboard/struktur_organisasi.php', 'struktur_organisasi.php', 'Struktur Organisasi', 'building-office-2'),
     ],
     'Medis' => [
         sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
         sidebarItem('/dashboard/rekam_medis_list.php', 'rekam_medis_list.php', 'Rekam Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/operasi_plastik.php', 'operasi_plastik.php', 'Operasi Plastik', 'building-office-2'),
-        sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
         sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
+        sidebarItem('/dashboard/dispatcher.php', 'dispatcher.php', 'Dispatcher', 'megaphone'),
+        sidebarItem('/dashboard/dispatcher_monitoring.php', 'dispatcher_monitoring.php', 'Monitoring Dispatcher', 'eye'),
     ],
     'Farmasi' => [
         sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
@@ -62,20 +61,31 @@ $groupedNav = [
     'Administrasi' => [
         sidebarItem('/dashboard/pengajuan_jabatan.php', 'pengajuan_jabatan.php', 'Pengajuan Jabatan', 'arrow-up-tray'),
         sidebarItem('/dashboard/pengajuan_cuti_resign.php', 'pengajuan_cuti_resign.php', 'Pengajuan Cuti & Resign', 'calendar'),
+        sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
     ],
     'Pengaturan' => [
         sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
     ],
 ];
 
-if (!ems_is_staff_role($userRole)) {
-    $groupedNav['Utama'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
-    $groupedNav['Utama'][] = sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle');
-    $groupedNav['Utama'][] = sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles');
+// Menu "Event" hanya ditampilkan jika ada event yang sedang aktif.
+$hasActiveEvent = false;
+if (isset($pdo) && $pdo instanceof PDO) {
+    try {
+        $hasActiveEvent = (bool) $pdo->query("SELECT 1 FROM events WHERE is_active = 1 LIMIT 1")->fetchColumn();
+    } catch (Throwable $e) {
+        $hasActiveEvent = false;
+    }
+}
+if ($hasActiveEvent) {
+    array_splice($groupedNav['Utama'], 2, 0, [sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket')]);
 }
 
-$groupedNav['Utama'][] = sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal');
-$groupedNav['Utama'][] = sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation');
+if (!ems_is_staff_role($userRole)) {
+    $groupedNav['Medis'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
+    $groupedNav['Farmasi'][] = sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle');
+    $groupedNav['Administrasi'][] = sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles');
+}
 
 if ($division !== 'General Affair') {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes');
@@ -87,7 +97,7 @@ if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
 }
 
 if ($division !== 'Medis') {
-    $groupedNav['Utama'][] = sidebarItem('/dashboard/surat_monitoring.php', 'surat_monitoring.php', 'Monitoring Surat', 'inbox');
+    $groupedNav['Administrasi'][] = sidebarItem('/dashboard/surat_monitoring.php', 'surat_monitoring.php', 'Monitoring Surat', 'inbox');
 }
 
 if (!$isInterviewerTrainerHr && ems_can_access_division_menu($division, 'Human Resource')) {
@@ -176,23 +186,23 @@ if ($isAltaUnit && !$canViewAllUnits) {
             'Utama' => [
                 sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
                 sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
-                sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
-                sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Medis' => [
-                sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
                 sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
+            ],
+            'Administrasi' => [
+                sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
                 sidebarItem('/dashboard/konsumen.php', 'konsumen.php', 'Konsumen', 'user-group'),
                 sidebarItem('/dashboard/ranking.php', 'ranking.php', 'Ranking', 'chart-bar'),
             ],
+            'Keuangan' => [
+                sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office'),
+            ],
             'Pengaturan' => [
                 sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
-            ],
-            'Administrasi' => [
-                sidebarItem('/dashboard/general_affair_kerjasama_input.php', 'general_affair_kerjasama_input.php', 'Input Kerja Sama', 'building-office'),
             ],
         ];
     } else {
@@ -202,11 +212,9 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
                 sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle'),
                 sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles'),
-                sidebarItem('/dashboard/user_availability.php', 'user_availability.php', 'Availability User', 'signal'),
                 sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Medis' => [
-                sidebarItem('/dashboard/emt_doj.php', 'emt_doj.php', 'EMT DOJ', 'identification'),
                 sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
             ],
             'Farmasi' => [
