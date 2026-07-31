@@ -73,16 +73,11 @@ $chartScores = [
     (int) round((float) ($chartScoreMap['honesty_humility']['score'] ?? 0)),
 ];
 
-$biasFlags = detectResponseBias($answers);
+$biasFlags = detectResponseBias($answers, $traitItems);
 if ($recruitmentType === 'assistant_manager') {
     $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
 }
 $crossFlags = crossValidateWithForm($chartScoreMap, $candidate, $recruitmentType);
-$recomputedDecision = makeFinalDecision($chartScoreMap, $biasFlags, $crossFlags, (int)($result['duration_seconds'] ?? 0), $recruitmentType);
-$personalityNarrative = generatePsychologicalNarrative($chartScoreMap, $recomputedDecision, $recruitmentType);
-$displayScoreTotal = (float)($recomputedDecision['composite_score'] ?? $result['score_total'] ?? 0);
-$result['score_total'] = $displayScoreTotal;
-$result['decision'] = (string)($recomputedDecision['decision'] ?? $result['decision'] ?? '');
 
 $durationSeconds = (int)($result['duration_seconds'] ?? 0);
 $durationHours = intdiv($durationSeconds, 3600);
@@ -91,6 +86,93 @@ $durationRemainSeconds = $durationSeconds % 60;
 $durationText = $durationSeconds > 0
     ? sprintf('%02d:%02d:%02d', $durationHours, $durationMinutes, $durationRemainSeconds)
     : '-';
+
+/* ===============================
+   AUDIT KEWAJARAN SKOR VIA AI (GEMINI) — opsional, melengkapi deteksi
+   bias berbasis aturan. Hasilnya di-cache di kolom risk_flags.ai_audit
+   supaya tidak memanggil Gemini ulang di setiap kunjungan halaman ini.
+   =============================== */
+$aiSettings = ems_ai_get_settings($pdo);
+$storedRiskFlags = json_decode((string)($result['risk_flags'] ?? ''), true);
+$storedRiskFlags = is_array($storedRiskFlags) ? $storedRiskFlags : [];
+$aiAudit = is_array($storedRiskFlags['ai_audit'] ?? null) ? $storedRiskFlags['ai_audit'] : null;
+$aiAuditError = null;
+$auditFeatureKey = ems_ai_assessment_audit_feature_key($recruitmentType, $id);
+
+function candidateDetailPersistAiAudit(PDO $pdo, int $applicantId, array $storedRiskFlags, array $audit): void
+{
+    $storedRiskFlags['ai_audit'] = $audit;
+    $stmt = $pdo->prepare("UPDATE ai_test_results SET risk_flags = ? WHERE applicant_id = ?");
+    $stmt->execute([json_encode($storedRiskFlags, JSON_UNESCAPED_UNICODE), $applicantId]);
+}
+
+if ($hasAiResult && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_audit'])) {
+    try {
+        if (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === '') {
+            throw new RuntimeException('Audit AI belum bisa dijalankan karena AI belum aktif atau API key belum diisi.');
+        }
+
+        $freshAudit = ems_ai_review_assessment_plausibility(
+            $pdo,
+            $aiSettings,
+            $id,
+            $chartScoreMap,
+            $biasFlags,
+            $yesCount,
+            $noCount,
+            $durationText,
+            $recruitmentType,
+            (int)($user['id'] ?? 0) ?: null
+        );
+
+        if (!$freshAudit) {
+            throw new RuntimeException('Audit AI gagal dijalankan (respons kosong atau tidak valid).');
+        }
+
+        candidateDetailPersistAiAudit($pdo, $id, $storedRiskFlags, $freshAudit);
+        header('Location: candidate_detail.php?id=' . $id . '&audit_regenerated=1');
+        exit;
+    } catch (Throwable $e) {
+        $aiAuditError = $e->getMessage();
+    }
+} elseif (
+    $hasAiResult
+    && $aiAudit === null
+    && !empty($aiSettings['is_enabled'])
+    && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
+    && !ems_ai_has_successful_summary_log($pdo, $auditFeatureKey)
+) {
+    try {
+        $freshAudit = ems_ai_review_assessment_plausibility(
+            $pdo,
+            $aiSettings,
+            $id,
+            $chartScoreMap,
+            $biasFlags,
+            $yesCount,
+            $noCount,
+            $durationText,
+            $recruitmentType,
+            (int)($user['id'] ?? 0) ?: null
+        );
+
+        if ($freshAudit) {
+            candidateDetailPersistAiAudit($pdo, $id, $storedRiskFlags, $freshAudit);
+            $aiAudit = $freshAudit;
+        }
+    } catch (Throwable $e) {
+        $aiAuditError = $e->getMessage();
+    }
+}
+
+$aiAuditPenalty = $aiAudit ? (float)($aiAudit['penalty'] ?? 0) : 0.0;
+
+$recomputedDecision = makeFinalDecision($chartScoreMap, $biasFlags, $crossFlags, $durationSeconds, $recruitmentType, $aiAuditPenalty);
+$personalityNarrative = generatePsychologicalNarrative($chartScoreMap, $recomputedDecision, $recruitmentType);
+$displayScoreTotal = (float)($recomputedDecision['composite_score'] ?? $result['score_total'] ?? 0);
+$result['score_total'] = $displayScoreTotal;
+$result['decision'] = (string)($recomputedDecision['decision'] ?? $result['decision'] ?? '');
+
 $questionEntries = [];
 foreach ($questions as $questionId => $questionText) {
     $questionEntries[] = [
@@ -110,7 +192,6 @@ $chartTraitDetails = [
     ['label' => 'Honesty', 'value' => $chartScores[5]],
 ];
 
-$aiSettings = ems_ai_get_settings($pdo);
 $generatedSummaryError = null;
 $generatedSummarySuccess = isset($_GET['summary_regenerated']) && $_GET['summary_regenerated'] === '1';
 $featureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $id);
@@ -408,6 +489,59 @@ function candidateDisplayLabel(?string $value): string
         </div>
 
         </div>
+
+        <?php if ($hasAiResult): ?>
+        <div class="card mt-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h3 class="mb-0">Audit Kewajaran Skor (AI Gemini)</h3>
+                <form method="POST">
+                    <button type="submit" name="regenerate_ai_audit" value="1" class="btn-secondary btn-sm" onclick="return confirm('Jalankan ulang audit AI untuk profil skor kandidat ini?');">
+                        <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                        <span>Audit Ulang dengan AI</span>
+                    </button>
+                </form>
+            </div>
+
+            <?php if ($aiAuditError): ?>
+                <div class="mt-3 alert alert-error"><?= htmlspecialchars($aiAuditError) ?></div>
+            <?php elseif (isset($_GET['audit_regenerated']) && $_GET['audit_regenerated'] === '1'): ?>
+                <div class="mt-3 alert alert-info">Audit AI berhasil diperbarui.</div>
+            <?php endif; ?>
+
+            <?php if ($aiAudit): ?>
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <span class="<?= !empty($aiAudit['realistic']) ? 'badge-success' : 'badge-warning' ?>">
+                        <?= !empty($aiAudit['realistic']) ? 'Pola jawaban dinilai realistis' : 'Pola jawaban perlu ditinjau ulang' ?>
+                    </span>
+                    <?php if ((float)($aiAudit['penalty'] ?? 0) > 0): ?>
+                        <span class="badge-danger">Koreksi skor: -<?= (int)round((float)($aiAudit['penalty'] ?? 0)) ?> poin</span>
+                    <?php endif; ?>
+                    <?php if (!empty($aiAudit['model'])): ?>
+                        <span class="meta-text-xs">Model: <?= htmlspecialchars((string)$aiAudit['model']) ?></span>
+                    <?php endif; ?>
+                </div>
+                <?php if (!empty($aiAudit['note'])): ?>
+                    <div class="mt-2 text-sm text-slate-700"><?= htmlspecialchars((string)$aiAudit['note']) ?></div>
+                <?php endif; ?>
+                <?php if (!empty($aiAudit['reviewed_at'])): ?>
+                    <div class="mt-2 meta-text-xs">Terakhir diaudit: <?= htmlspecialchars((string)$aiAudit['reviewed_at']) ?></div>
+                <?php endif; ?>
+            <?php elseif (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === ''): ?>
+                <div class="mt-3 text-sm text-slate-500">
+                    Audit AI belum aktif. Aktifkan provider AI dan isi API key di
+                    <a class="font-semibold underline" href="ai_settings.php">Setting AI</a> untuk mengaktifkan audit kewajaran skor otomatis.
+                </div>
+            <?php else: ?>
+                <div class="mt-3 text-sm text-slate-500">Audit AI belum tersedia untuk kandidat ini. Klik "Audit Ulang dengan AI" untuk menjalankannya.</div>
+            <?php endif; ?>
+
+            <div class="mt-3 text-xs text-slate-500">
+                Audit ini adalah opini kedua dari Gemini yang menilai kewajaran statistik pola skor psikometri
+                (bukan menilai kelayakan kandidat), melengkapi deteksi bias berbasis aturan pada sistem.
+                Skor komposit di atas sudah memperhitungkan koreksi ini jika ada.
+            </div>
+        </div>
+        <?php endif; ?>
 
         <div class="card mt-4">
             <h3>Ringkasan <?= htmlspecialchars(ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate')) ?></h3>

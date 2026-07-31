@@ -68,7 +68,7 @@ $aiScores = [];
 foreach ($aiTraitItems as $trait => $items) {
     $aiScores[$trait] = calculateTraitScore($aiAnswers, $items);
 }
-$aiBiasFlags = detectResponseBias($aiAnswers);
+$aiBiasFlags = detectResponseBias($aiAnswers, $aiTraitItems);
 if ($isAssistantManagerTrack) {
     $aiBiasFlags = array_values(array_unique(array_merge($aiBiasFlags, ems_assistant_manager_trap_flags($aiAnswers))));
 }

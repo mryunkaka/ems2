@@ -434,6 +434,50 @@ Final combined-score formula used across candidate pages:
 `combined = interview_score*0.6 + ai_score*0.3 + confidence*0.1`, auto-pass
 if `combined >= 70 AND ai_recommendation !== 'not_recommended'`.
 
+**Bias-detection bug fixed 2026-07-31**: `detectResponseBias()` originally
+only checked the *literal* Ya/Tidak ratio and same-answer streak length.
+This missed the classic "faking good" / social-desirability pattern: a
+candidate who always picks whichever answer is *directionally favorable*
+(Ya on normal-direction items, Tidak on reverse-scored ones) can look
+"mixed" in raw Ya/Tidak counts (e.g. 29 Ya / 41 Tidak) while every single
+trait scores ~100 — completely undetected by the old check. Fixed by
+threading the per-trait `$traitItems` map (already built at every call
+site for `calculateTraitScore()`) into `detectResponseBias($answers,
+$traitItems)`, which now also computes a direction-adjusted "favorable
+rate" across all non-trap items and flags `uniform_favorable_bias`
+(rate ≥ 0.90) / `uniform_unfavorable_bias` (rate ≤ 0.10). Both feed into
+`calculateCompositeScore()`'s penalty map (12/10 points) and — critically —
+into `makeFinalDecision()`'s `count($biasFlags) === 0` requirement for a
+`recommended` verdict, so a suspiciously perfect profile can no longer
+auto-qualify as highly recommended. All 6 call sites (`ai_test_submit.php`,
+`candidate_detail.php`, `candidate_decision.php`, `candidates.php`,
+`candidates_export.php`, `assistant_manager_candidates.php`) were updated
+to pass their trait-items map. Verified against real data reproducing the
+reported bug (26 Ya/44 Tidak → all 6 traits at 100) — correctly flagged
+after the fix, composite score dropped from 100 to ~88 (rule-based only).
+
+**AI-assisted plausibility audit (added 2026-07-31)**: a second, optional
+layer on top of the rule-based fix above.
+`actions/ai_recruitment_service.php::ems_ai_review_assessment_plausibility()`
+sends Gemini the trait scores + bias flags + Ya/Tidak counts + duration
+(no raw answer text) and asks for a JSON verdict
+`{"realistic": bool, "penalty": 0-25, "note": "..."}`. Wired into
+`dashboard/candidate_detail.php` only (not the list/export pages) as a new
+"Audit Kewajaran Skor (AI Gemini)" card: lazily generated on first view
+(same cached-via-`system_ai_request_logs` convention as
+`ems_ai_generate_candidate_summary()`), persisted into
+`ai_test_results.risk_flags.ai_audit` (no schema migration needed — reuses
+the existing `risk_flags` JSON column), with a manual "Audit Ulang dengan
+AI" regenerate button. The stored `penalty` is threaded into
+`calculateCompositeScore()`/`makeFinalDecision()` via a new optional
+`$extraPenalty` param (composite-score caps raised 38→45 assistant_manager,
+30→35 medical, to give both rule-based and AI penalties room to matter).
+Silently no-ops if `system_ai_settings.is_enabled` is off or no API key —
+scoring still works fully without it. Verified with a real Gemini call
+(model `gemini-2.5-flash-lite`) against the same reproduced-bug scenario:
+independently returned `realistic: false, penalty: 25` with a correct
+Indonesian explanation, before persistence/UI were exercised via HTTP.
+
 ### Public recruitment portal journey
 Two **independent** public entry points, each with its own open/close
 toggle (see below) — as of 2026-07-31 they are deliberately decoupled so
@@ -500,6 +544,30 @@ member's original medical/staff intake batch). Model:
   from the dropdown explicitly submits `?batch=` (empty string) to see
   everything. The active round is also injected into the dropdown (with a
   "(Aktif)" suffix) even if it has zero candidates yet.
+
+**Cross-track applicant lookup bug fixed 2026-07-31**:
+`ems_public_recruitment_find_applicant()` (`public/recruitment_gate.php`)
+originally looked up the latest `medical_applicants` row by **citizen_id
+alone**, with no `recruitment_type` filter. Since a single real person can
+plausibly have applied under *both* tracks over time (e.g. medical trainee
+months ago, now applying via GA as existing staff), this meant visiting
+`public/ga_recruitment.php` with a citizen ID that had an old
+`medical_candidate` row would silently hijack the gate into that old
+application's track/stage — sending the person to the medical form, the
+medical "done" page, or (if the medical portal happened to be closed, as
+it usually is) `recruitment_closed.php?track=medical_candidate`, even
+though they came in through the GA-specific entry point and the GA portal
+itself was open. Fixed by adding a `$preferredType` param to
+`ems_public_recruitment_find_applicant()` and having
+`ems_public_recruitment_build_gate()` pass its own `$defaultType` through,
+so each track-specific gate page (`public/index.php` → `medical_candidate`,
+`public/ga_recruitment.php` → `assistant_manager`) only ever matches an
+existing applicant **within its own track** — a citizen ID with no
+application in that specific track is correctly treated as brand new.
+Verified with a real citizen ID that had a completed medical application:
+GA gate now correctly routes to `recruitment_form_assistant_manager.php`
+instead of the medical flow; the medical gate's own behavior for that same
+citizen ID is unchanged (still resumes its real medical application).
 
 ### Farmasi (pharmacy) duty/online-status lifecycle
 Go online/offline: `actions/toggle_farmasi_status.php` (caps: `max_online_medics`,

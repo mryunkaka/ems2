@@ -507,7 +507,7 @@ function candidateRecomputedResult(array $row): array
         $scores[$trait] = calculateTraitScore($answers, $items);
     }
 
-    $biasFlags = detectResponseBias($answers);
+    $biasFlags = detectResponseBias($answers, $traitItems);
     if ($recruitmentType === 'assistant_manager') {
         $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
     }

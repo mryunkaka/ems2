@@ -275,6 +275,116 @@ function ems_ai_generate_candidate_summary(PDO $pdo, array $settings, array $can
     return ems_ai_render_summary_text($decoded);
 }
 
+/**
+ * Audit kewajaran statistik atas profil skor psikometri kandidat, memakai Gemini
+ * sebagai "auditor" independen. Tugasnya BUKAN menilai kelayakan kandidat, hanya
+ * menilai apakah pola skornya masuk akal untuk manusia yang menjawab jujur, atau
+ * justru menunjukkan pola "selalu menjawab yang terkesan baik" (social
+ * desirability / faking good) yang membuat skor tampak nyaris sempurna padahal
+ * tidak realistis. Melengkapi (bukan menggantikan) deteksi bias berbasis aturan
+ * di actions/ai_scoring_engine.php::detectResponseBias().
+ *
+ * Mengembalikan null jika AI nonaktif, API key kosong, atau pemanggilan gagal —
+ * pipeline penilaian tetap berjalan penuh dengan skor berbasis aturan saja.
+ */
+function ems_ai_assessment_audit_feature_key(string $recruitmentType, int $applicantId): string
+{
+    return 'assessment_audit_' . $recruitmentType . '_applicant_' . $applicantId;
+}
+
+function ems_ai_review_assessment_plausibility(
+    PDO $pdo,
+    array $settings,
+    int $applicantId,
+    array $chartScoreMap,
+    array $biasFlags,
+    int $yesCount,
+    int $noCount,
+    string $durationText,
+    string $recruitmentType,
+    ?int $createdBy = null
+): ?array {
+    if (empty($settings['is_enabled']) || trim((string)($settings['gemini_api_key'] ?? '')) === '') {
+        return null;
+    }
+
+    $traitSummary = [];
+    foreach ($chartScoreMap as $trait => $meta) {
+        $traitSummary[$trait] = round((float)($meta['score'] ?? 0), 1);
+    }
+
+    $payload = [
+        'recruitment_type' => $recruitmentType,
+        'trait_scores_0_100' => $traitSummary,
+        'bias_flags_terdeteksi_sistem' => array_values($biasFlags),
+        'jumlah_jawaban_ya' => $yesCount,
+        'jumlah_jawaban_tidak' => $noCount,
+        'durasi_pengerjaan' => $durationText,
+    ];
+
+    $systemPrompt = 'Anda adalah auditor psikometri independen untuk sistem rekrutmen internal. '
+        . 'Tugas Anda HANYA menilai KEWAJARAN (plausibility) statistik dari profil skor kandidat '
+        . 'di bawah, BUKAN menilai kelayakan kandidat itu sendiri. Fokus utama: apakah pola skor '
+        . 'ini secara statistik masuk akal untuk manusia yang menjawab jujur, atau justru terlihat '
+        . 'seperti pola "selalu menjawab yang terkesan baik" (social desirability / faking good) '
+        . 'yang membuat skornya nyaris sempurna dan tidak realistis, walau jumlah jawaban Ya/Tidak '
+        . 'terlihat cukup bervariasi. Panduan: (1) jika semua atau hampir semua trait bernilai '
+        . 'sangat tinggi (>=90) secara bersamaan, itu jarang terjadi pada manusia nyata dan '
+        . 'biasanya menandakan bias respon, beri penalty tinggi 15-25; (2) jika ada variasi wajar '
+        . 'antar trait (sebagian tinggi, sebagian sedang/rendah), itu lebih realistis, beri '
+        . 'penalty rendah 0-8; (3) jika sistem sudah mendeteksi bias_flags, anggap itu sinyal kuat '
+        . 'dan sesuaikan penalty ke arah lebih tinggi. Balas HANYA dalam format JSON valid tanpa '
+        . 'teks lain, dengan struktur persis: '
+        . '{"realistic": true/false, "penalty": angka 0-25, "note": "penjelasan singkat berbahasa Indonesia, maksimal 2 kalimat"}';
+
+    $userPrompt = "Data kandidat untuk diaudit:\n" . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $featureKey = ems_ai_assessment_audit_feature_key($recruitmentType, $applicantId);
+
+    try {
+        $response = ems_gemini_generate_content(
+            $pdo,
+            $settings,
+            [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        ['text' => $systemPrompt],
+                        ['text' => $userPrompt],
+                    ],
+                ],
+            ],
+            (string)($settings['criteria_scoring_model'] ?? $settings['default_model'] ?? 'gemini-2.5-flash'),
+            $featureKey,
+            $createdBy
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+
+    $rawText = trim((string)($response['text'] ?? ''));
+    if ($rawText === '') {
+        return null;
+    }
+
+    $decoded = json_decode($rawText, true);
+    if (!is_array($decoded)) {
+        $cleaned = preg_replace('/^```json\s*|```\s*$/mu', '', $rawText);
+        $decoded = json_decode(trim((string)$cleaned), true);
+    }
+
+    if (!is_array($decoded)) {
+        return null;
+    }
+
+    return [
+        'realistic' => empty($decoded['realistic']) ? false : true,
+        'penalty' => max(0, min(25, (int)round((float)($decoded['penalty'] ?? 0)))),
+        'note' => trim((string)($decoded['note'] ?? '')),
+        'model' => (string)($response['model'] ?? ''),
+        'reviewed_at' => date('Y-m-d H:i:s'),
+    ];
+}
+
 function ems_ai_interview_question_seed(array $candidate, int $applicantId, int $hrId): int
 {
     return abs(crc32(

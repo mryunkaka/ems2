@@ -77,7 +77,7 @@ function assistantManagerRecomputedResult(array $row): array
     }
 
     $biasFlags = array_values(array_unique(array_merge(
-        detectResponseBias($answers),
+        detectResponseBias($answers, $traitItems),
         ems_assistant_manager_trap_flags($answers)
     )));
     $crossFlags = crossValidateWithForm($scores, $row, 'assistant_manager');

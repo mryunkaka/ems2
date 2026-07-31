@@ -54,14 +54,14 @@ function ems_public_recruitment_require_portal_open(string $track = 'medical_can
     return $settings;
 }
 
-function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?array
+function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId, ?string $preferredType = null): ?array
 {
     $citizenId = ems_normalize_citizen_id($citizenId);
     if ($citizenId === '') {
         return null;
     }
 
-    $stmt = $pdo->prepare("
+    $sql = "
         SELECT
             m.id,
             m.citizen_id,
@@ -74,10 +74,23 @@ function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?ar
             ) AS has_ai_result
         FROM medical_applicants m
         WHERE UPPER(TRIM(m.citizen_id)) = ?
-        ORDER BY m.id DESC
-        LIMIT 1
-    ");
-    $stmt->execute([$citizenId]);
+    ";
+    $params = [$citizenId];
+
+    // Setiap jalur (medical_candidate / assistant_manager) punya gate publik sendiri
+    // (public/index.php vs public/ga_recruitment.php). Kalau pemanggil tahu jalur mana
+    // yang sedang diakses, cari HANYA aplikasi di jalur itu — supaya Citizen ID yang
+    // kebetulan pernah mendaftar di jalur lain (mis. pernah jadi calon medis) tidak
+    // "membajak" gate jalur yang sedang dibuka sekarang ke status/redirect jalur lama.
+    if ($preferredType !== null) {
+        $sql .= " AND COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = ?";
+        $params[] = ems_normalize_recruitment_type($preferredType);
+    }
+
+    $sql .= " ORDER BY m.id DESC LIMIT 1";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$row) {
@@ -96,12 +109,13 @@ function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?ar
 function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId, array $context = [], string $defaultType = 'medical_candidate'): array
 {
     $citizenId = ems_normalize_citizen_id($citizenId);
-    $applicant = ems_public_recruitment_find_applicant($pdo, $citizenId);
+    $normalizedDefaultType = ems_normalize_recruitment_type($defaultType);
+    $applicant = ems_public_recruitment_find_applicant($pdo, $citizenId, $normalizedDefaultType);
     $icName = trim((string)($context['ic_name'] ?? ''));
 
     $stage = 'form';
     $applicantId = 0;
-    $recruitmentType = ems_normalize_recruitment_type($defaultType);
+    $recruitmentType = $normalizedDefaultType;
 
     if ($applicant) {
         $applicantId = (int)$applicant['id'];

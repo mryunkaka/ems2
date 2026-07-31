@@ -216,7 +216,7 @@ function reliabilityLevel(int $n): string
 /* =========================================================
    4. RESPONSE BIAS DETECTION
    ========================================================= */
-function detectResponseBias(array $answers): array
+function detectResponseBias(array $answers, array $traitItems = []): array
 {
     $flags = [];
 
@@ -249,6 +249,44 @@ function detectResponseBias(array $answers): array
     // is both very long and paired with a heavily one-sided answer distribution.
     if ($total > 0 && $maxRun >= 20 && (($ya / $total) > 0.7 || ($tidak / $total) > 0.7)) {
         $flags[] = 'pattern_answering';
+    }
+
+    // Deteksi "social desirability" / jawaban seragam-favorit. Dihitung dari nilai yang
+    // SUDAH disesuaikan arah (direction) per item bertrait, bukan dari rasio literal
+    // ya/tidak. Pola ini bisa lolos deteksi acquiescence/pattern di atas karena literal
+    // ya/tidak terlihat "campuran" (mis. 29 ya, 41 tidak), padahal kandidat konsisten
+    // memilih jawaban yang terkesan baik pada tiap item — baik yang arahnya normal
+    // maupun reverse — sehingga semua trait ikut bernilai hampir sempurna. Ini pola
+    // klasik "faking good" pada tes psikometri self-report dan wajib ditandai.
+    if ($traitItems) {
+        $favorable = 0;
+        $scored = 0;
+
+        foreach ($traitItems as $items) {
+            foreach ($items as $questionId => $cfg) {
+                if (!isset($answers[$questionId])) {
+                    continue;
+                }
+
+                $v = ($answers[$questionId] === 'ya') ? 1 : 0;
+                if (($cfg['direction'] ?? 'normal') === 'reverse') {
+                    $v = 1 - $v;
+                }
+
+                $favorable += $v;
+                $scored++;
+            }
+        }
+
+        // Butuh cukup banyak item bertrait yang terjawab agar rasio ini reliabel.
+        if ($scored >= 15) {
+            $favorableRate = $favorable / $scored;
+            if ($favorableRate >= 0.90) {
+                $flags[] = 'uniform_favorable_bias';
+            } elseif ($favorableRate <= 0.10) {
+                $flags[] = 'uniform_unfavorable_bias';
+            }
+        }
     }
 
     return $flags;
@@ -312,7 +350,8 @@ function calculateCompositeScore(
     array $biasFlags,
     array $crossFlags,
     int $durationSeconds,
-    string $profile = 'medical_candidate'
+    string $profile = 'medical_candidate',
+    float $extraPenalty = 0.0
 ): float {
     $profile = function_exists('ems_normalize_recruitment_type')
         ? ems_normalize_recruitment_type($profile)
@@ -327,11 +366,19 @@ function calculateCompositeScore(
         'pattern_answering' => 6,
         'trap_answering' => 5,
         'high_risk_trap_answering' => 8,
+        // Skor per-trait ikut hampir sempurna kalau ini terjadi, jadi bobotnya
+        // dibuat lebih berat dari sekadar acquiescence biasa.
+        'uniform_favorable_bias' => 12,
+        'uniform_unfavorable_bias' => 10,
     ];
 
     foreach ($biasFlags as $flag) {
         $penalty += (float) ($biasPenaltyMap[$flag] ?? 4);
     }
+
+    // Penalti tambahan dari audit AI (Gemini), kalau ada — lihat
+    // actions/ai_recruitment_service.php::ems_ai_review_assessment_plausibility().
+    $penalty += max(0.0, $extraPenalty);
 
     if ($profile === 'assistant_manager') {
         if ($durationSeconds < 180) {
@@ -343,7 +390,7 @@ function calculateCompositeScore(
         }
 
         $penalty += min(8, count($crossFlags) * 4);
-        $penalty = min($penalty, 38);
+        $penalty = min($penalty, 45);
     } else {
         if ($durationSeconds < 45) {
             $penalty += 12;
@@ -354,7 +401,7 @@ function calculateCompositeScore(
         }
 
         $penalty += min(6, count($crossFlags) * 3);
-        $penalty = min($penalty, 30);
+        $penalty = min($penalty, 35);
     }
 
     return round(max(0, min(100, $avg - $penalty)), 2);
@@ -368,14 +415,15 @@ function makeFinalDecision(
     array $biasFlags,
     array $crossFlags,
     int $durationSeconds,
-    string $profile = 'medical_candidate'
+    string $profile = 'medical_candidate',
+    float $extraPenalty = 0.0
 ): array {
     $profile = function_exists('ems_normalize_recruitment_type')
         ? ems_normalize_recruitment_type($profile)
         : $profile;
 
     $avg = array_sum(array_column($scores, 'score')) / count($scores);
-    $compositeScore = calculateCompositeScore($scores, $biasFlags, $crossFlags, $durationSeconds, $profile);
+    $compositeScore = calculateCompositeScore($scores, $biasFlags, $crossFlags, $durationSeconds, $profile, $extraPenalty);
 
     $decision = 'consider';
     $confidence = 'medium';

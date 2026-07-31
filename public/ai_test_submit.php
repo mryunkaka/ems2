@@ -130,7 +130,7 @@ foreach ($traitItems as $trait => $items) {
 }
 
 // 2. Deteksi bias respon
-$biasFlags = detectResponseBias($answers);
+$biasFlags = detectResponseBias($answers, $traitItems);
 if ($profileType === 'assistant_manager') {
     $biasFlags = array_values(array_unique(array_merge($biasFlags, ems_assistant_manager_trap_flags($answers))));
 }
