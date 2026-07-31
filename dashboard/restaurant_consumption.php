@@ -46,9 +46,15 @@ include __DIR__ . '/../partials/sidebar.php';
 $userRole = strtolower(trim($_SESSION['user_rh']['role'] ?? ''));
 $userId   = (int)($_SESSION['user_rh']['id'] ?? 0);
 $userName = $_SESSION['user_rh']['name'] ?? '';
+$userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 
 $isDirector = in_array($userRole, ['vice director', 'director'], true);
 $canManage = !in_array($userRole, ['staff', 'manager'], true);
+
+// Edit data konsumsi: khusus manager (probation/assisten/lead/head manager)
+// di divisi General Affair, atau Director yang sudah punya akses penuh.
+$canEditConsumption = $isDirector
+    || ($userDivision === 'General Affair' && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? ''));
 
 /*
 |--------------------------------------------------------------------------
@@ -435,6 +441,20 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                                 <!-- AKSI -->
                                 <td class="action-cell min-w-[200px]">
                                     <div class="action-row-nowrap">
+                                        <?php if ($canEditConsumption && ($r['status'] === 'pending' || $r['status'] === 'approved')): ?>
+                                            <button class="btn-secondary btn-compact action-icon-btn btn-edit-consumption"
+                                                data-id="<?= (int)$r['id'] ?>"
+                                                data-restaurant-id="<?= (int)$r['restaurant_id'] ?>"
+                                                data-delivery-date="<?= htmlspecialchars($r['delivery_date']) ?>"
+                                                data-delivery-time="<?= htmlspecialchars(substr((string)$r['delivery_time'], 0, 5)) ?>"
+                                                data-packet-count="<?= (int)$r['packet_count'] ?>"
+                                                data-notes="<?= htmlspecialchars((string)($r['notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                                title="Edit konsumsi"
+                                                aria-label="Edit konsumsi">
+                                                <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                            </button>
+                                        <?php endif; ?>
+
                                         <?php if ($canManage && ($r['status'] === 'pending' || $r['status'] === 'approved')): ?>
                                             <button class="btn-primary btn-compact action-icon-btn"
                                                 onclick="markPaid(<?= $r['id'] ?>)"
@@ -814,6 +834,116 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
     </div>
 </div>
 
+<?php if ($canEditConsumption): ?>
+<!-- =================================================
+     MODAL EDIT KONSUMSI (khusus manager General Affair / Director)
+     ================================================= -->
+<div id="editConsumptionModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Edit Konsumsi Restoran</div>
+            <button type="button" class="modal-close-btn btn-edit-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+
+        <form method="POST"
+            action="restaurant_consumption_action.php?action=update"
+            class="form modal-form"
+            enctype="multipart/form-data"
+            id="editConsumptionForm">
+
+            <div class="modal-content">
+                <?= csrfField(); ?>
+                <input type="hidden" name="id" id="editId" value="">
+
+                <label>Pilih Restoran</label>
+                <select name="restaurant_id" id="editRestaurantSelect" required onchange="updateEditPriceInfo()">
+                    <option value="">-- Pilih Restoran --</option>
+                    <?php foreach ($restaurants as $r): ?>
+                        <option value="<?= $r['id'] ?>"
+                            data-price="<?= $r['price_per_packet'] ?>"
+                            data-tax="<?= $r['tax_percentage'] ?>">
+                            <?= htmlspecialchars($r['restaurant_name']) ?> ($<?= number_format($r['price_per_packet'], 0, ',', '.') ?>/pkt)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+
+                <label>Tanggal & Jam Pengiriman</label>
+                <div class="delivery-grid">
+                    <div class="delivery-field">
+                        <small class="delivery-label">Tanggal</small>
+                        <input type="date" name="delivery_date" id="editDeliveryDate" required class="delivery-input">
+                    </div>
+                    <div class="delivery-field">
+                        <small class="delivery-label">Jam</small>
+                        <input type="time" name="delivery_time" id="editDeliveryTime" required class="delivery-input">
+                    </div>
+                </div>
+
+                <label>Jumlah Paket</label>
+                <input type="number" name="packet_count" id="editPacketCount" min="1" required oninput="calculateEditTotal()">
+
+                <!-- INFO HARGA (READONLY, dihitung ulang di server juga) -->
+                <div class="price-summary-box">
+                    <div class="price-summary-row">
+                        <span>Harga per Paket:</span>
+                        <strong id="editDisplayPrice">$0</strong>
+                    </div>
+                    <div class="price-summary-row">
+                        <span>Subtotal:</span>
+                        <span id="editDisplaySubtotal">$0</span>
+                    </div>
+                    <div class="price-summary-row">
+                        <span>Pajak (<span id="editDisplayTaxPercent">0</span>%):</span>
+                        <span id="editDisplayTax">$0</span>
+                    </div>
+                    <div class="price-summary-total">
+                        <strong>TOTAL:</strong>
+                        <strong id="editDisplayTotal" class="price-summary-total-value">$0</strong>
+                    </div>
+                </div>
+
+                <label>Catatan (Opsional)</label>
+                <textarea name="notes" id="editNotes" rows="2" placeholder="Catatan tambahan..."></textarea>
+
+                <!-- FILE UPLOAD KTP (opsional saat edit, ganti hanya jika pilih file baru) -->
+                <div class="doc-upload-wrapper">
+                    <div class="doc-upload-header">
+                        <label class="doc-label">Ganti Foto KTP Karyawan Restoran (opsional)</label>
+                        <span class="badge-muted-mini">PNG / JPG (Akan dikompresi otomatis ke ±300KB)</span>
+                    </div>
+
+                    <div class="doc-upload-input">
+                        <label for="edit_ktp_file" class="file-upload-label">
+                            <span class="file-icon"><?= ems_icon('folder', 'h-5 w-5') ?></span>
+                            <span class="file-text">
+                                <strong>Pilih file</strong>
+                                <small>Kosongkan jika tidak ingin mengganti KTP</small>
+                            </span>
+                        </label>
+                        <input type="file"
+                            id="edit_ktp_file"
+                            name="ktp_file"
+                            accept="image/png,image/jpeg"
+                            class="hidden">
+                        <div class="file-selected-name" data-for="edit_ktp_file"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-edit-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Simpan Perubahan</button>
+                </div>
+            </div>
+
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
 <script>
     /* ===============================
        TOGGLE CUSTOM DATE FIELDS
@@ -1042,6 +1172,125 @@ $stats = $stmtTotal->fetch(PDO::FETCH_ASSOC);
                 });
         });
     });
+
+    <?php if ($canEditConsumption): ?>
+    /* ===============================
+       EDIT MODAL: KALKULASI HARGA
+    =============================== */
+    function updateEditPriceInfo() {
+        const select = document.getElementById('editRestaurantSelect');
+        const option = select.options[select.selectedIndex];
+
+        if (option && option.value) {
+            const price = parseFloat(option.dataset.price) || 0;
+            const tax = parseFloat(option.dataset.tax) || 0;
+
+            document.getElementById('editDisplayPrice').textContent = '$' + price.toLocaleString('en-US');
+            document.getElementById('editDisplayTaxPercent').textContent = tax;
+            calculateEditTotal();
+        }
+    }
+
+    function calculateEditTotal() {
+        const select = document.getElementById('editRestaurantSelect');
+        const option = select.options[select.selectedIndex];
+        const price = (option && option.value) ? (parseFloat(option.dataset.price) || 0) : 0;
+        const taxPercent = (option && option.value) ? (parseFloat(option.dataset.tax) || 0) : 0;
+        const packets = parseInt(document.getElementById('editPacketCount').value) || 0;
+
+        const subtotal = price * packets;
+        const taxAmount = subtotal * (taxPercent / 100);
+        const total = subtotal + taxAmount;
+
+        document.getElementById('editDisplaySubtotal').textContent = '$' + subtotal.toLocaleString('en-US');
+        document.getElementById('editDisplayTax').textContent = '$' + taxAmount.toLocaleString('en-US');
+        document.getElementById('editDisplayTotal').textContent = '$' + total.toLocaleString('en-US');
+    }
+
+    /* ===============================
+       EDIT MODAL: BUKA & ISI DATA
+    =============================== */
+    document.addEventListener('DOMContentLoaded', function() {
+        const editModal = document.getElementById('editConsumptionModal');
+        if (!editModal) return;
+
+        function openEditModal(button) {
+            document.getElementById('editId').value = button.dataset.id || '';
+            document.getElementById('editRestaurantSelect').value = button.dataset.restaurantId || '';
+            document.getElementById('editDeliveryDate').value = button.dataset.deliveryDate || '';
+            document.getElementById('editDeliveryTime').value = button.dataset.deliveryTime || '';
+            document.getElementById('editPacketCount').value = button.dataset.packetCount || '';
+            document.getElementById('editNotes').value = button.dataset.notes || '';
+            document.getElementById('edit_ktp_file').value = '';
+
+            const fileDisplay = document.querySelector('.file-selected-name[data-for="edit_ktp_file"]');
+            if (fileDisplay) fileDisplay.style.display = 'none';
+
+            updateEditPriceInfo();
+
+            editModal.classList.remove('hidden');
+            editModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        }
+
+        function closeEditModal() {
+            editModal.classList.add('hidden');
+            editModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.btn-edit-consumption');
+            if (trigger) {
+                openEditModal(trigger);
+                return;
+            }
+            if (e.target === editModal || e.target.closest('.btn-edit-cancel')) {
+                closeEditModal();
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeEditModal();
+        });
+
+        const editForm = document.getElementById('editConsumptionForm');
+        if (editForm) {
+            editForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                const formData = new FormData(editForm);
+                const submitBtn = editForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Menyimpan...';
+
+                fetch('restaurant_consumption_action.php?action=update', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(parseActionJson)
+                    .then(data => {
+                        if (data.success) {
+                            alert(data.message || 'Konsumsi berhasil diperbarui!');
+                            closeEditModal();
+                            location.reload();
+                        } else {
+                            alert(data.message || 'Gagal memperbarui data');
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = originalText;
+                        }
+                    })
+                    .catch(err => {
+                        alert('Terjadi kesalahan: ' + err.message);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = originalText;
+                    });
+            });
+        }
+    });
+    <?php endif; ?>
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

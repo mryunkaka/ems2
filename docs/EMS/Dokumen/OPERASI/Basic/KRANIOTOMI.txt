@@ -1,0 +1,50 @@
+TINDAKAN PRA-OPERASI
+1. Bawa pasien ke ruang MRI dan segera lakukan scanning untuk memastikan cidera kepala yang dialami.
+2. Jika letak cidera sudah diketahui, bawalah pasien ke ruang operasi.
+   Diagnosa cidera kepala: 
+   *Frontal (otak depan) dan lobus parietal (otak tengah): pasien akan kehilangan ingatan
+   *Temporalis (otak samping): Dapat mengakibatkan gangguan alat gerak / lumpuh
+   *Oksipitalis (otak belakang): Pasien akan kesulitan dalam melihat
+3. Lepaskan seluruh pakaian yang melekat di tubuh pasien.
+4. Siapkan peralatan operasi yang akan digunakan.
+5. Cuci tangan dan kenakan sarung tangan steril.
+6. Pasangkan infus set kepada pasien. Pasang botol infus ke selang infus dan masukkan jarum infus ke tangan, kemudian sambungkan selang infus ke jarum infus.
+7. Pasang lead EKG dan nyalakan monitor vital.
+8. Pasang masker oksigen, atur tekanan oksigen.
+9. Cek kondisi vital pasien, jika terpantau stabil silahkan lakukan time out dan operasi siap dilakukan.
+    • KEADAAN NORMAL
+      a. Tekanan Darah 120/80
+      b. Tekanan Jantung 60-100bpm per menit
+      c. Saturasi Oxygen 95%-100%
+
+TINDAKAN OPERASI
+1. Berikan anestesi (pembiusan) pada pasien. Jenis anestesi yang digunakan yaitu Anastesi Umum
+2. Mencukur sedikit rambut pasien jika diperlukan 
+3. Bersihkan area yang akan di operasi dengan cairan Antiseptik
+4. Pasangkan linen steril pada area yang terindikasi luka
+5. Lakukan insisi (sayatan) menggunakan Scalpel pada jaringan kulit
+6. Tahan & bersihkan darah yang keluar akibat insisi dengan kain kasa
+7. Tahan luka insisi dengan Retraktor agar terbuka lebar
+8. Membuat beberapa lubang kecil (Burr Holes) pada tengkorak menggunakan Perforator Bedah, sebagai panduan untuk membuka tulang tengkorak
+9. Kemudian potong tulang tengkorak dari satu burr holes ke Burr Holes yang lainnya menggunakan Craniotome Cutter, sehingga terbentuk Bone Flap yang akan diangkat
+10. Setelah Bone Flap tersebut diangkat, akan terlihat bagian otak yang disebut dura mater, alias selaput otak yang terletak tepat di bawah tulang tengkorak
+11. Selanjutnya dilakukan proses pembukaan lapisan dura mater secara perlahan menggunakan Gunting Bedah dan Pinset, hingga bagian otak terlihat
+12. Bersihkan pendarahan dengan melakukan penyedotan darah yang tergenang dengan Suction Pump
+13. Kemudian siapkan Wadah Steril dan lakukan pencabutan peluru dibagian otak yang cidera menggunakan Pinset, lalu letakan peluru pada wadah steril
+14. Melakukan perbaikan pada jaringan otak yang rusak, dengan proses penjahitan menggunakan Hecting Set
+15. Melakukan taknik irigasi dengan mengguyurkan larutan NaCL, kemudian sedot cairan menggunakan Suction Pump
+16. Selanjutnya tutup kembali lapisan dura meter dan lakukan penjahitan pada lapisan dura mater secara perlahan menggunakan Hecting Set
+17. Jika pembedahan telah selesai, bagian tulang tengkorak yang telah diangkat (Bone Flap) akan dikembalikan ke tempat semula dan direkatkan dengan Pelat dan Sekrup dari bahan titanium.
+18. Melepaskan Retraktor
+19. Menjahit area luka insisi pada jaringan kulit luar menggunakan Hecting Set
+20. Menyuntikkan antibiotik untuk tindakan asepsis (pencegahan bakteri berkembang biak pada area bedah)
+21. Setelah luka dijahit, bersihkan area jahitan dengan cairan antiseptik
+22. Menutup luka jahit dengan Kain Kasa dan balut luka dengan Perban
+
+*Note: Jika pada saat operasi telah dilakukan teknik irigasi (mengguyur luka insisi dengan larutan infus) maka tidak perlu lagi diberikan injeksi antibiotik seperti pada tahap ke-20.
+
+TINDAKAN PASCA OPERASI
+1. Cek kondisi pasien, jika terpantau normal, cabut seluruh instrument operasi kecuali infus.
+2. Antarkan pasien beserta infusnya ke ruang inap untuk beristirahat.
+3. Berikan resep obat pada pasien yang menjalani rawat jalan
+4. Pasien dianjurkan beristirahat dan tidak melakukan ativitas berat selama 1 jam Internasional

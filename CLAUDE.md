@@ -213,6 +213,17 @@ bonus / 60% company split is real and verified in code** (`price * 0.4` /
 `price * 0.6`), but duplicated independently in 3 places
 (`dashboard_data.php`, `gaji_generate_manual.php`, `ranking.php`) rather
 than centralized — a rate change needs all three touched.
+`restaurant_consumption.php` edit (added 2026-07-31): gated to General
+Affair division manager-plus roles or Director (`$canEditConsumption` in
+the page, mirrored in `restaurant_consumption_action.php`'s `update`
+action) — mirrors the existing `delete` action's director-only pattern but
+scoped to GA managers instead. Only editable while `status` is `pending`
+or `approved` (never `paid`, to protect the financial record once
+settled); price/tax/subtotal/total are always recomputed server-side from
+`restaurant_settings` + the submitted `packet_count`, never trusted from
+client input, matching the `create` action's approach. Re-uploading a KTP
+photo on edit replaces and deletes the old file; leaving it blank keeps
+the existing one.
 
 ### User / Org Management
 `manage_users.php`+`_action.php`+`_export.php` (blocked for `staff` role;

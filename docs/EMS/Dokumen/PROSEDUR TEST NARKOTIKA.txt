@@ -1,0 +1,46 @@
+PROSEDUR TEST NARKOTIKA
+
+Pasien yang akan menjalani test narkotik wajib membawa SKB dan diperiksa terlebih dahulu suratnya serta diminta untuk memperlihatkan ID Card terlebih dahulu.
+
+Mengarahkan pasien ke ruang rawat inap dan menanyakan beberapa pertanyaan berikut:
+
+PERTANYAAN PRA-PEMERIKSAAN NARKOTIKA
+
+A. Data Pasien
+1. Nama Lengkap :
+2. Keperluan Pemeriksaan (Kerja / Pendidikan / Hukum / Lainnya)
+
+B. Riwayat Kesehatan
+1. Apakah Anda memiliki riwayat penyakit ginjal atau gangguan saluran kemih?
+2. Apakah Anda sedang dalam kondisi sakit saat ini?
+3. Apakah Anda memiliki riwayat penyakit kronis tertentu?
+4. Apakah Anda sedang hamil atau menyusui? (Untuk perempuan)
+
+C. Riwayat Penggunaan Obat
+1. Apakah Anda sedang mengonsumsi obat resep dari dokter?
+2. Apakah Anda mengonsumsi obat bebas (flu, batuk, nyeri, dll) dalam 7 hari terakhir?
+3. Apakah Anda mengonsumsi suplemen atau jamu tertentu?
+4. Kapan terakhir kali Anda mengonsumsi obat-obatan tersebut? (Jika ada, jika tidak ada skip saja)
+
+D. Riwayat Paparan Zat
+1. Apakah Anda pernah mengonsumsi narkotika, psikotropika, atau zat adiktif lainnya?
+2. Jika pernah, kapan terakhir kali penggunaan? (Jika pernah, jika tidak skip saja)
+3. Apakah Anda pernah menjalani rehabilitasi terkait penyalahgunaan zat?
+4. Apakah Anda pernah menjalani tes narkotika sebelumnya?
+
+E. Persetujuan dan Pernyataan
+1. Apakah Anda bersedia menjalani pemeriksaan narkotika secara sukarela?
+2. Apakah Anda memahami bahwa hasil pemeriksaan akan bersifat rahasia dan digunakan sesuai keperluan?
+
+TAHAP PENGAMBILAN SAMPEL
+
+1. Mengarahkan pasien untuk berbaring dan tetap rileks selama pengambilan sampel darah.
+2. Mengarahkan pasien ke toilet dan memberikan wadah untuk pengambilan sampel urine.
+
+PENJELASAN HASIL PEMERIKSAAN
+
+Setelah melakukan pengambilan sampel, dokter menjelaskan kepada pasien bahwa hasil test akan keluar 1 (satu) hari setelah dilakukan pengambilan sampel darah dan urine karena akan dilakukan uji laboratorium terlebih dahulu.
+
+PEMBERIAN SURAT HASIL TEST
+
+Sebelum memberikan surat hasil test, dokter terlebih dahulu memberikan tagihan regulasi sebesar 15k.

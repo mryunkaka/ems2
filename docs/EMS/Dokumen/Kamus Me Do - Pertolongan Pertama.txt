@@ -1,0 +1,103 @@
+ASAM LAMBUNG / GASTRITIS / SINDROM DISPEPSIA
+/me memeriksa denyut nadi
+/do denyut nadi normal
+/me menyuntikkan pasien dengan ranitidine / omeprazole
+/me tersuntikan
+
+KONDISI BADAN TIDAK FIT
+/me menyuntikan neurobion / vit c / biocombin 
+/do tersuntikan
+
+NYERI BADAN / NYERI KEPALA
+/me memeriksa kondisi vital
+/do kondisi vital normal
+/me menyuntikan natrium diklofenak
+/do tersuntikan
+
+KESELEO / ANKLE SPRAIN
+/me memeriksa area cidera
+/do terdapa cidera pada angle
+/me mengompres dengan ICP
+/do terkompres
+/me menyuntikan pereda nyeri (jika nyeri tidak tertahankan)
+/do tersuntikan
+/me memasang perban elastis
+/do terpasang
+
+Notes: mengingatkan pasien untuk memposisikan area cidera lebih tinggi dari jantung
+
+LUKA MEMAR / HEMATOME
+/me memeriksa pasien
+/do terdapat luka memar
+/me mengompres memar dengan ice cold pack (ICP)
+/do terkompres
+/me mengoleskan heparin sodium gel / thrombopop gel
+/do teroleskan
+/me membalutkan perban elastis
+/do terbalutkan
+
+LUKA LECET / SAYATAN
+/me memeriksa pasien
+/do terdapat luka lecet
+/me membersihkan luka dengan cairan antiseptik
+/do area luka bersih
+/me mengoleskan neosporin pada area luka
+/do teroleskan
+/me memasangkan strei strips
+/do terpasangkan
+/me memasangkan kasa & perban
+/do terpasangkan
+
+TENGGELAM
+/me memeriksa denyut nadi korban
+/do denyut nadi terasa
+/me melakukan CPR
+/do air keluar 25% - 100%
+/me menempelkan handuk hangat
+/do suhu badan normal
+/me menyadarkan korban
+/do pasien tersadar
+
+LUKA TEMBAK DI AREA NON VITAL
+/me memeriksa area luka
+/do terdapat luka serpihan peluru
+/me mensuntikkan lidocaine
+/do tersuntikan
+/me membersihkan luka dengan cairan antiseptik
+/do area luka bersih
+/me mencabut serpihan peluru
+/do serpihan peluru tercabut
+/me menjahit area luka
+/do luka terjahit
+/me menyuntikan antibiotic
+/do tersuntikan
+/me membalutkan area luka dengan perban 
+/do luka terbalutkan
+
+LUKA TEMBAK DI AREA VITAL
+/me memeriksa area luka
+/do terdapat luka peluru bersarang pada area...
+/me me memeriksa kondisi vital pasien
+/do kondisi vital tidak stabil
+/me membersihkan area luka dengan cairan antiseptic
+/do area luka steril
+/me membalutkan perban
+/do terbalutkan
+
+Notes: segera bawa pasien ke Rumah Sakit
+
+LUKA BAKAR DERAJAT 1 & 2
+/me memeriksa pasien
+/do terdapat luka bakar
+/me mengguyurkan luka dengan air bersih
+/do luka bersih
+/me mengguyurkan cairan NaCl
+/do area luka steril
+/me menyuntikan ibuprofen / ketorolac
+/do do tersuntikan
+/me mengoleskan bioplacenton
+/do terolskan
+/me membalutkan perban elastis
+/do terbalutkan
+
+Notes: untuk luka bakar derajat 3 lakukan pertolongan pertama seperti luka bakar derajat 1-2, kemudian segera bawa pasien ke Rumah Sakit untuk penanganan lebih lanjut.

@@ -1,0 +1,11 @@
+1. 🩹 Voucher (Treatment)
+Pasien menerima 1 voucher senilai $200 (voucher berwarna hijau). Apabila biaya perawatan melebihi nilai voucher, maka selisih biaya akan dibayarkan oleh pasien.
+2. 🛏 Voucher Pertolongan Pertama (Revive)
+Pasien menerima 1 voucher senilai $350 (voucher berwarna ungu). Apabila biaya yang diperlukan melebihi nilai voucher, maka selisih biaya akan ditanggung oleh pasien.
+3. 📄 Sistem Penggunaan Voucher
+- Pasien membawa voucher dan menyerahkannya kepada petugas medis yang menanganinya. 
+- Selanjutnya petugas yang menerima akan use voucher tersebut agar voucher terstemple
+4. 💰 Proses Reimbursement Voucher
+- Voucher yang telah diterima dari pasien akan dikumpulkan oleh petugas penerima, kemudian diserahkan kepada pihak pimpinan.
+- Setelah itu, pimpinan akan menukarkan voucher tersebut kepada pihak goverment untuk proses reimbursement.
+PENGGUNAAN VOUCHER JASRA DAPAT DILAKUKAN DIDALAM RUMAH SAKIT DAN DILUAR RUMAH SAKIT

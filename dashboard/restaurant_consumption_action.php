@@ -203,6 +203,176 @@ if ($action === 'create') {
 
 /**
  * =====================================================
+ * UPDATE - EDIT KONSUMSI
+ * Khusus manager (probation/assisten/lead/head manager) divisi General
+ * Affair, atau Director. Hanya boleh mengedit data yang belum LUNAS agar
+ * catatan keuangan yang sudah dibayar tidak berubah retroaktif.
+ * =====================================================
+ */
+if ($action === 'update') {
+
+    $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
+    $isDirector = in_array($userRole, ['vice director', 'director'], true);
+    $canEditConsumption = $isDirector
+        || ($userDivision === 'General Affair' && ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? ''));
+
+    if (!$canEditConsumption) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'Hanya manager General Affair atau Director yang bisa mengedit'
+        ]);
+        exit;
+    }
+
+    $id = (int)($_POST['id'] ?? 0);
+    if ($id <= 0) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'ID tidak valid'
+        ]);
+        exit;
+    }
+
+    $pdo->beginTransaction();
+
+    try {
+        $stmt = $pdo->prepare("SELECT ktp_file, status FROM restaurant_consumptions WHERE id = ? FOR UPDATE");
+        $stmt->execute([$id]);
+        $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$existing) {
+            throw new Exception('Data konsumsi tidak ditemukan');
+        }
+
+        if (!in_array($existing['status'], ['pending', 'approved'], true)) {
+            throw new Exception('Data yang sudah LUNAS tidak dapat diedit');
+        }
+
+        $restaurantId = (int)($_POST['restaurant_id'] ?? 0);
+        $packetCount = (int)($_POST['packet_count'] ?? 0);
+        $deliveryDate = $_POST['delivery_date'] ?? '';
+        $deliveryTime = $_POST['delivery_time'] ?? '';
+        $notes = $_POST['notes'] ?? '';
+
+        if ($packetCount <= 0) {
+            throw new Exception('Jumlah paket tidak valid');
+        }
+
+        if ($deliveryDate === '' || $deliveryTime === '') {
+            throw new Exception('Tanggal dan jam pengiriman wajib diisi');
+        }
+
+        // Harga/pajak selalu dihitung ulang dari data master restoran saat ini,
+        // tidak pernah dipercaya dari input client, supaya total tetap akurat.
+        $stmt = $pdo->prepare("
+            SELECT restaurant_name, price_per_packet, tax_percentage
+            FROM restaurant_settings
+            WHERE id = ? AND is_active = 1
+            LIMIT 1
+        ");
+        $stmt->execute([$restaurantId]);
+        $resto = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$resto) {
+            throw new Exception('Restoran tidak ditemukan');
+        }
+
+        $pricePerPacket = (float)$resto['price_per_packet'];
+        $taxPercentage = (float)$resto['tax_percentage'];
+        $subtotal = $pricePerPacket * $packetCount;
+        $taxAmount = $subtotal * ($taxPercentage / 100);
+        $totalAmount = $subtotal + $taxAmount;
+
+        $ktpFile = $existing['ktp_file'];
+        $oldKtpFileToDelete = null;
+
+        if (isset($_FILES['ktp_file']) && $_FILES['ktp_file']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = __DIR__ . '/../storage/restaurant_ktp/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $tmpPath = $_FILES['ktp_file']['tmp_name'];
+            $info = getimagesize($tmpPath);
+
+            if (!$info || !in_array($info['mime'], ['image/jpeg', 'image/png'], true)) {
+                throw new Exception('File KTP harus berupa JPG atau PNG');
+            }
+
+            $filename = 'ktp_' . time() . '_' . $userId . '.jpg';
+            $finalPath = $uploadDir . $filename;
+
+            if (!compressRestaurantKtpImage($tmpPath, $finalPath, 800, 300000, 50)) {
+                throw new Exception('Gagal memproses file KTP');
+            }
+
+            $oldKtpFileToDelete = $ktpFile;
+            $ktpFile = 'storage/restaurant_ktp/' . $filename;
+        }
+
+        $stmt = $pdo->prepare("
+            UPDATE restaurant_consumptions
+            SET restaurant_id = ?,
+                restaurant_name = ?,
+                delivery_date = ?,
+                delivery_time = ?,
+                packet_count = ?,
+                price_per_packet = ?,
+                tax_percentage = ?,
+                subtotal = ?,
+                tax_amount = ?,
+                total_amount = ?,
+                ktp_file = ?,
+                notes = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([
+            $restaurantId,
+            $resto['restaurant_name'],
+            $deliveryDate,
+            $deliveryTime,
+            $packetCount,
+            $pricePerPacket,
+            $taxPercentage,
+            $subtotal,
+            $taxAmount,
+            $totalAmount,
+            $ktpFile,
+            $notes,
+            $id,
+        ]);
+
+        $pdo->commit();
+
+        if ($oldKtpFileToDelete) {
+            $oldAbsolutePath = __DIR__ . '/../' . $oldKtpFileToDelete;
+            if (is_file($oldAbsolutePath)) {
+                @unlink($oldAbsolutePath);
+            }
+        }
+
+        $_SESSION['flash_messages'][] = 'Konsumsi berhasil diperbarui!';
+
+        echo json_encode([
+            'success' => true,
+            'message' => 'Konsumsi berhasil diperbarui!'
+        ]);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[RESTAURANT CONSUMPTION UPDATE ERROR] ' . $e->getMessage());
+
+        echo json_encode([
+            'success' => false,
+            'message' => 'Gagal memperbarui: ' . $e->getMessage()
+        ]);
+    }
+    exit;
+}
+
+/**
+ * =====================================================
  * APPROVE - SETUJUI KONSUMSI
  * =====================================================
  */
