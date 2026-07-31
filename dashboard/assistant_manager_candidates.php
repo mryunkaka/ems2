@@ -221,10 +221,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_ga_recruitment_p
     exit;
 }
 
-$batchFilter = isset($_GET['batch']) && $_GET['batch'] !== '' ? (int)$_GET['batch'] : null;
-
 $hasGaBatchColumn = ems_column_exists($pdo, 'medical_applicants', 'ga_batch');
 $gaBatchSelect = $hasGaBatchColumn ? 'm.ga_batch' : 'NULL';
+$recruitmentPortalSettings = ems_recruitment_get_settings($pdo, 'assistant_manager');
+$recruitmentPortalCurrentBatch = (int)($recruitmentPortalSettings['current_batch'] ?? 1);
+
+if (!$hasGaBatchColumn) {
+    $batchFilter = null;
+} elseif (!isset($_GET['batch'])) {
+    // Belum ada filter eksplisit di URL -> langsung tampilkan periode Pendaftaran
+    // yang sedang aktif/terakhir (bukan "Semua Pendaftaran") begitu halaman dibuka.
+    $batchFilter = $recruitmentPortalCurrentBatch;
+} elseif ($_GET['batch'] === '') {
+    // User eksplisit memilih "Semua Pendaftaran" dari dropdown.
+    $batchFilter = null;
+} else {
+    $batchFilter = (int)$_GET['batch'];
+}
 
 $query = "
     SELECT
@@ -309,10 +322,15 @@ if ($hasGaBatchColumn && ems_column_exists($pdo, 'medical_applicants', 'recruitm
     $availableBatches = $batchListStmt ? array_map('intval', $batchListStmt->fetchAll(PDO::FETCH_COLUMN)) : [];
 }
 
-$recruitmentPortalSettings = ems_recruitment_get_settings($pdo, 'assistant_manager');
+// Pastikan periode Pendaftaran yang sedang aktif selalu muncul di dropdown,
+// walau belum ada kandidat yang mendaftar di periode itu.
+if ($hasGaBatchColumn && !in_array($recruitmentPortalCurrentBatch, $availableBatches, true)) {
+    array_unshift($availableBatches, $recruitmentPortalCurrentBatch);
+    rsort($availableBatches);
+}
+
 $recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 0) === 1;
 $recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
-$recruitmentPortalCurrentBatch = (int)($recruitmentPortalSettings['current_batch'] ?? 1);
 $canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $userDivision);
 ?>
 
@@ -356,7 +374,9 @@ $canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $
                         <select name="batch" id="gaBatchSelect" class="form-control min-w-[200px]">
                             <option value="">Semua Pendaftaran</option>
                             <?php foreach ($availableBatches as $batchNumber): ?>
-                                <option value="<?= (int)$batchNumber ?>" <?= $batchFilter === $batchNumber ? 'selected' : '' ?>>Pendaftaran <?= (int)$batchNumber ?></option>
+                                <option value="<?= (int)$batchNumber ?>" <?= $batchFilter === $batchNumber ? 'selected' : '' ?>>
+                                    Pendaftaran <?= (int)$batchNumber ?><?= $batchNumber === $recruitmentPortalCurrentBatch ? ' (Aktif)' : '' ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>

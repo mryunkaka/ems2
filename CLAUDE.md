@@ -493,7 +493,13 @@ member's original medical/staff intake batch). Model:
   per-round tracking existed."
 - `assistant_manager_candidates.php` offers a `?batch=` filter
   ("Pendaftaran 1", "Pendaftaran 2", ...), shows it as a table column, and
-  sorts newest-round-first by default.
+  sorts newest-round-first by default. **When the page is opened with no
+  `?batch=` param at all**, it auto-filters to the currently active
+  `current_batch` (not "Semua Pendaftaran") so the admin lands directly on
+  the round they're actively recruiting for; picking "Semua Pendaftaran"
+  from the dropdown explicitly submits `?batch=` (empty string) to see
+  everything. The active round is also injected into the dropdown (with a
+  "(Aktif)" suffix) even if it has zero candidates yet.
 
 ### Farmasi (pharmacy) duty/online-status lifecycle
 Go online/offline: `actions/toggle_farmasi_status.php` (caps: `max_online_medics`,
