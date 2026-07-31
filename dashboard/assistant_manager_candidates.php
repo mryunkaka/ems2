@@ -31,6 +31,77 @@ function gaCandidateCanManageRecruitmentSettings(array $user, string $division):
     return in_array($division, ['General Affair', 'Executive', 'Human Resource'], true);
 }
 
+function gaCandidateCanHardDelete(array $user, string $division): bool
+{
+    if (ems_current_user_is_programmer_roxwood()) {
+        return true;
+    }
+
+    return in_array($division, ['General Affair', 'Human Capital', 'Human Resource', 'Executive'], true);
+}
+
+/**
+ * Hapus permanen 1 pelamar jalur assistant_manager beserta seluruh data
+ * proses rekrutmennya (dokumen pelamar, hasil AI test, skor & hasil
+ * interview, keputusan final).
+ *
+ * SENGAJA TIDAK meniru candidateDeletePermanently() milik jalur medis
+ * (dashboard/candidates.php), karena dua alasan keamanan yang berbeda
+ * untuk jalur ini:
+ * 1. `applicant_documents.file_path` milik kandidat asisten manager
+ *    menunjuk ke path FILE ASLI yang SAMA dengan dokumen di akun
+ *    `user_rh` pelamar (dokumen di-copy-reference saat submit, bukan
+ *    upload terpisah) — meng-unlink file itu akan ikut menghapus
+ *    dokumen resmi staf yang bersangkutan dari disk.
+ * 2. Pelamar asisten manager WAJIB sudah punya akun `user_rh` sendiri
+ *    sebelum mendaftar (bukan akun baru hasil rekrutmen), jadi "linked
+ *    user" di sini adalah akun staf asli yang sudah ada — bukan akun
+ *    yang dibuat oleh proses rekrutmen dan aman dihapus seperti pada
+ *    jalur medis.
+ * Karena itu fungsi ini HANYA menghapus baris data pendaftaran, dan
+ * tidak pernah menyentuh tabel `user_rh` atau file apa pun di disk.
+ */
+function gaCandidateDeletePermanently(PDO $pdo, int $applicantId): void
+{
+    $pdo->beginTransaction();
+
+    try {
+        foreach ([
+            'applicant_interview_question_responses',
+            'applicant_interview_question_packs',
+            'applicant_interview_scores',
+            'applicant_interview_results',
+            'applicant_final_decisions',
+            'applicant_documents',
+            'ai_test_results',
+        ] as $table) {
+            if (!ems_table_exists($pdo, $table)) {
+                continue;
+            }
+
+            $pdo->prepare("DELETE FROM {$table} WHERE applicant_id = ?")->execute([$applicantId]);
+        }
+
+        $stmt = $pdo->prepare("
+            DELETE FROM medical_applicants
+            WHERE id = ?
+              AND COALESCE(NULLIF(recruitment_type, ''), 'medical_candidate') = 'assistant_manager'
+        ");
+        $stmt->execute([$applicantId]);
+
+        if ((int)$stmt->rowCount() < 1) {
+            throw new Exception('Data kandidat tidak ditemukan atau bukan jalur asisten manager.');
+        }
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
 function assistantManagerStatusMeta(string $status): array
 {
     return match ($status) {
@@ -194,6 +265,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_ga_candidate_permanently'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    if (!gaCandidateCanHardDelete($user, $userDivision)) {
+        exit('Akses hapus permanen ditolak');
+    }
+
+    $deleteApplicantId = (int)($_POST['applicant_id'] ?? 0);
+    if ($deleteApplicantId <= 0) {
+        exit('Invalid applicant');
+    }
+
+    try {
+        gaCandidateDeletePermanently($pdo, $deleteApplicantId);
+        header('Location: assistant_manager_candidates.php?deleted=1');
+        exit;
+    } catch (Throwable $e) {
+        header('Location: assistant_manager_candidates.php?delete_error=1');
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_ga_recruitment_portal_settings'])) {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         exit('Invalid CSRF token');
@@ -332,6 +427,7 @@ if ($hasGaBatchColumn && !in_array($recruitmentPortalCurrentBatch, $availableBat
 $recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 0) === 1;
 $recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
 $canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $userDivision);
+$canHardDelete = gaCandidateCanHardDelete($user, $userDivision);
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
@@ -363,6 +459,12 @@ $canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $
 
         <?php if (isset($_GET['recruitment_settings_saved']) && $_GET['recruitment_settings_saved'] === '1'): ?>
             <?= ems_render_toast_script('Setting rekrutmen asisten manager berhasil disimpan.', 'success', 'Calon Asisten Manager') ?>
+        <?php endif; ?>
+        <?php if (isset($_GET['deleted']) && $_GET['deleted'] === '1'): ?>
+            <?= ems_render_toast_script('Data kandidat berhasil dihapus permanen.', 'success', 'Calon Asisten Manager') ?>
+        <?php endif; ?>
+        <?php if (isset($_GET['delete_error']) && $_GET['delete_error'] === '1'): ?>
+            <?= ems_render_toast_script('Gagal menghapus data kandidat.', 'error', 'Calon Asisten Manager') ?>
         <?php endif; ?>
 
         <div class="card card-section mb-4">
@@ -499,6 +601,22 @@ $canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $
                                             <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
                                                 <?= ems_icon('check-badge', 'h-4 w-4') ?>
                                             </a>
+                                        <?php endif; ?>
+
+                                        <?php if ($canHardDelete): ?>
+                                            <form method="post">
+                                                <?php echo csrfField(); ?>
+                                                <input type="hidden" name="delete_ga_candidate_permanently" value="1">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <button
+                                                    type="submit"
+                                                    class="btn-danger btn-sm action-icon-btn candidate-action-btn"
+                                                    onclick="return confirm('Hapus permanen kandidat ini?\n\nData pendaftaran, hasil AI test, dan interview akan dihapus total dan tidak bisa dikembalikan. Akun user_rh pelamar TIDAK ikut terhapus.')"
+                                                    title="Hapus permanen kandidat"
+                                                    aria-label="Hapus permanen kandidat">
+                                                    <?= ems_icon('trash', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
                                         <?php endif; ?>
                                     </div>
                                 </td>

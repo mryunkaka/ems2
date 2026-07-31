@@ -569,6 +569,35 @@ GA gate now correctly routes to `recruitment_form_assistant_manager.php`
 instead of the medical flow; the medical gate's own behavior for that same
 citizen ID is unchanged (still resumes its real medical application).
 
+**GA candidate hard-delete is intentionally NOT shared with the medical
+track's delete logic** (added 2026-07-31): `assistant_manager_candidates.php`
+has its own `gaCandidateDeletePermanently()`, separate from
+`candidates.php`'s `candidateDeletePermanently()`. Reusing the medical
+version would be unsafe for two reasons specific to the assistant-manager
+data model: (1) `applicant_documents.file_path` for a GA applicant points
+at the **same file** as their existing `user_rh` KTP/SKB/KTA/SIM (copied
+by reference at submission time, not a separate upload — see §6), so
+unlinking it would delete the real staff member's actual profile document
+from disk; (2) a GA applicant is required to already own a `user_rh`
+account *before* applying (see §6 "Public recruitment portal journey" —
+this is a promotion pathway, not new-hire creation), so the medical
+version's "delete the linked `user_rh` row created by acceptance" cleanup
+would, if ever triggered, delete a **pre-existing real staff account**
+instead of one the recruitment flow created. `gaCandidateDeletePermanently()`
+therefore only deletes `medical_applicants` + its recruitment-process child
+rows (`applicant_documents`, `ai_test_results`, `applicant_interview_*`,
+`applicant_final_decisions`) and never touches `user_rh` or the filesystem.
+Gated to General Affair/Human Capital/Human Resource/Executive division
+(`gaCandidateCanHardDelete()`) or the "Programmer Roxwood" superuser.
+Verified locally: deleting a test GA applicant removed all of its rows
+while the real `user_rh` account and its document files on disk were
+untouched. **Separately discovered while building this (not yet fixed)**:
+`candidateCreateManagerUserFromApplicant()` in `candidate_decision.php`
+throws if a `user_rh` row already exists for the candidate's citizen_id/name
+— since every GA applicant already has such a row by definition, accepting
+("lolos") a real assistant-manager candidate today would likely error out
+at that step. Flagged for a future session, out of scope here.
+
 ### Farmasi (pharmacy) duty/online-status lifecycle
 Go online/offline: `actions/toggle_farmasi_status.php` (caps: `max_online_medics`,
 per-user `cooldown_minutes` from `farmasi_online_settings`). Confirm-still-online:
