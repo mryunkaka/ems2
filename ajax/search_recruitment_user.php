@@ -6,7 +6,7 @@ require_once __DIR__ . '/../auth/request_guard.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-$settings = ems_recruitment_get_settings($pdo);
+$settings = ems_recruitment_get_settings($pdo, 'assistant_manager');
 if ((int)($settings['is_open'] ?? 1) !== 1) {
     echo json_encode(['items' => []], JSON_UNESCAPED_UNICODE);
     exit;
