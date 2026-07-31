@@ -8,10 +8,12 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
+require_once __DIR__ . '/../config/recruitment_settings.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
+$userDivision = ems_normalize_division($user['division'] ?? '');
 
 if (strtolower($role) === 'staff') {
     header('Location: dashboard.php');
@@ -19,6 +21,15 @@ if (strtolower($role) === 'staff') {
 }
 
 $pageTitle = 'Calon Asisten Manager';
+
+function gaCandidateCanManageRecruitmentSettings(array $user, string $division): bool
+{
+    if (ems_current_user_is_programmer_roxwood()) {
+        return true;
+    }
+
+    return in_array($division, ['General Affair', 'Executive', 'Human Resource'], true);
+}
 
 function assistantManagerStatusMeta(string $status): array
 {
@@ -183,6 +194,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_decision'])) {
     exit;
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_ga_recruitment_portal_settings'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    if (!gaCandidateCanManageRecruitmentSettings($user, $userDivision)) {
+        exit('Akses setting rekrutmen ditolak');
+    }
+
+    $portalStatus = strtolower(trim((string)($_POST['portal_status'] ?? 'close')));
+    $isOpen = $portalStatus !== 'close';
+    $closedMessage = trim((string)($_POST['closed_message'] ?? ''));
+    $currentBatchInput = (int)($_POST['current_batch'] ?? 1);
+
+    ems_recruitment_save_settings(
+        $pdo,
+        $isOpen,
+        $closedMessage,
+        (int)($user['id'] ?? 0),
+        'assistant_manager',
+        $currentBatchInput > 0 ? $currentBatchInput : 1
+    );
+
+    header('Location: assistant_manager_candidates.php?recruitment_settings_saved=1');
+    exit;
+}
+
+$batchFilter = isset($_GET['batch']) && $_GET['batch'] !== '' ? (int)$_GET['batch'] : null;
+
+$hasGaBatchColumn = ems_column_exists($pdo, 'medical_applicants', 'ga_batch');
+$gaBatchSelect = $hasGaBatchColumn ? 'm.ga_batch' : 'NULL';
+
 $query = "
     SELECT
         m.id,
@@ -203,6 +246,7 @@ $query = "
         ir.ml_confidence   AS confidence,
         ir.is_locked       AS interview_locked,
         fd.final_result,
+        {$gaBatchSelect} AS ga_batch,
         (
             SELECT COUNT(DISTINCT s.hr_id)
             FROM applicant_interview_scores s
@@ -220,6 +264,8 @@ $query = "
     LEFT JOIN applicant_final_decisions fd ON fd.applicant_id = m.id
 ";
 
+$queryParams = [];
+
 if (ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
     $query .= "
         INNER JOIN (
@@ -234,10 +280,40 @@ if (ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
     $query .= " WHERE 1 = 0";
 }
 
-$query .= " ORDER BY m.created_at DESC";
+if ($batchFilter !== null && $hasGaBatchColumn) {
+    $query .= " AND m.ga_batch = ?";
+    $queryParams[] = $batchFilter;
+}
+
+$query .= $hasGaBatchColumn ? " ORDER BY m.ga_batch DESC, m.created_at DESC" : " ORDER BY m.created_at DESC";
 $stmt = $pdo->prepare($query);
-$stmt->execute();
+$stmt->execute($queryParams);
 $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Daftar nomor Pendaftaran yang tersedia (dari seluruh kandidat GA, bukan hanya hasil filter saat ini)
+$availableBatches = [];
+if ($hasGaBatchColumn && ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
+    $batchListStmt = $pdo->query("
+        SELECT DISTINCT m.ga_batch
+        FROM medical_applicants m
+        INNER JOIN (
+            SELECT MAX(id) AS latest_id
+            FROM medical_applicants
+            WHERE COALESCE(NULLIF(recruitment_type, ''), 'medical_candidate') = 'assistant_manager'
+            GROUP BY COALESCE(NULLIF(citizen_id, ''), CONCAT('__assistant_manager__', id))
+        ) latest_assistant_manager ON latest_assistant_manager.latest_id = m.id
+        WHERE COALESCE(NULLIF(m.recruitment_type, ''), 'medical_candidate') = 'assistant_manager'
+          AND m.ga_batch IS NOT NULL
+        ORDER BY m.ga_batch DESC
+    ");
+    $availableBatches = $batchListStmt ? array_map('intval', $batchListStmt->fetchAll(PDO::FETCH_COLUMN)) : [];
+}
+
+$recruitmentPortalSettings = ems_recruitment_get_settings($pdo, 'assistant_manager');
+$recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 0) === 1;
+$recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
+$recruitmentPortalCurrentBatch = (int)($recruitmentPortalSettings['current_batch'] ?? 1);
+$canManageRecruitmentSettings = gaCandidateCanManageRecruitmentSettings($user, $userDivision);
 ?>
 
 <?php include __DIR__ . '/../partials/header.php'; ?>
@@ -248,22 +324,61 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title">Daftar Calon Asisten Manager</h1>
-                <p class="page-subtitle">Monitoring jalur rekrutmen General Affair untuk calon asisten manager</p>
+                <p class="page-subtitle">Monitoring jalur rekrutmen General Affair untuk calon asisten manager, dikelompokkan per periode Pendaftaran</p>
             </div>
-            <a href="<?= htmlspecialchars(ems_url('/public/recruitment_form_assistant_manager.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
-                <?= ems_icon('plus', 'h-4 w-4') ?>
-                <span>Asisten Manager Baru</span>
-            </a>
+            <div class="flex items-center gap-2">
+                <span class="<?= $recruitmentPortalIsOpen ? 'badge-success' : 'badge-danger' ?>">
+                    <?= $recruitmentPortalIsOpen ? 'Rekrutmen GA Open' : 'Rekrutmen GA Close' ?>
+                </span>
+                <?php if ($canManageRecruitmentSettings): ?>
+                    <button type="button" id="openGaRecruitmentSettingsModal" class="btn-secondary btn-sm">
+                        <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?>
+                        <span>Setting Rekrutmen</span>
+                    </button>
+                <?php endif; ?>
+                <a href="<?= htmlspecialchars(ems_url('/public/ga_recruitment.php')) ?>" target="_blank" rel="noopener" class="btn-primary btn-sm">
+                    <?= ems_icon('plus', 'h-4 w-4') ?>
+                    <span>Asisten Manager Baru</span>
+                </a>
+            </div>
+        </div>
+
+        <?php if (isset($_GET['recruitment_settings_saved']) && $_GET['recruitment_settings_saved'] === '1'): ?>
+            <?= ems_render_toast_script('Setting rekrutmen asisten manager berhasil disimpan.', 'success', 'Calon Asisten Manager') ?>
+        <?php endif; ?>
+
+        <div class="card card-section mb-4">
+            <div class="card-header">Filter Pendaftaran</div>
+            <div class="card-body">
+                <form method="GET" id="gaBatchFilterForm" class="filter-bar">
+                    <div class="filter-group">
+                        <label>Periode Pendaftaran</label>
+                        <select name="batch" id="gaBatchSelect" class="form-control min-w-[200px]">
+                            <option value="">Semua Pendaftaran</option>
+                            <?php foreach ($availableBatches as $batchNumber): ?>
+                                <option value="<?= (int)$batchNumber ?>" <?= $batchFilter === $batchNumber ? 'selected' : '' ?>>Pendaftaran <?= (int)$batchNumber ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-secondary btn-sm">Terapkan</button>
+                    <?php if ($batchFilter !== null): ?>
+                        <a href="assistant_manager_candidates.php" class="btn-secondary btn-sm">Reset</a>
+                    <?php endif; ?>
+                </form>
+            </div>
         </div>
 
         <div class="card">
-            <div class="card-header">Calon Asisten Manager</div>
+            <div class="card-header">
+                <?= $batchFilter !== null ? 'Calon Asisten Manager — Pendaftaran ' . (int)$batchFilter : 'Calon Asisten Manager — Semua Pendaftaran' ?>
+            </div>
 
             <div class="table-wrapper">
                 <table id="assistantManagerCandidateTable" class="table-custom">
                     <thead>
                         <tr>
                             <th>#</th>
+                            <th>Pendaftaran</th>
                             <th>Nama</th>
                             <th>Status</th>
                             <th>Skor Tes</th>
@@ -294,6 +409,7 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             ?>
                             <tr>
                                 <td><?= $i + 1 ?></td>
+                                <td><?= $c['ga_batch'] !== null ? '<span class="badge-secondary">Pendaftaran ' . (int)$c['ga_batch'] . '</span>' : '<span class="meta-text-xs">-</span>' ?></td>
                                 <td>
                                     <strong><a href="candidate_detail.php?id=<?= (int)$c['id'] ?>"><?= htmlspecialchars($c['ic_name']) ?></a></strong>
                                     <div class="meta-text">Daftar: <?= date('d M Y', strtotime($c['created_at'])) ?></div>
@@ -375,6 +491,58 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
     </div>
 </section>
 
+<?php if ($canManageRecruitmentSettings): ?>
+    <div id="gaRecruitmentSettingsModal" class="modal-overlay hidden">
+        <div class="modal-box modal-shell modal-frame-md">
+            <div class="modal-head">
+                <div>
+                    <div class="modal-title">Setting Open / Close Rekrutmen Asisten Manager</div>
+                    <div class="meta-text mt-1">Status ini terpisah dari rekrutmen medis dan hanya berlaku untuk jalur Calon Asisten Manager.</div>
+                </div>
+                <button type="button" class="modal-close-btn" data-close-ga-recruitment-modal aria-label="Tutup modal">
+                    <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                </button>
+            </div>
+
+            <form method="post" class="modal-form">
+                <?php echo csrfField(); ?>
+                <input type="hidden" name="save_ga_recruitment_portal_settings" value="1">
+
+                <div class="modal-content">
+                    <div class="space-y-5">
+                        <div class="form-group">
+                            <label for="ga_portal_status" class="text-sm font-semibold text-slate-900">Status Rekrutmen Asisten Manager</label>
+                            <select id="ga_portal_status" name="portal_status" class="w-full" required>
+                                <option value="open" <?= $recruitmentPortalIsOpen ? 'selected' : '' ?>>Open</option>
+                                <option value="close" <?= !$recruitmentPortalIsOpen ? 'selected' : '' ?>>Close</option>
+                            </select>
+                            <small class="hint-info">Jika `close`, halaman `/public/ga_recruitment.php` dan form pendaftaran asisten manager akan diarahkan ke halaman pemberitahuan. Rekrutmen medis tidak terpengaruh.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ga_current_batch" class="text-sm font-semibold text-slate-900">Nomor Pendaftaran Saat Ini</label>
+                            <input type="number" id="ga_current_batch" name="current_batch" min="1" step="1" value="<?= (int)$recruitmentPortalCurrentBatch ?>" required>
+                            <small class="hint-info">Setiap pendaftar baru yang masuk selama status Open akan otomatis ditandai dengan nomor ini (contoh: isi <strong>2</strong> untuk membuka "Pendaftaran 2"). Data kandidat lama tidak berubah.</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ga_closed_message" class="text-sm font-semibold text-slate-900">Pesan Saat Close</label>
+                            <textarea id="ga_closed_message" name="closed_message" rows="5" placeholder="Tulis pesan penutupan rekrutmen asisten manager"><?= htmlspecialchars($recruitmentPortalClosedMessage) ?></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-foot">
+                    <div class="modal-actions">
+                        <button type="button" class="btn-secondary" data-close-ga-recruitment-modal>Batal</button>
+                        <button type="submit" class="btn-primary">Simpan</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+<?php endif; ?>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         document.addEventListener('submit', function(e) {
@@ -400,11 +568,35 @@ $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 pageLength: 10,
                 scrollX: true,
                 autoWidth: false,
+                order: [[1, 'desc']],
                 language: {
                     url: '/assets/design/js/datatables-id.json'
                 }
             });
         }
+
+        const gaModal = document.getElementById('gaRecruitmentSettingsModal');
+        const gaOpenButton = document.getElementById('openGaRecruitmentSettingsModal');
+        const gaCloseButtons = document.querySelectorAll('[data-close-ga-recruitment-modal]');
+
+        function openGaModal() {
+            if (!gaModal) return;
+            gaModal.classList.remove('hidden');
+            gaModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        }
+        function closeGaModal() {
+            if (!gaModal) return;
+            gaModal.classList.add('hidden');
+            gaModal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+
+        gaOpenButton?.addEventListener('click', openGaModal);
+        gaCloseButtons.forEach(function(btn) { btn.addEventListener('click', closeGaModal); });
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') { closeGaModal(); }
+        });
     });
 </script>
 

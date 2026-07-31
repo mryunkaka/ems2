@@ -1,13 +1,16 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/recruitment_settings.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-$settings = ems_recruitment_get_settings($pdo);
+$track = ems_normalize_recruitment_type($_GET['track'] ?? 'medical_candidate');
+$settings = ems_recruitment_get_settings($pdo, $track);
 $closedMessage = trim((string)($settings['closed_message'] ?? ''));
 if ($closedMessage === '') {
-    $closedMessage = 'Pendaftaran Medis Roxwood saat ini belum dibuka. Silakan menunggu informasi selanjutnya.';
+    $closedMessage = ems_recruitment_settings_default_message($track);
 }
+$portalLabel = $track === 'assistant_manager' ? 'Rekrutmen Calon Asisten Manager' : 'Rekrutmen Medis';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -26,7 +29,7 @@ if ($closedMessage === '') {
                 <div class="public-brand">
                     <img src="/assets/logo.png" alt="Logo Roxwood Hospital" class="public-brand-logo">
                     <div class="public-brand-text">
-                        <span class="public-kicker">Recruitment Portal</span>
+                        <span class="public-kicker"><?= htmlspecialchars($portalLabel) ?></span>
                         <strong class="text-lg font-bold text-white">Roxwood Hospital</strong>
                         <span class="meta-text">Emergency Medical System</span>
                     </div>

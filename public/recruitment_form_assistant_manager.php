@@ -3,7 +3,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
+ems_public_recruitment_require_portal_open('assistant_manager');
 $profile = ems_recruitment_profile('assistant_manager');
 ?>
 <!DOCTYPE html>

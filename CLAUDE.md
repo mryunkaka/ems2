@@ -372,8 +372,11 @@ diagnostics — see §7 for hardcoded key).
 ### Recruitment / Candidates (full pipeline — see §6 for the AI internals)
 `candidates.php`+`_export.php` (medical track list), `assistant_manager_candidates.php`
 (GA/assistant-manager track list — dedups to latest row per citizen_id,
-unlike the medical track), `candidate_decision.php` (final decision + lock
-interview), `candidate_detail.php`, `candidate_interview_multi.php`
+unlike the medical track; grouped/filterable by GA's own "Pendaftaran N"
+registration-round number (`medical_applicants.ga_batch` — unrelated to
+`user_rh.batch`), and has its own independent open/close settings modal —
+see §6 "Public recruitment portal journey"), `candidate_decision.php`
+(final decision + lock interview), `candidate_detail.php`, `candidate_interview_multi.php`
 (multi-HR scoring workspace, needs ≥2 distinct HRs to finalize).
 
 ### Secretary Module (`Secretary` division, also visible to `Executive`)
@@ -432,17 +435,65 @@ Final combined-score formula used across candidate pages:
 if `combined >= 70 AND ai_recommendation !== 'not_recommended'`.
 
 ### Public recruitment portal journey
-`public/index.php` (Citizen-ID gate, re-derives stage from DB every
-request — session is just a cache) → `recruitment_form.php` (medical) /
-`recruitment_form_assistant_manager.php` (GA track, has a hardcoded
-bypass Citizen ID `RH39IQLC` that skips document requirements) →
-`recruitment_submit.php` → `public/ai_test.php` (Ya/Tidak psychometric
-test — 50 fixed Qs medical, 70-of-500 random-but-deterministic Qs assistant
-manager, with "trap" reverse-scored items) → `ai_test_submit.php` (runs
-`ai_scoring_engine.php`, flips status to `ai_completed`) →
-`recruitment_done.php`. `recruitment_closed.php` shown whenever the portal
-toggle (`config/recruitment_settings.php` → `recruitment_portal_settings`
-table) is off.
+Two **independent** public entry points, each with its own open/close
+toggle (see below) — as of 2026-07-31 they are deliberately decoupled so
+closing one never blocks the other:
+- Medical track: `public/index.php` (Citizen-ID gate, re-derives stage from
+  DB every request — session is just a cache; new/unregistered citizen IDs
+  default to `recruitment_type=medical_candidate` here) → `recruitment_form.php`
+  → `recruitment_submit.php` → `public/ai_test.php` (50 fixed Ya/Tidak Qs)
+  → `ai_test_submit.php` → `recruitment_done.php`.
+- Assistant-manager (GA) track: `public/ga_recruitment.php` (same Citizen-ID
+  gate shape, but forces `recruitment_type=assistant_manager` for new
+  citizen IDs and checks the GA-specific portal setting) →
+  `recruitment_form_assistant_manager.php` (has a hardcoded bypass Citizen
+  ID `RH39IQLC` that skips document requirements; applicant must already
+  exist in `user_rh` with KTP/SKB/KTA/SIM uploaded — this track recruits
+  **existing staff**, not brand-new external people) → `recruitment_submit.php`
+  (shared endpoint, branches on `recruitment_type`) → `public/ai_test.php`
+  (70-of-500 random-but-deterministic Qs with "trap" reverse-scored items)
+  → `ai_test_submit.php` (runs `ai_scoring_engine.php`, flips status to
+  `ai_completed`) → `recruitment_done.php` (shared "thank you" page).
+
+**Per-track open/close**: `recruitment_portal_settings` has one row per
+`track` (`medical_candidate` id=1, `assistant_manager` id=2 — see
+`config/recruitment_settings.php`, all functions take a `$track` param
+defaulting to `medical_candidate` for backward compat). Every
+`ems_public_recruitment_require_portal_open($track)` call site across
+`public/*.php` derives the correct track before checking (from the gate
+session, `$_GET`/`$_POST['recruitment_type']`, or a hardcoded value for
+track-specific entry pages) so a mid-flow applicant is redirected to
+`recruitment_closed.php?track=...` for *their own* track, never the other
+one. `recruitment_closed.php` reads `?track=` to show the right message.
+`dashboard/assistant_manager_candidates.php` has its own "Setting
+Rekrutmen" modal (mirrors `candidates.php`'s, gated to General
+Affair/HR/Executive/programmer) to toggle the GA track independently of
+the medical one on `dashboard/candidates.php`.
+
+**GA candidates are grouped by "Pendaftaran" (registration round), not
+staff batch** (corrected 2026-07-31 — an earlier version of this doc/the
+first implementation pass wrongly joined `user_rh.batch`; the user meant a
+GA-specific recruitment-round counter instead, unrelated to a staff
+member's original medical/staff intake batch). Model:
+- `medical_applicants.ga_batch` (INT NULL, only meaningful when
+  `recruitment_type = 'assistant_manager'`) — which "Pendaftaran N" round
+  an applicant registered under. Set once at submission time in
+  `public/recruitment_submit.php` from the GA settings row's current
+  `current_batch` value.
+- `recruitment_portal_settings.current_batch` (INT, per track, only
+  actually used for `assistant_manager`) — the number GA admins are
+  currently accepting registrations under. Edited via a plain "Nomor
+  Pendaftaran Saat Ini" input in `assistant_manager_candidates.php`'s
+  settings modal (manual, not auto-incremented — admin types `2` to start
+  "Pendaftaran 2", etc.); saved through
+  `ems_recruitment_save_settings(..., $track, $currentBatch)`.
+- All GA candidates that existed before this feature (2026-07-31) were
+  backfilled to `ga_batch = 1` via `docs/sql/55_2026-07-31_ga_batch_pendaftaran.sql`
+  — i.e. "Pendaftaran 1" retroactively means "everyone recruited before
+  per-round tracking existed."
+- `assistant_manager_candidates.php` offers a `?batch=` filter
+  ("Pendaftaran 1", "Pendaftaran 2", ...), shows it as a table column, and
+  sorts newest-round-first by default.
 
 ### Farmasi (pharmacy) duty/online-status lifecycle
 Go online/offline: `actions/toggle_farmasi_status.php` (caps: `max_online_medics`,
@@ -509,8 +560,8 @@ frontend rewrite is planned (`docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md`)
 
 ## 9. Database — 100 tables (97 + `police_partnership_records` + 2 dispatcher tables added later)
 
-Full authoritative history is `docs/sql/` — **62 chronological, numbered
-migration files** (`01_...` → `53_...` plus a handful of unnumbered early
+Full authoritative history is `docs/sql/` — **64 chronological, numbered
+migration files** (`01_...` → `55_...` plus a handful of unnumbered early
 `2026-03-07_*` files), spanning 2026-03-07 → 2026-07-31. The 5 files under
 `migrations/` are older/superseded one-off scripts (kept for history only).
 The repo also has a full DB dump at root (`fouf9972_ems (1).sql`, gitignored,

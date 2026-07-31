@@ -12,7 +12,8 @@ require_once __DIR__ . '/../config/runtime.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
+$submitTrack = ems_normalize_recruitment_type($_POST['recruitment_type'] ?? 'medical_candidate');
+ems_public_recruitment_require_portal_open($submitTrack);
 
 const EMS_ASSISTANT_MANAGER_DOC_BYPASS_CITIZEN_ID = 'RH39IQLC';
 
@@ -709,6 +710,11 @@ try {
     if (ems_column_exists($pdo, 'medical_applicants', 'target_division')) {
         $insertColumns[] = 'target_division';
         $insertValues[] = $targetDivision !== '' ? $targetDivision : ($recruitmentType === 'assistant_manager' ? 'General Affair' : null);
+    }
+
+    if ($isAssistantManager && ems_column_exists($pdo, 'medical_applicants', 'ga_batch')) {
+        $insertColumns[] = 'ga_batch';
+        $insertValues[] = (int)ems_recruitment_get_settings($pdo, 'assistant_manager')['current_batch'];
     }
 
     $placeholders = implode(',', array_fill(0, count($insertColumns), '?'));

@@ -5,7 +5,7 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
+ems_public_recruitment_require_portal_open(ems_normalize_recruitment_type($_GET['track'] ?? 'medical_candidate'));
 
 $applicantId = (int)($_GET['applicant_id'] ?? 0);
 

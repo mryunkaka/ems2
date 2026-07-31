@@ -3,11 +3,11 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
+ems_public_recruitment_require_portal_open('assistant_manager');
 
 if (isset($_GET['reset']) && $_GET['reset'] === '1') {
     ems_public_recruitment_gate_clear();
-    header('Location: ' . ems_url('/public/index.php'));
+    header('Location: ' . ems_url('/public/ga_recruitment.php'));
     exit;
 }
 
@@ -15,7 +15,7 @@ $existingGate = ems_public_recruitment_gate_get();
 if ($existingGate && !empty($existingGate['citizen_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $freshGate = ems_public_recruitment_build_gate($pdo, (string)$existingGate['citizen_id'], [
         'ic_name' => (string)($existingGate['ic_name'] ?? ''),
-    ], (string)($existingGate['recruitment_type'] ?? 'medical_candidate'));
+    ], 'assistant_manager');
     ems_public_recruitment_gate_set($freshGate);
     ems_public_recruitment_redirect_for_gate($freshGate);
 }
@@ -23,7 +23,7 @@ if ($existingGate && !empty($existingGate['citizen_id']) && $_SERVER['REQUEST_ME
 $errorMessage = '';
 $citizenIdValue = '';
 $icNameValue = '';
-$profile = ems_recruitment_profile('medical_candidate');
+$profile = ems_recruitment_profile('assistant_manager');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $citizenIdValue = ems_normalize_citizen_id($_POST['citizen_id'] ?? '');
@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $gate = ems_public_recruitment_build_gate($pdo, $citizenIdValue, [
             'ic_name' => $icNameValue,
-        ]);
+        ], 'assistant_manager');
         ems_public_recruitment_gate_set($gate);
         ems_public_recruitment_redirect_for_gate($gate);
     }
@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recruitment Access - Roxwood Hospital</title>
+    <title>Recruitment Asisten Manager - Roxwood Hospital</title>
     <link rel="stylesheet" href="/assets/design/tailwind/build.css">
 </head>
 <body>
@@ -57,25 +57,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="public-brand">
                     <img src="/assets/logo.png" alt="Logo Roxwood Hospital" class="public-brand-logo">
                     <div class="public-brand-text">
-                        <span class="public-kicker">Recruitment Portal</span>
+                        <span class="public-kicker">Recruitment Asisten Manager</span>
                         <strong class="text-lg font-bold text-white">Roxwood Hospital</strong>
-                        <span class="meta-text">Emergency Medical System</span>
+                        <span class="meta-text">General Affair Recruitment Track</span>
                     </div>
                 </div>
 
                 <h1 class="public-heading">Cek Citizen ID</h1>
                 <p class="public-copy">
-                    Masukkan Citizen ID untuk melanjutkan ke tahap yang sesuai. Sistem akan otomatis mengarahkan ke form, AI test, atau halaman selesai.
+                    Jalur ini khusus untuk staf EMS Roxwood yang sudah terdaftar dan ingin mendaftar sebagai calon Asisten Manager / Probation Manager. Masukkan Citizen ID untuk melanjutkan.
                 </p>
 
                 <div class="public-feature-list">
                     <div class="public-feature-item">
-                        <span class="public-feature-title">Input Fleksibel</span>
-                        Huruf besar dan kecil tidak berpengaruh saat pengecekan.
+                        <span class="public-feature-title">Khusus Staf Terdaftar</span>
+                        Citizen ID harus sudah terverifikasi pada akun EMS Roxwood.
                     </div>
                     <div class="public-feature-item">
-                        <span class="public-feature-title">Format Database</span>
-                        Citizen ID akan dinormalisasi ke huruf besar.
+                        <span class="public-feature-title">Jalur Terpisah</span>
+                        Status buka/tutup jalur ini terpisah dari rekrutmen medis.
                     </div>
                     <div class="public-feature-item">
                         <span class="public-feature-title">Akses Terkontrol</span>
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <main class="public-panel">
                 <div class="public-form-header">
                     <div>
-                        <h2 class="public-form-title">Verifikasi Akses Recruitment</h2>
+                        <h2 class="public-form-title">Verifikasi Akses Recruitment Asisten Manager</h2>
                         <p class="public-form-subtitle"><?= htmlspecialchars($profile['badge']) ?></p>
                     </div>
                     <div class="badge-muted">Step 1</div>
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <?php if ($errorMessage !== ''): ?>
-                        <?= ems_render_toast_script((string)$errorMessage, 'error', 'Portal EMS', 6800) ?>
+                        <?= ems_render_toast_script((string)$errorMessage, 'error', 'Portal Asisten Manager', 6800) ?>
                     <?php endif; ?>
 
                     <div class="form-submit-wrapper mt-6">

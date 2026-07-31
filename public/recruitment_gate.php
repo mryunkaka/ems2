@@ -33,19 +33,21 @@ function ems_public_recruitment_gate_set(array $gate): void
     $_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION] = $gate;
 }
 
-function ems_public_recruitment_closed_url(): string
+function ems_public_recruitment_closed_url(string $track = 'medical_candidate'): string
 {
-    return ems_url(EMS_PUBLIC_RECRUITMENT_CLOSED_PATH);
+    $track = ems_normalize_recruitment_type($track);
+    return ems_url(EMS_PUBLIC_RECRUITMENT_CLOSED_PATH . '?track=' . urlencode($track));
 }
 
-function ems_public_recruitment_require_portal_open(): array
+function ems_public_recruitment_require_portal_open(string $track = 'medical_candidate'): array
 {
     global $pdo;
 
-    $settings = ems_recruitment_get_settings($pdo);
+    $track = ems_normalize_recruitment_type($track);
+    $settings = ems_recruitment_get_settings($pdo, $track);
     if ((int)($settings['is_open'] ?? 1) !== 1) {
         ems_public_recruitment_gate_clear();
-        header('Location: ' . ems_public_recruitment_closed_url());
+        header('Location: ' . ems_public_recruitment_closed_url($track));
         exit;
     }
 
@@ -91,7 +93,7 @@ function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId): ?ar
     return $row;
 }
 
-function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId, array $context = []): array
+function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId, array $context = [], string $defaultType = 'medical_candidate'): array
 {
     $citizenId = ems_normalize_citizen_id($citizenId);
     $applicant = ems_public_recruitment_find_applicant($pdo, $citizenId);
@@ -99,7 +101,7 @@ function ems_public_recruitment_build_gate(PDO $pdo, string $citizenId, array $c
 
     $stage = 'form';
     $applicantId = 0;
-    $recruitmentType = 'medical_candidate';
+    $recruitmentType = ems_normalize_recruitment_type($defaultType);
 
     if ($applicant) {
         $applicantId = (int)$applicant['id'];
@@ -131,7 +133,9 @@ function ems_public_recruitment_stage_url(array $gate): string
         return ems_url('/public/recruitment_done.php');
     }
 
-    return ems_url('/public/recruitment_form.php');
+    return $recruitmentType === 'assistant_manager'
+        ? ems_url('/public/recruitment_form_assistant_manager.php')
+        : ems_url('/public/recruitment_form.php');
 }
 
 function ems_public_recruitment_redirect_for_gate(array $gate): void
@@ -152,7 +156,7 @@ function ems_public_recruitment_require_gate_stage(string $expectedStage): array
 
     $freshGate = ems_public_recruitment_build_gate($pdo, (string)$gate['citizen_id'], [
         'ic_name' => (string)($gate['ic_name'] ?? ''),
-    ]);
+    ], (string)($gate['recruitment_type'] ?? 'medical_candidate'));
     ems_public_recruitment_gate_set($freshGate);
 
     if (($freshGate['stage'] ?? '') !== $expectedStage) {

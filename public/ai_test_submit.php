@@ -22,7 +22,7 @@ require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/status_validator.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
+ems_public_recruitment_require_portal_open(ems_normalize_recruitment_type($_POST['recruitment_type'] ?? 'medical_candidate'));
 
 /* =========================================================
    VALIDASI REQUEST
