@@ -326,21 +326,6 @@ try {
             (string)$cooperationConfig['period_type'],
             new DateTimeImmutable($documentDateTime)
         );
-        $existingTransactions = gaInputCountExistingTransactions(
-            $pdo,
-            $cooperationId,
-            (string)$periodMeta['start'],
-            (string)$periodMeta['end']
-        );
-
-        if ($existingTransactions >= (int)$cooperationConfig['max_transactions']) {
-            $limitLabel = $cooperationConfig['claim_scope'] === 'per_institution'
-                ? '1 transaksi'
-                : ((int)$cooperationConfig['max_transactions'] . ' transaksi');
-            throw new RuntimeException(
-                'Kuota kerja sama untuk periode ' . $periodMeta['label'] . ' sudah penuh. Batas saat ini: ' . $limitLabel . '.'
-            );
-        }
 
         $pdo->beginTransaction();
 
