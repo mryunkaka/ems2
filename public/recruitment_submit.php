@@ -12,8 +12,14 @@ require_once __DIR__ . '/../config/runtime.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-$submitTrack = ems_normalize_recruitment_type($_POST['recruitment_type'] ?? 'medical_candidate');
+$submitTrack = ems_normalize_recruitment_type($_POST['recruitment_type'] ?? '');
 ems_public_recruitment_require_portal_open($submitTrack);
+$submitGate = ems_public_recruitment_require_gate_stage('form');
+$gateTrack = ems_normalize_recruitment_type($submitGate['recruitment_type'] ?? '');
+if ($gateTrack !== $submitTrack) {
+    http_response_code(403);
+    exit('Jalur pendaftaran tidak sesuai dengan sesi verifikasi. Silakan mulai dari halaman recruitment jalur yang benar.');
+}
 
 const EMS_ASSISTANT_MANAGER_DOC_BYPASS_CITIZEN_ID = 'RH39IQLC';
 
