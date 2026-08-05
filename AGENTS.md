@@ -328,117 +328,6 @@ groups were also reorganized (see below).
   cleanup cycle was smoke-tested with real `user_rh` rows before this note
   was written.
 
-**Penanggung Jawab (PIC) + Roster + Generate Dispatcher (added 2026-08-05)**:
-a major extension on top of the base module above, migration
-`docs/sql/56_2026-08-05_dispatcher_supervisor_roster.sql` (2 new tables).
-- **Penanggung Jawab (PIC)**: `dispatcher_supervisors` (user_id+unit_code
-  unique) — any `manager-plus` role can toggle themself on/off via a button
-  at the top of `dispatcher.php` (`toggle_supervisor` action, simple
-  insert/delete). **Multiple PICs can be active simultaneously** — no
-  single-owner constraint. `ems_dispatcher_is_supervisor()` /
-  `ems_dispatcher_active_supervisors()` in `config/dispatcher.php`.
-  Becoming PIC is the gate for everything else below — manager-plus alone
-  is no longer sufficient to control the board (see next point).
-- **Roster replaces "all Medis medics" as the board's source**:
-  `dispatcher_roster` (medic_user_id+unit_code unique, `added_at` drives
-  ordering — first-added shows first, matching "urutan pertama adalah
-  orang pertama yang online lebih duluan"). Papan Status Medis now queries
-  `dispatcher_roster JOIN user_rh` instead of "every active Medis-division
-  medic in the unit" — a medic must be explicitly added by a PIC
-  (`add_roster_member` action, multi-select search picker like the
-  existing status-assign modal) before they appear on the board at all.
-  `remove_roster_member` also auto-clears that medic's active assignment
-  (if any) so they don't leave a dangling status after leaving the roster.
-- **Manual assign/clear is now PIC-only, not just manager-plus**: the
-  original `create_assignment`/`clear_assignment` actions were regated
-  from `ems_is_manager_plus_role()` to `ems_dispatcher_is_supervisor()` —
-  a manager who hasn't toggled themself on as PIC can still view the
-  board/history but can't mutate it; they can become PIC anytime via the
-  toggle. `create_assignment` additionally now rejects any selected medic
-  who isn't currently on the roster (defensive server-side check mirroring
-  what the UI's medic-picker already restricts to).
-- **Farmasi duty is authoritative and untouchable from Dispatcher**: a
-  roster medic currently `online` in `user_farmasi_status` (the same
-  "Medis Online" concept `rekap_farmasi.php` already tracks —
-  `ems_dispatcher_farmasi_online_medic_ids()`) renders as a locked
-  read-only "Jaga Farmasi" badge on the board — no edit/clear button, and
-  both `create_assignment` and `generate_assignments` hard-reject/exclude
-  them server-side. They only become eligible again once they go offline
-  from farmasi duty via `rekap_farmasi.php` itself; nothing in
-  `dispatcher.php`/`dispatcher_action.php` can touch their farmasi status
-  or force a status change while they're on duty.
-- **"Generate Dispatcher"** (`generate_assignments` action, one-click, no
-  input modal — confirm() only): auto-assigns the *eligible* roster subset
-  (excludes farmasi-online, and excludes anyone currently on a manual
-  `off_duty`/`rapat`/`kunjungan`/`lainnya` status so PIC overrides aren't
-  clobbered) into `standby_resepsionis` / `bantu_igd` / `respon_lapangan`
-  groups. Composition rules implemented in
-  `ems_dispatcher_build_generate_plan()` (`config/dispatcher.php`):
-  IGD/Resepsionis slot counts are proportional to roster size (~20%/~15%,
-  min 1 each once total > 2 — no manual slot-count input, per explicit
-  user choice), filled trainee-first (preserves seniors —
-  paramedic/co_asst/general_practitioner/specialist — for field
-  leadership); remaining seniors each lead a solo Respon Lapangan team,
-  with leftover trainees distributed round-robin onto those teams (max 3
-  per team) and any trainee surplus paired into trainee-only 2-person
-  teams. **Fairness/anti-clique rotation**: eligible medics are sorted by
-  `ems_dispatcher_last_duty_at()` (MAX started_at across their
-  `respon_lapangan`/`bantu_igd`/`standby_resepsionis` history, this unit
-  only) ascending, never-assigned-yet medics first — so Generate
-  deliberately avoids repeatedly picking the same people, per the explicit
-  "rolling terus, dengan orang berbeda-beda...tidak circel2an" request.
-  Coordinate is left blank on generated Respon Lapangan groups by design
-  (user's explicit choice over a "generate also picks a location" option)
-  — PIC fills it in afterward via the existing pencil "Ubah Status" button,
-  which was updated to pre-select **all** members of a group (not just the
-  clicked medic) so editing a generated group's coordinate updates the
-  whole team's assignment row, not just one person's.
-- Before generating, any of the eligible medics' existing *auto-category*
-  active assignment (respon_lapangan/bantu_igd/standby_resepsionis) is
-  cleared first so each Generate run starts clean; anyone who doesn't land
-  in a slot this round simply reverts to "Tersedia" (no replacement row
-  created for them).
-- Verified against the real local dev DB on 2026-08-05 with real `user_rh`
-  rows (not synthetic fixtures): full cycle of PIC toggle-on (confirmed
-  multiple simultaneous PICs coexist), roster add (7 medics), a planted
-  farmasi-online row + a planted manual `off_duty` assignment (to prove
-  both exclusions), Generate (correctly excluded both, correctly rotated
-  around one medic's pre-existing duty history from the base module's
-  2026-07-31 test data by deprioritizing him in the sort), and full
-  cleanup — restoring the DB to its pre-test state including leaving a
-  real user's live PIC toggle (made through the actual browser UI while
-  this was being tested) untouched.
-- **Rotation-freeze bug fixed same day (2026-08-05)**: user reported that
-  clearing everyone and clicking Generate again produced the *exact same*
-  people in the *exact same* roles, no rotation at all. Root cause: a
-  single Generate run assigns most/all of the roster in one pass, so every
-  medic touched in that run ends up with an (almost) identical
-  `last_duty_at` afterward (MySQL `NOW()` called once per INSERT inside a
-  fast loop — same second in practice). `ems_dispatcher_sort_by_fairness()`
-  used a plain `usort()`, which is stable in PHP 8+, so exactly-tied medics
-  always fell back to their original roster order — which never changes
-  between runs. Net effect: the "fair" sort silently degenerated into a
-  constant, deterministic order, and Generate reproduced the same
-  composition forever. Fixed two ways together: (1)
-  `dispatcher_action.php`'s `generate_assignments` now computes one
-  `$generatedAt` timestamp in PHP before the insert loop and reuses it for
-  every row in that run (instead of relying on per-row `NOW()`), so every
-  medic touched in one Generate genuinely ties exactly; (2)
-  `ems_dispatcher_sort_by_fairness()` now `shuffle()`s the input before the
-  stable `usort()`, so tied medics (the common case right after a Generate)
-  get randomized relative order each call instead of freezing on roster
-  order — never-assigned/longer-idle medics still sort first, only the
-  within-tie order is randomized. Verified with a real 17-medic live
-  roster (discovered mid-test to already be in active use — the actual
-  user had been adding real medics to the roster while this was being
-  built): 3 consecutive clear→generate rounds now produce visibly
-  different IGD/Resepsionis/Respon Lapangan compositions each time,
-  confirmed via `php -r` script sharing the exact SQL used by
-  `generate_assignments`. All 51 test assignment rows created during this
-  verification (attributed to a test PIC account) were hard-deleted
-  afterward; the real roster and the real live PIC toggle were left
-  untouched.
-
 ### Medical Records / Forensic
 `rekam_medis.php`+`_action.php`+`_list.php`+`_view.php`+`_edit.php`+
 `_edit_action.php`+`_delete.php` (Quill.js rich-text report; KTP mandatory,
@@ -911,7 +800,7 @@ defensive way.
 - Two other AI-generated snapshots exist at repo root
   (`PRODUCT_SPECIFICATION.md`, `PRODUCT_SPECIFICATION_CURRENT.md`,
   `IMPLEMENTATION_SUMMARY.md`) — gitignored, locally-only, may go stale;
-  this `CLAUDE.md` supersedes them as the authoritative map going forward.
+  this `AGENTS.md` supersedes them as the authoritative map going forward.
 
 ## 12. Working conventions
 

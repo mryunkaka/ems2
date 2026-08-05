@@ -38,10 +38,14 @@ $canHardDelete = ems_is_director_role($userRole);
 $unitCode = ems_effective_unit($pdo, $user);
 $csrfToken = generateCsrfToken();
 
+$isSupervisor = ems_dispatcher_is_supervisor($pdo, $userId, $unitCode);
+$activeSupervisors = ems_dispatcher_active_supervisors($pdo, $unitCode);
+$farmasiOnlineIds = ems_dispatcher_farmasi_online_medic_ids($pdo, $unitCode);
+
 $statusOptions = ems_dispatcher_status_options();
 
 // ===============================
-// DAFTAR MEDIS (division Medis, aktif, unit sama)
+// DAFTAR MEDIS (division Medis, aktif, unit sama) — untuk picker tambah roster
 // ===============================
 $stmtMedics = $pdo->prepare("
     SELECT id, full_name, position
@@ -53,6 +57,21 @@ $stmtMedics = $pdo->prepare("
 ");
 $stmtMedics->execute([$unitCode]);
 $allMedics = $stmtMedics->fetchAll(PDO::FETCH_ASSOC);
+
+// ===============================
+// ROSTER DISPATCHER (medis yang ditambahkan PIC) — sumber Papan Status Medis
+// urutan: yang pertama ditambahkan (online lebih dulu) tampil paling atas
+// ===============================
+$stmtRoster = $pdo->prepare("
+    SELECT ur.id, ur.full_name, ur.position, dr.added_at
+    FROM dispatcher_roster dr
+    JOIN user_rh ur ON ur.id = dr.medic_user_id
+    WHERE dr.unit_code = ? AND ur.is_active = 1
+    ORDER BY dr.added_at ASC
+");
+$stmtRoster->execute([$unitCode]);
+$rosterMedics = $stmtRoster->fetchAll(PDO::FETCH_ASSOC);
+$rosterIds = array_map(static fn($m) => (int)$m['id'], $rosterMedics);
 
 // ===============================
 // ASSIGNMENT AKTIF + ANGGOTA
@@ -98,9 +117,18 @@ $historyAssignments = $stmtHistory->fetchAll(PDO::FETCH_ASSOC);
 // ===============================
 // RINGKASAN
 // ===============================
-$totalMedics = count($allMedics);
-$totalBertugas = count($medicAssignmentMap);
-$totalTersedia = max(0, $totalMedics - $totalBertugas);
+$totalRoster = count($rosterMedics);
+$totalFarmasiLocked = count(array_intersect($rosterIds, $farmasiOnlineIds));
+$totalBertugas = 0;
+foreach ($rosterIds as $rid) {
+    if (in_array($rid, $farmasiOnlineIds, true)) {
+        continue;
+    }
+    if (isset($medicAssignmentMap[$rid])) {
+        $totalBertugas++;
+    }
+}
+$totalTersedia = max(0, $totalRoster - $totalFarmasiLocked - $totalBertugas);
 $totalResponLapangan = 0;
 foreach ($activeAssignments as $a) {
     if (($a['status_code'] ?? '') === 'respon_lapangan') {
@@ -160,8 +188,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <div class="dispatcher-summary-grid">
             <div class="card card-section dispatcher-summary-card">
-                <div class="meta-text-xs">Total Medis Terdaftar</div>
-                <div class="dispatcher-summary-value"><?= $totalMedics ?></div>
+                <div class="meta-text-xs">Medis di Roster</div>
+                <div class="dispatcher-summary-value"><?= $totalRoster ?></div>
             </div>
             <div class="card card-section dispatcher-summary-card">
                 <div class="meta-text-xs">Tersedia</div>
@@ -172,6 +200,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="dispatcher-summary-value"><?= $totalBertugas ?></div>
             </div>
             <div class="card card-section dispatcher-summary-card">
+                <div class="meta-text-xs">Jaga Farmasi</div>
+                <div class="dispatcher-summary-value text-warning"><?= $totalFarmasiLocked ?></div>
+            </div>
+            <div class="card card-section dispatcher-summary-card">
                 <div class="meta-text-xs">Respon Lapangan Aktif</div>
                 <div class="dispatcher-summary-value text-danger"><?= $totalResponLapangan ?></div>
             </div>
@@ -179,15 +211,61 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <div class="card">
             <div class="card-header-actions card-section">
-                <div class="card-header-actions-title">Papan Status Medis</div>
+                <div class="card-header-actions-title">Penanggung Jawab Dispatcher</div>
                 <?php if ($canManage): ?>
                     <div class="card-header-actions-right">
+                        <form method="POST" action="dispatcher_action.php" class="inline">
+                            <?= csrfField(); ?>
+                            <input type="hidden" name="action" value="toggle_supervisor">
+                            <?php if ($isSupervisor): ?>
+                                <button type="submit" class="btn-danger">
+                                    <?= ems_icon('shield-check', 'h-4 w-4') ?><span>Off-kan Diri Sebagai Penanggung Jawab</span>
+                                </button>
+                            <?php else: ?>
+                                <button type="submit" class="btn-success">
+                                    <?= ems_icon('shield-check', 'h-4 w-4') ?><span>Jadi Penanggung Jawab</span>
+                                </button>
+                            <?php endif; ?>
+                        </form>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="card-section">
+                <?php if (empty($activeSupervisors)): ?>
+                    <p class="meta-text-xs">Belum ada Penanggung Jawab Dispatcher yang aktif saat ini.</p>
+                <?php else: ?>
+                    <div class="dispatcher-chip-list">
+                        <?php foreach ($activeSupervisors as $sup): ?>
+                            <span class="dispatcher-medic-chip dispatcher-supervisor-chip">
+                                <?= ems_icon('shield-check', 'h-3.5 w-3.5') ?>
+                                <?= htmlspecialchars((string)$sup['user_name_snapshot']) ?>
+                            </span>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header-actions card-section">
+                <div class="card-header-actions-title">Papan Status Medis</div>
+                <?php if ($isSupervisor): ?>
+                    <div class="card-header-actions-right">
+                        <button type="button" id="btnOpenRosterModal" class="btn-secondary">
+                            <?= ems_icon('user-plus', 'h-4 w-4') ?><span>Tambah Anggota Roster</span>
+                        </button>
+                        <button type="button" id="btnGenerateDispatcher" class="btn-warning">
+                            <?= ems_icon('sparkles', 'h-4 w-4') ?><span>Generate Dispatcher</span>
+                        </button>
                         <button type="button" id="btnOpenAssignModal" class="btn-success">
                             <?= ems_icon('megaphone', 'h-4 w-4') ?><span>Atur Status Baru</span>
                         </button>
                     </div>
                 <?php endif; ?>
             </div>
+            <?php if (!$isSupervisor): ?>
+                <p class="meta-text-xs card-section" style="padding-top:0;">Papan ini menampilkan medis yang ditambahkan oleh Penanggung Jawab Dispatcher. Hanya Penanggung Jawab yang bisa menambah/mengatur roster ini.</p>
+            <?php endif; ?>
             <div class="table-wrapper">
                 <table id="dispatcherBoardTable" class="table-custom">
                     <thead>
@@ -199,19 +277,44 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Info</th>
                             <th>Sejak</th>
                             <th>Durasi</th>
-                            <?php if ($canManage): ?><th>Aksi</th><?php endif; ?>
+                            <?php if ($isSupervisor): ?><th>Aksi</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($allMedics as $medic): ?>
+                        <?php if (empty($rosterMedics)): ?>
+                            <tr>
+                                <td colspan="<?= $isSupervisor ? 8 : 7 ?>" class="text-center meta-text-xs">Roster dispatcher masih kosong.</td>
+                            </tr>
+                        <?php endif; ?>
+                        <?php foreach ($rosterMedics as $medic): ?>
                             <?php
                             $medicId = (int)$medic['id'];
-                            $assignment = $medicAssignmentMap[$medicId] ?? null;
+                            $isFarmasiLocked = in_array($medicId, $farmasiOnlineIds, true);
+                            $assignment = $isFarmasiLocked ? null : ($medicAssignmentMap[$medicId] ?? null);
+                            $groupMedicIds = $assignment ? array_filter(array_map('intval', explode(',', (string)($assignment['member_ids'] ?? '')))) : [$medicId];
                             ?>
                             <tr>
                                 <td><?= htmlspecialchars($medic['full_name']) ?></td>
                                 <td><?= htmlspecialchars(ems_position_label($medic['position'] ?? '-')) ?></td>
-                                <?php if ($assignment): ?>
+                                <?php if ($isFarmasiLocked): ?>
+                                    <td><span class="badge-warning">Jaga Farmasi</span></td>
+                                    <td>-</td>
+                                    <td>Sedang duty farmasi di Rekap Farmasi — tidak bisa diatur/di-clear lewat Dispatcher.</td>
+                                    <td>-</td>
+                                    <td>-</td>
+                                    <?php if ($isSupervisor): ?>
+                                        <td class="action-row-nowrap">
+                                            <form method="POST" action="dispatcher_action.php" class="inline js-dispatcher-remove-roster" data-confirm="Keluarkan <?= htmlspecialchars($medic['full_name']) ?> dari roster?">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="remove_roster_member">
+                                                <input type="hidden" name="medic_id" value="<?= $medicId ?>">
+                                                <button type="submit" class="btn-secondary action-icon-btn" title="Keluarkan dari Roster">
+                                                    <?= ems_icon('user-minus', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    <?php endif; ?>
+                                <?php elseif ($assignment): ?>
                                     <?php
                                     $statusLabel = ems_dispatcher_status_label((string)$assignment['status_code'], $assignment['status_label_custom'] ?? null);
                                     $badgeClass = ems_dispatcher_status_badge_class((string)$assignment['status_code']);
@@ -222,10 +325,10 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td><?= dispatcherFormatInfo($assignment) ?></td>
                                     <td><?= htmlspecialchars(ems_dispatcher_datetime_label($assignment['started_at'] ?? null)) ?></td>
                                     <td><?= htmlspecialchars(ems_dispatcher_duration_label(dispatcherSecondsSince((string)$assignment['started_at']))) ?></td>
-                                    <?php if ($canManage): ?>
+                                    <?php if ($isSupervisor): ?>
                                         <td class="action-row-nowrap">
                                             <button type="button" class="btn-secondary action-icon-btn btn-dispatcher-reassign"
-                                                data-medic-ids="<?= (int)$medicId ?>" title="Ubah Status">
+                                                data-medic-ids="<?= htmlspecialchars(implode(',', $groupMedicIds)) ?>" title="Ubah Status">
                                                 <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                             </button>
                                             <form method="POST" action="dispatcher_action.php" class="inline js-dispatcher-clear" data-confirm="Clear tugas/status untuk <?= htmlspecialchars($statusLabel) ?>?">
@@ -236,6 +339,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <?= ems_icon('check-circle', 'h-4 w-4') ?>
                                                 </button>
                                             </form>
+                                            <form method="POST" action="dispatcher_action.php" class="inline js-dispatcher-remove-roster" data-confirm="Keluarkan <?= htmlspecialchars($medic['full_name']) ?> dari roster?">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="remove_roster_member">
+                                                <input type="hidden" name="medic_id" value="<?= $medicId ?>">
+                                                <button type="submit" class="btn-secondary action-icon-btn" title="Keluarkan dari Roster">
+                                                    <?= ems_icon('user-minus', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
                                         </td>
                                     <?php endif; ?>
                                 <?php else: ?>
@@ -244,12 +355,20 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td>-</td>
                                     <td>-</td>
                                     <td>-</td>
-                                    <?php if ($canManage): ?>
+                                    <?php if ($isSupervisor): ?>
                                         <td class="action-row-nowrap">
                                             <button type="button" class="btn-secondary action-icon-btn btn-dispatcher-reassign"
                                                 data-medic-ids="<?= (int)$medicId ?>" title="Atur Status">
                                                 <?= ems_icon('megaphone', 'h-4 w-4') ?>
                                             </button>
+                                            <form method="POST" action="dispatcher_action.php" class="inline js-dispatcher-remove-roster" data-confirm="Keluarkan <?= htmlspecialchars($medic['full_name']) ?> dari roster?">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="action" value="remove_roster_member">
+                                                <input type="hidden" name="medic_id" value="<?= $medicId ?>">
+                                                <button type="submit" class="btn-secondary action-icon-btn" title="Keluarkan dari Roster">
+                                                    <?= ems_icon('user-minus', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
                                         </td>
                                     <?php endif; ?>
                                 <?php endif; ?>
@@ -274,7 +393,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Info</th>
                             <th>Mulai</th>
                             <th>Durasi</th>
-                            <?php if ($canManage): ?><th>Aksi</th><?php endif; ?>
+                            <?php if ($isSupervisor): ?><th>Aksi</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -290,7 +409,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td><?= dispatcherFormatInfo($assignment) ?></td>
                                 <td><?= htmlspecialchars(ems_dispatcher_datetime_label($assignment['started_at'] ?? null)) ?></td>
                                 <td><?= htmlspecialchars(ems_dispatcher_duration_label(dispatcherSecondsSince((string)$assignment['started_at']))) ?></td>
-                                <?php if ($canManage): ?>
+                                <?php if ($isSupervisor): ?>
                                     <td class="action-row-nowrap">
                                         <form method="POST" action="dispatcher_action.php" class="inline js-dispatcher-clear" data-confirm="Clear tugas ini?">
                                             <?= csrfField(); ?>
@@ -382,7 +501,7 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
-<?php if ($canManage): ?>
+<?php if ($isSupervisor): ?>
 <div id="dispatcherAssignModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-md">
         <div class="modal-head">
@@ -398,7 +517,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="hidden" name="medic_ids" id="dispatcherMedicIdsInput" value="">
 
                 <div class="form-group">
-                    <label>Pilih Medis (solo, berpasangan, atau grup)</label>
+                    <label>Pilih Medis dari Roster (solo, berpasangan, atau grup)</label>
                     <input type="text" id="dispatcherMedicSearch" placeholder="Ketik nama medis..." autocomplete="off">
                     <div id="dispatcherMedicSuggestions" class="ems-suggestion-box"></div>
                 </div>
@@ -443,6 +562,40 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary btn-dispatcher-cancel">Batal</button>
                     <button type="submit" class="btn-success">Simpan Status</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="dispatcherRosterModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Tambah Anggota Roster Dispatcher</div>
+            <button type="button" class="modal-close-btn btn-dispatcher-roster-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <form method="POST" action="dispatcher_action.php" class="form modal-form" id="dispatcherRosterForm">
+            <div class="modal-content">
+                <?= csrfField(); ?>
+                <input type="hidden" name="action" value="add_roster_member">
+                <input type="hidden" name="medic_ids" id="dispatcherRosterMedicIdsInput" value="">
+
+                <div class="form-group">
+                    <label>Pilih medis yang saat ini online (bisa lebih dari 1)</label>
+                    <input type="text" id="dispatcherRosterSearch" placeholder="Ketik nama medis..." autocomplete="off">
+                    <div id="dispatcherRosterSuggestions" class="ems-suggestion-box"></div>
+                </div>
+                <div class="form-group">
+                    <label>Akan Ditambahkan</label>
+                    <div id="dispatcherRosterSelected" class="dispatcher-chip-list"></div>
+                </div>
+            </div>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-dispatcher-roster-cancel">Batal</button>
+                    <button type="submit" class="btn-success">Tambah ke Roster</button>
                 </div>
             </div>
         </form>
@@ -497,7 +650,13 @@ include __DIR__ . '/../partials/sidebar.php';
         'id' => (int)$m['id'],
         'name' => $m['full_name'],
         'jabatan' => ems_position_label($m['position'] ?? '-'),
-    ], $allMedics), JSON_UNESCAPED_UNICODE) ?>;
+    ], $rosterMedics), JSON_UNESCAPED_UNICODE) ?>;
+
+    var availableMedics = <?= json_encode(array_values(array_map(static fn($m) => [
+        'id' => (int)$m['id'],
+        'name' => $m['full_name'],
+        'jabatan' => ems_position_label($m['position'] ?? '-'),
+    ], array_filter($allMedics, static fn($m) => !in_array((int)$m['id'], $rosterIds, true)))), JSON_UNESCAPED_UNICODE) ?>;
 
     var locationStatuses = <?= json_encode(array_keys(array_filter($statusOptions, static fn($o) => !empty($o['requires_location'])))) ?>;
     var customLabelStatuses = <?= json_encode(array_keys(array_filter($statusOptions, static fn($o) => !empty($o['requires_custom_label'])))) ?>;
@@ -582,6 +741,118 @@ include __DIR__ . '/../partials/sidebar.php';
         });
     }
 
+    // ===== Modal "Tambah Anggota Roster" =====
+    var rosterHiddenInput = document.getElementById('dispatcherRosterMedicIdsInput');
+    var rosterSearchInput = document.getElementById('dispatcherRosterSearch');
+    var rosterSuggestionBox = document.getElementById('dispatcherRosterSuggestions');
+    var rosterSelectedList = document.getElementById('dispatcherRosterSelected');
+    var rosterSelected = [];
+
+    function renderRosterSelected() {
+        if (!rosterSelectedList) { return; }
+        rosterSelectedList.innerHTML = '';
+        if (rosterSelected.length === 0) {
+            rosterSelectedList.innerHTML = '<span class="meta-text-xs">Belum ada medis dipilih.</span>';
+        }
+        rosterSelected.forEach(function (m) {
+            var chip = document.createElement('span');
+            chip.className = 'dispatcher-medic-chip';
+            chip.innerHTML = m.name + ' (' + m.jabatan + ') <button type="button" data-id="' + m.id + '" class="dispatcher-chip-remove">&times;</button>';
+            rosterSelectedList.appendChild(chip);
+        });
+        rosterHiddenInput.value = rosterSelected.map(function (m) { return m.id; }).join(',');
+        rosterSelectedList.querySelectorAll('.dispatcher-chip-remove').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var id = parseInt(btn.dataset.id, 10);
+                rosterSelected = rosterSelected.filter(function (m) { return m.id !== id; });
+                renderRosterSelected();
+            });
+        });
+    }
+
+    function addRosterMedic(id) {
+        if (rosterSelected.some(function (m) { return m.id === id; })) { return; }
+        var medic = availableMedics.find(function (m) { return m.id === id; });
+        if (!medic) { return; }
+        rosterSelected.push(medic);
+        renderRosterSelected();
+    }
+
+    if (rosterSearchInput) {
+        rosterSearchInput.addEventListener('input', function () {
+            var keyword = rosterSearchInput.value.trim().toLowerCase();
+            rosterSuggestionBox.innerHTML = '';
+            if (keyword === '') { rosterSuggestionBox.style.display = 'none'; return; }
+
+            var matches = availableMedics.filter(function (m) {
+                return m.name.toLowerCase().indexOf(keyword) !== -1 && !rosterSelected.some(function (s) { return s.id === m.id; });
+            }).slice(0, 8);
+
+            if (matches.length === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'medic-suggestion-item';
+                empty.textContent = 'Tidak ada medis dengan nama tersebut (atau sudah ada di roster).';
+                rosterSuggestionBox.appendChild(empty);
+                rosterSuggestionBox.style.display = 'block';
+                return;
+            }
+
+            matches.forEach(function (m) {
+                var item = document.createElement('div');
+                item.className = 'medic-suggestion-item';
+                item.textContent = m.name + ' (' + m.jabatan + ')';
+                item.addEventListener('click', function () {
+                    addRosterMedic(m.id);
+                    rosterSearchInput.value = '';
+                    rosterSuggestionBox.style.display = 'none';
+                });
+                rosterSuggestionBox.appendChild(item);
+            });
+            rosterSuggestionBox.style.display = 'block';
+        });
+
+        document.addEventListener('click', function (event) {
+            if (event.target !== rosterSearchInput && !rosterSuggestionBox.contains(event.target)) {
+                rosterSuggestionBox.style.display = 'none';
+            }
+        });
+    }
+
+    var rosterModal = document.getElementById('dispatcherRosterModal');
+    var rosterForm = document.getElementById('dispatcherRosterForm');
+
+    document.getElementById('btnOpenRosterModal')?.addEventListener('click', function () {
+        rosterForm.reset();
+        rosterSelected = [];
+        renderRosterSelected();
+        if (rosterSearchInput) { rosterSearchInput.value = ''; }
+        if (rosterSuggestionBox) { rosterSuggestionBox.style.display = 'none'; }
+        openModal(rosterModal);
+    });
+
+    document.querySelectorAll('.btn-dispatcher-roster-cancel').forEach(function (btn) {
+        btn.addEventListener('click', function () { closeModal(rosterModal); });
+    });
+
+    rosterForm?.addEventListener('submit', function (event) {
+        if (rosterSelected.length === 0) {
+            event.preventDefault();
+            window.alert('Pilih minimal 1 medis terlebih dahulu.');
+        }
+    });
+
+    document.getElementById('btnGenerateDispatcher')?.addEventListener('click', function () {
+        if (!window.confirm('Generate status dispatcher otomatis untuk seluruh roster yang tersedia (di luar yang jaga farmasi/status manual)?')) {
+            return;
+        }
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'dispatcher_action.php';
+        form.innerHTML = '<?= addslashes(csrfField()) ?><input type="hidden" name="action" value="generate_assignments">';
+        document.body.appendChild(form);
+        form.submit();
+    });
+
     function toggleConditionalFields() {
         var statusCode = document.getElementById('dispatcherStatusCode').value;
         var locationGroup = document.getElementById('dispatcherLocationGroup');
@@ -639,7 +910,10 @@ include __DIR__ . '/../partials/sidebar.php';
         btn.addEventListener('click', function () { closeModal(assignModal); });
     });
     document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape') { closeModal(assignModal); }
+        if (event.key === 'Escape') {
+            closeModal(assignModal);
+            closeModal(rosterModal);
+        }
     });
 
     assignForm?.addEventListener('submit', function (event) {
@@ -649,7 +923,7 @@ include __DIR__ . '/../partials/sidebar.php';
         }
     });
 
-    document.querySelectorAll('.js-dispatcher-clear, .js-dispatcher-delete').forEach(function (form) {
+    document.querySelectorAll('.js-dispatcher-clear, .js-dispatcher-delete, .js-dispatcher-remove-roster').forEach(function (form) {
         form.addEventListener('submit', function (event) {
             if (!window.confirm(form.dataset.confirm || 'Yakin ingin melanjutkan?')) {
                 event.preventDefault();
