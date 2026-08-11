@@ -398,7 +398,7 @@ $stmt = $pdo->prepare($query);
 $stmt->execute($queryParams);
 $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Daftar nomor Pendaftaran yang tersedia (dari seluruh kandidat GA, bukan hanya hasil filter saat ini)
+// Daftar nomor Pendaftaran yang tersedia (dari seluruh kandidat Asisten Manager, bukan hanya hasil filter saat ini)
 $availableBatches = [];
 if ($hasGaBatchColumn && ems_column_exists($pdo, 'medical_applicants', 'recruitment_type')) {
     $batchListStmt = $pdo->query("
@@ -438,11 +438,11 @@ $canHardDelete = gaCandidateCanHardDelete($user, $userDivision);
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title">Daftar Calon Asisten Manager</h1>
-                <p class="page-subtitle">Monitoring jalur rekrutmen General Affair untuk calon asisten manager, dikelompokkan per periode Pendaftaran</p>
+                <p class="page-subtitle">Monitoring jalur rekrutmen calon Asisten Manager, dikelompokkan per periode Pendaftaran</p>
             </div>
             <div class="flex items-center gap-2">
                 <span class="<?= $recruitmentPortalIsOpen ? 'badge-success' : 'badge-danger' ?>">
-                    <?= $recruitmentPortalIsOpen ? 'Rekrutmen GA Open' : 'Rekrutmen GA Close' ?>
+                    <?= $recruitmentPortalIsOpen ? 'Rekrutmen Asisten Manager Open' : 'Rekrutmen Asisten Manager Close' ?>
                 </span>
                 <?php if ($canManageRecruitmentSettings): ?>
                     <button type="button" id="openGaRecruitmentSettingsModal" class="btn-secondary btn-sm">

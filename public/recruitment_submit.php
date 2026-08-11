@@ -430,6 +430,7 @@ function recruitmentFetchVerifiedUser(PDO $pdo, string $citizenId, int $verified
             no_hp_ic,
             jenis_kelamin,
             tanggal_masuk,
+            division,
             file_ktp,
             file_skb,
             file_kta,
@@ -618,6 +619,16 @@ if ($isAssistantManager) {
         exit('Citizen ID belum terverifikasi dari akun EMS');
     }
 
+    // Jalur Asisten Manager merekrut staff yang SUDAH aktif (bukan pendaftar baru),
+    // jadi target_division mengikuti divisi user itu sendiri saat ini — bukan
+    // hardcode "General Affair" — supaya form ini bisa dipakai divisi mana pun,
+    // bukan cuma General Affair. Nilai dari client (hidden field) hanya fallback
+    // kalau data user_rh-nya kosong.
+    $verifiedUserDivision = ems_normalize_division($verifiedUser['division'] ?? '');
+    if ($verifiedUserDivision !== '') {
+        $targetDivision = $verifiedUserDivision;
+    }
+
     if (!$isTemporaryBypassCitizen) {
         foreach (['file_ktp' => 'KTP', 'file_skb' => 'SKB', 'file_kta' => 'KTA', 'file_sim' => 'SIM'] as $column => $label) {
             if (trim((string)($verifiedUser[$column] ?? '')) === '') {
@@ -715,7 +726,7 @@ try {
 
     if (ems_column_exists($pdo, 'medical_applicants', 'target_division')) {
         $insertColumns[] = 'target_division';
-        $insertValues[] = $targetDivision !== '' ? $targetDivision : ($recruitmentType === 'assistant_manager' ? 'General Affair' : null);
+        $insertValues[] = $targetDivision !== '' ? $targetDivision : null;
     }
 
     if ($isAssistantManager && ems_column_exists($pdo, 'medical_applicants', 'ga_batch')) {

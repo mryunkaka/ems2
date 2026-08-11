@@ -63,7 +63,7 @@ $profile = ems_recruitment_profile('assistant_manager');
                         <span>Catatan Penting</span>
                     </div>
                     <div class="space-y-3 text-sm leading-6 text-slate-200">
-                        <p>Form ini khusus jalur calon asisten manager dengan fokus divisi General Affair.</p>
+                        <p>Form ini khusus jalur calon Asisten Manager untuk staff EMS yang sudah aktif, dari divisi mana pun.</p>
                         <p>Jawaban yang konsisten antar soal akan menjadi bahan evaluasi utama pada tahap screening awal.</p>
                     </div>
                 </div>
@@ -73,7 +73,7 @@ $profile = ems_recruitment_profile('assistant_manager');
                 <div class="public-form-header">
                     <div>
                         <h2 class="public-form-title">Formulir Calon Asisten Manager</h2>
-                        <p class="public-form-subtitle">Isi seluruh kolom wajib sebelum melanjutkan ke assessment General Affair.</p>
+                        <p class="public-form-subtitle">Isi seluruh kolom wajib sebelum melanjutkan ke assessment Asisten Manager.</p>
                     </div>
                     <div class="flex items-center gap-2">
                         <button type="button" id="clearAssistantManagerDraft" class="btn-secondary px-3 py-2 text-xs">
@@ -86,7 +86,7 @@ $profile = ems_recruitment_profile('assistant_manager');
 
                 <form action="recruitment_submit.php" method="post" id="assistantManagerRecruitmentForm">
                     <input type="hidden" name="recruitment_type" value="<?= htmlspecialchars($profile['type']) ?>">
-                    <input type="hidden" name="target_division" value="General Affair">
+                    <input type="hidden" name="target_division" id="targetDivision" value="">
                     <input type="hidden" name="verified_user_id" id="verifiedUserId" value="">
 
                     <section class="card">
@@ -280,6 +280,7 @@ $profile = ems_recruitment_profile('assistant_manager');
 
             function resetAutoFilledFields() {
                 verifiedUserId.value = '';
+                document.getElementById('targetDivision').value = '';
                 document.getElementById('ic_name').value = '';
                 document.getElementById('ic_phone').value = '';
                 document.getElementById('batch_display').value = '';
@@ -370,6 +371,7 @@ $profile = ems_recruitment_profile('assistant_manager');
             function applyCitizenSelection(item) {
                 citizenInput.value = item.citizen_id || '';
                 verifiedUserId.value = item.id || '';
+                document.getElementById('targetDivision').value = item.division || '';
                 document.getElementById('ic_name').value = item.full_name || '';
                 document.getElementById('ic_phone').value = item.no_hp_ic || '';
                 document.getElementById('batch_display').value = item.batch || '';

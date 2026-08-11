@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="public-brand-text">
                         <span class="public-kicker">Recruitment Asisten Manager</span>
                         <strong class="text-lg font-bold text-white">Roxwood Hospital</strong>
-                        <span class="meta-text">General Affair Recruitment Track</span>
+                        <span class="meta-text">Assistant Manager Recruitment Track</span>
                     </div>
                 </div>
 

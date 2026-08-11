@@ -720,6 +720,38 @@ throws if a `user_rh` row already exists for the candidate's citizen_id/name
 ("lolos") a real assistant-manager candidate today would likely error out
 at that step. Flagged for a future session, out of scope here.
 
+**Assistant Manager track de-GA'd (wording + a real functional fix, 2026-08-11)**:
+the assistant-manager track was originally built assuming General Affair
+specifically, and had leftover "GA"/"General Affair" copy in
+`assistant_manager_candidates.php` (page subtitle, portal-status badge)
+and in the public forms (`public/ga_recruitment.php`,
+`public/recruitment_form_assistant_manager.php`) — all reworded to
+generic "Asisten Manager" language so the same flow reads correctly for
+any division. **The functional part**:
+`recruitment_form_assistant_manager.php` had a hidden
+`<input name="target_division" value="General Affair">` that unconditionally
+submitted "General Affair" regardless of which division the applicant
+actually belonged to — since this track recruits already-existing staff
+(see "Public recruitment portal journey" above), their real division is
+already known via `user_rh.division` the moment their Citizen ID is
+verified. Fixed by (1) having the citizen-autocomplete JS populate the
+hidden field from the selected user's own `item.division` instead of a
+static value, and (2) — since a hidden form field is client-controlled and
+shouldn't be trusted alone — `recruitment_submit.php` now also selects
+`division` in `recruitmentFetchVerifiedUser()` and overrides
+`$targetDivision` server-side from the verified `user_rh` row whenever
+it's non-empty, so the stored value is authoritative regardless of what
+the client submitted. The old silent fallback to `'General Affair'` when
+`target_division` was empty was also removed (falls back to `null` now)
+since defaulting to GA was the exact bug being fixed. Note:
+`medical_applicants.target_division` is currently write-only — nothing
+in `assistant_manager_candidates.php` or the candidate-review pages
+filters or displays by it yet, so this fix corrects the stored data for
+future use but doesn't itself change who can see/manage a candidate.
+Verified against a real local `user_rh` row (division `Medis`) that the
+new server-side derivation correctly resolves to `Medis` instead of the
+old hardcoded `General Affair`.
+
 ### Farmasi (pharmacy) duty/online-status lifecycle
 Go online/offline: `actions/toggle_farmasi_status.php` (caps: `max_online_medics`,
 per-user `cooldown_minutes` from `farmasi_online_settings`). Confirm-still-online:
