@@ -240,6 +240,12 @@ if ($isAltaUnit && !$canViewAllUnits) {
     }
 }
 
+$groupedNav['Roxwood Hospital AI'] = [
+    sidebarItem('/dashboard/ai_diagnosis_assistant.php', 'ai_diagnosis_assistant.php', 'AI Diagnosis Assistant', 'sparkles'),
+    sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
+    sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
+];
+
 if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
     if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {
         $groupedNav['Keuangan'] = [];

@@ -1337,6 +1337,21 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Exception: Roxwood Hospital AI pages accessible by all logged-in users regardless of division
+    $roxwoodHospitalAiPages = [
+        'ai_diagnosis_assistant.php',
+        'ai_diagnosis_assistant_action.php',
+        'ai_diagnosis_report.php',
+        'ai_surgery_planner.php',
+        'ai_surgery_planner_action.php',
+        'ai_surgery_report.php',
+        'ai_settings_personal.php',
+        'ai_settings_personal_action.php',
+    ];
+    if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
+        return;
+    }
+
     // Exception: police partnership input accessible by all logged-in users
     if ($scriptName === 'police_partnership.php' || $scriptName === 'police_partnership_action.php') {
         return;
