@@ -33,10 +33,22 @@ if ($userId <= 0) {
 }
 
 $existing = ems_ai_ds_get_user_settings($pdo, $userId);
+$isProgrammer = ems_current_user_is_programmer_roxwood();
+
 $apiKeyInput = trim((string) ($_POST['gemini_api_key'] ?? ''));
 $apiKey = $apiKeyInput !== '' ? $apiKeyInput : (string) ($existing['gemini_api_key'] ?? '');
-$baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-$model = trim((string) ($_POST['default_model'] ?? 'gemini-2.5-flash'));
+
+// Base URL & Model hanya boleh diubah oleh Programmer Roxwood — user lain (medis)
+// tidak diberi field ini di UI, dan di sini nilai POST dari mereka diabaikan sama
+// sekali (bukan cuma disembunyikan di form) supaya tidak bisa dilewati lewat
+// request mentah. Mereka tetap memakai nilai yang sudah tersimpan / default sistem.
+if ($isProgrammer) {
+    $baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
+    $model = trim((string) ($_POST['default_model'] ?? 'gemini-2.5-flash'));
+} else {
+    $baseUrl = rtrim(trim((string) ($existing['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
+    $model = trim((string) ($existing['default_model'] ?? 'gemini-2.5-flash'));
+}
 
 if (!in_array($model, ems_ai_model_options(), true)) {
     $_SESSION['flash_errors'] = ['Model AI yang dipilih tidak valid.'];

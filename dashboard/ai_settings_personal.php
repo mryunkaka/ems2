@@ -14,6 +14,7 @@ ems_ai_ds_ensure_tables($pdo);
 $pageTitle = 'Setting AI Saya | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int) ($user['id'] ?? 0);
+$isProgrammer = ems_current_user_is_programmer_roxwood();
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -79,20 +80,27 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </div>
 
-                <div class="grid gap-4 md:grid-cols-2">
-                    <div>
-                        <label class="text-sm font-semibold text-slate-900" for="gemini_base_url">Base URL</label>
-                        <input id="gemini_base_url" name="gemini_base_url" type="text" value="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>">
+                <?php if ($isProgrammer): ?>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="gemini_base_url">Base URL</label>
+                            <input id="gemini_base_url" name="gemini_base_url" type="text" value="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="default_model">Model</label>
+                            <select id="default_model" name="default_model">
+                                <?php foreach ($modelOptions as $modelName): ?>
+                                    <option value="<?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?>" <?= $defaultModel === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="text-sm font-semibold text-slate-900" for="default_model">Model</label>
-                        <select id="default_model" name="default_model">
-                            <?php foreach ($modelOptions as $modelName): ?>
-                                <option value="<?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?>" <?= $defaultModel === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
+                    <div class="helper-note">Field ini hanya tampil untuk Programmer Roxwood. User lain otomatis memakai Base URL &amp; Model default (<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?> / <?= htmlspecialchars($defaultModel, ENT_QUOTES, 'UTF-8') ?>).</div>
+                <?php else: ?>
+                    <input type="hidden" name="gemini_base_url" value="<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="default_model" value="<?= htmlspecialchars($defaultModel, ENT_QUOTES, 'UTF-8') ?>">
+                    <div class="helper-note">Base URL &amp; Model diatur oleh Programmer Roxwood. Anda cukup masukkan API key Gemini di atas (model yang dipakai saat ini: <strong><?= htmlspecialchars($defaultModel, ENT_QUOTES, 'UTF-8') ?></strong>).</div>
+                <?php endif; ?>
 
                 <div class="flex flex-wrap gap-3 pt-2">
                     <button type="submit" class="btn-primary">
