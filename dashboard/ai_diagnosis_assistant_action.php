@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
 require_once __DIR__ . '/../config/ai_radiology.php';
+require_once __DIR__ . '/../config/ai_laboratory.php';
 require_once __DIR__ . '/../actions/ai_gemini_client.php';
 
 /**
@@ -66,6 +67,44 @@ function ems_ai_ds_sanitize_structured_radiology($input): ?array
     ];
 }
 
+function ems_ai_ds_sanitize_structured_laboratory($input): ?array
+{
+    if (!is_array($input)) {
+        return null;
+    }
+
+    $department = ems_ai_ds_scalar_or_first($input['department'] ?? '');
+    $category = ems_ai_ds_scalar_or_first($input['category'] ?? '');
+    $level3Option = ems_ai_ds_scalar_or_first($input['level3_option'] ?? '');
+    $specimenType = ems_ai_ds_scalar_or_first($input['specimen_type'] ?? '');
+
+    // Pasien tidak butuh pemeriksaan laboratorium sama sekali.
+    if ($department === '' && $category === '' && $specimenType === '') {
+        return null;
+    }
+
+    if (!in_array($department, ems_ai_laboratory_departments(), true)) {
+        return null;
+    }
+    if (!in_array($category, ems_ai_laboratory_categories($department), true)) {
+        return null;
+    }
+
+    $catInfo = ems_ai_laboratory_category_info($department, $category);
+    $level3Value = ($catInfo['type'] ?? '') === 'select' ? $level3Option : null;
+
+    if (!ems_ai_laboratory_is_valid_selection($department, $category, $level3Value, $specimenType)) {
+        return null;
+    }
+
+    return [
+        'department' => $department,
+        'category' => $category,
+        'level3_option' => $level3Value ?? '',
+        'specimen_type' => $specimenType,
+    ];
+}
+
 function ems_ai_ds_json_response(array $payload, int $httpCode = 200): void
 {
     http_response_code($httpCode);
@@ -109,6 +148,8 @@ $systemPrompt .= "\n\nREFERENSI KATALOG RADIOLOGI (format: Modality > Category >
     . ems_ai_radiology_catalog_reference_text()
     . "\n\nREFERENSI TEMUAN KLINIS (pilih PERSIS salah satu untuk \"radiologi_terstruktur.clinical_finding\"):\n"
     . ems_ai_radiology_clinical_findings_reference_text();
+$systemPrompt .= "\n\nREFERENSI KATALOG LABORATORIUM (format: Department > Category > [Level3 Options] > Spesimen: [opsi spesimen], pilih PERSIS salah satu kombinasi untuk \"laboratorium_terstruktur\"):\n"
+    . ems_ai_laboratory_catalog_reference_text();
 
 $template = ems_ai_get_active_prompt_template($pdo, 'ai_diagnosis_assistant');
 $userPromptTemplate = trim((string) ($template['user_prompt_template'] ?? '')) !== ''
@@ -169,6 +210,7 @@ if (isset($data['emergency']) && is_array($data['emergency'])) {
     $data['emergency'] = ems_ai_ds_sanitize_step_items($data['emergency']);
 }
 $data['radiologi_terstruktur'] = ems_ai_ds_sanitize_structured_radiology($data['radiologi_terstruktur'] ?? null);
+$data['laboratorium_terstruktur'] = ems_ai_ds_sanitize_structured_laboratory($data['laboratorium_terstruktur'] ?? null);
 
 $reportCode = null;
 for ($codeAttempt = 0; $codeAttempt < 5; $codeAttempt++) {

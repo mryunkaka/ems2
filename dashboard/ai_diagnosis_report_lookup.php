@@ -32,6 +32,22 @@ if (!$report) {
     ems_ai_diag_lookup_response(['ok' => false, 'message' => 'Laporan diagnosis dengan kode tersebut tidak ditemukan.'], 404);
 }
 
+// Kalau halaman pemanggil mengirim ?target=<tabel tujuan>, kasih tahu SAAT
+// fetch ini juga (bukan baru ketahuan pas submit ditolak 409) kalau kode
+// ini sudah pernah dipakai di halaman itu, plus siapa yang memakainya.
+$targetTable = trim((string) ($_GET['target'] ?? ''));
+$allowedTargets = ['ai_surgery_plans', 'ai_radiology_images', 'ai_laboratory_results', 'ai_psychiatry_assessments'];
+$usedOnTarget = null;
+if (in_array($targetTable, $allowedTargets, true)) {
+    $usageInfo = ems_ai_ds_report_code_usage_info($pdo, $targetTable, $code, $effectiveUnit);
+    if ($usageInfo !== null) {
+        $usedOnTarget = [
+            'user_name' => (string) ($usageInfo['user_name'] ?? '-'),
+            'created_at' => (string) ($usageInfo['created_at'] ?? ''),
+        ];
+    }
+}
+
 $result = [];
 if (!empty($report['result_json'])) {
     $decoded = json_decode((string) $report['result_json'], true);
@@ -43,6 +59,11 @@ if (!empty($report['result_json'])) {
 $structuredRadiology = is_array($result['radiologi_terstruktur'] ?? null) ? $result['radiologi_terstruktur'] : null;
 if ($structuredRadiology !== null && trim((string) ($structuredRadiology['modality'] ?? '')) === '') {
     $structuredRadiology = null;
+}
+
+$structuredLaboratory = is_array($result['laboratorium_terstruktur'] ?? null) ? $result['laboratorium_terstruktur'] : null;
+if ($structuredLaboratory !== null && trim((string) ($structuredLaboratory['department'] ?? '')) === '') {
+    $structuredLaboratory = null;
 }
 
 $anamnesisLengkap = trim((string) ($result['anamnesis_lengkap'] ?? ''));
@@ -57,8 +78,10 @@ ems_ai_diag_lookup_response([
     'jenis_operasi' => (string) ($result['jenis_operasi'] ?? ''),
     'jenis_anestesi' => (string) ($result['jenis_anestesi'] ?? ''),
     'radiologi_terstruktur' => $structuredRadiology,
+    'laboratorium_terstruktur' => $structuredLaboratory,
     'patient_name' => (string) ($report['patient_name'] ?? ''),
     'patient_gender' => (string) ($report['patient_gender'] ?? ''),
     'patient_dob' => (string) ($report['patient_dob'] ?? ''),
     'patient_citizen_id' => (string) ($report['patient_citizen_id'] ?? ''),
+    'used_on_target' => $usedOnTarget,
 ]);

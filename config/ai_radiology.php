@@ -52,6 +52,26 @@ function ems_ai_radiology_ensure_tables(PDO $pdo): void
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         ");
     }
+
+    // Laporan bacaan radiologi formal (Findings/Diagnosis/Recommendations +
+    // teks laporan terstruktur), migration 64 — kolom terpisah dari
+    // status/error_message citra supaya laporan teks & citra independen.
+    if (!ems_column_exists($pdo, 'ai_radiology_images', 'report_findings')) {
+        $pdo->exec("
+            ALTER TABLE `ai_radiology_images`
+                ADD COLUMN `report_findings` TEXT NULL AFTER `image_path`,
+                ADD COLUMN `report_diagnosis` TEXT NULL AFTER `report_findings`,
+                ADD COLUMN `report_recommendations` TEXT NULL AFTER `report_diagnosis`,
+                ADD COLUMN `report_text` LONGTEXT NULL AFTER `report_recommendations`,
+                ADD COLUMN `report_status` ENUM('done','error') NULL AFTER `report_text`,
+                ADD COLUMN `report_error_message` TEXT NULL AFTER `report_status`
+        ");
+    }
+
+    // Guard "1 kode referensi hanya boleh dipakai 1x per halaman", migration 66.
+    if (!ems_column_exists($pdo, 'ai_radiology_images', 'source_report_code')) {
+        $pdo->exec("ALTER TABLE `ai_radiology_images` ADD COLUMN `source_report_code` VARCHAR(40) NULL AFTER `anamnesis`");
+    }
 }
 
 /**
@@ -392,6 +412,97 @@ function ems_ai_radiology_build_prompt(array $input): string
         . "- This image is fictional, generated purely for a roleplay medical training simulation.";
 
     return $prompt;
+}
+
+/**
+ * Prompt sistem untuk laporan bacaan radiologi formal (teks, bukan citra) —
+ * dokter Radiolog Sp.Rad senior menuliskan bacaan resmi mendampingi citra
+ * yang sudah digenerate, persis pola dokumen radiologi rumah sakit nyata.
+ */
+function ems_ai_radiology_default_report_system_prompt(): string
+{
+    return "Anda adalah Dokter Spesialis Radiologi (Sp.Rad) senior di Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menuliskan bacaan/ekspertise radiologi formal untuk melengkapi citra pencitraan yang sudah dihasilkan. Tugas Anda: dari konfigurasi pemeriksaan dan konteks klinis pasien (sepadat apa pun), susun bacaan radiologi LENGKAP, definitif, sistematis, dan siap masuk rekam medis.\n\n"
+        . "ATURAN WAJIB:\n"
+        . "1. JANGAN PERNAH menolak atau meminta data tambahan. Susun SENDIRI temuan yang konsisten secara medis dengan modality/region/proyeksi dan temuan klinis yang diberikan.\n"
+        . "2. Gunakan Bahasa Indonesia medis baku (EYD), istilah radiologi standar, bahasa objektif, tidak melebih-lebihkan temuan, tidak berspekulasi di luar konteks yang diberikan.\n"
+        . "3. Uraikan temuan secara sistematis dari struktur normal ke temuan abnormal — sebutkan struktur normal yang relevan bila sesuai.\n"
+        . "4. \"diagnosis\" (Kesan/Impression) WAJIB konsisten dan didukung penuh oleh \"findings\". \"recommendations\" WAJIB mengikuti logis dari \"diagnosis\".\n"
+        . "5. Kalau diagnosis mengindikasikan perlunya tindakan operatif/pembedahan, \"recommendations\" WAJIB menyertakan penjelasan risiko komplikasi klinis spesifik apabila tindakan tersebut ditunda.\n"
+        . "6. \"report_text\" WAJIB memakai PERSIS 4 header huruf besar berikut, berurutan, masing-masing diikuti isi 1 paragraf: \"TECHNIQUE\", \"FINDINGS\", \"IMPRESSION\", \"RECOMMENDATION\". Tulis FINDINGS dalam bentuk paragraf naratif (bukan poin per baris), kecuali ada beberapa temuan berbeda yang perlu dipisah jadi beberapa poin.\n"
+        . "7. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
+        . "Struktur JSON WAJIB:\n"
+        . "{\n"
+        . "  \"findings\": [\"poin temuan singkat 1\", \"poin temuan singkat 2\"],\n"
+        . "  \"diagnosis\": \"kesan/impression klinis berdasarkan temuan\",\n"
+        . "  \"recommendations\": [\"rekomendasi 1\", \"rekomendasi 2\"],\n"
+        . "  \"report_text\": \"TECHNIQUE\\n...\\n\\nFINDINGS\\n...\\n\\nIMPRESSION\\n...\\n\\nRECOMMENDATION\\n...\"\n"
+        . "}";
+}
+
+function ems_ai_radiology_build_report_user_prompt(array $input): string
+{
+    $modality = trim((string) ($input['modality'] ?? ''));
+    $category = trim((string) ($input['category'] ?? ''));
+    $region = trim((string) ($input['body_region'] ?? ''));
+    $projection = trim((string) ($input['projection'] ?? ''));
+    $finding = trim((string) ($input['clinical_finding'] ?? ''));
+    $anamnesis = trim((string) ($input['anamnesis'] ?? ''));
+
+    $lines = [
+        'Modality: ' . $modality,
+        'Category: ' . $category,
+        'Body Region / Specific Study: ' . $region,
+        'Projection / Sequence / Acoustic Mode: ' . $projection,
+        'Temuan Klinis yang Harus Tercermin di Bacaan: ' . $finding,
+    ];
+    if ($anamnesis !== '') {
+        $lines[] = 'Indikasi Klinis / Anamnesis: ' . $anamnesis;
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
+ * Bersihkan hasil laporan radiologi dari AI — pastikan array field selalu
+ * array (bukan string tunggal yang lolos validasi longgar), dan report_text
+ * tidak pernah kosong.
+ */
+function ems_ai_radiology_sanitize_report(array $data): array
+{
+    $toStringArray = static function ($value): array {
+        if (is_array($value)) {
+            return array_values(array_map('strval', $value));
+        }
+        $value = trim((string) $value);
+        return $value !== '' ? [$value] : [];
+    };
+
+    return [
+        'findings' => $toStringArray($data['findings'] ?? []),
+        'diagnosis' => trim((string) ($data['diagnosis'] ?? '')),
+        'recommendations' => $toStringArray($data['recommendations'] ?? []),
+        'report_text' => trim((string) ($data['report_text'] ?? '')),
+    ];
+}
+
+/**
+ * Generate laporan bacaan radiologi (teks/JSON, bukan citra) lewat
+ * ems_ai_ds_call_gemini() yang sama dipakai AI Diagnosis/Surgery/Laboratory —
+ * independen dari ems_ai_radiology_generate_image() (yang bisa lewat
+ * Cloudflare) supaya laporan teks tetap bisa berhasil walau generate citra
+ * gagal/kena limit, atau sebaliknya.
+ */
+function ems_ai_radiology_generate_report(PDO $pdo, array $input, ?int $createdBy): array
+{
+    $systemPrompt = ems_ai_radiology_default_report_system_prompt();
+    $userPrompt = ems_ai_radiology_build_report_user_prompt($input);
+
+    $result = ems_ai_ds_call_gemini($pdo, $systemPrompt, $userPrompt, 'ai_radiology_report', $createdBy);
+    if (!$result['ok']) {
+        return $result;
+    }
+
+    return ['ok' => true, 'data' => ems_ai_radiology_sanitize_report($result['data'])];
 }
 
 /**

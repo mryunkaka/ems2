@@ -244,6 +244,8 @@ $groupedNav['Roxwood Hospital AI'] = [
     sidebarItem('/dashboard/ai_diagnosis_assistant.php', 'ai_diagnosis_assistant.php', 'AI Diagnosis Assistant', 'sparkles'),
     sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
     sidebarItem('/dashboard/radiology_center.php', 'radiology_center.php', 'Radiology Center', 'camera'),
+    sidebarItem('/dashboard/laboratory_ai.php', 'laboratory_ai.php', 'Laboratory AI', 'beaker'),
+    sidebarItem('/dashboard/psychiatry_center.php', 'psychiatry_center.php', 'Psychiatry Center', 'chat-bubble-left-right'),
     sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
 ];
 

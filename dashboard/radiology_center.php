@@ -22,7 +22,7 @@ $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT r.id, r.patient_name, r.modality, r.body_region, r.clinical_finding, r.image_path, r.status, r.created_at, u.full_name AS created_by_name
+    SELECT r.id, r.patient_name, r.modality, r.body_region, r.clinical_finding, r.image_path, r.status, r.created_at, r.source_report_code, u.full_name AS created_by_name
     FROM ai_radiology_images r
     LEFT JOIN user_rh u ON u.id = r.user_id
     WHERE r.unit_code = ?
@@ -47,7 +47,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between mb-4">
             <div>
                 <h1 class="page-title">Radiology Center</h1>
-                <p class="page-subtitle">Generate citra pencitraan medis (X-Ray, CT Scan, MRI, Ultrasound, Angiography, PET Scan, Mammography, Fluoroscopy, DEXA Scan) simulasi untuk kebutuhan roleplay memakai model AI Gemini.</p>
+                <p class="page-subtitle">Generate citra pencitraan medis (X-Ray, CT Scan, MRI, Ultrasound, Angiography, PET Scan, Mammography, Fluoroscopy, DEXA Scan) beserta bacaan radiologi resmi dari Sp.Rad memakai model AI.</p>
             </div>
         </div>
 
@@ -82,6 +82,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
                 <form method="POST" action="radiology_center_action.php" class="form" id="radForm">
                     <?= csrfField(); ?>
+                    <input type="hidden" name="diagnosis_code" id="radDiagCodeHidden" value="">
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -157,7 +158,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card">
                 <div class="card-header">Riwayat Terbaru</div>
                 <div class="table-wrapper">
-                    <table id="radHistoryTable" class="table-custom" data-auto-datatable="true">
+                    <table id="radHistoryTable" class="table-custom" data-auto-datatable="true" data-dt-order='[[1,"desc"]]'>
                         <thead>
                             <tr>
                                 <th>Preview</th>
@@ -179,7 +180,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <span class="meta-text-xs">-</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="whitespace-nowrap"><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $row['created_at'])), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="whitespace-nowrap" data-order="<?= (int) strtotime((string) $row['created_at']) ?>"><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $row['created_at'])), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars((string) ($row['patient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="whitespace-nowrap"><?= htmlspecialchars((string) $row['modality'], ENT_QUOTES, 'UTF-8') ?> / <?= htmlspecialchars((string) $row['body_region'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="whitespace-nowrap"><?= htmlspecialchars((string) ($row['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
@@ -194,6 +195,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
+                                            <?php if (!empty($row['source_report_code'])): ?>
+                                                <button type="button" class="btn-secondary btn-sm rad-regenerate-btn" data-id="<?= (int) $row['id'] ?>" title="Generate ulang pakai kode referensi &amp; input yang sama">
+                                                    <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                                                    <span>Generate Ulang</span>
+                                                </button>
+                                            <?php endif; ?>
                                             <?php if ($canDelete): ?>
                                                 <form method="POST" action="radiology_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus citra radiologi #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
@@ -238,6 +245,7 @@ include __DIR__ . '/../partials/sidebar.php';
     var form = document.getElementById('radForm');
     if (!form) return;
 
+    var CSRF_TOKEN = <?= json_encode(generateCsrfToken(), JSON_UNESCAPED_UNICODE) ?>;
     var CATALOG = <?= json_encode($catalog, JSON_UNESCAPED_UNICODE) ?>;
     var modalitySelect = document.getElementById('radModality');
     var categorySelect = document.getElementById('radCategory');
@@ -325,6 +333,21 @@ include __DIR__ . '/../partials/sidebar.php';
     var patientNameInput = document.getElementById('radPatientName');
     var patientDobInput = document.getElementById('radPatientDob');
     var patientCitizenIdInput = document.getElementById('radPatientCitizenId');
+    var diagCodeHidden = document.getElementById('radDiagCodeHidden');
+
+    // Kode di field tersembunyi hanya valid untuk kode yang BARU SAJA
+    // berhasil di-fetch — kalau user mengetik ulang tanpa fetch lagi,
+    // jangan ikut kirim kode lama.
+    diagCodeInput.addEventListener('input', function () {
+        diagCodeHidden.value = '';
+    });
+
+    function formatUsedOnTargetWarning(data) {
+        if (!data.used_on_target) return null;
+        var who = data.used_on_target.user_name || 'pengguna lain';
+        var when = data.used_on_target.created_at ? ' pada ' + data.used_on_target.created_at : '';
+        return 'Kode referensi ini SUDAH PERNAH dipakai di halaman ini oleh ' + who + when + '. Data tetap diisi untuk ditinjau, tapi generate baru akan DITOLAK — gunakan tombol "Generate Ulang" di riwayat kalau ingin hasil baru dengan kode ini.';
+    }
 
     diagFetchBtn && diagFetchBtn.addEventListener('click', function () {
         var code = (diagCodeInput.value || '').trim();
@@ -338,7 +361,7 @@ include __DIR__ . '/../partials/sidebar.php';
         diagFetchNote.textContent = 'Mengambil data laporan diagnosis...';
         diagFetchNote.style.color = '';
 
-        fetch('ai_diagnosis_report_lookup.php?code=' + encodeURIComponent(code), {
+        fetch('ai_diagnosis_report_lookup.php?code=' + encodeURIComponent(code) + '&target=ai_radiology_images', {
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
         })
@@ -365,12 +388,22 @@ include __DIR__ . '/../partials/sidebar.php';
                     patientCitizenIdInput.value = data.patient_citizen_id;
                 }
 
+                diagCodeHidden.value = data.report_code || '';
+
                 var rad = data.radiologi_terstruktur;
+                var applied = false;
                 if (rad && rad.modality) {
-                    var applied = applyCascadeSelection(rad.modality, rad.category, rad.body_region, rad.projection);
+                    applied = applyCascadeSelection(rad.modality, rad.category, rad.body_region, rad.projection);
                     if (rad.clinical_finding) {
                         clinicalFindingSelect.value = rad.clinical_finding;
                     }
+                }
+
+                var usedWarning = formatUsedOnTargetWarning(data);
+                if (usedWarning) {
+                    diagFetchNote.textContent = usedWarning;
+                    diagFetchNote.style.color = '#d97706';
+                } else if (rad && rad.modality) {
                     diagFetchNote.textContent = applied
                         ? 'Data dari laporan #' + data.report_id + ' berhasil diambil (identitas pasien + rekomendasi Modality/Category/Body Region/Projection).'
                         : 'Identitas pasien & anamnesis berhasil diambil, tapi rekomendasi radiologi laporan ini tidak cocok dengan katalog saat ini — isi manual.';
@@ -489,6 +522,45 @@ include __DIR__ . '/../partials/sidebar.php';
             .catch(function () {
                 showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
             });
+    });
+
+    // ===== Generate Ulang (dari riwayat, pakai ulang input + kode referensi asal) =====
+    document.querySelectorAll('.rad-regenerate-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('Generate ulang citra & bacaan radiologi ini? Input & kode referensi yang sama akan dipakai lagi untuk minta hasil AI yang baru.')) {
+                return;
+            }
+            btn.disabled = true;
+            resetOverlay();
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+            startCreep();
+            scheduleStages();
+
+            var fd = new FormData();
+            fd.append('csrf_token', CSRF_TOKEN);
+            fd.append('regenerate_of', btn.getAttribute('data-id'));
+
+            fetch('radiology_center_action.php', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            })
+                .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                .then(function (result) {
+                    btn.disabled = false;
+                    if (!result.ok || !result.data.ok || !result.data.image_id) {
+                        showError((result.data && result.data.message) || 'Gagal generate ulang.');
+                        return;
+                    }
+                    finishSuccess(result.data.image_id);
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
+                });
+        });
     });
 })();
 </script>

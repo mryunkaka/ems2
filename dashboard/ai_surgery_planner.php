@@ -21,7 +21,7 @@ $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT p.id, p.jenis_operasi_kategori, p.kasus_tindakan, p.kompleksitas, p.status, p.created_at, u.full_name AS created_by_name
+    SELECT p.id, p.jenis_operasi_kategori, p.kasus_tindakan, p.kompleksitas, p.status, p.created_at, p.source_report_code, u.full_name AS created_by_name
     FROM ai_surgery_plans p
     LEFT JOIN user_rh u ON u.id = p.user_id
     WHERE p.unit_code = ?
@@ -75,6 +75,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
                 <form method="POST" action="ai_surgery_planner_action.php" class="form" id="aiSurgForm">
                     <?= csrfField(); ?>
+                    <input type="hidden" name="diagnosis_code" id="aiSurgDiagCodeHidden" value="">
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
@@ -148,6 +149,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
+                                            <?php if (!empty($row['source_report_code'])): ?>
+                                                <button type="button" class="btn-secondary btn-sm ai-surg-regenerate-btn" data-id="<?= (int) $row['id'] ?>" title="Generate ulang pakai kode referensi &amp; input yang sama">
+                                                    <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                                                    <span>Generate Ulang</span>
+                                                </button>
+                                            <?php endif; ?>
                                             <?php if ($canDelete): ?>
                                                 <form method="POST" action="ai_surgery_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus rencana operasi #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
@@ -192,6 +199,9 @@ include __DIR__ . '/../partials/sidebar.php';
     var form = document.getElementById('aiSurgForm');
     if (!form) return;
 
+    var CSRF_TOKEN = <?= json_encode(generateCsrfToken(), JSON_UNESCAPED_UNICODE) ?>;
+    var diagCodeHidden = document.getElementById('aiSurgDiagCodeHidden');
+
     var jenisOperasiSelect = document.getElementById('aiSurgJenisOperasi');
     var jenisOperasiHint = document.getElementById('aiSurgJenisOperasiHint');
     var OP_HINTS = {
@@ -218,6 +228,20 @@ include __DIR__ . '/../partials/sidebar.php';
         return null;
     }
 
+    // Kode yang tersimpan di field tersembunyi hanya valid untuk kode yang
+    // BARU SAJA berhasil di-fetch — kalau user mengetik ulang kode lain
+    // tanpa menekan "Ambil Data" lagi, jangan ikut kirim kode lama.
+    diagCodeInput.addEventListener('input', function () {
+        diagCodeHidden.value = '';
+    });
+
+    function formatUsedOnTargetWarning(data) {
+        if (!data.used_on_target) return null;
+        var who = data.used_on_target.user_name || 'pengguna lain';
+        var when = data.used_on_target.created_at ? ' pada ' + data.used_on_target.created_at : '';
+        return 'Kode referensi ini SUDAH PERNAH dipakai di halaman ini oleh ' + who + when + '. Data tetap diisi untuk ditinjau, tapi generate baru akan DITOLAK — gunakan tombol "Generate Ulang" di riwayat kalau ingin hasil baru dengan kode ini.';
+    }
+
     diagFetchBtn && diagFetchBtn.addEventListener('click', function () {
         var code = (diagCodeInput.value || '').trim();
         if (!code) {
@@ -230,7 +254,7 @@ include __DIR__ . '/../partials/sidebar.php';
         diagFetchNote.textContent = 'Mengambil data laporan diagnosis...';
         diagFetchNote.style.color = '';
 
-        fetch('ai_diagnosis_report_lookup.php?code=' + encodeURIComponent(code), {
+        fetch('ai_diagnosis_report_lookup.php?code=' + encodeURIComponent(code) + '&target=ai_surgery_plans', {
             credentials: 'same-origin',
             headers: { 'Accept': 'application/json' }
         })
@@ -259,8 +283,16 @@ include __DIR__ . '/../partials/sidebar.php';
                     jenisAnestesiSelect.value = anestesiMatch;
                 }
 
-                diagFetchNote.textContent = 'Data kasus dari laporan #' + data.report_id + ' (' + data.diagnosis_utama + ') berhasil diambil.';
-                diagFetchNote.style.color = '#059669';
+                diagCodeHidden.value = data.report_code || '';
+
+                var usedWarning = formatUsedOnTargetWarning(data);
+                if (usedWarning) {
+                    diagFetchNote.textContent = usedWarning;
+                    diagFetchNote.style.color = '#d97706';
+                } else {
+                    diagFetchNote.textContent = 'Data kasus dari laporan #' + data.report_id + ' (' + data.diagnosis_utama + ') berhasil diambil.';
+                    diagFetchNote.style.color = '#059669';
+                }
             })
             .catch(function () {
                 diagFetchBtn.disabled = false;
@@ -385,6 +417,45 @@ include __DIR__ . '/../partials/sidebar.php';
             .catch(function () {
                 showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
             });
+    });
+
+    // ===== Generate Ulang (dari riwayat, pakai ulang input + kode referensi asal) =====
+    document.querySelectorAll('.ai-surg-regenerate-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('Generate ulang rencana operasi ini? Input & kode referensi yang sama akan dipakai lagi untuk minta hasil AI yang baru.')) {
+                return;
+            }
+            btn.disabled = true;
+            resetOverlay();
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+            startCreep();
+            scheduleStages();
+
+            var fd = new FormData();
+            fd.append('csrf_token', CSRF_TOKEN);
+            fd.append('regenerate_of', btn.getAttribute('data-id'));
+
+            fetch('ai_surgery_planner_action.php', {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+            })
+                .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                .then(function (result) {
+                    btn.disabled = false;
+                    if (!result.ok || !result.data.ok || !result.data.plan_id) {
+                        showError((result.data && result.data.message) || 'Gagal generate ulang rencana operasi.');
+                        return;
+                    }
+                    finishSuccess(result.data.plan_id);
+                })
+                .catch(function () {
+                    btn.disabled = false;
+                    showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
+                });
+        });
     });
 })();
 </script>

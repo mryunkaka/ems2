@@ -28,21 +28,48 @@ if (!validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
 }
 
 $user = $_SESSION['user_rh'] ?? [];
+$effectiveUnit = ems_effective_unit($pdo, $user);
+$division = (string) ($user['division'] ?? '');
 
-$jenisOperasi = in_array($_POST['jenis_operasi'] ?? '', ['Mayor', 'Minor'], true) ? $_POST['jenis_operasi'] : 'Mayor';
-$jenisAnestesi = trim((string) ($_POST['jenis_anestesi'] ?? ''));
-$kompleksitas = in_array($_POST['kompleksitas'] ?? '', ['Mudah', 'Sedang', 'Panjang'], true) ? $_POST['kompleksitas'] : 'Sedang';
-$kasusTindakan = trim((string) ($_POST['kasus_tindakan'] ?? ''));
+// "Generate Ulang" dari riwayat: pakai ulang PERSIS input dari baris asal
+// (bukan dari form), dan lewati pengecekan kode-sudah-dipakai karena ini
+// memang sengaja generate ulang dengan kode referensi yang sama.
+$regenerateOfId = (int) ($_POST['regenerate_of'] ?? 0);
+$diagnosisCode = null;
+$isRegenerate = false;
 
-if ($jenisAnestesi === '' || $kasusTindakan === '') {
-    ems_ai_ds_surgery_json_response(['ok' => false, 'message' => 'Jenis anestesi dan kasus medis / tindakan wajib diisi.'], 422);
+if ($regenerateOfId > 0) {
+    $origStmt = $pdo->prepare("SELECT * FROM ai_surgery_plans WHERE id = ? AND unit_code = ?");
+    $origStmt->execute([$regenerateOfId, $effectiveUnit]);
+    $orig = $origStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$orig) {
+        ems_ai_ds_surgery_json_response(['ok' => false, 'message' => 'Rencana operasi asal untuk generate ulang tidak ditemukan.'], 404);
+    }
+    $jenisOperasi = (string) $orig['jenis_operasi_kategori'];
+    $jenisAnestesi = (string) $orig['jenis_anestesi_input'];
+    $kompleksitas = (string) $orig['kompleksitas'];
+    $kasusTindakan = (string) $orig['kasus_tindakan'];
+    $diagnosisCode = $orig['source_report_code'] !== null ? (string) $orig['source_report_code'] : null;
+    $isRegenerate = true;
+} else {
+    $jenisOperasi = in_array($_POST['jenis_operasi'] ?? '', ['Mayor', 'Minor'], true) ? $_POST['jenis_operasi'] : 'Mayor';
+    $jenisAnestesi = trim((string) ($_POST['jenis_anestesi'] ?? ''));
+    $kompleksitas = in_array($_POST['kompleksitas'] ?? '', ['Mudah', 'Sedang', 'Panjang'], true) ? $_POST['kompleksitas'] : 'Sedang';
+    $kasusTindakan = trim((string) ($_POST['kasus_tindakan'] ?? ''));
+    $diagnosisCodeInput = trim((string) ($_POST['diagnosis_code'] ?? ''));
+    $diagnosisCode = $diagnosisCodeInput !== '' ? $diagnosisCodeInput : null;
+
+    if ($jenisAnestesi === '' || $kasusTindakan === '') {
+        ems_ai_ds_surgery_json_response(['ok' => false, 'message' => 'Jenis anestesi dan kasus medis / tindakan wajib diisi.'], 422);
+    }
+
+    if ($diagnosisCode !== null && ems_ai_ds_report_code_used_on($pdo, 'ai_surgery_plans', $diagnosisCode, $effectiveUnit)) {
+        ems_ai_ds_surgery_json_response(['ok' => false, 'message' => 'Kode referensi ini sudah pernah dipakai di AI Surgery Planner. Gunakan tombol "Generate Ulang" pada riwayat kalau ingin membuat ulang dengan kode yang sama, atau pakai kode referensi lain.'], 409);
+    }
 }
 
 $stepCountMap = ['Mudah' => 10, 'Sedang' => 20, 'Panjang' => 30];
 $jumlahLangkah = $stepCountMap[$kompleksitas];
-
-$effectiveUnit = ems_effective_unit($pdo, $user);
-$division = (string) ($user['division'] ?? '');
 
 $systemPrompt = ems_ai_ds_build_system_prompt($pdo, 'ai_surgery_planner', ems_ai_ds_default_surgery_system_prompt());
 $template = ems_ai_get_active_prompt_template($pdo, 'ai_surgery_planner');
@@ -67,8 +94,8 @@ if (!$result['ok']) {
     $errorMessage = (string) ($result['error'] ?? 'Model AI gagal merespons. Silakan coba lagi.');
 
     $insertFail = $pdo->prepare("
-        INSERT INTO ai_surgery_plans (user_id, unit_code, division_snapshot, jenis_operasi_kategori, jenis_anestesi_input, kompleksitas, kasus_tindakan, result_json, status, error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'error', ?)
+        INSERT INTO ai_surgery_plans (user_id, unit_code, division_snapshot, jenis_operasi_kategori, jenis_anestesi_input, kompleksitas, kasus_tindakan, source_report_code, result_json, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'error', ?)
     ");
     $insertFail->execute([
         isset($user['id']) ? (int) $user['id'] : 0,
@@ -78,6 +105,7 @@ if (!$result['ok']) {
         $jenisAnestesi,
         $kompleksitas,
         $kasusTindakan,
+        $diagnosisCode,
         $errorMessage,
     ]);
 
@@ -90,8 +118,8 @@ if (isset($data['tahapan_prosedur']) && is_array($data['tahapan_prosedur'])) {
 }
 
 $insert = $pdo->prepare("
-    INSERT INTO ai_surgery_plans (user_id, unit_code, division_snapshot, jenis_operasi_kategori, jenis_anestesi_input, kompleksitas, kasus_tindakan, result_json, status, error_message)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done', NULL)
+    INSERT INTO ai_surgery_plans (user_id, unit_code, division_snapshot, jenis_operasi_kategori, jenis_anestesi_input, kompleksitas, kasus_tindakan, source_report_code, result_json, status, error_message)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'done', NULL)
 ");
 $insert->execute([
     isset($user['id']) ? (int) $user['id'] : 0,
@@ -101,6 +129,7 @@ $insert->execute([
     $jenisAnestesi,
     $kompleksitas,
     $kasusTindakan,
+    $diagnosisCode,
     json_encode($data, JSON_UNESCAPED_UNICODE),
 ]);
 

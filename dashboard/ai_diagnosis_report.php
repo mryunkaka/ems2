@@ -229,11 +229,32 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div class="card">
                     <div class="card-header">Rekomendasi Laboratorium</div>
-                    <ul class="list-disc pl-5 p-4 text-sm space-y-1">
+                    <ul class="list-disc pl-5 p-4 pb-2 text-sm space-y-1">
                         <?php foreach ((array) ($result['lab'] ?? []) as $item): ?>
                             <li><?= htmlspecialchars((string) $item, ENT_QUOTES, 'UTF-8') ?></li>
                         <?php endforeach; ?>
+                        <?php if (empty($result['lab'])): ?>
+                            <li class="text-slate-400 list-none -ml-5">Tidak ada rekomendasi laboratorium.</li>
+                        <?php endif; ?>
                     </ul>
+                    <?php
+                        $structLab = is_array($result['laboratorium_terstruktur'] ?? null) ? $result['laboratorium_terstruktur'] : null;
+                        $structLabHasDept = $structLab && trim((string) ($structLab['department'] ?? '')) !== '';
+                    ?>
+                    <?php if ($structLabHasDept): ?>
+                        <div class="mx-4 mb-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                            <div class="text-xs font-bold text-cyan-800 uppercase tracking-wide mb-1.5">Pilihan Laboratory AI</div>
+                            <div class="text-xs text-cyan-900 leading-relaxed">
+                                <?= htmlspecialchars((string) $structLab['department'], ENT_QUOTES, 'UTF-8') ?>
+                                &rsaquo; <?= htmlspecialchars((string) $structLab['category'], ENT_QUOTES, 'UTF-8') ?>
+                                <?php if (trim((string) ($structLab['level3_option'] ?? '')) !== ''): ?>
+                                    &rsaquo; <?= htmlspecialchars((string) $structLab['level3_option'], ENT_QUOTES, 'UTF-8') ?>
+                                <?php endif; ?>
+                                <br>Spesimen: <strong><?= htmlspecialchars((string) ($structLab['specimen_type'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                            </div>
+                            <p class="text-[11px] text-cyan-700 mt-1.5">Otomatis terisi kalau kode referensi laporan ini ditempel di Laboratory AI — ini dropdown yang perlu dipilih kalau isi manual.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
                 <div class="card">
                     <div class="card-header">Rekomendasi Radiologi</div>

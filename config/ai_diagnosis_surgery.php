@@ -78,6 +78,10 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
         ");
     }
 
+    if (ems_table_exists($pdo, 'ai_surgery_plans') && !ems_column_exists($pdo, 'ai_surgery_plans', 'source_report_code')) {
+        $pdo->exec("ALTER TABLE `ai_surgery_plans` ADD COLUMN `source_report_code` VARCHAR(40) NULL AFTER `kasus_tindakan`");
+    }
+
     if (!ems_table_exists($pdo, 'user_ai_settings')) {
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS `user_ai_settings` (
@@ -156,6 +160,59 @@ function ems_ai_ds_find_diagnosis_report_by_code(PDO $pdo, string $code, string 
         SELECT *
         FROM ai_diagnosis_reports
         WHERE report_code = ? AND unit_code = ? AND status = 'done'
+        LIMIT 1
+    ");
+    $stmt->execute([$code, $unitCode]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
+}
+
+/**
+ * Guard "1 kode referensi hanya boleh dipakai 1x per halaman tujuan":
+ * kode DGN- yang sudah pernah dipakai untuk generate hasil sukses di
+ * $table (AI Surgery Planner/Radiology Center/Laboratory AI/Psychiatry
+ * Center) tidak boleh dipakai LAGI di halaman yang SAMA — tapi TETAP boleh
+ * dipakai di halaman lain (setiap tabel dicek independen), dan tetap bisa
+ * dipakai ulang secara sengaja lewat alur "Generate Ulang" (yang melewati
+ * pemanggilan fungsi ini). $table selalu string literal dari kode kita
+ * sendiri (bukan input user) jadi aman diselipkan langsung ke SQL.
+ *
+ * `ai_radiology_images` punya DUA status independen (citra `status` +
+ * `report_status` bacaan teks, lihat migration 64) — kode dianggap
+ * "dipakai" kalau SALAH SATU sukses (citra ATAU bacaan berhasil dibuat),
+ * bukan cuma kalau keduanya sukses, karena keduanya sama-sama representasi
+ * nyata bahwa konteks kode itu sudah dipakai menghasilkan output di
+ * halaman ini.
+ */
+function ems_ai_ds_report_code_used_on(PDO $pdo, string $table, string $code, string $unitCode): bool
+{
+    return ems_ai_ds_report_code_usage_info($pdo, $table, $code, $unitCode) !== null;
+}
+
+/**
+ * Sama seperti ems_ai_ds_report_code_used_on(), tapi mengembalikan detail
+ * siapa & kapan kode itu dipakai pertama kali di halaman ($table) ini —
+ * dipakai supaya "Ambil Data" di form bisa langsung memberi tahu user SAAT
+ * fetch (bukan baru ketahuan belakangan pas submit ditolak 409).
+ */
+function ems_ai_ds_report_code_usage_info(PDO $pdo, string $table, string $code, string $unitCode): ?array
+{
+    $code = trim($code);
+    if ($code === '' || !ems_column_exists($pdo, $table, 'source_report_code')) {
+        return null;
+    }
+
+    $statusCondition = ($table === 'ai_radiology_images' && ems_column_exists($pdo, $table, 'report_status'))
+        ? "(t.status = 'done' OR t.report_status = 'done')"
+        : "t.status = 'done'";
+
+    $stmt = $pdo->prepare("
+        SELECT t.created_at, u.full_name AS user_name
+        FROM `{$table}` t
+        LEFT JOIN user_rh u ON u.id = t.user_id
+        WHERE t.source_report_code = ? AND t.unit_code = ? AND {$statusCondition}
+        ORDER BY t.id ASC
         LIMIT 1
     ");
     $stmt->execute([$code, $unitCode]);
@@ -257,6 +314,7 @@ function ems_ai_ds_default_diagnosis_system_prompt(): string
         . "11. Tentukan \"jenis_operasi\" dan \"jenis_anestesi\" berdasarkan referensi klasifikasi operasi - sebutkan klasifikasi (Minor/Mayor) DAN nama tindakan spesifik, atau \"Tidak diperlukan operasi...\" bila tak perlu.\n"
         . "12. Isi \"kasus_tindakan\" dengan ringkasan padat 1-2 kalimat yang WAJIB menyebutkan nama tindakan/operasi spesifik, selaras dengan \"jenis_operasi\" — kalimat ini akan di-copy-paste APA ADANYA oleh dokter ke form AI Surgery Planner sebagai input \"Kasus Medis / Tindakan yang Diperlukan\", jadi harus berdiri sendiri sebagai konteks lengkap (jangan menyingkat/mengasumsikan pembaca sudah tahu anamnesis awal).\n"
         . "13. \"radiologi\" (array teks bebas untuk dibaca manusia) TETAP wajib diisi. TAMBAHAN WAJIB: \"radiologi_terstruktur\" adalah SATU object berisi rekomendasi pencitraan PALING prioritas/relevan, dan nilai \"modality\", \"category\", \"body_region\", \"projection\" WAJIB berupa STRING TUNGGAL (bukan array/list) dipilih PERSIS (karakter identik, jangan parafrase/terjemahkan) dari salah satu baris di REFERENSI KATALOG RADIOLOGI di bawah — setiap baris referensi berformat \"Modality > Category > Body Region > [opsi1, opsi2, ...]\", dan \"projection\" HARUS diisi HANYA SATU dari opsi di dalam kurung siku itu (pilih yang paling relevan secara klinis), JANGAN menyalin seluruh isi kurung siku sebagai list. JANGAN mengarang kombinasi yang tidak ada di daftar itu. Field \"clinical_finding\" pada object yang sama WAJIB dipilih persis dari REFERENSI TEMUAN KLINIS. Jika pasien sama sekali tidak butuh pencitraan, isi seluruh 4 field modality/category/body_region/projection dengan string kosong \"\" dan clinical_finding tetap diisi sewajarnya.\n"
+        . "13a. \"lab\" (array teks bebas untuk dibaca manusia) TETAP wajib diisi. TAMBAHAN WAJIB: \"laboratorium_terstruktur\" adalah SATU object berisi rekomendasi pemeriksaan laboratorium PALING prioritas/relevan, dan nilai \"department\", \"category\", \"level3_option\", \"specimen_type\" WAJIB berupa STRING TUNGGAL (bukan array/list) dipilih PERSIS (karakter identik, jangan parafrase/terjemahkan) dari salah satu baris di REFERENSI KATALOG LABORATORIUM di bawah — setiap baris referensi berformat \"Department > Category > [opsi level3 kalau ada] > Spesimen: [opsi1, opsi2, ...]\". Kalau kategori itu tidak punya opsi level3 di referensi, isi \"level3_option\" dengan string kosong \"\". \"specimen_type\" HARUS diisi HANYA SATU dari daftar Spesimen pada baris yang sama. JANGAN mengarang kombinasi yang tidak ada di daftar itu. Jika pasien sama sekali tidak butuh pemeriksaan laboratorium, isi seluruh 4 field dengan string kosong \"\".\n"
         . "14. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n"
         . "15. Field JSON WAJIB PERSIS memakai nama key seperti di Struktur JSON di bawah — JANGAN salah ketik/singkat nama key (contoh kesalahan yang PERNAH terjadi dan DILARANG diulang: menulis \"rolepy_note\" alih-alih \"roleplay_note\"). Cek ulang ejaan setiap nama key sebelum membalas.\n"
         . "16. \"anamnesis_lengkap\" WAJIB diisi: tulis ULANG anamnesis asli dari user (sepadat/setidak-lengkap apa pun) menjadi 1 paragraf narasi klinis yang UTUH dan LENGKAP — pertahankan SEMUA fakta yang eksplisit disebutkan user, lalu lengkapi bagian yang tidak disebutkan (mekanisme cedera, lokasi spesifik, kondisi saat tiba, dll) dengan asumsi definitif yang KONSISTEN dengan seluruh field lain (status/gcs/ttv/diagnosis_utama) — JANGAN kontradiksi. Kalau anamnesis asli user SUDAH lengkap, cukup rapikan bahasanya tanpa mengubah substansi.\n\n"
@@ -272,6 +330,7 @@ function ems_ai_ds_default_diagnosis_system_prompt(): string
         . "  \"gcs\": \"contoh: E4V5M6 (15) - Compos Mentis\",\n"
         . "  \"ttv\": [{\"label\": \"Tekanan Darah\", \"value\": \"angka konkret\", \"note\": \"interpretasi\"}, {\"label\": \"Nadi / HR\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Suhu\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Respirasi / RR\", \"value\": \"...\", \"note\": \"...\"}],\n"
         . "  \"lab\": [\"pemeriksaan lab 1\"],\n"
+        . "  \"laboratorium_terstruktur\": {\"department\": \"contoh: Hematologi\", \"category\": \"contoh: Complete Blood Count (CBC)\", \"level3_option\": \"contoh: Semua Parameter (Default) (string kosong kalau kategori tidak punya opsi level3)\", \"specimen_type\": \"contoh: Whole Blood EDTA (HANYA SATU string, bukan list semua opsi)\"},\n"
         . "  \"radiologi\": [\"rekomendasi radiologi 1 (teks bebas untuk dibaca manusia)\"],\n"
         . "  \"radiologi_terstruktur\": {\"modality\": \"contoh: X-Ray\", \"category\": \"contoh: Upper Extremity\", \"body_region\": \"contoh: Wrist\", \"projection\": \"contoh: PA (HANYA SATU string, bukan list semua opsi)\", \"clinical_finding\": \"persis dari daftar temuan klinis\"},\n"
         . "  \"emergency\": [{\"pelaku\": \"DPJP\", \"instruksi\": \"\", \"aksi\": \"...\", \"hasil\": \"...\", \"animasi\": \"...\"}, {\"pelaku\": \"Asisten 1\", \"instruksi\": \"DPJP: tolong siapkan set jahit.\\nAsisten 1: Baik, dok.\", \"aksi\": \"...\", \"hasil\": \"...\", \"animasi\": \"...\"}],\n"

@@ -1351,6 +1351,12 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         'radiology_center.php',
         'radiology_center_action.php',
         'radiology_report.php',
+        'laboratory_ai.php',
+        'laboratory_ai_action.php',
+        'laboratory_ai_report.php',
+        'psychiatry_center.php',
+        'psychiatry_center_action.php',
+        'psychiatry_report.php',
     ];
     if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
         return;

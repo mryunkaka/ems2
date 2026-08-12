@@ -850,6 +850,499 @@ recovery mechanism**, not a one-off patch:
   hardening working as intended, with the recovery function remaining as
   the safety net for whenever it doesn't).
 
+**Laboratory AI (added 2026-08-12)** — `dashboard/laboratory_ai.php`
++`_action.php`+`laboratory_ai_report.php`: fourth module of the "Roxwood
+Hospital AI" suite, built from a user-supplied reference HTML
+("Roxwood Hospital Integrated Medical Systems" portal — Surgery/Diagnosis
+and Radiology already existed here in equivalent form, Psychiatry in the
+reference is an unbuilt placeholder, out of scope). Generates a full
+laboratory result set (parameter/value/unit/reference range/flag) +
+interpretation, exactly the text/JSON pattern of AI Diagnosis/Surgery —
+**not** the image-generation pattern of Radiology Center, so it does
+**not** touch Cloudflare/`ems_ai_radiology_generate_image()` at all; it
+calls `ems_ai_ds_call_gemini()` directly (same per-user `user_ai_settings`
+key as Diagnosis/Surgery/Radiology text calls).
+- **`config/ai_laboratory.php`**: `ems_ai_laboratory_ensure_tables()`
+  (guards `ai_laboratory_results`, migration
+  `docs/sql/63_2026-08-12_ai_laboratory_center.sql`) +
+  `ems_ai_laboratory_catalog()` — a hand-transcribed PHP array of the
+  reference's `dbHierarchy`, **13 departments** (Hematologi, Kimia Klinik,
+  Urinalisis, Imunologi & Serologi, Mikrobiologi, Patologi Anatomi,
+  Patologi Klinik, Toksikologi, Bank Darah, Koagulasi, Molekuler (PCR),
+  Parasitologi, Analisis Feses), each with a department-level default
+  specimen list plus per-category overrides (e.g. Toksikologi has no
+  department-level specimens at all — every category defines its own).
+  Categories are either `type: 'none'` (no further choice) or
+  `type: 'select'` (a Level-3 dropdown of specific options). A **separate**
+  `ems_ai_laboratory_custom_trigger_options()` map (not just "category has
+  a `custom` list") gates when a custom-parameter checkbox grid actually
+  appears — only 4 exact category+Level-3-option combinations trigger it
+  (CBC+"Custom Parameter", Urinalisis Lengkap+"Kimia", Drug Screening
+  Urine+"Custom", Drug Screening (Toksikologi)+"Custom") — matching the
+  reference's conditional-visibility logic exactly rather than showing the
+  checklist any time a `custom` array happens to exist on a category.
+- **Deliberately does NOT use `ems_ai_ds_build_system_prompt()`** (the
+  Diagnosis/Surgery shared wrapper) — that function unconditionally
+  appends animation-mantra/role-authority/operation-classification
+  reference text via `ems_ai_ds_reference_suffix()`, all of which is
+  emergency-roleplay-specific and irrelevant to a lab report. Laboratory
+  AI has its own standalone `ems_ai_laboratory_default_system_prompt()`
+  (Kepala Laboratorium Sp.PK persona) instead, but still reuses
+  `featureKey: 'ai_laboratory'` when calling `ems_ai_ds_call_gemini()` so
+  requests land in the same `system_ai_request_logs` table as every other
+  personal-key feature.
+- **Flag sanitization**: `ems_ai_laboratory_sanitize_result()` normalizes
+  every result row's `flag` to exactly `Normal`/`High`/`Low` (case/wording
+  variations like "Tinggi"/"H" are coerced) before storage — the UI's
+  color-coded badges (`laboratory_ai_report.php`) trust this invariant
+  rather than re-parsing free text.
+- **Report-code chaining reuses the Diagnosis endpoint unchanged**: the
+  "Ambil dari Laporan Diagnosis" card on `laboratory_ai.php` calls the
+  existing `ai_diagnosis_report_lookup.php` (no new endpoint needed) and
+  fills Patient Name/DOB/Citizen ID + a combined Diagnosis+Anamnesis block
+  into Clinical Info — same pattern as Radiology Center's auto-fill, minus
+  the 4-level cascade (Laboratory's own department→category→Level3→
+  specimen cascade is separate client-side JS, driven by the catalog JSON
+  embedded in the page, structurally mirroring but not sharing code with
+  Radiology Center's `applyCascadeSelection()`).
+- **Report code prefix `LAB-`** (`ems_ai_laboratory_generate_report_code()`,
+  format `LAB-YYYYMMDD-HHMMSS-XXXX`), separate column/table from
+  `ai_diagnosis_reports.report_code` (`DGN-` prefix) — no cross-feature
+  uniqueness constraint needed since they're different tables.
+- **Print/PDF**: same client-side-only pattern as the reference — a hidden
+  `#aiLabPrintTemplate` block is cloned into a new `window.open()` document
+  and `window.print()` is called; no server-side PDF generation, no
+  `spipu/html2pdf` involvement (that library is used elsewhere in the app
+  for different documents, not here).
+- Registered in `config/helpers.php`'s `$roxwoodHospitalAiPages` exception
+  array (all 3 filenames — accessible to every logged-in user regardless
+  of division, same as the rest of the suite) and in `partials/sidebar.php`'s
+  "Roxwood Hospital AI" group (`beaker` icon).
+- Verified against the real local dev DB and a real Gemini call (per-user
+  key, `gemini-3.5-flash-lite` via `ems_ai_ds_call_gemini()`'s default):
+  table creation, a full CBC/Custom-Parameter request with a real anemia
+  clinical scenario (all 9 requested parameters present, clinically
+  coherent Low/Normal/High flags, correct "Anemia mikrositik hipokromik
+  suspek Anemia Defisiensi Besi" impression), report-code round trip, and
+  cleanup — plus static validation of all 13 departments'
+  category/specimen/Level-3-option resolution and the 4 custom-parameter
+  trigger combinations. HTTP-level (logged-in browser) verification was
+  **not** performed this session — the only account with a working
+  personal Gemini key on this local DB ("Programmer Roxwood") had an
+  active real session at the time, and this app's single-device-login
+  behavior would have force-logged the real user out to test via curl, so
+  that was deliberately skipped in favor of the CLI-level DB+Gemini
+  verification above. A future session should still click through the
+  actual page once a safe opportunity exists.
+
+**Diagnosis → Laboratory case-chaining, mirroring the existing Radiology
+chaining (added 2026-08-12, same day, user-reported gap)**: user pointed out
+that "Rekomendasi Laboratorium" on `ai_diagnosis_report.php` was free text
+only — no guidance on which Department/Category/Level3/Specimen to actually
+pick on `laboratory_ai.php` when filling it in manually. Fixed by giving
+Laboratory AI the exact same structured-recommendation treatment Radiology
+Center already had:
+- New required JSON field `laboratorium_terstruktur` (rule 13a in
+  `ems_ai_ds_default_diagnosis_system_prompt()`) — one object
+  `{department, category, level3_option, specimen_type}` the model must pick
+  **verbatim** from a reference block appended to the system prompt in
+  `ai_diagnosis_assistant_action.php`: `ems_ai_laboratory_catalog_reference_text()`
+  (new function in `config/ai_laboratory.php`, renders the entire Laboratory
+  AI catalog as `Department > Category > [level3 options] > Spesimen: [...]`
+  lines, same rendering pattern as `ems_ai_radiology_catalog_reference_text()`).
+  `level3_option` is an empty string when the category has no Level-3 choice
+  (`type: 'none'`) — mirrors how radiology's `body_region`/`projection` are
+  always required but laboratory's schema is one level shallower for `type:
+  'none'` categories.
+- **Server-side sanitization is mandatory**, same invariant as radiology:
+  `ems_ai_ds_sanitize_structured_laboratory()` (new function alongside the
+  existing `ems_ai_ds_sanitize_structured_radiology()` in
+  `ai_diagnosis_assistant_action.php`) re-validates against the real catalog
+  (`ems_ai_laboratory_is_valid_selection()` etc.) before storage — an
+  invalid/hallucinated combination is stored as `null`, never as unvalidated
+  data. "Patient needs no lab work" is a distinct valid state (all 3 fields
+  empty string → stored as `null`), same as radiology's "no imaging needed."
+- `ai_diagnosis_report.php`'s "Rekomendasi Laboratorium" card gained the same
+  cyan "Pilihan Laboratory AI" info box radiology already had under
+  "Rekomendasi Radiologi" — shows `Department › Category › [Level3]` +
+  Spesimen, with a note that filling the report's code into Laboratory AI
+  auto-fills this, or that it's what to pick manually otherwise.
+- `ai_diagnosis_report_lookup.php` now also returns `laboratorium_terstruktur`
+  (null-safe, same empty-department-means-null check as the radiology field).
+- `laboratory_ai.php`'s "Ambil dari Laporan Diagnosis" auto-fill JS gained
+  `applyLabCascadeSelection(department, category, level3Option, specimen)`,
+  structurally mirroring Radiology Center's `applyCascadeSelection()` — walks
+  the same client-side cascade a manual user would trigger (populate
+  Category options from Department, populate/show Level3 from Category,
+  trigger the custom-parameter-checkbox visibility check, then populate
+  Specimen), so a report with a valid structured recommendation lands with
+  all fields correctly pre-selected (not just values silently set on
+  disabled/empty selects) and the custom-parameter checklist correctly
+  shown/hidden if the auto-filled category+level3 combo happens to be one of
+  the 4 trigger combinations. Degrades gracefully per-field like radiology's
+  equivalent: a report with no structured lab data (predates this feature,
+  or the model's pick failed sanitization) still fills patient identity +
+  clinical info and tells the user to pick manually.
+- Verified against the real Gemini API (correct PHP 8.4.22 binary) with a
+  real dengue-fever case (demam tinggi, nyeri sendi, bintik merah kulit):
+  model correctly picked `Imunologi & Serologi > Demam > Dengue NS1 > Serum`
+  — a real, valid path in the Laboratory AI catalog — which passed
+  server-side sanitization untouched and matches the free-text `lab`
+  recommendations ("NS1 Antigen Dengue") it generated in the same response.
+
+**Real bug found and fixed the same day it shipped (2026-08-12,
+user-reported)**: first real click-through of `laboratory_ai.php` failed
+with a generic "Gagal" after the AI call had actually already succeeded
+(confirmed via `system_ai_request_logs`: `http_status=200`,
+`success_flag=1`, a fully valid JSON result) — the failure was downstream,
+in `laboratory_ai_action.php`'s own success-path `INSERT`. Root cause: the
+`INSERT INTO ai_laboratory_results (... 17 columns ...)` had a `VALUES (...)`
+clause with only 14 `?` placeholders (plus the two literals `'done'`/`NULL`
+for `status`/`error_message`) — one short of the 15 placeholders actually
+needed for the other 15 non-literal columns — while the PHP `execute([...])`
+array correctly passed all 15 values. PDO threw `PDOException: SQLSTATE
+[HY093]: Invalid parameter number: number of bound variables does not match
+number of tokens`, visible in nginx's error log
+(`nginx-1.28.3/logs/error.log`) but invisible to the user beyond the generic
+overlay error, since the fatal error broke the JSON response entirely (JS
+`fetch().then(res => res.json())` rejected, falling into the generic
+"Tidak dapat menghubungi server" catch-all message rather than showing the
+real cause). Fixed by adding the missing `?` for `result_json`. **Debugging
+pattern worth remembering**: when a Laboratory/Diagnosis/Surgery/Radiology
+AI page shows a generic "Gagal" with no specific message, check
+`system_ai_request_logs` first to see whether the Gemini call itself
+actually succeeded — if it did, the bug is downstream in this codebase's own
+post-response handling (JSON parsing, sanitization, or the `INSERT`), not in
+prompt/model/API-key territory, and nginx's `error.log` will usually have
+the real PHP fatal-error stack trace even though the browser only shows a
+generic message. Verified fixed by replicating the exact same `INSERT` with
+the corrected placeholder count against the real local dev DB (Kimia Klinik
+> Fungsi Ginjal > Kreatinin > Urine 24 Jam, matching the real case that
+originally failed) — insert succeeded, `result_json` persisted correctly,
+row cleaned up after.
+
+**Radiology formal text report added (2026-08-12/13, user-reported gap:
+"buat dokumen Radiology seperti yang saya lampirkan")**: Radiology Center
+previously only produced the generated scan image (with a 4-corner text
+overlay) — no accompanying formal radiologist reading, unlike a real
+hospital workflow (or the user's reference tool, which generates a
+`TECHNIQUE`/`FINDINGS`/`IMPRESSION`/`RECOMMENDATION` text report alongside
+the image via a separate AI call). Added that missing text-report half:
+- Migration `docs/sql/64_2026-08-13_ai_radiology_report_columns.sql` adds 6
+  nullable columns to `ai_radiology_images`: `report_findings`,
+  `report_diagnosis`, `report_recommendations`, `report_text`,
+  `report_status` (`done`/`error`, separate from the existing image
+  `status`), `report_error_message` — guarded in
+  `ems_ai_radiology_ensure_tables()` with the standard
+  `ems_column_exists()` check, same defensive pattern as every other
+  incremental-column addition in this codebase.
+- **New functions in `config/ai_radiology.php`**:
+  `ems_ai_radiology_default_report_system_prompt()` (Sp.Rad persona,
+  requires the JSON response's `report_text` to contain the 4 section
+  headers verbatim, each on its own line, in order),
+  `ems_ai_radiology_build_report_user_prompt()`,
+  `ems_ai_radiology_sanitize_report()` (coerces `findings`/`recommendations`
+  to string arrays defensively, in case the model returns a bare string
+  instead), and `ems_ai_radiology_generate_report()` — the orchestrator,
+  which calls `ems_ai_ds_call_gemini()` (the same shared text/JSON caller
+  Diagnosis/Surgery/Laboratory use, `featureKey: 'ai_radiology_report'`) —
+  **not** the image-generation path at all, so the text report is
+  completely independent of Gemini image quota / Cloudflare status.
+- **`radiology_center_action.php` generates both independently and never
+  lets one failure silently discard the other**: report generation (2
+  retries) always runs, then image generation (2 retries) always runs,
+  regardless of whether the other succeeded. The row is inserted with
+  whatever combination of `status`/`report_status` actually resulted. The
+  HTTP response is only `ok: false` (hard failure, nothing shown to the
+  user) if **both** failed — if either the image or the report succeeded,
+  the response is `ok: true` with the row's `image_id` so the frontend JS
+  (which already just checks `ok` + `image_id`, unchanged) redirects to
+  `radiology_report.php`, which independently shows an error alert for
+  whichever half failed and the successful content for whichever
+  succeeded. Before this fix, an image failure would discard an already-
+  successful text report with a generic "Gagal" and nothing saved-and-
+  shown to the user; verified this doesn't regress the original
+  both-succeed and both-fail paths.
+- **`radiology_report.php`** gained a "Bacaan Radiologi (Sp.Rad)" card
+  (Findings bullet list / Impression / Recommendations bullet list, plus
+  the full `report_text` rendered with its 4 section headers
+  syntax-highlighted) and a **Print / Save PDF** button — same
+  client-side-only pattern Laboratory AI already established (hidden
+  `#radPrintTemplate` block cloned into a `window.open()` document,
+  `window.print()` called after a short delay; no server-side PDF
+  generation), formatted to match the reference's own radiology report
+  layout (PATIENT block, EXAMINATION block, monospace report body,
+  doctor-signature block, "ROXWOOD HOSPITAL / DEPARTMENT OF RADIOLOGY"
+  header).
+- Verified against the real local dev DB and real APIs (correct PHP
+  8.4.22 binary): the 6 new columns migrate cleanly via
+  `ems_ai_radiology_ensure_tables()`; a real Gemini text-report call for a
+  wrist-fracture case produced a clinically coherent Colles-fracture
+  reading with all 4 section headers present verbatim on their own lines;
+  a **combined** run (real text report + real Cloudflare image generation
+  together, Cloudflare currently enabled and working) succeeded end-to-end
+  — both halves generated, both stored in one row, image file saved and
+  passed the same `secure_file.php` path-authorization check used in
+  production, row and file cleaned up after.
+
+**"Simulasi" wording removed from user-visible copy (same request,
+2026-08-12/13)**: user asked that generated documents "feel real" rather
+than being undercut by simulation caveats. Removed the word "simulasi"
+from 3 places that were visible to the user reading the page/printed
+document (not from internal AI system-prompt scaffolding, which already
+doesn't leak the word into generated output — confirmed empirically, see
+above): `radiology_center.php`'s page subtitle, `laboratory_ai.php`'s page
+subtitle, and `laboratory_ai_report.php`'s printed-report header subtitle
+("— Simulasi Roleplay" suffix dropped entirely, matching how the printed
+Laboratory report and the new Radiology report both otherwise read as
+plain professional hospital documents). Deliberately left the internal
+system-prompt phrase "untuk simulasi/roleplay EMS" (in
+`ems_ai_ds_default_diagnosis_system_prompt()`,
+`ems_ai_ds_default_surgery_system_prompt()`, and
+`ems_ai_laboratory_default_system_prompt()`) and the image-generation
+prompt's "this image is fictional, generated purely for a roleplay medical
+training simulation" line (`ems_ai_radiology_build_prompt()`) untouched —
+those are backend instructions to the AI model, never rendered to a user,
+and the image-generation one specifically exists to keep the model willing
+to generate identifiable-looking medical imagery / avoid real-patient
+safety-policy refusals; changing that wording risks regressing a
+already-fragile, multiple-times-debugged feature (quota/mime/prompt-length
+bugs, see above) for a change with zero user-visible effect.
+
+**Psychiatry Center (added 2026-08-13)** — `dashboard/psychiatry_center.php`
++`_action.php`+`psychiatry_report.php`: fifth module of the "Roxwood
+Hospital AI" suite, built from a user-supplied reference HTML
+("Roxwood Hospital Psychiatry CDSS" — a standalone single-page reference
+tool distinct from the earlier "Integrated Medical Systems" portal
+reference that Laboratory AI was built from; Surgery/Diagnosis/Radiology/
+Laboratory already existed here in equivalent form). Structurally the most
+different module in the suite: **multi-turn AI-led clinical interview**
+(the AI asks up to 4 sequential questions, updating a probability-ranked
+differential diagnosis after each answer) that culminates in a formal
+DSM-5/ICD-10 psychiatric assessment — every other AI module in this suite
+is single-shot (one form submit → one generation).
+- **`config/ai_psychiatry.php`**: three independent prompt/sanitize/call
+  pairs for the three interview stages — `ems_ai_psychiatry_generate_start()`
+  (initial clinical impressions + first question, from chief complaint +
+  anamnesis only), `ems_ai_psychiatry_generate_next()` (updated impressions
+  + next question, from the full dialog transcript so far), and
+  `ems_ai_psychiatry_generate_final()` (full structured report: MSE across
+  all 12 standard parameters, DSM-5/ICD-10 diagnosis + differential, risk
+  assessment, treatment plan, medications, clinical summary). All three
+  reuse `ems_ai_ds_call_gemini()` (same per-user key as every other text/
+  JSON module) with distinct `featureKey`s (`ai_psychiatry_start`/`_next`/
+  `_final`) for `system_ai_request_logs` auditing.
+- **Multi-turn state lives in client-side JS, not a server session table**
+  (deliberate architecture choice, mirroring the reference tool's own
+  design): `psychiatry_center.php` keeps a `chatHistory` array
+  (`{role: 'ai'|'user', text}`) in memory across the 4 interview turns and
+  re-sends the whole thing as a JSON string (`chat_history` POST field) on
+  every `next`/`finalize` call — the server is fully stateless per-request
+  and re-derives the dialog transcript text via
+  `ems_ai_psychiatry_render_dialog_context()` rather than trusting a
+  client-formatted string. This avoids needing an interview-session DB
+  table entirely.
+- **Only a *finalized* assessment is ever persisted** — `start` and `next`
+  never write to `ai_psychiatry_assessments`. An abandoned/incomplete
+  interview (user navigates away mid-wawancara) leaves no trace in the
+  history table, which is intentional: there is no coherent report to show
+  for a half-finished interview, unlike the other single-shot modules
+  where every attempt (success or failure) gets a history row. `finalize`
+  itself DOES insert a row in both the success and failure case (matching
+  the other modules' convention at that one point), storing the full
+  `chat_transcript` (JSON) alongside `result_json` so the report page can
+  show the interview transcript that led to the diagnosis.
+- **Report code prefix `PSY-`** (`ems_ai_psychiatry_generate_report_code()`,
+  format `PSY-YYYYMMDD-HHMMSS-XXXX`) — own table/column, no cross-feature
+  uniqueness constraint needed.
+- **Enum normalization for risk fields**: the final-report schema requires
+  `risk_assessment.severity` to be exactly one of `Ringan`/`Sedang`/`Berat`
+  and `suicide_risk`/`violence_risk`/`self_harm_risk` to be exactly one of
+  `Rendah`/`Sedang`/`Tinggi` (Indonesian words chosen over the reference's
+  English Low/Moderate/High, consistent with this module's fully-Indonesian
+  UI) — `ems_ai_psychiatry_normalize_enum()` coerces any model variance
+  (English words, different casing, synonyms) into the canonical value
+  before storage, same defensive spirit as Laboratory AI's flag
+  normalizer. `psychiatry_report.php` uses the canonical value directly to
+  pick a colored risk dot (green/amber/red) — no need to re-parse free text.
+- **Report-code chaining reuses the Diagnosis endpoint unchanged**: the
+  "Ambil dari Laporan Diagnosis" card on `psychiatry_center.php` calls the
+  existing `ai_diagnosis_report_lookup.php` (no new endpoint) and fills
+  Patient Name/DOB/Citizen ID + Chief Complaint/Anamnesis — same card
+  markup/JS pattern as Laboratory AI and Radiology Center (light-blue
+  `card-section` before the form, `arrow-path` icon, single always-visible
+  `<p>` status note) after that pattern was standardized across all three
+  pages on 2026-08-13 (see below).
+- **Print/PDF**: same client-side-only pattern as every other module in
+  the suite — hidden `#psyPrintTemplate` block cloned into a
+  `window.open()` document, `window.print()` called after a short delay.
+- Registered in `config/helpers.php`'s `$roxwoodHospitalAiPages` exception
+  array (all 3 filenames) and in `partials/sidebar.php`'s "Roxwood
+  Hospital AI" group (`chat-bubble-left-right` icon).
+- Verified against the real local dev DB and a real multi-call Gemini
+  sequence (per-user key, 5 total calls: 1 start + 3 next + 1 finalize) for
+  a realistic major-depressive-episode case: clinical impressions
+  correctly converged toward "Major Depressive Episode" as simulated
+  patient answers accumulated across turns, final report produced a
+  complete 12-parameter MSE, a coherent DSM-5/ICD-10 diagnosis (F32.1) with
+  differential, correctly-enumerated risk assessment, a clinically sound
+  treatment plan, and an appropriate SSRI medication recommendation with a
+  suicide-risk monitoring note — full DB insert → report_code lookup →
+  round-trip verified, test row cleaned up after.
+
+**"Ambil dari Laporan Diagnosis" card standardized across all 3 pages that
+have it (2026-08-13, user-reported inconsistency)**: when Laboratory AI was
+first built, its version of this auto-fill card was accidentally
+implemented with different markup/styling than the two earlier pages that
+already had it (`radiology_center.php`, `ai_surgery_planner.php`) — nested
+inside the `<form>` as its own mini `card` with a grey background and a
+`magnifying-glass` icon button, versus the established pattern of a
+`card-section` with a light-blue (`#f0f9ff`) background sitting *before*
+the `<form>` tag (a sibling section inside the outer card, not nested), an
+`arrow-path` icon button, and a status message rendered into an
+always-present `<p class="page-subtitle">` (color toggled via JS) rather
+than a hidden/unhidden `<div>`. Fixed by rewriting Laboratory AI's card to
+match exactly (`laboratory_ai.php`'s `aiLabLookupMsg` div replaced with an
+`aiLabLookupNote` paragraph, JS updated to match `radiology_center.php`'s
+`showLookupMsg()`/event-listener style). Psychiatry Center's card was
+built directly against this now-standardized pattern from the start, so
+all three (soon four) pages with this feature share identical markup/CSS/
+JS structure — **if a future module needs this same auto-fill card, copy
+it from `radiology_center.php` or `psychiatry_center.php`, not from memory.**
+
+**Report-code reuse guard: "1 kode referensi = 1x pakai per halaman"
+(added 2026-08-13, user-requested)**: previously a `DGN-` diagnosis report
+code could be pasted into "Ambil dari Laporan Diagnosis" and submitted
+repeatedly on the same page with no limit — user asked that each code only
+be consumable **once per destination page**, while remaining freely usable
+across *different* pages (a code used on AI Surgery Planner can still be
+used once on Radiology Center, Laboratory AI, and Psychiatry Center — the
+restriction is per-table, not global), plus a "Generate Ulang" (regenerate)
+escape hatch in each page's history list for when a result quality is bad
+and the user wants another AI attempt with the identical inputs+code.
+- Migration `docs/sql/66_2026-08-13_ai_report_code_reuse_guard.sql` adds a
+  nullable `source_report_code` VARCHAR(40) column to all 4 consumer
+  tables (`ai_surgery_plans`, `ai_radiology_images`,
+  `ai_laboratory_results`, `ai_psychiatry_assessments`) — chosen over a
+  separate relation/usage table so "has this code been used on this page"
+  is a single indexed query against the table itself, no JOIN needed.
+  **Runtime guard**: each table's own `ensure_tables()` function
+  (`ai_diagnosis_surgery.php` for `ai_surgery_plans`, `ai_radiology.php`,
+  `ai_laboratory.php`, `ai_psychiatry.php` respectively) ALSO adds the
+  column defensively via `ems_column_exists()` — **a real bug was caught
+  here during testing**: the first pass only added this runtime guard to
+  `ai_surgery_plans` and relied on the standalone migration file alone for
+  the other 3 tables, forgetting that this codebase's convention (§12)
+  requires BOTH a migration file AND a defensive runtime
+  `ems_column_exists()` guard for every new column — the 3 missing guards
+  were caught immediately by the end-to-end test (real `PDOException:
+  Unknown column` on a live INSERT) and fixed before considering the
+  feature done.
+- **Shared guard function** `ems_ai_ds_report_code_used_on(PDO $pdo,
+  string $table, string $code, string $unitCode): bool` in
+  `config/ai_diagnosis_surgery.php` — `$table` is always a hardcoded
+  string literal from our own code (never user input), so it's safely
+  interpolated into the query. Checks `source_report_code = ? AND
+  unit_code = ? AND status = 'done'` — **except for
+  `ai_radiology_images`**, which has two independent success states
+  (image `status` + text-report `report_status`, see the Radiology text-
+  report feature above); there the condition is `(status = 'done' OR
+  report_status = 'done')` since either half succeeding represents real
+  consumption of that code's clinical context on that page. **This
+  asymmetry was also caught by the end-to-end test** (a first pass that
+  checked only `status = 'done'` incorrectly reported a code as "unused"
+  on Radiology after a report-only success with a deliberately-failed
+  image, which would have let the same code silently bypass the guard).
+- **Each of the 4 `_action.php` scripts follows the identical pattern**:
+  read `regenerate_of` (an existing row ID) before anything else — if
+  present, load that row's ORIGINAL stored inputs from the DB (never trust
+  resubmitted form fields for a regenerate; Psychiatry's regenerate in
+  particular re-derives the dialog transcript from the row's own
+  `chat_transcript` JSON rather than re-running the multi-turn interview),
+  force the action to proceed, and skip the reuse check entirely — this
+  is what makes "Generate Ulang" work even though the code is already
+  "used". Otherwise (a genuine fresh submission), read `diagnosis_code`
+  from a hidden form field and reject with **HTTP 409** + a message
+  pointing at the "Generate Ulang" button if
+  `ems_ai_ds_report_code_used_on()` returns true. On success (fresh or
+  regenerate), `source_report_code` is stored on the new row either way —
+  regenerating deliberately creates a **new** row rather than overwriting
+  the old one, so history keeps every attempt.
+- **Frontend wiring, standardized across all 4 pages**: the existing
+  "Ambil dari Laporan Diagnosis" code input already present on each page
+  gained a same-named-pattern hidden field (`aiSurgDiagCodeHidden` /
+  `radDiagCodeHidden` / `aiLabDiagCodeHidden` / `psyDiagCodeHidden`) that's
+  populated with `data.report_code` from the lookup response on success,
+  and explicitly cleared by an `input` listener on the visible code field
+  (typing a different code without re-fetching must not silently keep
+  associating the OLD code with the next submission). Each history table
+  gained a **"Generate Ulang"** button (`arrow-path` icon, same as the
+  lookup button), shown only on rows where `source_report_code` is
+  non-null, POSTing `regenerate_of=<id>` + reusing each page's existing
+  progress-overlay JS (`resetOverlay`/`showError`/`finishSuccess` on the 3
+  form-based pages; `showOverlay`/`hideOverlay`/`overlayError` on
+  Psychiatry Center, which has no single `<form>` to begin with). A
+  `confirm()` dialog gates the action since it consumes an AI call.
+  Psychiatry Center's "Generate Ulang" is notably **not** a full interview
+  redo — it calls `action=finalize&regenerate_of=<id>` directly (no
+  `start`/`next` round trip), re-running only the final structured-report
+  generation against the already-completed transcript, matching the
+  user's framing that regenerate exists for "the result wasn't good", not
+  "the interview needs to happen again".
+- Verified end-to-end against the real local dev DB and repeated real
+  Gemini calls: a code freshly used on AI Surgery Planner correctly reads
+  as "used" only on `ai_surgery_plans` and remains free on the other 3
+  tables (cross-page independence confirmed positively, not just assumed);
+  the same code was then successfully consumed once each on Radiology
+  Center (report-only), Laboratory AI, and Psychiatry Center
+  (finalize-only), confirming all 4 tables end up correctly marked;
+  "Generate Ulang" was proven to bypass the guard by creating a genuine
+  second `ai_surgery_plans` row with the identical `source_report_code`
+  via a real second Gemini call; a direct fresh (non-regenerate) resubmit
+  of an already-used code was confirmed blocked by the guard function; an
+  unrelated random code was confirmed still free. All test rows deleted
+  after.
+
+**Reuse guard: warn at fetch time, not just at submit time (2026-08-13,
+same day, user-reported UX gap)**: the guard above only surfaced the
+"already used" 409 error when the user actually clicked
+Generate/Submit — meaning a user could paste a code, watch it auto-fill
+the whole form, fill in more fields, and only THEN discover (via a
+generic error) that the code was already consumed on this page. User
+asked for the warning to appear immediately when clicking "Ambil Data",
+including who used it, so they don't waste time filling in a doomed
+submission.
+- `ems_ai_ds_report_code_used_on()` (`config/ai_diagnosis_surgery.php`)
+  refactored to delegate to a new `ems_ai_ds_report_code_usage_info(PDO
+  $pdo, string $table, string $code, string $unitCode): ?array` — same
+  matching logic (including the `ai_radiology_images` dual-status OR
+  condition) but returns `{created_at, user_name}` of the **first** row
+  that consumed the code on that table (`ORDER BY t.id ASC`, joined to
+  `user_rh`) instead of just a bool.
+- `ai_diagnosis_report_lookup.php` now accepts an optional `&target=`
+  query param, validated against a hardcoded whitelist of the 4 real
+  table names (`ai_surgery_plans`/`ai_radiology_images`/
+  `ai_laboratory_results`/`ai_psychiatry_assessments` — an unrecognized
+  value is silently ignored, never reaches SQL) and includes a
+  `used_on_target: {user_name, created_at} | null` field in the JSON
+  response.
+- All 4 pages' "Ambil dari Laporan Diagnosis" fetch now pass their own
+  `&target=<table>`, and a shared-shaped `formatUsedOnTargetWarning(data)`
+  JS helper (duplicated per-page, same pattern as the rest of this
+  auto-fill card) turns a non-null `used_on_target` into an amber
+  (`#d97706`) warning naming who used it and when, **overriding** whatever
+  the normal success message would have said — the form still auto-fills
+  (so the data can be reviewed / a "Generate Ulang" can be found in
+  history) but the status line makes it unambiguous upfront that a fresh
+  submit will be rejected, rather than letting the user discover that only
+  after filling in the rest of the form and clicking submit.
+- Verified directly against the real local dev DB: a real `ai_surgery_plans`
+  row's `source_report_code` correctly resolves to the actual creating
+  user's `full_name` + `created_at` via `ems_ai_ds_report_code_usage_info()`;
+  confirmed still `null` for the same code on a table it hasn't touched yet
+  (`ai_radiology_images`); confirmed an invalid/unrecognized `target` value
+  is safely ignored rather than erroring.
+
 ## 6. `actions/` + `ajax/` + `public/` — endpoint layer
 
 ### AI recruitment engine (the most complex subsystem in the codebase)
