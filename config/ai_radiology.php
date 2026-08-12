@@ -336,6 +336,18 @@ function ems_ai_radiology_clinical_findings_reference_text(): string
     return implode(', ', ems_ai_radiology_clinical_findings());
 }
 
+/**
+ * Cloudflare Workers AI menolak keras prompt > 2048 karakter ("Bad input:
+ * Error: Length of '/prompt' must be <= 2048") — ketahuan 2026-08-12 setelah
+ * fitur auto-fill anamnesis lengkap (dari AI Diagnosis) bikin anamnesis yang
+ * disisipkan ke prompt radiologi jadi jauh lebih panjang dari sebelumnya
+ * (anamnesis mentah singkat -> narasi klinis 1 paragraf penuh). Gemini tidak
+ * punya batas seketat ini, tapi karena prompt dibangun SATU KALI dipakai
+ * kedua provider, batas ini diterapkan universal di sini (aman untuk Gemini
+ * juga, cuma memotong anamnesis yang memang sudah sangat panjang).
+ */
+const EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH = 1900;
+
 function ems_ai_radiology_build_prompt(array $input): string
 {
     $modality = trim((string) ($input['modality'] ?? ''));
@@ -353,7 +365,18 @@ function ems_ai_radiology_build_prompt(array $input): string
         . "Clinical finding to visually depict in the image: {$finding}.\n";
 
     if ($anamnesis !== '') {
-        $prompt .= "Additional clinical context (anamnesis) to inform the depicted finding: {$anamnesis}.\n";
+        $anamnesisPrefix = 'Additional clinical context (anamnesis) to inform the depicted finding: ';
+        $anamnesisSuffix = ".\n";
+        $styleLength = 1010; // panjang aktual blok STYLE REQUIREMENTS di bawah (~991 char) + sedikit margin
+        $budget = EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH - strlen($prompt) - strlen($anamnesisPrefix) - strlen($anamnesisSuffix) - $styleLength;
+        if ($budget > 50 && strlen($anamnesis) > $budget) {
+            $anamnesis = rtrim(mb_strimwidth($anamnesis, 0, max(50, $budget - 3), '')) . '...';
+        } elseif ($budget <= 50) {
+            $anamnesis = ''; // budget habis (region/finding dsb sudah panjang) — lewati anamnesis sepenuhnya daripada gagal total
+        }
+        if ($anamnesis !== '') {
+            $prompt .= $anamnesisPrefix . $anamnesis . $anamnesisSuffix;
+        }
     }
 
     $prompt .= "STYLE REQUIREMENTS (must follow strictly):\n"

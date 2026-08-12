@@ -1430,6 +1430,42 @@ style single-model-per-request REST pattern, just with different auth
   (retrying the identical prompt against a content filter just fails the
   same way twice). Not fixed — flagging so a future session doesn't
   mistake a `AiError: ... NSFW content` response for an app bug.
+- **Real bug found and fixed 2026-08-12 (user-reported, live production +
+  local repro)**: Radiology Center generate started failing consistently
+  right after the same-day "Diagnosis → Surgery/Radiology case-chaining"
+  feature shipped (see AI recruitment section above) — root cause was
+  **prompt length**, not auth/quota/moderation like the earlier entries in
+  this list. Cloudflare Workers AI hard-rejects any `/prompt` longer than
+  2048 characters (`Bad input: Error: Length of '/prompt' must be <= 2048`),
+  and the new `anamnesis_lengkap` auto-fill (a full AI-written clinical
+  paragraph, easily 800-1500+ characters) replaced what used to be a short
+  manually-typed anamnesis inside `ems_ai_radiology_build_prompt()`'s
+  prompt — pushing the total over the limit. Confirmed by reading the real
+  stored `error_message` on the failed rows in `ai_radiology_images`
+  (`dashboard/radiology_center.php`'s history table) rather than guessing —
+  worth remembering as a debugging pattern: **the actual error text is
+  always stored in that table's `error_message` column**, so check it
+  directly before re-diagnosing from scratch. Fixed by budgeting and
+  truncating the anamnesis portion specifically:
+  `EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH` (1900, a safety margin under
+  Cloudflare's 2048) minus the already-known-length fixed parts of the
+  prompt (modality/category/region/projection/finding lines + the ~991-
+  character STYLE REQUIREMENTS block) leaves a remaining budget for
+  anamnesis; if the anamnesis doesn't fit, it's truncated with `mb_strimwidth()`
+  + `...`, and if there's no budget left at all (region/finding names
+  themselves unusually long) anamnesis is dropped entirely rather than
+  failing the whole generation. Applied universally (not just for the
+  Cloudflare path) since Gemini doesn't have this exact limit but also
+  isn't hurt by a shorter, still-informative anamnesis. Verified against
+  the real failing case (5 consecutive "Richard Harley" / X-Ray Tibia-
+  Fibula failures in the live history table) by reproducing the same
+  long-anamnesis prompt locally — first attempt at the fix undershot the
+  STYLE REQUIREMENTS block's real length (guessed 620, actual 991) and
+  still produced an over-limit prompt (2271 chars); corrected the constant
+  and re-verified with three cases (1215-char anamnesis → 1881 total,
+  extreme 5700-char anamnesis → 1883 total, no anamnesis → 1321 total),
+  then confirmed with one real Cloudflare API call reproducing the exact
+  failing scenario — succeeded, real JPEG returned.
 7. **Upload size layering**: `.user.ini` allows 10MB at the PHP level, but
    the app enforces its own **1MB** cap (`emsUploadLimitBytes()`,
    disciplinary attachments capped tighter at 500KB) and aggressively
