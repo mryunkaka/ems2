@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/ai_radiology.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'ai_diagnosis_assistant.php', '/dashboard/index.php');
@@ -56,7 +57,11 @@ $result = [];
 if ($report['status'] === 'done' && $report['result_json']) {
     $decoded = json_decode((string) $report['result_json'], true);
     if (is_array($decoded)) {
-        $result = $decoded;
+        // Normalisasi lagi di sisi tampilan (bukan cuma saat generate) supaya
+        // laporan LAMA yang tersimpan dengan key salah ketik (mis. "rolepy_note"
+        // dari sebelum aturan 15 ada di prompt) tetap tampil benar tanpa perlu
+        // di-generate ulang.
+        $result = ems_ai_ds_normalize_diagnosis_result($decoded);
     }
 }
 
@@ -91,6 +96,17 @@ include __DIR__ . '/../partials/sidebar.php';
                     Dibuat <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $report['created_at'])), ENT_QUOTES, 'UTF-8') ?>
                     oleh <?= htmlspecialchars((string) ($report['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?>
                 </p>
+                <?php if ($report['status'] === 'done' && !empty($report['report_code'])): ?>
+                    <div class="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+                        <span class="text-xs font-semibold text-slate-500">Kode Referensi:</span>
+                        <code class="text-xs font-bold text-slate-800"><?= htmlspecialchars((string) $report['report_code'], ENT_QUOTES, 'UTF-8') ?></code>
+                        <button type="button" class="btn-secondary btn-sm mantra-copy-btn" data-copy="<?= htmlspecialchars((string) $report['report_code'], ENT_QUOTES, 'UTF-8') ?>">
+                            <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                            <span>Salin</span>
+                        </button>
+                        <span class="text-xs text-slate-400">— tempel di AI Surgery Planner / Radiology Center untuk ambil data kasus ini otomatis</span>
+                    </div>
+                <?php endif; ?>
             </div>
             <div class="flex items-center gap-2">
                 <a href="ai_diagnosis_assistant.php" class="btn-secondary">
@@ -110,9 +126,40 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
         </div>
 
+        <?php if (!empty($report['patient_name']) || !empty($report['patient_gender']) || !empty($report['patient_dob']) || !empty($report['patient_citizen_id'])): ?>
+            <div class="card mb-4">
+                <div class="card-header">Identitas Pasien</div>
+                <div class="p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 tracking-wide">NAMA</div>
+                        <div><?= htmlspecialchars((string) ($report['patient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 tracking-wide">JENIS KELAMIN</div>
+                        <div><?= htmlspecialchars((string) ($report['patient_gender'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 tracking-wide">TANGGAL LAHIR</div>
+                        <div><?= $report['patient_dob'] ? htmlspecialchars(date('d/m/Y', strtotime((string) $report['patient_dob'])), ENT_QUOTES, 'UTF-8') : '-' ?></div>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-slate-500 tracking-wide">CITIZEN ID</div>
+                        <div><?= htmlspecialchars((string) ($report['patient_citizen_id'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php $anamnesisLengkap = trim((string) ($result['anamnesis_lengkap'] ?? '')); ?>
         <div class="card mb-4">
-            <div class="card-header">Anamnesis / Temuan Medis</div>
-            <div class="p-4 text-sm whitespace-pre-line"><?= htmlspecialchars((string) $report['anamnesis'], ENT_QUOTES, 'UTF-8') ?></div>
+            <div class="card-header"><?= $anamnesisLengkap !== '' ? 'Anamnesis / Temuan Medis (Lengkap &amp; Direvisi AI)' : 'Anamnesis / Temuan Medis' ?></div>
+            <div class="p-4 text-sm whitespace-pre-line"><?= htmlspecialchars($anamnesisLengkap !== '' ? $anamnesisLengkap : (string) $report['anamnesis'], ENT_QUOTES, 'UTF-8') ?></div>
+            <?php if ($anamnesisLengkap !== '' && $anamnesisLengkap !== trim((string) $report['anamnesis'])): ?>
+                <details class="px-4 pb-4">
+                    <summary class="cursor-pointer text-xs font-semibold text-slate-500">Lihat input anamnesis asli (sebelum dilengkapi AI)</summary>
+                    <div class="mt-2 text-sm text-slate-600 whitespace-pre-line"><?= htmlspecialchars((string) $report['anamnesis'], ENT_QUOTES, 'UTF-8') ?></div>
+                </details>
+            <?php endif; ?>
         </div>
 
         <?php if ($report['status'] !== 'done'): ?>
@@ -145,7 +192,13 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <div class="card mb-4">
-                <div class="card-header">Kasus Medis / Tindakan yang Diperlukan</div>
+                <div class="card-header flex items-center justify-between gap-3 flex-wrap">
+                    <span>Kasus Medis / Tindakan yang Diperlukan</span>
+                    <button type="button" class="btn-secondary btn-sm mantra-copy-btn" data-copy="<?= htmlspecialchars((string) ($result['kasus_tindakan'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                        <?= ems_icon('clipboard-document-check', 'h-4 w-4') ?>
+                        <span>Salin untuk AI Surgery Planner</span>
+                    </button>
+                </div>
                 <div class="p-4 text-sm whitespace-pre-line"><?= htmlspecialchars((string) ($result['kasus_tindakan'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
             </div>
 
@@ -184,11 +237,31 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
                 <div class="card">
                     <div class="card-header">Rekomendasi Radiologi</div>
-                    <ul class="list-disc pl-5 p-4 text-sm space-y-1">
+                    <ul class="list-disc pl-5 p-4 pb-2 text-sm space-y-1">
                         <?php foreach ((array) ($result['radiologi'] ?? []) as $item): ?>
                             <li><?= htmlspecialchars((string) $item, ENT_QUOTES, 'UTF-8') ?></li>
                         <?php endforeach; ?>
+                        <?php if (empty($result['radiologi'])): ?>
+                            <li class="text-slate-400 list-none -ml-5">Tidak ada rekomendasi radiologi.</li>
+                        <?php endif; ?>
                     </ul>
+                    <?php
+                        $structRad = is_array($result['radiologi_terstruktur'] ?? null) ? $result['radiologi_terstruktur'] : null;
+                        $structRadHasModality = $structRad && trim((string) ($structRad['modality'] ?? '')) !== '';
+                    ?>
+                    <?php if ($structRadHasModality): ?>
+                        <div class="mx-4 mb-4 rounded-lg border border-cyan-200 bg-cyan-50 p-3">
+                            <div class="text-xs font-bold text-cyan-800 uppercase tracking-wide mb-1.5">Pilihan Radiology Center</div>
+                            <div class="text-xs text-cyan-900 leading-relaxed">
+                                <?= htmlspecialchars((string) $structRad['modality'], ENT_QUOTES, 'UTF-8') ?>
+                                &rsaquo; <?= htmlspecialchars((string) $structRad['category'], ENT_QUOTES, 'UTF-8') ?>
+                                &rsaquo; <?= htmlspecialchars((string) $structRad['body_region'], ENT_QUOTES, 'UTF-8') ?>
+                                &rsaquo; <?= htmlspecialchars((string) $structRad['projection'], ENT_QUOTES, 'UTF-8') ?>
+                                <br>Temuan Klinis: <strong><?= htmlspecialchars((string) ($structRad['clinical_finding'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                            </div>
+                            <p class="text-[11px] text-cyan-700 mt-1.5">Otomatis terisi kalau kode referensi laporan ini ditempel di Radiology Center.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
 

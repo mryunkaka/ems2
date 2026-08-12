@@ -66,7 +66,31 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-header">Anamnesis / Temuan Medis</div>
                 <form method="POST" action="ai_diagnosis_assistant_action.php" class="form" id="aiDiagForm">
                     <?= csrfField(); ?>
-                    <label>Anamnesis / Temuan Medis / Kondisi Fisik</label>
+
+                    <label>Identitas Pasien</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <input type="text" name="patient_name" placeholder="Nama pasien" value="<?= htmlspecialchars($_POST['patient_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div>
+                            <select name="patient_gender">
+                                <option value="" disabled <?= ($_POST['patient_gender'] ?? '') === '' ? 'selected' : '' ?>>-- Jenis Kelamin --</option>
+                                <option value="Laki-laki" <?= ($_POST['patient_gender'] ?? '') === 'Laki-laki' ? 'selected' : '' ?>>Laki-laki</option>
+                                <option value="Perempuan" <?= ($_POST['patient_gender'] ?? '') === 'Perempuan' ? 'selected' : '' ?>>Perempuan</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                        <div>
+                            <input type="date" name="patient_dob" value="<?= htmlspecialchars($_POST['patient_dob'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div>
+                            <input type="text" name="patient_citizen_id" placeholder="Citizen ID (RWX-...)" value="<?= htmlspecialchars($_POST['patient_citizen_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                    </div>
+                    <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Opsional, tapi kalau diisi akan otomatis ikut ter-copy saat kode referensi laporan ini dipakai di AI Surgery Planner / Radiology Center.</p>
+
+                    <label class="mt-4">Anamnesis / Temuan Medis / Kondisi Fisik</label>
                     <textarea name="anamnesis" rows="8" required placeholder="Contoh: pasien laki-laki kecelakaan kecepatan tinggi, luka robek dan lecet..."><?= htmlspecialchars($_POST['anamnesis'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
                     <div class="modal-actions mt-4">

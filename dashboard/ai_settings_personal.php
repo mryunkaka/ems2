@@ -27,7 +27,7 @@ $baseUrl = trim((string) ($userSettings['gemini_base_url'] ?? '')) !== ''
     : 'https://generativelanguage.googleapis.com/v1beta';
 $defaultModel = trim((string) ($userSettings['default_model'] ?? '')) !== ''
     ? (string) $userSettings['default_model']
-    : 'gemini-2.5-flash';
+    : 'gemini-3.5-flash-lite';
 $modelOptions = ems_ai_model_options();
 $savedAt = $userSettings['updated_at'] ?? $userSettings['created_at'] ?? null;
 

@@ -27,6 +27,10 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
                 `unit_code` VARCHAR(20) NOT NULL DEFAULT 'roxwood',
                 `division_snapshot` VARCHAR(60) NULL,
                 `anamnesis` TEXT NOT NULL,
+                `patient_name` VARCHAR(150) NULL,
+                `patient_gender` VARCHAR(20) NULL,
+                `patient_dob` DATE NULL,
+                `patient_citizen_id` VARCHAR(50) NULL,
                 `result_json` LONGTEXT NULL,
                 `status` ENUM('done','error') NOT NULL DEFAULT 'done',
                 `error_message` TEXT NULL,
@@ -35,6 +39,20 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
                 KEY `idx_ai_diagnosis_user` (`user_id`),
                 KEY `idx_ai_diagnosis_unit_created` (`unit_code`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+    }
+
+    if (ems_table_exists($pdo, 'ai_diagnosis_reports') && !ems_column_exists($pdo, 'ai_diagnosis_reports', 'report_code')) {
+        $pdo->exec("ALTER TABLE `ai_diagnosis_reports` ADD COLUMN `report_code` VARCHAR(40) NULL AFTER `id`, ADD UNIQUE KEY `uniq_ai_diagnosis_report_code` (`report_code`)");
+    }
+
+    if (ems_table_exists($pdo, 'ai_diagnosis_reports') && !ems_column_exists($pdo, 'ai_diagnosis_reports', 'patient_name')) {
+        $pdo->exec("
+            ALTER TABLE `ai_diagnosis_reports`
+                ADD COLUMN `patient_name` VARCHAR(150) NULL AFTER `anamnesis`,
+                ADD COLUMN `patient_gender` VARCHAR(20) NULL AFTER `patient_name`,
+                ADD COLUMN `patient_dob` DATE NULL AFTER `patient_gender`,
+                ADD COLUMN `patient_citizen_id` VARCHAR(50) NULL AFTER `patient_dob`
         ");
     }
 
@@ -67,7 +85,7 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
                 `user_id` INT NOT NULL,
                 `gemini_api_key` VARCHAR(255) NOT NULL,
                 `gemini_base_url` VARCHAR(255) NOT NULL DEFAULT 'https://generativelanguage.googleapis.com/v1beta',
-                `default_model` VARCHAR(100) NOT NULL DEFAULT 'gemini-2.5-flash',
+                `default_model` VARCHAR(100) NOT NULL DEFAULT 'gemini-3.5-flash-lite',
                 `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 PRIMARY KEY (`id`),
@@ -108,6 +126,42 @@ function ems_ai_ds_save_user_settings(PDO $pdo, int $userId, string $apiKey, str
             updated_at = CURRENT_TIMESTAMP
     ");
     $stmt->execute([$userId, $apiKey, $baseUrl, $model]);
+}
+
+/**
+ * Kode referensi unik per laporan diagnosis (mis. "DGN-20260812-143012-A1B2"),
+ * dipakai supaya dokter tinggal salin kode ini dari ai_diagnosis_report.php
+ * lalu tempel di form AI Surgery Planner / Radiology Center untuk auto-fill
+ * data kasus — tanpa perlu retype ulang dan tanpa AI model kehilangan
+ * konteks alur dari diagnosis awal.
+ */
+function ems_ai_ds_generate_report_code(): string
+{
+    return 'DGN-' . date('Ymd-His') . '-' . strtoupper(bin2hex(random_bytes(2)));
+}
+
+/**
+ * Cari laporan diagnosis yang statusnya "done" berdasarkan report_code, dibatasi
+ * unit_code yang sama (tidak lintas unit roxwood/alta) — dipakai oleh endpoint
+ * auto-fill di AI Surgery Planner & Radiology Center.
+ */
+function ems_ai_ds_find_diagnosis_report_by_code(PDO $pdo, string $code, string $unitCode): ?array
+{
+    $code = trim($code);
+    if ($code === '' || !ems_column_exists($pdo, 'ai_diagnosis_reports', 'report_code')) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare("
+        SELECT *
+        FROM ai_diagnosis_reports
+        WHERE report_code = ? AND unit_code = ? AND status = 'done'
+        LIMIT 1
+    ");
+    $stmt->execute([$code, $unitCode]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    return $row ?: null;
 }
 
 function ems_ai_ds_quick_sop_rules(): array
@@ -201,20 +255,25 @@ function ems_ai_ds_default_diagnosis_system_prompt(): string
         . "9. Susun MINIMAL 8-12 tindakan berurutan dan logis: penilaian awal/ABCDE -> stabilisasi -> tindakan definitif -> monitoring/penyelesaian.\n"
         . "10. Field \"emergency\" wajib memakai mantra resmi dari referensi kamus me/do (bila kategorinya cocok) sebagai basis obat dan alat.\n"
         . "11. Tentukan \"jenis_operasi\" dan \"jenis_anestesi\" berdasarkan referensi klasifikasi operasi - sebutkan klasifikasi (Minor/Mayor) DAN nama tindakan spesifik, atau \"Tidak diperlukan operasi...\" bila tak perlu.\n"
-        . "12. Isi \"kasus_tindakan\" dengan ringkasan padat 1-2 kalimat yang WAJIB menyebutkan nama tindakan/operasi spesifik, selaras dengan \"jenis_operasi\".\n"
-        . "13. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
-        . "Struktur JSON WAJIB (semua field terisi lengkap, tidak ada yang kosong):\n"
+        . "12. Isi \"kasus_tindakan\" dengan ringkasan padat 1-2 kalimat yang WAJIB menyebutkan nama tindakan/operasi spesifik, selaras dengan \"jenis_operasi\" — kalimat ini akan di-copy-paste APA ADANYA oleh dokter ke form AI Surgery Planner sebagai input \"Kasus Medis / Tindakan yang Diperlukan\", jadi harus berdiri sendiri sebagai konteks lengkap (jangan menyingkat/mengasumsikan pembaca sudah tahu anamnesis awal).\n"
+        . "13. \"radiologi\" (array teks bebas untuk dibaca manusia) TETAP wajib diisi. TAMBAHAN WAJIB: \"radiologi_terstruktur\" adalah SATU object berisi rekomendasi pencitraan PALING prioritas/relevan, dan nilai \"modality\", \"category\", \"body_region\", \"projection\" WAJIB berupa STRING TUNGGAL (bukan array/list) dipilih PERSIS (karakter identik, jangan parafrase/terjemahkan) dari salah satu baris di REFERENSI KATALOG RADIOLOGI di bawah — setiap baris referensi berformat \"Modality > Category > Body Region > [opsi1, opsi2, ...]\", dan \"projection\" HARUS diisi HANYA SATU dari opsi di dalam kurung siku itu (pilih yang paling relevan secara klinis), JANGAN menyalin seluruh isi kurung siku sebagai list. JANGAN mengarang kombinasi yang tidak ada di daftar itu. Field \"clinical_finding\" pada object yang sama WAJIB dipilih persis dari REFERENSI TEMUAN KLINIS. Jika pasien sama sekali tidak butuh pencitraan, isi seluruh 4 field modality/category/body_region/projection dengan string kosong \"\" dan clinical_finding tetap diisi sewajarnya.\n"
+        . "14. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n"
+        . "15. Field JSON WAJIB PERSIS memakai nama key seperti di Struktur JSON di bawah — JANGAN salah ketik/singkat nama key (contoh kesalahan yang PERNAH terjadi dan DILARANG diulang: menulis \"rolepy_note\" alih-alih \"roleplay_note\"). Cek ulang ejaan setiap nama key sebelum membalas.\n"
+        . "16. \"anamnesis_lengkap\" WAJIB diisi: tulis ULANG anamnesis asli dari user (sepadat/setidak-lengkap apa pun) menjadi 1 paragraf narasi klinis yang UTUH dan LENGKAP — pertahankan SEMUA fakta yang eksplisit disebutkan user, lalu lengkapi bagian yang tidak disebutkan (mekanisme cedera, lokasi spesifik, kondisi saat tiba, dll) dengan asumsi definitif yang KONSISTEN dengan seluruh field lain (status/gcs/ttv/diagnosis_utama) — JANGAN kontradiksi. Kalau anamnesis asli user SUDAH lengkap, cukup rapikan bahasanya tanpa mengubah substansi.\n\n"
+        . "Struktur JSON WAJIB (semua field terisi lengkap, tidak ada yang kosong kecuali disebutkan sebaliknya di aturan 13):\n"
         . "{\n"
         . "  \"status\": \"ringkas kondisi pasien\",\n"
+        . "  \"anamnesis_lengkap\": \"anamnesis yang sudah dilengkapi/direvisi jadi narasi klinis utuh, lihat aturan 16\",\n"
         . "  \"jenis_operasi\": \"klasifikasi + nama tindakan spesifik, atau keterangan tidak perlu operasi\",\n"
         . "  \"jenis_anestesi\": \"jenis anestesi yang sesuai, atau tidak diperlukan anestesi\",\n"
-        . "  \"kasus_tindakan\": \"ringkas kategori kasus & tindakan definitif\",\n"
+        . "  \"kasus_tindakan\": \"ringkas kategori kasus & tindakan definitif, berdiri sendiri sebagai konteks lengkap\",\n"
         . "  \"diagnosis_utama\": \"diagnosis utama bahasa medis\",\n"
         . "  \"diagnosis_banding\": [\"diagnosis banding 1\", \"diagnosis banding 2\"],\n"
         . "  \"gcs\": \"contoh: E4V5M6 (15) - Compos Mentis\",\n"
         . "  \"ttv\": [{\"label\": \"Tekanan Darah\", \"value\": \"angka konkret\", \"note\": \"interpretasi\"}, {\"label\": \"Nadi / HR\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Suhu\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Respirasi / RR\", \"value\": \"...\", \"note\": \"...\"}],\n"
         . "  \"lab\": [\"pemeriksaan lab 1\"],\n"
-        . "  \"radiologi\": [\"rekomendasi radiologi 1\"],\n"
+        . "  \"radiologi\": [\"rekomendasi radiologi 1 (teks bebas untuk dibaca manusia)\"],\n"
+        . "  \"radiologi_terstruktur\": {\"modality\": \"contoh: X-Ray\", \"category\": \"contoh: Upper Extremity\", \"body_region\": \"contoh: Wrist\", \"projection\": \"contoh: PA (HANYA SATU string, bukan list semua opsi)\", \"clinical_finding\": \"persis dari daftar temuan klinis\"},\n"
         . "  \"emergency\": [{\"pelaku\": \"DPJP\", \"instruksi\": \"\", \"aksi\": \"...\", \"hasil\": \"...\", \"animasi\": \"...\"}, {\"pelaku\": \"Asisten 1\", \"instruksi\": \"DPJP: tolong siapkan set jahit.\\nAsisten 1: Baik, dok.\", \"aksi\": \"...\", \"hasil\": \"...\", \"animasi\": \"...\"}],\n"
         . "  \"roleplay_note\": \"narasi roleplay + transparansi data asumsi\",\n"
         . "  \"sop_references\": [\"rujukan SOP relevan\"]\n"
@@ -264,6 +323,45 @@ function ems_ai_ds_reference_suffix(bool $includeMantra = true): string
     $suffix .= "\nREFERENSI KLASIFIKASI OPERASI:\n" . ems_ai_ds_operation_classification_reference();
 
     return $suffix;
+}
+
+/**
+ * Kalau $data[$exactKey] kosong, cari key LAIN di $data yang mengandung
+ * $containsNeedle di namanya (case-insensitive) dan pakai nilainya sebagai
+ * pemulihan — dipakai untuk menutupi typo nama field dari model AI (mis.
+ * model membalas "rolepy_note" alih-alih "roleplay_note"; exact-match
+ * lookup PHP normal tidak akan pernah menemukannya). Tidak mengubah $data
+ * kalau $exactKey sudah terisi atau tidak ada key lain yang cocok.
+ */
+function ems_ai_ds_recover_field(array &$data, string $exactKey, string $containsNeedle): void
+{
+    if (!empty($data[$exactKey])) {
+        return;
+    }
+
+    foreach ($data as $key => $value) {
+        if ($key === $exactKey || !is_string($value) || trim($value) === '') {
+            continue;
+        }
+        if (str_contains(strtolower((string) $key), $containsNeedle)) {
+            $data[$exactKey] = $value;
+            return;
+        }
+    }
+}
+
+/**
+ * Panggil sekali setelah $data diterima dari AI (generate baru) ATAU setelah
+ * result_json di-decode (menampilkan laporan lama) — supaya laporan yang
+ * SUDAH tersimpan dengan key salah ketik (mis. laporan lama sebelum aturan
+ * 15 ditambahkan ke prompt) tetap tampil benar tanpa perlu di-generate ulang.
+ */
+function ems_ai_ds_normalize_diagnosis_result(array $data): array
+{
+    ems_ai_ds_recover_field($data, 'roleplay_note', 'note');
+    ems_ai_ds_recover_field($data, 'anamnesis_lengkap', 'anamnesis');
+
+    return $data;
 }
 
 function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $defaultPrompt, bool $includeMantra = true): string
@@ -341,7 +439,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'is_enabled' => 1,
         'gemini_api_key' => (string) $userSettings['gemini_api_key'],
         'gemini_base_url' => trim((string) $userSettings['gemini_base_url']) !== '' ? (string) $userSettings['gemini_base_url'] : 'https://generativelanguage.googleapis.com/v1beta',
-        'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-2.5-flash',
+        'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-3.5-flash-lite',
         'timeout_seconds' => 120,
         'max_output_tokens' => 8192,
         'daily_request_limit' => 0,
@@ -360,7 +458,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
                     ],
                 ],
             ],
-            (string) ($settings['default_model'] ?? 'gemini-2.5-flash'),
+            (string) ($settings['default_model'] ?? 'gemini-3.5-flash-lite'),
             $featureKey,
             $createdBy
         );

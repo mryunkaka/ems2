@@ -1342,11 +1342,15 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         'ai_diagnosis_assistant.php',
         'ai_diagnosis_assistant_action.php',
         'ai_diagnosis_report.php',
+        'ai_diagnosis_report_lookup.php',
         'ai_surgery_planner.php',
         'ai_surgery_planner_action.php',
         'ai_surgery_report.php',
         'ai_settings_personal.php',
         'ai_settings_personal_action.php',
+        'radiology_center.php',
+        'radiology_center_action.php',
+        'radiology_report.php',
     ];
     if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
         return;

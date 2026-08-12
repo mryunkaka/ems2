@@ -44,10 +44,10 @@ $apiKey = $apiKeyInput !== '' ? $apiKeyInput : (string) ($existing['gemini_api_k
 // request mentah. Mereka tetap memakai nilai yang sudah tersimpan / default sistem.
 if ($isProgrammer) {
     $baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-    $model = trim((string) ($_POST['default_model'] ?? 'gemini-2.5-flash'));
+    $model = trim((string) ($_POST['default_model'] ?? 'gemini-3.5-flash-lite'));
 } else {
     $baseUrl = rtrim(trim((string) ($existing['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-    $model = trim((string) ($existing['default_model'] ?? 'gemini-2.5-flash'));
+    $model = trim((string) ($existing['default_model'] ?? 'gemini-3.5-flash-lite'));
 }
 
 if (!in_array($model, ems_ai_model_options(), true)) {

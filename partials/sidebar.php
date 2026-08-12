@@ -243,6 +243,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
 $groupedNav['Roxwood Hospital AI'] = [
     sidebarItem('/dashboard/ai_diagnosis_assistant.php', 'ai_diagnosis_assistant.php', 'AI Diagnosis Assistant', 'sparkles'),
     sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
+    sidebarItem('/dashboard/radiology_center.php', 'radiology_center.php', 'Radiology Center', 'camera'),
     sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
 ];
 
@@ -338,6 +339,7 @@ if (ems_current_user_is_programmer_roxwood()) {
     }
 
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/ai_settings.php', 'ai_settings.php', 'Setting AI', 'cog-6-tooth');
+    $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/cloudflare_settings.php', 'cloudflare_settings.php', 'Setting Cloudflare AI', 'wrench-screwdriver');
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/storage_audit.php', 'storage_audit.php', 'Audit Storage', 'circle-stack');
 }
 

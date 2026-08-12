@@ -46,6 +46,45 @@ function ems_ai_log_request(PDO $pdo, array $data): void
     ]);
 }
 
+/**
+ * Cari CA bundle lokal untuk cURL — beberapa environment Windows dev (mis.
+ * php.ini tanpa curl.cainfo/openssl.cafile diisi) gagal verifikasi SSL ke
+ * API eksternal dengan error "unable to get local issuer certificate",
+ * padahal koneksinya sendiri sehat. Sama seperti emsFindHeadlessBrowserPath()
+ * di config/helpers.php: probe beberapa lokasi umum, jangan pernah matikan
+ * verifikasi SSL. Kalau tidak ketemu (mis. di host Linux/cPanel produksi
+ * yang CA store sistemnya sudah benar), return null dan cURL pakai default
+ * bawaan sistem seperti biasa — tidak ada perubahan perilaku di sana.
+ */
+function emsFindCaBundlePath(): ?string
+{
+    static $resolved = false;
+    static $path = null;
+
+    if ($resolved) {
+        return $path;
+    }
+
+    $resolved = true;
+    $candidates = [
+        ini_get('curl.cainfo') ?: null,
+        ini_get('openssl.cafile') ?: null,
+        'C:\\Program Files\\Git\\usr\\ssl\\certs\\ca-bundle.crt',
+        'C:\\Program Files\\Git\\mingw64\\ssl\\certs\\ca-bundle.crt',
+        '/etc/ssl/certs/ca-certificates.crt',
+        '/etc/pki/tls/certs/ca-bundle.crt',
+    ];
+
+    foreach ($candidates as $candidate) {
+        if ($candidate && is_file($candidate)) {
+            $path = $candidate;
+            return $path;
+        }
+    }
+
+    return null;
+}
+
 function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds): array
 {
     $ch = curl_init($url);
@@ -58,14 +97,21 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
         $formattedHeaders[] = $name . ': ' . $value;
     }
 
-    curl_setopt_array($ch, [
+    $curlOptions = [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => $formattedHeaders,
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         CURLOPT_TIMEOUT => max(5, $timeoutSeconds),
         CURLOPT_CONNECTTIMEOUT => 10,
-    ]);
+    ];
+
+    $caBundle = emsFindCaBundlePath();
+    if ($caBundle !== null) {
+        $curlOptions[CURLOPT_CAINFO] = $caBundle;
+    }
+
+    curl_setopt_array($ch, $curlOptions);
 
     $body = curl_exec($ch);
     $curlError = curl_error($ch);
@@ -188,6 +234,129 @@ function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents,
             'feature_key' => $featureKey,
             'provider' => 'gemini',
             'model_name' => $modelName,
+            'request_hash' => $requestHash,
+            'request_payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'response_payload' => null,
+            'prompt_tokens' => null,
+            'response_tokens' => null,
+            'total_tokens' => null,
+            'http_status' => null,
+            'latency_ms' => $latencyMs,
+            'success_flag' => 0,
+            'error_message' => $e->getMessage(),
+            'created_by' => $createdBy,
+        ]);
+        throw $e;
+    }
+}
+
+/**
+ * Ambil data gambar (base64 inline) pertama dari response Gemini image-generation.
+ * Beda dari ems_gemini_extract_text() yang cuma ambil bagian "text" — model
+ * image-generation mengembalikan bagian "inlineData" berisi mimeType + data base64.
+ */
+function ems_gemini_extract_inline_image(?array $responseJson): ?array
+{
+    if (!$responseJson) {
+        return null;
+    }
+
+    $parts = $responseJson['candidates'][0]['content']['parts'] ?? [];
+    foreach ($parts as $part) {
+        $inline = $part['inlineData'] ?? $part['inline_data'] ?? null;
+        if (is_array($inline) && !empty($inline['data'])) {
+            return [
+                'mime_type' => (string)($inline['mimeType'] ?? $inline['mime_type'] ?? 'image/png'),
+                'data' => (string)$inline['data'],
+            ];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Sama seperti ems_gemini_generate_content(), tapi untuk model image-generation:
+ * generationConfig pakai responseModalities (bukan responseMimeType JSON), dan
+ * hasilnya diambil dari bagian "inlineData" (base64 gambar), bukan "text".
+ * Payload base64 gambar TIDAK disimpan penuh ke log (bisa beberapa MB per
+ * request) — diganti placeholder supaya system_ai_request_logs tetap ramping.
+ */
+function ems_gemini_generate_image(PDO $pdo, array $settings, array $contents, string $model, string $featureKey = 'generic_image', ?int $createdBy = null): array
+{
+    $apiKey = trim((string)($settings['gemini_api_key'] ?? ''));
+    if ($apiKey === '') {
+        throw new RuntimeException('API key Gemini belum diisi.');
+    }
+
+    $dailyLimit = (int)($settings['daily_request_limit'] ?? 0);
+    if ($dailyLimit > 0 && ems_ai_count_today_requests($pdo) >= $dailyLimit) {
+        throw new RuntimeException('Batas request harian internal AI sudah tercapai.');
+    }
+
+    $baseUrl = rtrim((string)($settings['gemini_base_url'] ?? ''), '/');
+    $timeoutSeconds = (int)($settings['timeout_seconds'] ?? 60);
+
+    if ($baseUrl === '') {
+        throw new RuntimeException('Base URL Gemini belum diisi.');
+    }
+
+    $payload = [
+        'contents' => $contents,
+        'generationConfig' => [
+            'responseModalities' => ['IMAGE'],
+        ],
+    ];
+
+    $url = $baseUrl . '/models/' . rawurlencode($model) . ':generateContent';
+    $requestHash = hash('sha256', $model . '|' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $startedAt = microtime(true);
+
+    try {
+        $response = ems_ai_http_post_json($url, $payload, [
+            'x-goog-api-key' => $apiKey,
+        ], $timeoutSeconds);
+
+        $latencyMs = (int)round((microtime(true) - $startedAt) * 1000);
+        $responseJson = $response['json'] ?? null;
+        $usage = $responseJson['usageMetadata'] ?? [];
+        $success = $response['http_status'] >= 200 && $response['http_status'] < 300;
+        $image = $success ? ems_gemini_extract_inline_image($responseJson) : null;
+
+        ems_ai_log_request($pdo, [
+            'feature_key' => $featureKey,
+            'provider' => 'gemini',
+            'model_name' => $model,
+            'request_hash' => $requestHash,
+            'request_payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'response_payload' => $image ? '[image binary omitted, mime=' . $image['mime_type'] . ']' : ($response['body'] ?? null),
+            'prompt_tokens' => $usage['promptTokenCount'] ?? null,
+            'response_tokens' => $usage['candidatesTokenCount'] ?? null,
+            'total_tokens' => $usage['totalTokenCount'] ?? null,
+            'http_status' => $response['http_status'],
+            'latency_ms' => $latencyMs,
+            'success_flag' => $success && $image !== null,
+            'error_message' => $success ? ($image ? null : 'Response tidak mengandung data gambar') : (($responseJson['error']['message'] ?? 'Request Gemini gagal')),
+            'created_by' => $createdBy,
+        ]);
+
+        if (!$success) {
+            $errorMessage = (string)($responseJson['error']['message'] ?? ('HTTP ' . $response['http_status']));
+            throw new RuntimeException('Gemini error: ' . $errorMessage);
+        }
+
+        return [
+            'model' => $model,
+            'image' => $image,
+            'usage' => $usage,
+            'http_status' => $response['http_status'],
+        ];
+    } catch (Throwable $e) {
+        $latencyMs = (int)round((microtime(true) - $startedAt) * 1000);
+        ems_ai_log_request($pdo, [
+            'feature_key' => $featureKey,
+            'provider' => 'gemini',
+            'model_name' => $model,
             'request_hash' => $requestHash,
             'request_payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'response_payload' => null,

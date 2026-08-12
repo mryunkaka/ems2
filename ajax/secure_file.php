@@ -247,6 +247,12 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     if (!(bool)$stmt->fetchColumn()) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
+} elseif (str_starts_with($relativePath, 'storage/radiology/')) {
+    $stmt = $pdo->prepare("SELECT 1 FROM ai_radiology_images WHERE image_path = ? LIMIT 1");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
 } elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
     $canAccessForensicMedicalRecord = ems_can_access_division_menu($userDivision, 'Forensic');
     $allowed = false;

@@ -62,6 +62,17 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
             <div class="card">
                 <div class="card-header">Data Rencana Operasi</div>
+                <div class="card-section" style="background:#f0f9ff;border-bottom:1px solid #e2e8f0;">
+                    <label style="margin-top:0;">Ambil dari Laporan Diagnosis (opsional)</label>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="aiSurgDiagCode" placeholder="Tempel kode referensi, mis. DGN-20260812-143012-A1B2" style="flex:1;">
+                        <button type="button" id="aiSurgDiagFetchBtn" class="btn-secondary btn-sm" style="white-space:nowrap;">
+                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                            <span>Ambil Data</span>
+                        </button>
+                    </div>
+                    <p id="aiSurgDiagFetchNote" class="page-subtitle" style="margin-top:6px;font-size:12px;">Kode ini muncul di halaman Laporan Diagnosis (ai_diagnosis_report.php) setelah AI Diagnosis Assistant selesai — supaya konteks kasus tidak perlu ditulis ulang.</p>
+                </div>
                 <form method="POST" action="ai_surgery_planner_action.php" class="form" id="aiSurgForm">
                     <?= csrfField(); ?>
 
@@ -76,7 +87,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div>
                             <label>Jenis Anestesi</label>
-                            <select name="jenis_anestesi">
+                            <select name="jenis_anestesi" id="aiSurgJenisAnestesi">
                                 <option value="Umum (General)">Umum (General)</option>
                                 <option value="Lokal">Lokal</option>
                                 <option value="Spinal (Regional)">Spinal (Regional)</option>
@@ -94,7 +105,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <p id="aiSurgKompleksitasHint" class="page-subtitle" style="margin-top:6px;font-size:12px;">Sedang: 20 langkah prosedur, durasi & detail proporsional dengan jumlah langkah.</p>
 
                     <label class="mt-4">Kasus Medis / Tindakan yang Diperlukan</label>
-                    <textarea name="kasus_tindakan" rows="6" required placeholder="Contoh: operasi bypass arteri koroner pada pasien serangan jantung, riwayat hipertensi..."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <textarea name="kasus_tindakan" id="aiSurgKasusTindakan" rows="6" required placeholder="Contoh: operasi bypass arteri koroner pada pasien serangan jantung, riwayat hipertensi..."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
 
                     <div class="modal-actions mt-4">
                         <button type="submit" class="btn-primary" id="aiSurgSubmitBtn">
@@ -189,6 +200,73 @@ include __DIR__ . '/../partials/sidebar.php';
     };
     jenisOperasiSelect.addEventListener('change', function () {
         jenisOperasiHint.textContent = OP_HINTS[jenisOperasiSelect.value] || '';
+    });
+
+    // ===== Ambil dari Laporan Diagnosis (auto-fill via kode referensi) =====
+    var diagCodeInput = document.getElementById('aiSurgDiagCode');
+    var diagFetchBtn = document.getElementById('aiSurgDiagFetchBtn');
+    var diagFetchNote = document.getElementById('aiSurgDiagFetchNote');
+    var jenisAnestesiSelect = document.getElementById('aiSurgJenisAnestesi');
+    var kasusTindakanTextarea = document.getElementById('aiSurgKasusTindakan');
+
+    function matchAnestesiOption(text) {
+        var t = (text || '').toLowerCase();
+        if (t.indexOf('spinal') !== -1 || t.indexOf('regional') !== -1) return 'Spinal (Regional)';
+        if (t.indexOf('sedasi') !== -1) return 'Sedasi Sedang (Conscious Sedation)';
+        if (t.indexOf('lokal') !== -1 || t.indexOf('local') !== -1) return 'Lokal';
+        if (t.indexOf('umum') !== -1 || t.indexOf('general') !== -1) return 'Umum (General)';
+        return null;
+    }
+
+    diagFetchBtn && diagFetchBtn.addEventListener('click', function () {
+        var code = (diagCodeInput.value || '').trim();
+        if (!code) {
+            diagFetchNote.textContent = 'Masukkan kode referensi terlebih dahulu.';
+            diagFetchNote.style.color = '#dc2626';
+            return;
+        }
+
+        diagFetchBtn.disabled = true;
+        diagFetchNote.textContent = 'Mengambil data laporan diagnosis...';
+        diagFetchNote.style.color = '';
+
+        fetch('ai_diagnosis_report_lookup.php?code=' + encodeURIComponent(code), {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (result) {
+                diagFetchBtn.disabled = false;
+                if (!result.ok || !result.data.ok) {
+                    diagFetchNote.textContent = (result.data && result.data.message) || 'Laporan diagnosis tidak ditemukan.';
+                    diagFetchNote.style.color = '#dc2626';
+                    return;
+                }
+
+                var data = result.data;
+                if (data.kasus_tindakan) {
+                    kasusTindakanTextarea.value = data.kasus_tindakan;
+                }
+                if (data.jenis_operasi && data.jenis_operasi.toLowerCase().indexOf('minor') !== -1) {
+                    jenisOperasiSelect.value = 'Minor';
+                } else if (data.jenis_operasi) {
+                    jenisOperasiSelect.value = 'Mayor';
+                }
+                jenisOperasiHint.textContent = OP_HINTS[jenisOperasiSelect.value] || '';
+
+                var anestesiMatch = matchAnestesiOption(data.jenis_anestesi);
+                if (anestesiMatch) {
+                    jenisAnestesiSelect.value = anestesiMatch;
+                }
+
+                diagFetchNote.textContent = 'Data kasus dari laporan #' + data.report_id + ' (' + data.diagnosis_utama + ') berhasil diambil.';
+                diagFetchNote.style.color = '#059669';
+            })
+            .catch(function () {
+                diagFetchBtn.disabled = false;
+                diagFetchNote.textContent = 'Gagal menghubungi server. Coba lagi.';
+                diagFetchNote.style.color = '#dc2626';
+            });
     });
 
     var kompleksitasSelect = document.getElementById('aiSurgKompleksitas');

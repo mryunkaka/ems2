@@ -537,6 +537,319 @@ Roxwood" superuser (documented stop-gap in
 daily request cap). AI features silently no-op/fall back if disabled —
 the recruitment pipeline works fully without AI configured.
 
+### "Roxwood Hospital AI" suite — personal-key clinical tools (sidebar group)
+A second, separate AI system from the recruitment-scoring one above: **every
+user supplies their own personal Gemini API key** (not the shared
+`system_ai_settings` key) via `dashboard/ai_settings_personal.php` +
+`_action.php`, stored per-user in `user_ai_settings` (migration
+`docs/sql/58_2026-08-11_ai_diagnosis_surgery_personal_settings.sql`). These
+pages predate this file's tracking (found already built/undocumented on
+2026-08-11) — noting them here now so a future session doesn't have to
+rediscover them from scratch:
+- `dashboard/ai_diagnosis_assistant.php`+`_action.php`+`ai_diagnosis_report.php`
+  — free-text anamnesis in, full structured JSON ER report out (diagnosis,
+  GCS, TTV, lab/radiology recs, step-by-step `/me`/`/do`/`/e` emergency
+  actions with DPJP/Asisten role dialog). Persisted to `ai_diagnosis_reports`.
+- `dashboard/ai_surgery_planner.php`+`_action.php`+`ai_surgery_report.php` —
+  jenis operasi/anestesi/kompleksitas in, full operative note out
+  (pharmacology per phase, step-by-step procedure, risks, pasca-op report).
+  Persisted to `ai_surgery_plans`.
+- Both share `config/ai_diagnosis_surgery.php`: domain reference data (SOP
+  guardrails, `/e` animation-mantra dictionary, DPJP/Asisten authority
+  rules, Minor/Mayor operation classification) get appended as a system-
+  prompt suffix (`ems_ai_ds_reference_suffix()`) on every call, and
+  `ems_ai_ds_call_gemini()` is the shared per-user-key Gemini caller (uses
+  `responseMimeType: application/json`, text-only — see Radiology Center
+  below for why image generation needed its own separate call path).
+  `ai_settings_personal.php`'s **Base URL & Model fields are Programmer-
+  Roxwood-only** (added 2026-08-11, `ems_current_user_is_programmer_roxwood()`
+  gate both in the UI and — the part that actually matters — server-side in
+  `ai_settings_personal_action.php`, which silently ignores any posted
+  `gemini_base_url`/`default_model` from non-programmer users regardless of
+  what's submitted, always falling back to their existing/default value).
+  Everyone else only ever enters their API key.
+- All these pages (plus Radiology Center below) are listed by filename in
+  `ems_enforce_dashboard_page_access()`'s `$roxwoodHospitalAiPages` exception
+  array in `config/helpers.php` — accessible to **every logged-in user
+  regardless of division**, unlike most of the app's division-gated pages.
+  If you add a new page to this suite, add its filename there too (and to
+  the `'Roxwood Hospital AI'` sidebar group in `partials/sidebar.php`).
+
+**Radiology Center (added 2026-08-11)** — `dashboard/radiology_center.php`
++`_action.php`+`radiology_report.php`: generates a synthetic diagnostic
+scan **image** (X-Ray/CT Scan/MRI/USG) for roleplay, instead of a text
+report. This needed its own code path because Gemini's image-generation
+contract is fundamentally different from the JSON-text one every other AI
+feature in this codebase uses:
+- **New Gemini client functions** in `actions/ai_gemini_client.php`:
+  `ems_gemini_generate_image()` (sets `generationConfig.responseModalities:
+  ["IMAGE"]`, no `responseMimeType`) and `ems_gemini_extract_inline_image()`
+  (reads `candidates[0].content.parts[].inlineData` — base64 + mimeType —
+  instead of `.text`). Response logging to `system_ai_request_logs`
+  deliberately **omits the base64 image body** (replaced with a
+  `[image binary omitted, mime=...]` placeholder) so a single image
+  generation call doesn't bloat that table by hundreds of KB–MB the way
+  storing the raw response would.
+- **Model is hardcoded, not user-selectable**: `ems_ai_radiology_model()`
+  in `config/ai_radiology.php` returns `gemini-2.5-flash-image` — this is
+  intentionally *not* read from `user_ai_settings.default_model` (that
+  field is for the text/JSON models Diagnosis/Surgery use; mixing an
+  image-generation model into that same dropdown would break those two
+  features). Radiology Center reuses the same per-user API key from
+  `user_ai_settings` (via `ems_ai_ds_get_user_settings()`) but always calls
+  the image model regardless of what `default_model` is set to.
+- **Cascading form, 4 levels deep** (reworked 2026-08-12 after user feedback
+  that the first pass was "not as complete as the original" reference tool
+  and didn't disable child selects until their parent was chosen): Modality
+  → Category → Body Region → Projection/Options, each select populated
+  client-side from `ems_ai_radiology_catalog()` (one JSON blob embedded in
+  the page) and left `disabled` with a "-- Pilih X dulu --" placeholder
+  until its parent has a value — exactly matching a real PACS/RIS order-
+  entry workstation, not a flat generic dropdown. `ems_ai_radiology_catalog()`
+  in `config/ai_radiology.php` is a hand-built nested array covering **9
+  modalities** (X-Ray, CT Scan, MRI, Ultrasound, Angiography, PET Scan,
+  Mammography, Fluoroscopy, DEXA Scan), ~203 total category→region→
+  projection leaf combinations (e.g. X-Ray → Head & Neck → Cervical Spine →
+  AP/Lateral/Open Mouth (Odontoid); CT Scan → Abdomen & Pelvis → CT Abdomen
+  Kontras (Triple Phase) → Arterial/Portal Venous/Delayed Phase). Server-side
+  validated top-to-bottom via `ems_ai_radiology_categories()` /
+  `_body_regions_for()` / `_projections_for()` / `_is_valid_selection()` in
+  `radiology_center_action.php` — a request can't skip a level or submit a
+  combination that doesn't exist in the catalog. On top of the 4 cascading
+  fields sits one more, non-cascading **Clinical Finding** dropdown (Normal/
+  Fraktur/Perdarahan/Massa/Inflamasi/Benda Asing/Pasca Operasi) — this is an
+  addition beyond what the reference tool had, and is what actually drives
+  what abnormality the model renders into the image. Plus patient info
+  (name/DOB/citizen ID), free-text anamnesis (enriches the prompt context),
+  and examining doctor name — all folded into a single prompt by
+  `ems_ai_radiology_build_prompt()`, which also carries fixed style
+  instructions (authentic scan aesthetic tuned per modality — radiograph/
+  tomographic/soft-tissue/sonogram/subtraction-angiogram/fusion-colormap/
+  compressed-tissue/real-time-fluoro/bone-density look as appropriate — no
+  patient face/real identifying info, no on-image text/watermark, black
+  PACS-viewer-style background) since this is fictional roleplay imagery,
+  not a real diagnostic tool. `category` is a required column on
+  `ai_radiology_images` (added same day, before this migration had shipped
+  anywhere — edited migration 59 in place rather than adding a new one,
+  since no real data existed yet).
+- **Storage**: generated PNG/JPEG bytes are base64-decoded and written to
+  `storage/radiology/` (`ems_ai_radiology_save_image_file()`), never
+  exposed directly — served exclusively through `ajax/secure_file.php`
+  (new `storage/radiology/` prefix rule added there, authorization = the
+  path must exist in `ai_radiology_images.image_path`; no per-owner
+  restriction, matching how `ai_diagnosis_reports`/`ai_surgery_plans` are
+  already viewable by any logged-in user in the unit, not just their
+  creator). History table on `radiology_center.php` shows a thumbnail per
+  row; `radiology_report.php` shows the full image with a click-to-zoom
+  modal (plain CSS/JS overlay, no external lightbox library) and manager-
+  plus-gated permanent delete (also unlinks the file from `storage/`).
+- Persisted to `ai_radiology_images` (migration
+  `docs/sql/59_2026-08-11_ai_radiology_center.sql`) — one row per
+  generation attempt (`status: done`/`error`), storing the full prompt
+  used (`prompt_used`) for audit/regeneration reference even on failure.
+- Verified locally: table creation, catalog/prompt-builder logic, full
+  file-save → DB-insert → `secure_file.php` authorization-query round trip
+  (using a synthetic 1x1 PNG, not a real Gemini call — this environment has
+  no live Gemini API key to test the actual network call/image response
+  parsing against; that part needs verification against a real key, e.g.
+  via the actual browser UI).
+
+**Diagnosis → Surgery/Radiology case-chaining via reference code (added
+2026-08-12)**: closes the gap where a medic would have to manually retype
+the same case context three times across AI Diagnosis, AI Surgery Planner,
+and Radiology Center — explicitly framed by the user as the first step
+toward eventually auto-populating a real `medical_records` entry from this
+chain (not built yet, out of scope for this pass).
+- **`report_code`**: every `ai_diagnosis_reports` row (migration
+  `docs/sql/60_2026-08-12_ai_diagnosis_report_code.sql`, e.g.
+  `DGN-20260812-143012-A1B2` via `ems_ai_ds_generate_report_code()`,
+  uniqueness checked with a retry loop at insert time) is displayed on
+  `ai_diagnosis_report.php` with a one-click copy button. Existing rows
+  were backfilled locally via `php -r` (not a migration step — codes are
+  random per-row, can't be expressed as SQL).
+- **`radiologi_terstruktur`**: the diagnosis JSON schema
+  (`ems_ai_ds_default_diagnosis_system_prompt()`) gained a new required
+  field alongside the existing free-text `radiologi` array — one object
+  `{modality, category, body_region, projection, clinical_finding}` that
+  the model must pick **verbatim** from a reference block appended to the
+  system prompt in `ai_diagnosis_assistant_action.php`:
+  `ems_ai_radiology_catalog_reference_text()` (renders the entire
+  Radiology Center catalog as `Modality > Category > Body Region >
+  [projection options]` lines) + `ems_ai_radiology_clinical_findings_reference_text()`.
+  This is what lets the diagnosis's radiology recommendation map onto a
+  real, valid Radiology Center selection instead of free text a human
+  would have to reinterpret. **Server-side sanitization is mandatory, not
+  optional** — `ems_ai_ds_sanitize_structured_radiology()` in the action
+  script re-validates every field against the real catalog
+  (`ems_ai_radiology_is_valid_selection()` etc.) before it's ever stored;
+  an invalid/hallucinated combination is stored as `null`, never as
+  unvalidated data, so downstream auto-fill can trust "not null" to mean
+  "definitely a real catalog path." Also defensively normalizes a field
+  the model occasionally returns as an array instead of the requested
+  single string (observed live: `projection` came back as all 3 options
+  for a body region instead of picking one, despite the prompt saying
+  "SATU string tunggal") via `ems_ai_ds_scalar_or_first()` — takes the
+  first element rather than rejecting the whole object, then the prompt
+  wording was independently strengthened too (explicit "JANGAN menyalin
+  seluruh isi kurung siku sebagai list" + a concrete single-value example
+  in the JSON schema block) and confirmed fixed on a second live test
+  case. If the patient needs no imaging at all, all four catalog fields
+  are empty strings but `clinical_finding` still gets filled — handled as
+  a distinct valid state (imaging genuinely not needed) from "invalid,
+  discard."
+- **Copy-paste made structural, not just textual**: `kasus_tindakan` in
+  the diagnosis JSON was already Surgery Planner's exact input field name;
+  rule 12 of the diagnosis prompt now explicitly requires it to "stand
+  alone" as complete context (not assume the reader already has the
+  original anamnesis) since it's meant to be copied verbatim — and
+  `ai_diagnosis_report.php`'s Kasus Medis card got the same one-click-copy
+  button treatment as the existing emergency-mantra copy buttons
+  (`.mantra-copy-btn` / `data-copy` pattern, reused as-is).
+- **`dashboard/ai_diagnosis_report_lookup.php`** (new, added to the
+  `$roxwoodHospitalAiPages` ACL exception list in `config/helpers.php`):
+  GET-only JSON endpoint, `?code=...` →
+  `ems_ai_ds_find_diagnosis_report_by_code()` (unit-scoped, `status='done'`
+  only) → returns `kasus_tindakan`, `jenis_operasi`, `jenis_anestesi`,
+  `anamnesis`, `diagnosis_utama`, and the validated `radiologi_terstruktur`
+  (or `null`). No CSRF token required since it's read-only and the codes
+  are high-entropy/unguessable, not sequential.
+- **Auto-fill UI**, added identically-styled "Ambil dari Laporan Diagnosis
+  (opsional)" cards (code input + "Ambil Data" button) to the top of both
+  input forms:
+  - `ai_surgery_planner.php`: fills `kasus_tindakan` directly; fuzzy-matches
+    `jenis_operasi` text for "minor"/else-Mayor and `jenis_anestesi` text
+    against the 4 known option strings (umum/lokal/spinal/sedasi keyword
+    matching) to pre-select those two dropdowns too — the diagnosis JSON
+    already independently generates both fields, this just wires them
+    through.
+  - `radiology_center.php`: fills `anamnesis`, then drives the same 4-level
+    cascade a manual user would trigger — `applyCascadeSelection()` calls
+    the existing `fillSelect()` cascade logic programmatically (set
+    modality → repopulate+set category → repopulate+set body_region →
+    repopulate+set projection) so the dependent `<select>` option lists end
+    up correctly populated, not just the values silently set on disabled/
+    empty selects. Gracefully degrades per-field: a report with no
+    structured radiology (predates this feature, or the model's pick
+    failed sanitization) still fills anamnesis and tells the user to pick
+    Modality/Category/Body Region/Projection manually, rather than failing
+    the whole auto-fill.
+- Verified end-to-end against the real Gemini API (correct PHP 8.4.22
+  binary, see gotcha above) with two different real cases: a wrist fracture
+  (X-Ray → Upper Extremity → Wrist → PA, correctly single-valued after the
+  prompt fix) and suspected appendicitis (Ultrasound → Abdomen → USG
+  Abdomen Bawah → B-Mode (Grayscale)) — both produced valid catalog paths
+  that passed server-side sanitization untouched. Also verified the full
+  insert → `ems_ai_ds_find_diagnosis_report_by_code()` lookup → JSON
+  payload round trip with synthetic data matching exactly what the
+  lookup endpoint would return to the browser; test rows deleted after.
+
+**Patient identity fields added to the chain (2026-08-12, same day)**: the
+Diagnosis→Surgery/Radiology chaining above only carried clinical case data;
+user asked for `ai_diagnosis_assistant.php` to also capture Nama, Jenis
+Kelamin, Tanggal Lahir, Citizen ID, and have that identity flow through to
+`radiology_center.php`'s auto-fill too (Nama Pasien, Tanggal Lahir, Citizen
+ID), plus have Radiology Center's "Dokter Pemeriksa" field default to
+whoever is currently logged in (still editable).
+- `ai_diagnosis_reports` gained 4 nullable columns (migration
+  `docs/sql/62_2026-08-12_ai_diagnosis_patient_identity.sql`, same
+  defensive `ems_column_exists()` guard pattern in `ems_ai_ds_ensure_tables()`
+  as `report_code` before it): `patient_name`, `patient_gender` (only
+  `Laki-laki`/`Perempuan` accepted, anything else stored as `NULL`),
+  `patient_dob`, `patient_citizen_id`. All optional — the form works
+  identically to before if left blank.
+- **The identity data doesn't just get stored, it feeds the AI call
+  itself**: `ai_diagnosis_assistant_action.php` prepends an `IDENTITAS
+  PASIEN:` block (Nama/Jenis Kelamin/Usia — age computed from DOB via the
+  same `ems_ai_radiology_age_label()` used for the Radiology Center image
+  overlay) to the user prompt *before* the `ANAMNESIS:` block, whenever at
+  least one identity field was filled in. This grounds the model in the
+  real supplied identity instead of it inventing its own age/gender
+  assumptions — confirmed with a real Gemini call: supplying "Usia: 28 th"
+  produced a `roleplay_note` explicitly citing "usia (28 tahun)" instead of
+  a fabricated value, which is what happens when no identity block is
+  present (the base prompt's rule 1 already tells it to invent plausible
+  values for anything unspecified).
+- `ai_diagnosis_report.php` displays a new "Identitas Pasien" card
+  (conditionally, only if at least one field is non-empty) above the
+  Anamnesis card. `ai_diagnosis_report_lookup.php` now also returns
+  `patient_name`/`patient_gender`/`patient_dob`/`patient_citizen_id` in its
+  JSON payload — `patient_dob` comes back as a plain `Y-m-d` string, which
+  is already exactly the value format an HTML `<input type="date">`
+  expects, so the Radiology Center JS just assigns it directly with no
+  reformatting.
+- `radiology_center.php`'s "Ambil dari Laporan Diagnosis" fetch handler
+  (added `id`s to the previously-anonymous `patient_name`/`patient_dob`/
+  `patient_citizen_id` inputs to make them targetable) now also fills those
+  three from the lookup response, alongside the existing anamnesis +
+  radiologi_terstruktur cascade auto-fill. `doctor_name` is deliberately
+  **not** part of this fetch-by-code auto-fill — instead it's pre-filled
+  server-side from `$_SESSION['user_rh']` on every page load (whoever is
+  currently logged in), independent of whether a diagnosis code was ever
+  fetched, matching the user's framing that the examining doctor is "who's
+  logged in right now, but can be changed" rather than something inherited
+  from a diagnosis record.
+- Verified end-to-end: prompt-block formatting, a real DB insert → lookup
+  round trip confirming `patient_dob` survives as `Y-m-d`, and a real
+  Gemini call proving the model actually uses the supplied age instead of
+  fabricating one. Test rows deleted after.
+
+**Model JSON-key typos + sparse-anamnesis completion (fixed 2026-08-12,
+same day, user-reported)**: a real report (`ai_diagnosis_report.php?id=14`)
+had an empty "Catatan Medis & Roleplay" card. Root cause: Gemini returned
+the JSON key as `"rolepy_note"` (missing "la") instead of the exact
+`"roleplay_note"` the prompt schema and the PHP display code both expect —
+a plain `$result['roleplay_note'] ?? '-'` lookup can never find a
+misspelled key, so it silently rendered as empty. This is a general LLM-
+reliability risk (same category as the earlier `projection`-returned-as-
+array bug), not specific to this one field, so the fix is a **reusable
+recovery mechanism**, not a one-off patch:
+- `ems_ai_ds_recover_field(array &$data, string $exactKey, string $containsNeedle)`
+  in `config/ai_diagnosis_surgery.php` — if `$data[$exactKey]` is empty,
+  scans every other top-level key for one containing `$containsNeedle`
+  (case-insensitive) and adopts its value. Safe for this schema because
+  `"note"` and `"anamnesis"` are each distinctive enough substrings to
+  only ever match their intended field, not collide with anything else in
+  the JSON structure.
+- `ems_ai_ds_normalize_diagnosis_result(array $data): array` wraps the
+  recovery calls for both `roleplay_note` (needle `note`) and the new
+  `anamnesis_lengkap` (needle `anamnesis`, see below). **Called from two
+  places, not just one**: `ai_diagnosis_assistant_action.php` right after
+  a fresh AI response (so new reports self-correct immediately), AND
+  `ai_diagnosis_report.php` / `ai_diagnosis_report_lookup.php` right after
+  decoding `result_json` from the database (so **already-broken existing
+  reports — like #14 — self-heal on every view**, with no need to
+  regenerate or run a backfill migration). Verified directly against
+  report #14's real stored `result_json`: normalization correctly
+  recovered the roleplay note text from the misspelled key.
+- Prompt hardening alongside the code fix (belt-and-suspenders, since a
+  prompt instruction alone was already once insufficient for the
+  `projection`-as-array bug): rule 15 in
+  `ems_ai_ds_default_diagnosis_system_prompt()` now explicitly calls out
+  "JANGAN salah ketik ... (contoh kesalahan yang PERNAH terjadi ...
+  \"rolepy_note\")" — naming the actual historical mistake, not just a
+  generic "spell correctly" instruction.
+- **Second, independent feature bundled into the same fix** (explicitly
+  requested alongside the bug report): rule 16 + new required JSON field
+  `anamnesis_lengkap` — the model rewrites the user's raw anamnesis
+  (however terse) into one full clinical-narrative paragraph, preserving
+  every fact the user stated and filling in what's missing, kept
+  consistent with the other generated fields (status/gcs/ttv/diagnosis).
+  `ai_diagnosis_report.php`'s Anamnesis card now shows this completed
+  version as the primary content (card header changes to "... (Lengkap &
+  Direvisi AI)" when present), with the original raw input tucked into a
+  collapsed `<details>` for audit reference — only shown at all if it
+  actually differs from the completed version. `ai_diagnosis_report_lookup.php`
+  now returns `anamnesis_lengkap` (falling back to the raw stored
+  anamnesis for old reports that don't have one) as the `anamnesis` field
+  in its JSON payload, so Radiology Center's auto-fill picks up the
+  richer version automatically with no JS changes needed on that end —
+  it was already just reading `data.anamnesis` from the lookup response.
+  Verified live: a deliberately terse "orang ditembak di kaki" (4 words)
+  produced a complete, coherent paragraph-length `anamnesis_lengkap`, and
+  in that same call `roleplay_note` came back correctly spelled (prompt
+  hardening working as intended, with the recovery function remaining as
+  the safety net for whenever it doesn't).
+
 ## 6. `actions/` + `ajax/` + `public/` — endpoint layer
 
 ### AI recruitment engine (the most complex subsystem in the codebase)
@@ -894,6 +1207,229 @@ defensive way.
    `config/helpers.php` hardcodes Windows Chrome/Edge paths for a
    document-preview feature — won't function on the Linux/cPanel production
    host implied elsewhere in the repo (`deploy-cron.php` paths).
+6a. **This local dev box runs TWO separate PHP installs — testing via plain
+    `php` on the CLI does NOT validate what the live site actually does.**
+    `php` on PATH resolves to `C:\Server\php-8.5.7-nts-Win32-vs17-x64\`, but
+    the real web server (`localhost:8081`, nginx reverse-proxying to
+    `php-cgi.exe` on `127.0.0.1:9000`, started via
+    `C:\Server\nginx_php_runner.ps1`) runs
+    `C:\Server\php-8.4.22-nts-Win32-vs17-x64\php-cgi.exe` — a **different
+    binary with a different `php.ini`**. Discovered 2026-08-12 after a false
+    diagnosis: 8.5.7's `php.ini` has empty `curl.cainfo`/`openssl.cafile`
+    (breaks outbound HTTPS/cURL entirely), which looked like it explained a
+    reported Gemini-call failure — but 8.4.22's `php.ini` already had a
+    working `curl.cainfo`/`openssl.cafile` pointing at a real
+    `cacert.pem` the whole time, so that was never the actual bug hitting
+    real users. **When testing anything that touches an external HTTPS call
+    (Gemini, OCR.Space, etc.) or needs to match production PHP behavior,
+    invoke `C:\Server\php-8.4.22-nts-Win32-vs17-x64\php.exe` explicitly**,
+    not bare `php`. (The CA-probing defensive fix added during the false
+    diagnosis — `actions/ai_gemini_client.php::emsFindCaBundlePath()`,
+    which sets `CURLOPT_CAINFO` from a probed path when the active php.ini
+    doesn't have one configured — was left in place anyway since it's
+    harmless, matches the existing `emsFindHeadlessBrowserPath()` defensive-
+    probe pattern, and protects any other environment that genuinely does
+    have this misconfiguration; it just wasn't the fix for this bug.)
+6b. **Real root cause of the `ai_diagnosis_assistant.php` "Gagal" report
+    (fixed 2026-08-12)**: Google deprecated the entire Gemini 2.5 model
+    generation for this project's *personal* API keys — confirmed via live
+    calls (using the correct 8.4.22 binary, see above) that
+    `gemini-2.5-flash`, `gemini-2.5-flash-lite`, and `gemini-2.5-pro` all
+    return `"This model ... is no longer available to new users"` for the
+    per-user keys stored in `user_ai_settings`, while `gemini-3.5-flash-lite`
+    still works fine on the same keys. The **separate, older** API key in
+    `system_ai_settings` (used by recruitment scoring/birthday messages/
+    training-group naming — see §6 AI recruitment engine) was verified
+    still working fine on `gemini-2.5-flash-lite`, so this is specific to
+    newer keys, not a blanket Google-wide sunset — don't assume the global
+    recruitment key is also broken. Fixed by (1) a one-time `UPDATE
+    user_ai_settings SET default_model='gemini-3.5-flash-lite' WHERE
+    default_model IN ('gemini-2.5-flash','gemini-2.5-flash-lite',
+    'gemini-2.5-pro')` on the affected rows, and (2) changing every
+    hardcoded `'gemini-2.5-flash'` fallback in the **personal-key suite**
+    (`dashboard/ai_settings_personal.php`, `ai_settings_personal_action.php`,
+    `config/ai_diagnosis_surgery.php`) to `'gemini-3.5-flash-lite'`, so new
+    users (and the column-level `DEFAULT` on fresh `user_ai_settings`
+    installs) don't get stuck with a dead model either. Deliberately did
+    **not** touch the `system_ai_settings`-based recruitment/birthday/
+    training-group fallbacks (`config/ai_settings.php`,
+    `actions/ai_recruitment_service.php`, `config/birthday_helper.php`,
+    `config/training_groups.php`, `dashboard/ai_settings_action.php`) since
+    that key was confirmed still working — if Google later deprecates 2.5
+    for that key too, apply the same fix there. Verified end-to-end with
+    the real affected account (`user_id=1`) on the correct PHP binary: a
+    genuine diagnosis call now succeeds (e.g. "Vulner laceratum pedis /
+    cruris dextra" for a test anamnesis).
+
+**Radiology Center image quota — confirmed account/billing-side, not fixable
+in code (investigated thoroughly 2026-08-12)**: after a user report that
+Radiology Center still failed post-fix, queried the real
+`GET {base_url}/models` endpoint for the affected personal key to get
+Google's own list of every model actually available to it (not guessing
+names), then live-tested **7 different image-generation-capable models**
+spanning every generation and preview tier: `gemini-2.5-flash-image`,
+`gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image`,
+`gemini-3-pro-image`, `gemini-3.1-flash-image-preview`,
+`gemini-3-pro-image-preview`, `nano-banana-pro-preview`. **Every single
+one** returned `Quota exceeded ... limit: 0` for
+`generativelanguage.googleapis.com/generate_content_free_tier_requests`
+(and `_input_token_count`) — conclusively ruling out "wrong/deprecated
+model name" as the cause (unlike the text-model bug above, which *was*
+model-specific). This account's Google Cloud project simply has **zero
+free-tier quota for image generation entirely**, regardless of model —
+Gemini image generation typically requires billing enabled on the
+project, unlike text generation which has a generous free tier. Not
+fixable from this codebase; the user needs to enable billing on the
+Google Cloud project tied to this API key (via Google AI Studio or Cloud
+Console) or supply a different key from a billing-enabled project.
+`ems_ai_radiology_model()` in `config/ai_radiology.php` was bumped from
+`gemini-2.5-flash-image` to `gemini-3.1-flash-image` anyway (both equally
+quota-blocked today, but 3.1 is less likely to hit the same "no longer
+available to new users" deprecation the 2.5 *text* models already hit) —
+purely a forward-looking hygiene change, not a fix for this specific
+error. **If a future session gets asked to "fix" this again, don't re-
+litigate the model name — check whether billing has been enabled on the
+Google Cloud project first.**
+
+**Cloudflare Workers AI added as a free alternative provider (2026-08-12)**:
+since Gemini image generation is blocked by Google account billing (not
+fixable from this codebase, see above), added a second, independent image-
+generation provider — Cloudflare Workers AI has a genuine free tier
+(~100k requests/day, no credit card) that includes real image models
+(FLUX.1 schnell, Stable Diffusion XL, etc.) via the same `generateContent`-
+style single-model-per-request REST pattern, just with different auth
+(Account ID + Bearer API Token, not a single key) and endpoint shape
+(`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}`).
+- **New, fully separate settings system** — global, Programmer-Roxwood-only
+  (like `system_ai_settings`, unlike the per-user `user_ai_settings`, since
+  Cloudflare account+token setup is meaningfully more involved than pasting
+  a Gemini key): `system_cloudflare_settings` table (migration
+  `docs/sql/61_2026-08-12_cloudflare_workers_ai_settings.sql`),
+  `config/cloudflare_settings.php` (ensure/get/save/model-options/mask
+  helpers), `dashboard/cloudflare_settings.php`+`_action.php` (mirrors
+  `ai_settings.php`'s structure/gate exactly — `ems_require_programmer_roxwood_access()`,
+  no `ems_enforce_dashboard_page_access()` call, same as its sibling — plus
+  a "Cara Setup" card with the exact dashboard click-path since a fresh
+  session/user won't know Cloudflare's UI). Sidebar entry added next to
+  "Setting AI" in the Pengaturan group (superuser-only block in
+  `partials/sidebar.php`).
+- **`actions/cloudflare_client.php`**: `ems_cloudflare_generate_image()`.
+  The response format genuinely differs by model on Workers AI — some
+  return raw binary image bytes (`Content-Type: image/*`), others return
+  JSON with a base64 `result.image` field — so the client checks the
+  response `Content-Type` header rather than assuming either shape, and
+  treats a raw-binary response as already-decoded bytes (re-encodes to
+  base64 itself to match the uniform `['mime_type', 'data']` shape the
+  rest of the Radiology Center pipeline expects from
+  `ems_ai_radiology_save_image_file()`). Reuses `ems_ai_log_request()`
+  from `ai_gemini_client.php` for the shared `system_ai_request_logs`
+  table (passes `provider: 'cloudflare'`) rather than inventing a second
+  logging path.
+- **Provider selection is automatic, not a per-request toggle**:
+  `ems_ai_radiology_generate_image()` in `config/ai_radiology.php` is the
+  new single entry point `radiology_center_action.php` calls (replacing
+  the old direct `ems_ai_radiology_call_gemini_image()` call) — it checks
+  `system_cloudflare_settings.is_enabled` (+ both credentials non-empty)
+  and routes to Cloudflare if so, otherwise transparently falls back to
+  the existing per-user Gemini path. Flipping the "Aktifkan" checkbox on
+  `cloudflare_settings.php` is the only thing that changes which provider
+  every user's Radiology Center generation uses — no other code/config
+  needs touching to switch back once Gemini billing is eventually sorted.
+- **Real bug found and fixed while building this**: `ems_table_exists()`
+  (`config/helpers.php`) caches its result in a `static` array for the
+  life of the PHP process/request, keyed by table name. Calling it to
+  *check before creating* a table (as `ensure_tables()`-style functions
+  throughout this codebase do) permanently poisons that cache entry to
+  `false` for the rest of the request, even after the table is actually
+  created moments later — so any function that re-checks the same table's
+  existence later in the *same* request (e.g. a settings page that calls
+  `ensure_tables()` then immediately reads settings) incorrectly believes
+  the table still doesn't exist. Caught this concretely:
+  `ems_cloudflare_get_settings()` returned defaults immediately after
+  `ems_cloudflare_save_settings()` had *just* successfully written a row
+  in the same script — the data was correctly in the database (verified
+  via a raw query bypassing the helper) but invisible to the app until the
+  next request. Fixed by having `ems_cloudflare_get_settings()` query
+  directly and catch the exception if the table genuinely doesn't exist,
+  instead of pre-checking with the cached `ems_table_exists()`. **This
+  same latent bug likely exists anywhere else in the codebase that calls
+  an `ensure_tables()`-style function and then immediately re-derives
+  "does table X exist" in the same request** (the Radiology Center and AI
+  Diagnosis modules built earlier this session happened not to hit it
+  because nothing in their flow re-checked table existence after creating
+  it — this one did, because the settings page's read path went through
+  a table-existence check that the write path's `ensure_tables()` call
+  had already poisoned).
+- Verified end-to-end against the **real** Cloudflare API (not mocked):
+  provider-fallback logic (Cloudflare disabled → correctly routes to
+  Gemini, reproducing the known quota error), and Cloudflare-enabled with
+  intentionally-fake credentials → got back a real, specific Cloudflare
+  API error ("Could not route to .../fake_account_id..., perhaps your
+  object identifier is invalid?"), proving the request construction,
+  auth headers, and error-parsing path all work correctly end-to-end —
+  only a genuine Account ID + API Token from the user's own Cloudflare
+  account is missing to make it actually generate images. Test
+  credentials were cleared from `system_cloudflare_settings` afterward
+  (left disabled/empty, not pointing at anything fake).
+- **User completed the real Cloudflare signup same day and it's now live**:
+  `system_cloudflare_settings` has a genuine Account ID + API Token, `is_enabled=1`
+  — confirmed with a real `ems_cloudflare_test_connection()` call (got back an
+  actual 335KB PNG). One rough edge surfaced during the user's own real setup:
+  the checkbox on `cloudflare_settings.php` **must actually be ticked before
+  clicking Simpan Setting** — the user saved credentials once without ticking
+  it, which is indistinguishable from "not yet configured" from the outside
+  (Radiology Center silently falls back to Gemini, which was still failing on
+  the quota issue above) and looked like "Cloudflare setup didn't work" until
+  traced back to the checkbox. Not a code bug, just a UX trap worth knowing
+  about if this gets reported again — check `is_enabled` in the table first.
+- **Real mime-type bug found and fixed same day**: Cloudflare's FLUX.1
+  [schnell] model (the default) returns its JSON `result.image` field as
+  **JPEG** bytes, not PNG, despite nothing in the response envelope saying
+  so — `ems_cloudflare_generate_image()` originally hardcoded
+  `'mime_type' => 'image/png'` for that response path (reasonable-looking
+  default, wrong in practice), which meant `ems_ai_radiology_save_image_file()`
+  wrote a `.png`-extensioned file containing actual JPEG bytes — silently
+  broken until something tried to actually decode it as PNG (see next point).
+  Fixed with `ems_cloudflare_detect_image_mime()`: sniffs the real format
+  from the decoded bytes' magic number (PNG/JPEG/WEBP signatures) instead of
+  guessing — never trust a provider's response shape implies a specific
+  format when the bytes can just be inspected directly.
+- **Patient/doctor/finding text overlay (added 2026-08-12, same day)**: user
+  asked for doctor name, patient name, age, and the clinical finding burned
+  into the generated image itself (like a real PACS export's corner
+  annotations) — deliberately **not** delegated to the image-generation
+  model itself (diffusion models are unreliable at rendering accurate,
+  correctly-spelled multi-line text; asking for it risks garbled output).
+  Instead `ems_ai_radiology_apply_overlay()` in `config/ai_radiology.php`
+  opens the just-saved file with GD and burns in 4 corner text blocks
+  (top-left: name/age/citizen ID, top-right: modality+region+finding,
+  bottom-left: doctor+timestamp, bottom-right: "ROXWOOD HOSPITAL / SIMULASI
+  ROLEPLAY" watermark) using GD's **built-in bitmap font** (`imagestring()`,
+  font size 5) rather than `imagettftext()` — deliberately avoids needing a
+  bundled/located TTF file (no font ships with this repo), matching the
+  project's established caution around Windows-vs-Linux path portability
+  (see the headless-browser gotcha in §10). This is what surfaced the mime-
+  detection bug above — GD's `imagecreatefrompng()` silently failed on the
+  mislabeled JPEG bytes, so overlay application returned `false` with no
+  visible error (`radiology_center_action.php` treats overlay failure as
+  non-fatal by design — a raw un-annotated image is still better than no
+  image — so this would NOT have surfaced as a user-facing error, only as
+  images silently missing their info overlay). `ems_ai_radiology_age_label()`
+  computes age from `patient_dob` via `DateTime::diff()`. Verified visually
+  with a real generated wrist X-ray (Cloudflare, post-mime-fix): all 4
+  corner blocks rendered legibly over a real generated image, confirmed by
+  reading the output file directly.
+- **Cloudflare's content moderation can false-positive on legitimate
+  clinical prompts**: observed live — a CT abdomen prompt for "Massa /
+  Tumor" (a completely normal clinical finding option in the catalog) was
+  rejected with `AiError: Input prompt contains NSFW content`, while the
+  wrist-fracture X-ray prompt succeeded fine. This is Cloudflare's safety
+  filter being overly cautious about certain anatomical/clinical wording
+  combinations, not a bug in this codebase, and not something the existing
+  2-attempt retry loop in `radiology_center_action.php` can work around
+  (retrying the identical prompt against a content filter just fails the
+  same way twice). Not fixed — flagging so a future session doesn't
+  mistake a `AiError: ... NSFW content` response for an app bug.
 7. **Upload size layering**: `.user.ini` allows 10MB at the PHP level, but
    the app enforces its own **1MB** cap (`emsUploadLimitBytes()`,
    disciplinary attachments capped tighter at 500KB) and aggressively
