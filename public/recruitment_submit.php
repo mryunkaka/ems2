@@ -466,6 +466,7 @@ function recruitmentFindExistingApplicant(PDO $pdo, string $citizenId, string $r
             ) AS has_ai_result
         FROM medical_applicants m
         WHERE m.citizen_id = ?
+          AND m.status NOT IN ('" . implode("','", EMS_PUBLIC_RECRUITMENT_TERMINAL_STATUSES) . "')
     ";
     $params = [$citizenId];
 

@@ -1343,6 +1343,195 @@ submission.
   (`ai_radiology_images`); confirmed an invalid/unrecognized `target` value
   is safely ignored rather than erroring.
 
+**Rekam Medis AI (added 2026-08-13)** — `dashboard/rekam_medis_ai.php` +
+`rekam_medis_ai_lookup.php`: a new, third way to create a `medical_records`
+row (alongside the existing manual `rekam_medis.php` and its edit flow),
+built specifically to close the loop on the whole "Roxwood Hospital AI"
+suite — instead of a medic manually retyping everything the AI already
+generated across Diagnosis/Surgery/Radiology/Laboratory/Psychiatry into a
+real medical record, this page does it automatically from one reference
+code. **Deliberately reuses `rekam_medis_action.php` unchanged** — this
+page is a new front-end only, submitting the exact same fields (patient_*,
+ktp_file, supporting_image_files[], doctor_id, assistant_ids[],
+operasi_type, jenis_operasi, medical_result_html) to the same existing
+insert endpoint, so an AI-generated record is indistinguishable from a
+manual one everywhere else in the app (`rekam_medis_list.php`,
+`rekam_medis_view.php`, `rekam_medis_edit.php` all work on it unmodified,
+no schema changes needed).
+- **User-facing inputs are intentionally minimal** (explicit user request):
+  KTP upload (required), optional supporting images, Dokter DPJP +
+  Asisten Operasi (autocomplete, same `data-user-autocomplete` widget as
+  the manual form), and ONE reference code (`DGN-...` from AI Diagnosis
+  Assistant). Patient identity (name/DOB/gender/citizen ID) and the
+  clinical content are **not** manually typed at all — they come entirely
+  from the AI chain.
+- **`rekam_medis_ai_lookup.php`** (GET, JSON): given a `DGN-` code, finds
+  the source `ai_diagnosis_reports` row, then independently queries all 4
+  consumer tables (`ai_surgery_plans`/`ai_radiology_images`/
+  `ai_laboratory_results`/`ai_psychiatry_assessments`) for a row with
+  matching `source_report_code` (the same chaining column the report-code
+  reuse guard added earlier today) — each of the 4 is optional except
+  Diagnosis itself, Psychiatry is explicitly the one meant to often be
+  absent (not every case needs a psych eval). Unlike the reuse-guard's
+  `ems_ai_ds_report_code_usage_info()` (which deliberately picks the
+  *first* row, for "who used it first" auditing), this endpoint picks the
+  *latest* (`ORDER BY id DESC`) — here the goal is "best available data",
+  and a "Generate Ulang" redo should supersede the original attempt.
+  Radiology reuses the same dual-status OR condition
+  (`status='done' OR report_status='done'`) as the reuse guard.
+- **Two outputs from one fetch, both client-side in `rekam_medis_ai.php`**:
+  (1) a "Preview Data AI (per bagian bisa disalin)" card — restructured
+  2026-08-13 (same day, second user-supplied screenshot batch) to mirror
+  the reference tool's exact 8 numbered sections/field labels (1.
+  Klasifikasi Operasi & Waktu, 2. Identitas Pasien, 3. Anggota Medis & Tim
+  Operasi, 4. Anamnesis & Riwayat Kesehatan, 5. Pemeriksaan Fisik & TTV, 6.
+  Tindakan & Prosedur Operasi, 7. Manajemen Anestesi & Table Score, 8.
+  Pemeriksaan Penunjang & Saran), each with a blue circular
+  `.rmai-section-number` badge — still rendered in EMS2's own card/design-
+  system look (per explicit user instruction: "desain nya jangan diturutin
+  gunakan desain yang saat ini project ems2, itu hanya letak kolom nya"),
+  not the reference's visual style. Each field has its own "Salin"
+  copy-to-clipboard button; (2) a full narrative medical-record document
+  loaded into the **same Quill editor** `rekam_medis.php` already uses —
+  kept **live-editable** before save, matching this app's established
+  pattern of always giving a human review/edit step over AI output before
+  it's persisted.
+- **"Kode Referensi" card restyled to match the other 4 AI pages**
+  (2026-08-13): originally a bespoke layout; changed to the exact
+  standardized `card-section` pattern (`background:#f0f9ff;border-bottom:
+  1px solid #e2e8f0;`, `btn-secondary btn-sm` fetch button, `page-subtitle`
+  status note) documented in the "Ambil dari Laporan Diagnosis" standard-
+  ization entry above — this page didn't exist yet when that
+  standardization pass happened, so it's now consistent with it too.
+- **The Quill draft is NOT built mechanically from the aggregated JSON
+  anymore — it's a second, dedicated Gemini call** (rearchitected
+  2026-08-13, same day, user request: "untuk rekam medis buat lengkap lagi
+  panjang seperti berikut" + a full real example document, e.g. a "LEFT
+  FRONTOTEMPOROPARIETAL CRANIOTOMY..." case with multi-paragraph narrative
+  Anamnesis/Status Lokalis/Laporan Tindakan Operasi). The original
+  approach — a JS `buildMedicalRecordHtml()` that string-concatenated
+  fragments straight from the Diagnosis/Surgery/etc. JSON — could never
+  produce this: the JSON schemas don't even contain fields like
+  Motorik/Sensorik/Refleks/Sirkulasi Perifer breakdowns or GCS E/V/M
+  narrative descriptions, and Surgery Planner's `tahapan_prosedur` is
+  already a step-list, not narrative prose. Fixed by adding a **new,
+  separate AI synthesis step**, architecturally consistent with every
+  other module (structured JSON in/out via `ems_ai_ds_call_gemini()`, PHP
+  renders the trusted/escaped HTML server-side — never raw HTML from the
+  model):
+  - **`config/ai_medical_record.php`** (new file): `ems_rmai_aggregate()`
+    (the shared cross-module data-pull, extracted out of
+    `rekam_medis_ai_lookup.php` so both the preview endpoint and the new
+    generator endpoint query identically without duplicating logic),
+    `ems_ai_medical_record_default_system_prompt()` (Sp. senior dokter
+    persona; explicitly instructs: multi-paragraph narrative required for
+    Anamnesis/Status Lokalis/Laporan Tindakan Operasi/Status Pasca Operasi;
+    `laporan_tindakan` sub-fields MUST be flowing narrative paragraphs, NOT
+    numbered steps or `/me`/`/do` format; missing exam-detail fields like
+    Motorik/Sensorik/Refleks/Sirkulasi Perifer or GCS E/V/M must be filled
+    with realistic clinical assumptions consistent with the given
+    diagnosis/GCS/TTV rather than left blank; if no Surgery Planner data
+    exists, derive the operative sections from the Diagnosis's
+    `kasus_tindakan`/`jenis_operasi` instead; never use "simulasi"/
+    "roleplay" wording; never include an emergency/`/me`/`/do`-style
+    "tindakan awal" section — matches the earlier explicit removal
+    request), `ems_ai_medical_record_build_user_prompt()` (formats the
+    aggregated Diagnosis+Surgery+Radiology+Laboratory+Psychiatry data as
+    structured context, marking Surgery Planner as "TIDAK TERSEDIA" when
+    absent so the model knows to fall back to Diagnosis data),
+    `ems_ai_medical_record_sanitize()` (coerces every JSON field to a safe
+    string/array shape with sensible fallbacks — never trusts the raw
+    model response directly), `ems_ai_medical_record_generate()` (calls
+    `ems_ai_ds_call_gemini()` with `featureKey: 'rekam_medis_ai'`, same
+    per-user key as the rest of the suite), and
+    `ems_ai_medical_record_build_html()` — builds the exact same
+    h1/h2/p/ul section structure as `rekam_medis.php`'s `medicalTemplate`
+    (Informasi Waktu → Diagnosis → Indikasi Operasi → Jenis Operasi →
+    Jenis Anestesi → Anamnesis Singkat → Status Lokalis Pra Operasi (+
+    Status Neurovaskular/Neurologis) → TTV Pra Operasi → Status Neurologis
+    (GCS E/V/M) → Hasil Pemeriksaan Radiologi (only if radiology data
+    exists) → Laporan Tindakan Operasi (A. Persiapan/B. Operasi/C.
+    Hemostasis/D. Penutupan, each a narrative paragraph) → Hasil Operasi →
+    Status Pasca Operasi → TTV Pasca Operasi → Pemeriksaan Penunjang
+    Tambahan (only if Laboratory/Psychiatry data exists) → Prognosis) —
+    server-side `htmlspecialchars()`-escaped throughout, never raw AI HTML.
+    Deliberately does **not** include a "Penanganan Emergency / Tindakan
+    Awal" or "Tahapan Prosedur Operasi" step-list section (explicit user
+    removal request from earlier the same day).
+  - **`dashboard/rekam_medis_ai_generate.php`** (new endpoint, POST+CSRF):
+    re-runs `ems_rmai_aggregate()` server-side (never trusts client-sent
+    aggregate data), calls `ems_ai_medical_record_generate()` with the
+    standard 2-attempt retry, then `ems_ai_medical_record_build_html()`,
+    returns `{ok, medical_result_html}`.
+  - **`rekam_medis_ai.php` JS**: the "Ambil Data" success handler no longer
+    calls the old `buildMedicalRecordHtml()` (deleted entirely) — once
+    patient identity is confirmed complete, it calls a new
+    `generateFullRecord(code)` which shows a staged-progress
+    `#rmaiGenOverlay` (same `.global-upload-overlay` pattern used across
+    the AI suite, with a stage-message ladder from "Mengumpulkan data..."
+    through "Model AI menyusun laporan tindakan..." to "Menyelesaikan
+    narasi..."), POSTs to `rekam_medis_ai_generate.php`, and on success
+    loads the returned HTML into Quill via `dangerouslyPasteHTML()` before
+    hiding the overlay; on failure shows the error inline with a retry/
+    close option, leaving the "Ambil Data" button re-enabled so the user
+    can just click it again (which re-triggers both the lookup and the
+    generation).
+  - Verified against the real local dev DB and a real Gemini call
+    (`gemini-3.5-flash-lite`, per-user key, CLI-level `ems_rmai_aggregate()`
+    → `ems_ai_medical_record_generate()` → `ems_ai_medical_record_build_html()`
+    round trip, correct 8.4.22 PHP binary) using a real chained case (stab
+    wound to the abdomen + eye trauma, Diagnosis + Surgery Planner data,
+    no Radiology/Lab/Psychiatry): completed in ~9s, produced multi-
+    paragraph narrative Anamnesis/Status Lokalis/Laporan Tindakan Operasi
+    (flowing prose, not step lists) consistent with the given GCS/TTV/
+    diagnosis, all 15 required template sections present, zero occurrences
+    of "simulasi"/"roleplay"/"penanganan emergency"/"tahapan prosedur
+    operasi"/"tindakan awal" in the output. HTTP-level click-through (the
+    overlay UI itself, Quill population in-browser) was **not** exercised
+    this session for the same live-session reason as other recent AI
+    features — a future session should click through once a safe
+    opportunity exists.
+- **Missing-identity guard**: `ai_diagnosis_reports.patient_name/dob/
+  gender/citizen_id` are optional fields on AI Diagnosis Assistant itself
+  (see the 2026-08-12 patient-identity-chain entry above) — but
+  `medical_records` hard-requires all four. If the referenced diagnosis
+  report never had patient identity filled in, this page detects it
+  immediately after fetch (not at submit time), disables the Save button,
+  and tells the user to go complete the patient identity on that specific
+  AI Diagnosis Assistant report first rather than silently failing later
+  inside `rekam_medis_action.php`'s own validation.
+- **No ACL restriction added** — mirrors `rekam_medis.php` itself, which
+  has no `ems_enforce_dashboard_page_access()` call (open to any logged-in
+  user already); `rekam_medis_ai.php`/`rekam_medis_ai_lookup.php` follow
+  the same no-restriction convention. Note this is independent of sidebar
+  placement (see next point) — the two ACL layers (§3 "two parallel
+  ACLs") don't have to agree, and here neither one restricts this page.
+- **Sidebar placement (moved 2026-08-13, same day, user-requested)**:
+  initially placed in the `Medis` group next to "Rekam Medis"; moved into
+  the `Roxwood Hospital AI` group instead (`clipboard-document-list` icon,
+  distinct from the other AI-suite icons already used in that group) since
+  it's conceptually part of that AI suite even though it doesn't share its
+  ACL exception-list pattern (see previous point) — a page's sidebar group
+  and its `ems_enforce_dashboard_page_access()` treatment are independent
+  and don't need to match.
+- Verified with a real, full 5-module Gemini chain sharing one reference
+  code (fall-from-height femur fracture case): AI Diagnosis Assistant →
+  AI Surgery Planner → Radiology Center (report-only) → Laboratory AI →
+  Psychiatry Center (finalize-only, Acute Stress Reaction correctly
+  correlated to the trauma) — confirmed the lookup endpoint's exact SQL
+  (replicated function-for-function in the test) correctly finds all 4
+  chained rows by `source_report_code`, and confirmed the JSON shapes each
+  nested field the frontend JS reads (`tahapan_prosedur[].pelaku/aksi/
+  hasil/animasi`, `farmakologi.{pra_operatif,intra_operatif,post_operatif,
+  pemulangan}`, `results[].parameter/result/unit/reference_range/flag`,
+  `diagnosis.{code,primary}`, `risk_assessment.{severity,suicide_risk,
+  violence_risk,self_harm_risk}`) actually exist with those exact names.
+  All test rows deleted after. HTTP-level click-through (the actual
+  Quill-population JS, the copy buttons, the missing-identity guard UI)
+  was **not** exercised this session for the same live-session reason as
+  other recent AI features — a future session should click through once a
+  safe opportunity exists.
+
 ## 6. `actions/` + `ajax/` + `public/` — endpoint layer
 
 ### AI recruitment engine (the most complex subsystem in the codebase)

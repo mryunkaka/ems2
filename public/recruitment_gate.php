@@ -54,6 +54,12 @@ function ems_public_recruitment_require_portal_open(string $track = 'medical_can
     return $settings;
 }
 
+// Status akhir (keputusan sudah final) — pelamar dengan status ini TIDAK
+// dianggap sebagai "aplikasi yang sedang berjalan" oleh gate publik, supaya
+// yang sudah lolos ATAU tidak lolos tetap bisa mendaftar ulang dari awal
+// alih-alih terus diarahkan ke recruitment_done.php milik aplikasi lamanya.
+const EMS_PUBLIC_RECRUITMENT_TERMINAL_STATUSES = ['accepted', 'rejected'];
+
 function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId, ?string $preferredType = null): ?array
 {
     $citizenId = ems_normalize_citizen_id($citizenId);
@@ -74,6 +80,7 @@ function ems_public_recruitment_find_applicant(PDO $pdo, string $citizenId, ?str
             ) AS has_ai_result
         FROM medical_applicants m
         WHERE UPPER(TRIM(m.citizen_id)) = ?
+          AND m.status NOT IN ('" . implode("','", EMS_PUBLIC_RECRUITMENT_TERMINAL_STATUSES) . "')
     ";
     $params = [$citizenId];
 
