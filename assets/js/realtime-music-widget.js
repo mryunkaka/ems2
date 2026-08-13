@@ -82,12 +82,20 @@ import {
     let syncingAudio = false;
     let queueLoaded = false;
     let stateLoaded = false;
-    let pendingYoutubeState = null;
     let pendingUserPlayRequest = false;
     let pendingBootstrapQueueId = '';
     let serverTimeOffsetMs = 0;
     let syncLoopTimer = null;
     let autoAdvanceQueueId = '';
+    // Setiap panggilan applyPlaybackState()/syncYoutubePlayback() menangkap nomor
+    // generasi ini. Kalau state global berubah SEBELUM sebuah panggilan async lama
+    // selesai (mis. IFrame API YouTube baru siap 1-3 detik kemudian, atau dua
+    // update Firebase datang beruntun), panggilan lama itu bisa mendeteksi dirinya
+    // "basi" lewat isStalePlaybackGeneration() dan berhenti alih-alih tetap
+    // menyalakan/memutar player untuk state yang sudah tidak berlaku lagi — inilah
+    // akar bug "suara double" (player YouTube yatim yang telat siap) dan sebagian
+    // penyebab posisi putar yang meleset setelah refresh.
+    let playbackGeneration = 0;
 
     setManagedPlaybackControlsUi();
     restoreCachedUi();
@@ -764,7 +772,13 @@ import {
         }
     }
 
+    function isStalePlaybackGeneration(generation) {
+        return generation !== playbackGeneration;
+    }
+
     async function applyPlaybackState() {
+        const generation = ++playbackGeneration;
+
         if (!audioEl || !embedWrapEl) {
             return;
         }
@@ -798,6 +812,9 @@ import {
 
             if (shouldPlayLocally()) {
                 await attemptAudioPlayback(pendingUserPlayRequest);
+                if (isStalePlaybackGeneration(generation)) {
+                    return;
+                }
             } else {
                 audioEl.pause();
             }
@@ -807,7 +824,7 @@ import {
 
         if (currentState.playbackType === 'youtube') {
             clearAudioElement();
-            await syncYoutubePlayback();
+            await syncYoutubePlayback(generation);
             return;
         }
 
@@ -1235,17 +1252,17 @@ import {
         setAudioPlaybackRate(1);
     }
 
-    async function syncYoutubePlayback() {
+    async function syncYoutubePlayback(generation) {
         if (!embedWrapEl || !currentState || currentState.playbackType !== 'youtube') {
             return;
         }
 
-        const videoId = await prepareYoutubeEmbed();
-        if (!videoId) {
+        const activeGeneration = typeof generation === 'number' ? generation : ++playbackGeneration;
+
+        const videoId = await prepareYoutubeEmbed(activeGeneration);
+        if (!videoId || isStalePlaybackGeneration(activeGeneration)) {
             return;
         }
-        const targetSeconds = computeTargetPositionMs(currentState) / 1000;
-        pendingYoutubeState = { videoId, targetSeconds };
 
         if (!youtubePlayer) {
             youtubePlayer = new window.YT.Player('emsLiveMusicYoutubePlayer', {
@@ -1265,8 +1282,33 @@ import {
                         if (loadingEl) {
                             loadingEl.remove();
                         }
-                        const stateToApply = pendingYoutubeState || { videoId, targetSeconds };
-                        applyYoutubeState(stateToApply.videoId, stateToApply.targetSeconds).catch(function () {
+
+                        // Loading IFrame API + init player YouTube bisa makan waktu
+                        // beberapa detik. Kalau selama itu state global sudah berpindah
+                        // ke track/tipe lain, player ini "yatim" — matikan & hancurkan
+                        // alih-alih memutarnya, supaya tidak ikut bersuara berbarengan
+                        // dengan player/audio yang sudah aktif untuk state terbaru
+                        // (ini akar bug "suara double / lebih dari satu").
+                        if (
+                            isStalePlaybackGeneration(activeGeneration) ||
+                            !currentState ||
+                            currentState.playbackType !== 'youtube' ||
+                            String(currentState.youtubeId || '') !== videoId
+                        ) {
+                            try {
+                                youtubePlayer.stopVideo();
+                                youtubePlayer.destroy();
+                            } catch (error) {
+                                // ignore
+                            } finally {
+                                youtubePlayer = null;
+                                youtubeReady = false;
+                                currentYoutubeVideoId = '';
+                            }
+                            return;
+                        }
+
+                        applyYoutubeState(videoId, activeGeneration).catch(function () {
                             return null;
                         });
                     },
@@ -1291,10 +1333,10 @@ import {
             return;
         }
 
-        await applyYoutubeState(videoId, targetSeconds);
+        await applyYoutubeState(videoId, activeGeneration);
     }
 
-    async function prepareYoutubeEmbed() {
+    async function prepareYoutubeEmbed(generation) {
         if (!embedWrapEl || !currentState || currentState.playbackType !== 'youtube') {
             return '';
         }
@@ -1312,18 +1354,38 @@ import {
         }
 
         await ensureYoutubeApi();
-        if (!currentState || currentState.playbackType !== 'youtube' || String(currentState.youtubeId || '') !== videoId) {
+        if (
+            isStalePlaybackGeneration(generation) ||
+            !currentState ||
+            currentState.playbackType !== 'youtube' ||
+            String(currentState.youtubeId || '') !== videoId
+        ) {
             return '';
         }
 
         return videoId;
     }
 
-    async function applyYoutubeState(videoId, targetSeconds) {
+    async function applyYoutubeState(videoId, generation) {
         if (!youtubePlayer || !youtubeReady) {
             return;
         }
 
+        if (
+            isStalePlaybackGeneration(generation) ||
+            !currentState ||
+            currentState.playbackType !== 'youtube' ||
+            String(currentState.youtubeId || '') !== videoId
+        ) {
+            return;
+        }
+
+        // Hitung ULANG posisi target di sini, bukan pakai nilai yang ditangkap saat
+        // request pertama kali dibuat — loading IFrame API + init player bisa makan
+        // waktu beberapa detik, jadi target posisi yang dihitung di awal sudah basi
+        // (ketinggalan beberapa detik) di saat player ini benar-benar siap dipakai.
+        // Ini bagian dari perbaikan "posisi tidak mengikuti waktu yang seharusnya".
+        const targetSeconds = computeTargetPositionMs(currentState) / 1000;
         const shouldPlay = shouldPlayLocally();
         const safeSeconds = Math.max(0, Number(targetSeconds || 0));
 
@@ -1408,7 +1470,6 @@ import {
                 youtubePlayer = null;
                 youtubeReady = false;
                 currentYoutubeVideoId = '';
-                pendingYoutubeState = null;
             }
         }
 

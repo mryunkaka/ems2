@@ -299,7 +299,7 @@ import {
 
             const uniqueViewers = dedupeViewers(entries);
             updateOnlineCount(uniqueViewers.length);
-            renderViewers(uniqueViewers.slice(0, 8));
+            renderViewers(uniqueViewers);
         });
     }
 

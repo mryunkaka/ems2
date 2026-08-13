@@ -197,6 +197,40 @@ know it exists before assuming role/division checks are the whole story.
 - **`partials/header.php`** / **`footer.php`** — farmasi duty "still
   online?" modal + heartbeat JS, inbox polling, birthday modal, live chat +
   live music widgets, session-validity poller.
+- **`assets/js/realtime-music-widget.js`** (Live Music, Firebase-synced
+  audio/YouTube across every logged-in browser) — **race-condition fix
+  applied 2026-08-13** (user-reported: "suara double", playback speed/desync
+  between two medics, and position resetting to the start instead of
+  resuming mid-track on page refresh). Root cause: `applyPlaybackState()` /
+  `syncYoutubePlayback()` are `async` and get re-invoked from many
+  independent triggers (bootstrap, Firebase `onValue` state updates, the
+  2.5s `startSyncLoop()`, `visibilitychange`, manual play/pause) with no
+  concurrency guard — an in-flight call for an OLD state (e.g. still
+  waiting on the YouTube IFrame API to finish loading, which can take
+  1–3s) could resolve **after** a newer call had already taken over,
+  creating an orphaned second `YT.Player` that plays alongside the correct
+  one (the actual source of "double sound"), and re-applying a now-stale
+  target position. Fixed with a monotonic `playbackGeneration` counter:
+  every `applyPlaybackState()`/`syncYoutubePlayback()` call captures its
+  own generation number at start, and checks `isStalePlaybackGeneration()`
+  after every `await` — a stale continuation (including inside the
+  `YT.Player` `onReady` callback, which fires whenever the API finally
+  loads, regardless of how much time has passed) now self-destructs its
+  orphaned player instead of playing it. Also fixed a related staleness
+  bug in `applyYoutubeState()`: the target seek position used to be
+  captured once at the start of the (slow) YouTube init chain and reused
+  once ready — now it's recomputed fresh from `computeTargetPositionMs()`
+  at the moment the player actually becomes ready, so a slow YouTube API
+  load no longer leaves the video measurably behind. The existing gentle
+  drift-correction in `syncAudioPosition()` (hard seek if drift > 1.2s,
+  otherwise ±4% `playbackRate` nudge, never a jarring restart) was left
+  as-is — it's the correct mechanism, it just needed the race fixed so it
+  stops getting fought/overridden by stale async continuations. Verified
+  by static trace of every `await` boundary in the playback-state and
+  YouTube-embed call chains (this bug depends on real network/API-loading
+  timing across multiple simultaneous Firebase clients, which isn't
+  reproducible via a CLI script — a future session should still watch two
+  real browser tabs side by side if this gets reported again).
 - **`config/database.php`** — PDO bootstrap (`DB_HOST/NAME/USER/PASS/TIMEZONE`
   env vars, `Asia/Jakarta` timezone, `utf8mb4`).
 - **`ems_secure_file_url()`** — every `storage/` path must be rewritten
