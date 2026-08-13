@@ -43,10 +43,6 @@ include __DIR__ . '/../partials/sidebar.php';
             <input type="hidden" name="patient_citizen_id" id="rmaiPatientCitizenId">
             <input type="hidden" name="patient_dob" id="rmaiPatientDob">
             <input type="hidden" name="patient_gender" id="rmaiPatientGender">
-            <input type="hidden" name="patient_occupation" value="Civilian">
-            <input type="hidden" name="patient_address" value="INDONESIA">
-            <input type="hidden" name="patient_status" value="">
-            <input type="hidden" name="patient_phone" value="">
             <input type="hidden" name="medical_result_html" id="medical_result_html">
 
             <!-- CARD 1: KODE REFERENSI -->
@@ -72,6 +68,32 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-body">
                     <div id="rmaiPatientPreview" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <p class="text-sm text-gray-400 md:col-span-4">Ambil data dari kode referensi terlebih dahulu.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4" style="border-top:1px solid #e2e8f0;">
+                        <div class="form-group">
+                            <label class="form-label">Pekerjaan</label>
+                            <input type="text" name="patient_occupation" class="form-input"
+                                value="Civilian" placeholder="Pekerjaan pasien" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">No HP</label>
+                            <input type="text" name="patient_phone" class="form-input"
+                                placeholder="Nomor HP pasien" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Alamat</label>
+                            <input type="text" name="patient_address" class="form-input"
+                                value="INDONESIA" placeholder="Alamat pasien" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Status</label>
+                            <input type="text" name="patient_status" class="form-input"
+                                placeholder="Status pasien (opsional)" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -103,13 +125,14 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <input type="file" id="supporting_image_files" name="supporting_image_files[]" accept="image/png,image/jpeg" hidden multiple>
                                 <label for="supporting_image_files" class="file-upload-label">
                                     <div class="preview-container min-h-48 p-3 flex items-center justify-center bg-gray-50 rounded border border-gray-200" id="supporting_images_preview">
-                                        <span class="text-gray-400 text-sm">Belum ada file — citra Radiology Center (kalau ada) otomatis ikut dilampirkan sebagai referensi di teks rekam medis.</span>
+                                        <span class="text-gray-400 text-sm">Belum ada file</span>
                                     </div>
                                     <div class="mt-2 text-center">
                                         <span class="btn-secondary btn-sm">Pilih Beberapa File / Ambil Foto</span>
                                     </div>
                                 </label>
                                 <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, bisa pilih banyak file, max <?= htmlspecialchars(emsUploadLimitLabel(), ENT_QUOTES, 'UTF-8') ?> per file</p>
+                                <p id="rmaiRadiologyAttachNote" class="text-xs mt-1 hidden"></p>
                             </div>
                         </div>
                     </div>
@@ -260,6 +283,7 @@ include __DIR__ . '/../partials/sidebar.php';
 (function () {
     var CSRF_TOKEN = <?= json_encode(generateCsrfToken(), JSON_UNESCAPED_UNICODE) ?>;
     var lastData = null;
+    var autoAttachedRadiologyFile = null;
 
     var fetchBtn = document.getElementById('rmaiFetchBtn');
     var codeInput = document.getElementById('rmaiCode');
@@ -336,6 +360,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 renderPatient(lastData.diagnosis);
                 renderPreview(lastData);
                 applyOperationDefaults(lastData);
+                attachRadiologyImage(lastData.radiology);
 
                 var missing = [];
                 if (!lastData.diagnosis.patient_name) missing.push('Nama Pasien');
@@ -458,6 +483,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 genMessage.textContent = 'Selesai.';
                 window.quill.clipboard.dangerouslyPasteHTML(result.data.medical_result_html);
                 document.getElementById('medical_result_html').value = window.quill.root.innerHTML;
+                document.getElementById('rmaiSubmitBtn').disabled = false;
+                fetchNote.textContent = 'Draf rekam medis lengkap berhasil disusun AI dari laporan ' + lastData.diagnosis.report_code + '. Tinjau isi editor di bawah sebelum menyimpan.';
+                fetchNote.style.color = '#059669';
                 setTimeout(function () {
                     genOverlay.classList.add('hidden');
                     genOverlay.setAttribute('aria-hidden', 'true');
@@ -524,15 +552,36 @@ include __DIR__ . '/../partials/sidebar.php';
             '</div>';
     }
 
-    // Backend simpan/kirim Tanggal Lahir format yyyy-mm-dd (ISO), tapi kolom
-    // tanggal di form eksternal (mis. medicalcenterime.my.id) memakai
-    // mm/dd/yyyy — paste teks ISO ke input type="date" bergaya itu tidak
-    // terbaca. Tombol Salin di preview memakai format mm/dd/yyyy supaya
-    // langsung bisa ditempel, sementara nilai yang ditampilkan tetap ISO asli.
-    function formatDobForCopy(iso) {
+    // Backend simpan Tanggal Lahir format yyyy-mm-dd (ISO). Form/field
+    // tanggal di sistem LAIN (mis. medicalcenterime.my.id) bisa mengharap
+    // format berbeda (mm/dd/yyyy, dd/mm/yyyy, dll) tergantung field itu
+    // native <input type="date"> atau widget/masked-input custom — dan kita
+    // tidak bisa memastikan dari sini format mana yang sebenarnya diterima.
+    // Solusinya: sediakan beberapa tombol format sekaligus supaya user bisa
+    // coba satu-satu, bukan menebak satu format saja.
+    function formatDobVariants(iso) {
         var parts = String(iso || '').split('-');
-        if (parts.length !== 3) return String(iso || '');
-        return parts[1] + '/' + parts[2] + '/' + parts[0];
+        if (parts.length !== 3) return [];
+        var y = parts[0], m = parts[1], d = parts[2];
+        return [
+            { label: m + '/' + d + '/' + y, title: 'Format mm/dd/yyyy' },
+            { label: d + '/' + m + '/' + y, title: 'Format dd/mm/yyyy' },
+            { label: y + '-' + m + '-' + d, title: 'Format yyyy-mm-dd (ISO)' },
+            { label: d + '-' + m + '-' + y, title: 'Format dd-mm-yyyy' },
+        ];
+    }
+
+    function dobFieldRow(label, iso) {
+        if (!iso) return '';
+        var variants = formatDobVariants(iso);
+        if (!variants.length) return fieldRow(label, iso);
+        var buttons = variants.map(function (v) {
+            return '<button type="button" class="rmai-copy-btn" title="' + esc(v.title) + '" data-copy="' + esc(v.label) + '">' + esc(v.label) + '</button>';
+        }).join('');
+        return '<div class="rmai-field">' +
+            '<div><div class="rmai-field__label">' + esc(label) + '</div><div class="rmai-field__value">' + esc(iso) + '</div></div>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">' + buttons + '</div>' +
+            '</div>';
     }
 
     function listText(arr) {
@@ -562,7 +611,7 @@ include __DIR__ . '/../partials/sidebar.php';
         // 2. Identitas Pasien
         sections.push(sectionBlock(2, 'Identitas Pasien', [
             fieldRow('Nama Pasien', d.patient_name),
-            fieldRow('Tanggal Lahir (DOB)', d.patient_dob ? (d.patient_dob + ' — disalin sebagai ' + formatDobForCopy(d.patient_dob) + ' (mm/dd/yyyy)') : d.patient_dob, formatDobForCopy(d.patient_dob)),
+            dobFieldRow('Tanggal Lahir (DOB)', d.patient_dob),
             fieldRow('Jenis Kelamin', d.patient_gender),
             fieldRow('Citizen ID / KTP Pasien', d.patient_citizen_id),
         ], 'Golongan Darah dan No HP/Telepon tidak tersedia dari data AI — isi manual bila diperlukan.'));
@@ -717,6 +766,72 @@ include __DIR__ . '/../partials/sidebar.php';
     }
     bindPreview('ktp_file', 'ktp_preview', false);
     bindPreview('supporting_image_files', 'supporting_images_preview', true);
+
+    // ===== Lampirkan otomatis citra Radiology Center (kalau ada) sebagai foto pendukung =====
+    // image_url dari rekam_medis_ai_lookup.php melewati ajax/secure_file.php (butuh sesi
+    // login yang sama — credentials: 'same-origin' sudah cukup, tidak perlu token tambahan).
+    // File hasil fetch disisipkan ke input#supporting_image_files lewat DataTransfer supaya
+    // ikut ter-upload persis seperti file yang dipilih manual oleh user, dan supaya preview
+    // thumbnail yang sudah ada (bindPreview di atas) otomatis menampilkannya juga.
+    function attachRadiologyImage(radiology) {
+        var note = document.getElementById('rmaiRadiologyAttachNote');
+        var input = document.getElementById('supporting_image_files');
+
+        function removeStaleAttachment() {
+            if (!autoAttachedRadiologyFile) return;
+            var dt = new DataTransfer();
+            Array.from(input.files || []).forEach(function (f) {
+                if (f !== autoAttachedRadiologyFile) dt.items.add(f);
+            });
+            input.files = dt.files;
+            autoAttachedRadiologyFile = null;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        if (!radiology || !radiology.image_url) {
+            removeStaleAttachment();
+            if (note) note.classList.add('hidden');
+            return;
+        }
+
+        if (note) {
+            note.textContent = 'Mengambil citra Radiology Center...';
+            note.style.color = '#0284c7';
+            note.classList.remove('hidden');
+        }
+
+        fetch(radiology.image_url, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.blob();
+            })
+            .then(function (blob) {
+                var ext = blob.type === 'image/png' ? 'png' : (blob.type === 'image/webp' ? 'webp' : 'jpg');
+                var label = [radiology.modality, radiology.body_region].filter(Boolean).join('_').replace(/[^a-zA-Z0-9_]+/g, '_') || 'scan';
+                var file = new File([blob], 'radiology_' + label + '.' + ext, { type: blob.type || 'image/jpeg' });
+
+                var dt = new DataTransfer();
+                Array.from(input.files || []).forEach(function (f) {
+                    if (f !== autoAttachedRadiologyFile) dt.items.add(f);
+                });
+                dt.items.add(file);
+                input.files = dt.files;
+                autoAttachedRadiologyFile = file;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                if (note) {
+                    note.textContent = 'Citra Radiology Center (' + [radiology.modality, radiology.body_region].filter(Boolean).join(' - ') + ') otomatis dilampirkan sebagai foto pendukung.';
+                    note.style.color = '#059669';
+                }
+            })
+            .catch(function () {
+                removeStaleAttachment();
+                if (note) {
+                    note.textContent = 'Gagal mengambil citra Radiology Center secara otomatis (berkas mungkin sudah dihapus/gagal dibuat). Lampirkan manual dari Radiology Center bila diperlukan.';
+                    note.style.color = '#dc2626';
+                }
+            });
+    }
 
     // ===== Validasi sebelum submit =====
     document.getElementById('medical-record-form').addEventListener('submit', function (e) {
