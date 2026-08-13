@@ -240,15 +240,39 @@ if ($isAltaUnit && !$canViewAllUnits) {
     }
 }
 
+// Urutan menu di bawah ini SENGAJA mengikuti alur kerja klinis nyata, bukan
+// urutan alfabet/pembuatan fitur: mulai dari AI Diagnosis Assistant (wajib
+// pertama — hasilnya berupa kode referensi DGN-... yang dipakai modul lain),
+// lalu penunjang diagnostik (Radiology, Laboratory), baru rencana
+// tindakan/operasi (Surgery Planner), asesmen psikiatri (opsional, terpisah),
+// dan terakhir Rekam Medis AI yang merangkum semuanya jadi satu dokumen resmi.
+// Setting AI Saya (konfigurasi API key) ditaruh paling bawah karena bukan
+// langkah alur kasus, melainkan pengaturan akun.
 $groupedNav['Roxwood Hospital AI'] = [
     sidebarItem('/dashboard/ai_diagnosis_assistant.php', 'ai_diagnosis_assistant.php', 'AI Diagnosis Assistant', 'sparkles'),
-    sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
     sidebarItem('/dashboard/radiology_center.php', 'radiology_center.php', 'Radiology Center', 'camera'),
     sidebarItem('/dashboard/laboratory_ai.php', 'laboratory_ai.php', 'Laboratory AI', 'beaker'),
+    sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
     sidebarItem('/dashboard/psychiatry_center.php', 'psychiatry_center.php', 'Psychiatry Center', 'chat-bubble-left-right'),
     sidebarItem('/dashboard/rekam_medis_ai.php', 'rekam_medis_ai.php', 'Rekam Medis AI', 'clipboard-document-list'),
     sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
 ];
+
+// Pindahkan grup "Roxwood Hospital AI" ke posisi ke-2 (tepat di bawah "Utama"),
+// apa pun urutan grup lain yang sudah terbentuk di atas (termasuk override
+// sidebar khusus unit Alta) — supaya AI suite selalu langsung terlihat tanpa
+// perlu scroll, sesuai permintaan eksplisit user.
+if (isset($groupedNav['Roxwood Hospital AI'])) {
+    $roxwoodHospitalAiGroup = $groupedNav['Roxwood Hospital AI'];
+    unset($groupedNav['Roxwood Hospital AI']);
+    $utamaGroup = $groupedNav['Utama'] ?? null;
+    unset($groupedNav['Utama']);
+    $groupedNav = array_merge(
+        $utamaGroup !== null ? ['Utama' => $utamaGroup] : [],
+        ['Roxwood Hospital AI' => $roxwoodHospitalAiGroup],
+        $groupedNav
+    );
+}
 
 if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
     if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {

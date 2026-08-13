@@ -161,6 +161,23 @@ know it exists before assuming role/division checks are the whole story.
   `deploy-cron.php`).
 - **`partials/sidebar.php`** — full nav tree + role/division/unit branching +
   trainee page-blacklist filtering. Read before adding any menu item.
+  **`Roxwood Hospital AI` is force-positioned as the 2nd group, right below
+  `Utama`** (added 2026-08-13, user-requested — "taruh paling atas di bawah
+  grup utama"): the group's item list is built normally at its usual place
+  in the file, then a small block right after that assignment does
+  `unset()` + `array_merge()` to rebuild `$groupedNav` as `Utama` →
+  `Roxwood Hospital AI` → everything else, in that order, regardless of
+  what other groups (division-gated or the full Alta-unit override) were
+  already added earlier — this runs unconditionally at the very end so it
+  applies to every branch uniformly instead of needing to special-case the
+  Alta override block. **Item order inside the group follows the real
+  clinical workflow, not build order**: AI Diagnosis Assistant (first —
+  produces the `DGN-...` code every other module chains from) → Radiology
+  Center → Laboratory AI (diagnostic workup) → AI Surgery Planner (treatment
+  planning) → Psychiatry Center (optional, separate axis) → Rekam Medis AI
+  (final compiled document) → Setting AI Saya (account config, not a case
+  step, kept last). If you add a new module to this suite, insert it in
+  clinical order, not alphabetically or by build date.
   Current group layout (main/non-Alta branch): **Utama** (Dashboard, Daftar
   Medis Roxwood, Kerja Sama Police, + conditional **Event** — only inserted
   if an active `events` row exists), **Medis** (EMS services, rekam medis,
@@ -546,6 +563,22 @@ user supplies their own personal Gemini API key** (not the shared
 pages predate this file's tracking (found already built/undocumented on
 2026-08-11) — noting them here now so a future session doesn't have to
 rediscover them from scratch:
+- **`ai_settings_personal.php` gained a full step-by-step "how to get a
+  Gemini API key" tutorial card (added 2026-08-13, user-requested — medics
+  had no idea where to go or what to click)**: before this it was a single
+  one-line `alert-info` mentioning "Google AI Studio" with no link. Now a
+  dedicated card walks through the exact real flow — link to
+  `https://aistudio.google.com/apikey`, log in with a personal Google/
+  Gmail account, click "Create API key", pick "Create API key in new
+  project" if prompted, copy the `AIza...` key, paste it into the form,
+  save, then use "Test Koneksi Gemini" to confirm — plus a security warning
+  (treat it like a password, never share it, regenerate if leaked) and a
+  note that only Radiology Center's *image* generation needs Google Cloud
+  billing (everything else, including Radiology's own text report, is
+  free). The page subtitle was also corrected — it previously said the key
+  was "khusus untuk AI Diagnosis Assistant dan AI Surgery Planner" even
+  though it's actually shared by the entire suite (Radiology/Laboratory/
+  Psychiatry/Rekam Medis AI too); now lists all six.
 - `dashboard/ai_diagnosis_assistant.php`+`_action.php`+`ai_diagnosis_report.php`
   — free-text anamnesis in, full structured JSON ER report out (diagnosis,
   GCS, TTV, lab/radiology recs, step-by-step `/me`/`/do`/`/e` emergency

@@ -39,7 +39,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
                 <h1 class="page-title">Setting AI Saya</h1>
-                <p class="page-subtitle">API key Gemini pribadi Anda, khusus untuk AI Diagnosis Assistant dan AI Surgery Planner.</p>
+                <p class="page-subtitle">API key Gemini pribadi Anda — dipakai untuk seluruh fitur Roxwood Hospital AI (AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI, Psychiatry Center, dan Rekam Medis AI).</p>
             </div>
             <div class="badge-info">Akses: Semua User</div>
         </div>
@@ -51,8 +51,69 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="alert alert-danger mb-3"><?= htmlspecialchars((string) $error, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>
 
-        <div class="alert alert-info mb-4">
-            Setiap user mengisi API key Gemini miliknya sendiri untuk memakai AI Diagnosis Assistant &amp; AI Surgery Planner. Dapatkan API key gratis di Google AI Studio, lalu tempel di bawah ini.
+        <!-- TUTORIAL: CARA MENDAPATKAN API KEY GEMINI -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <?= ems_icon('information-circle', 'h-5 w-5') ?>
+                <span>Cara Mendapatkan API Key Gemini (Gratis, ± 2 Menit)</span>
+            </div>
+            <div class="card-body space-y-3 text-sm text-slate-700">
+                <p>
+                    Setiap medis wajib mengisi API key Gemini <strong>milik sendiri</strong> (tidak boleh
+                    pinjam/pakai bareng punya orang lain) supaya bisa memakai seluruh fitur Roxwood
+                    Hospital AI: AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI,
+                    Psychiatry Center, dan Rekam Medis AI. Cara membuatnya <strong>gratis</strong> dan cukup
+                    pakai akun Google (Gmail) pribadi — tidak perlu kartu kredit.
+                </p>
+
+                <ol class="list-decimal ml-5 space-y-2">
+                    <li>
+                        Buka
+                        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="font-semibold underline" style="color:#0284c7;">https://aistudio.google.com/apikey</a>
+                        di tab baru (klik link ini langsung, atau salin lalu tempel ke browser), kemudian
+                        <strong>login pakai akun Google/Gmail pribadi</strong> Anda (bukan akun EMS2).
+                    </li>
+                    <li>
+                        Setelah masuk ke halaman Google AI Studio, cari dan klik tombol
+                        <strong>"Create API key"</strong> (kadang tampil sebagai "Buat kunci API").
+                    </li>
+                    <li>
+                        Kalau muncul pilihan project, klik
+                        <strong>"Create API key in new project"</strong> (buat di project baru) — tidak perlu
+                        mengubah pengaturan apa pun, langsung klik saja sampai key-nya muncul.
+                    </li>
+                    <li>
+                        Sebuah kode akan muncul, formatnya diawali <code>AIza...</code>. Klik ikon
+                        <strong>salin (copy)</strong> di sebelah kode itu untuk menyalinnya.
+                    </li>
+                    <li>
+                        Kembali ke halaman ini, tempel (paste) kode tadi ke kolom
+                        <strong>"Gemini API Key"</strong> di bawah.
+                    </li>
+                    <li>
+                        Klik <strong>"Simpan Setting AI Saya"</strong>, lalu klik
+                        <strong>"Test Koneksi Gemini"</strong> untuk memastikan key berhasil tersambung
+                        sebelum dipakai di fitur-fitur AI.
+                    </li>
+                </ol>
+
+                <div class="alert alert-warning !mt-3">
+                    <strong>Penting soal keamanan:</strong> perlakukan API key seperti password pribadi —
+                    jangan pernah dibagikan ke siapa pun, termasuk sesama rekan medis. Kalau merasa key
+                    bocor atau dipakai orang lain, buat key baru di
+                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" class="underline">aistudio.google.com/apikey</a>
+                    lalu ganti key lama di halaman ini dengan yang baru.
+                </div>
+
+                <div class="helper-note">
+                    Catatan: pembuatan API key dan pemakaian untuk fitur berbasis teks (AI Diagnosis
+                    Assistant, AI Surgery Planner, Laboratory AI, Psychiatry Center, Rekam Medis AI, serta
+                    laporan teks Radiology Center) sepenuhnya gratis. Khusus citra/gambar hasil scan di
+                    Radiology Center, Google mensyaratkan billing aktif di akun Google Cloud pribadi — kalau
+                    fitur itu gagal dengan pesan terkait kuota (quota), itu bukan berarti API key Anda salah,
+                    laporkan saja ke Programmer Roxwood.
+                </div>
+            </div>
         </div>
 
         <div class="card mb-0">
