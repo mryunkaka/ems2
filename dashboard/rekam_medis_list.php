@@ -27,13 +27,11 @@ $forensicPerms = [
     'can_view_all' => true, 'can_view_own' => true, 'can_create' => true,
     'can_edit' => true, 'can_delete' => true, 'has_any_access' => true, 'is_native' => true,
 ];
-$canManageForensicAccess = false;
 $canViewForensicHistory = false;
 
 if ($isForensicPrivate) {
     ems_forensic_private_ensure_tables($pdo);
     $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
-    $canManageForensicAccess = ems_forensic_private_can_manage_access($user);
     $canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
     if (!$forensicPerms['has_any_access']) {
@@ -278,12 +276,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private — division Forensic, atau medis lain yang sudah diberi izin khusus' : 'Daftar semua rekam medis pasien' ?></p>
             </div>
             <div class="flex gap-2 flex-wrap justify-end">
-                <?php if ($isForensicPrivate && $canManageForensicAccess): ?>
-                    <a href="forensic_private_access_manage.php" class="btn-secondary">
-                        <?= ems_icon('lock-closed', 'h-4 w-4') ?>
-                        <span>Kelola Akses</span>
-                    </a>
-                <?php endif; ?>
                 <?php if (!$isForensicPrivate || $forensicPerms['can_create']): ?>
                     <a href="<?= $isForensicPrivate ? 'forensic_medical_records.php' : 'rekam_medis.php' ?>" class="btn-primary">
                         <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
