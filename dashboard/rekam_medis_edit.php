@@ -6,16 +6,25 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Edit Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
+$userId = (int) ($user['id'] ?? 0);
 $mode = trim($_GET['mode'] ?? 'standard');
 $isForensicPrivate = ($mode === 'forensic_private');
 $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
+$forensicPerms = null;
 
 if ($isForensicPrivate) {
-    ems_require_division_access(['Forensic'], '/dashboard/index.php');
+    ems_forensic_private_ensure_tables($pdo);
+    $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
+    if (!$forensicPerms['has_any_access']) {
+        $_SESSION['flash_errors'][] = 'Akses Rekam Medis Private ditolak.';
+        header('Location: /dashboard/index.php');
+        exit;
+    }
 }
 
 // Get record ID
@@ -60,6 +69,11 @@ if ($isProgrammerRoxwood || $isExecutive) {
     if (!$isForensicPrivate && $recordScope === 'forensic_private') {
         $_SESSION['flash_errors'][] = 'Akses rekam medis private ditolak.';
         header('Location: rekam_medis_list.php');
+        exit;
+    }
+    if ($recordScope === 'forensic_private' && !ems_forensic_private_can_edit_row($forensicPerms, $record, $userId)) {
+        $_SESSION['flash_errors'][] = 'Anda tidak memiliki izin untuk mengedit rekam medis private ini.';
+        header('Location: forensic_medical_records_list.php');
         exit;
     }
 }
@@ -270,6 +284,35 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <p class="text-xs text-gray-500 mt-1">Bisa pilih banyak file. File lama tetap dipertahankan, upload baru akan ditambahkan sebagai lampiran baru.</p>
                             </div>
                         </div>
+
+                        <?php if ($isForensicPrivate): ?>
+                        <!-- SURAT PERMOHONAN VISUM (KHUSUS FORENSIC PRIVATE) -->
+                        <div>
+                            <label class="form-label">Surat Permohonan Visum (DOJ/Instansi Lain) <span class="text-gray-400 text-xs">(Opsional)</span></label>
+                            <?php if (!empty($record['visum_letter_file_path']) && file_exists(__DIR__ . '/../' . $record['visum_letter_file_path'])): ?>
+                                <div class="mb-2">
+                                    <img src="<?= htmlspecialchars(ems_secure_file_url((string) $record['visum_letter_file_path'])) ?>"
+                                         alt="Surat Permohonan Visum" class="max-h-48 rounded border" />
+                                    <p class="text-xs text-gray-500 mt-1">File saat ini</p>
+                                </div>
+                            <?php endif; ?>
+                            <div class="file-upload-wrapper">
+                                <input type="file" id="visum_letter_file" name="visum_letter_file"
+                                       accept="image/png,image/jpeg" hidden
+                                       @change="previewImage($event, 'visum_letter_preview')" />
+                                <label for="visum_letter_file" class="file-upload-label">
+                                    <div class="preview-container h-48 flex items-center justify-center bg-gray-50 rounded border border-gray-200"
+                                         id="visum_letter_preview">
+                                        <span class="text-gray-400 text-sm">Klik untuk upload file baru</span>
+                                    </div>
+                                    <div class="mt-2 text-center">
+                                        <span class="btn-secondary btn-sm">Upload File Baru</span>
+                                    </div>
+                                </label>
+                                <p class="text-xs text-gray-500 mt-1">Kosongkan jika tidak ingin mengganti file</p>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../config/inbox_helper.php';
 
 // Validate request method
@@ -119,8 +120,12 @@ try {
         throw new Exception('Scope rekam medis tidak valid.');
     }
 
-    if ($visibilityScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
-        throw new Exception('Akses rekam medis private ditolak.');
+    if ($visibilityScope === 'forensic_private') {
+        ems_forensic_private_ensure_tables($pdo);
+        $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
+        if (!$forensicPerms['can_create']) {
+            throw new Exception('Akses rekam medis private ditolak.');
+        }
     }
     
     // =====================
@@ -160,11 +165,20 @@ try {
     } elseif ($visibilityScope === 'forensic_private') {
         throw new Exception('Upload foto pendukung wajib dilakukan minimal 1 file.');
     }
-    
+
+    // Surat permohonan visum dari DOJ/instansi lain — khusus forensic_private, opsional.
+    $visumLetterPath = null;
+    if ($visibilityScope === 'forensic_private' && isset($_FILES['visum_letter_file']) && ($_FILES['visum_letter_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+        $visumLetterPath = uploadAndCompressFile($_FILES['visum_letter_file'], 'medical_records/visum_letter', 500000, 5000000);
+        if (!$visumLetterPath) {
+            throw new Exception('Gagal upload surat permohonan visum. Pastikan file berupa gambar JPG/PNG dan ukuran tidak melebihi ' . emsUploadLimitLabel() . '.');
+        }
+    }
+
     // =====================
     // 4. HTML SANITIZATION
     // =====================
-    
+
     $medicalResultHtml = $_POST['medical_result_html'] ?? '';
     // Basic XSS prevention - strip script tags
     $medicalResultHtml = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $medicalResultHtml);
@@ -231,6 +245,11 @@ try {
         $columns[] = 'visibility_scope';
         $values[] = $visibilityScope;
     }
+
+    if (ems_column_exists($pdo, 'medical_records', 'visum_letter_file_path')) {
+        $columns[] = 'visum_letter_file_path';
+        $values[] = $visumLetterPath;
+    }
     $columns[] = 'created_by';
     $values[] = $userId;
 
@@ -249,6 +268,10 @@ try {
     $recordId = (int) $pdo->lastInsertId();
     ems_save_medical_record_assistants($pdo, $recordId, $assistantIds);
     ems_store_medical_record_supporting_images($pdo, $recordId, $additionalSupportingImageFiles);
+
+    if ($visibilityScope === 'forensic_private') {
+        ems_forensic_private_log_action($pdo, $recordId, 'created', $user, 'Record ' . $recordCode . ' dibuat.');
+    }
 
     $notificationUserIds = ems_medical_record_notification_user_ids($doctorId, $assistantIds);
     if ($notificationUserIds !== []) {

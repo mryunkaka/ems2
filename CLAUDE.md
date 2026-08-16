@@ -510,6 +510,137 @@ one). `identity_test.php` — production KTP-OCR + versioned identity store
 reachable only by direct URL, and has its own hardcoded copy of the OCR API
 key.
 
+**Granular Rekam Medis Private access grants (added 2026-08-16)** — lets
+Head Manager Forensic (or Director/Vice Director of any division, or
+Executive division, or "Programmer Roxwood") give a SPECIFIC medic outside
+the Forensic division a narrow slice of access to the private-records
+module, without changing that medic's division. Previously the only gate
+was the blanket `ems_can_access_division_menu($division, 'Forensic')`
+division check — this feature adds a second, independent access path on
+top of it (native division access is unchanged and always wins; the grant
+table is purely additive).
+- **`config/forensic_private_access.php`** (new file) — all logic lives
+  here: `ems_forensic_private_ensure_tables()` (creates
+  `forensic_private_access_grants` + `forensic_private_record_logs`, adds
+  `medical_records.visum_letter_file_path`),
+  `ems_forensic_private_can_manage_access(array $user)` (who can open the
+  "Kelola Akses" modal — Head Manager **in** Forensic division, OR
+  `ems_is_director_role()` in **any** division, OR division Executive, OR
+  Programmer Roxwood — this same set is ALSO treated as having full native
+  CRUD on every private record, on the reasoning that whoever can grant
+  access should be able to use the module themselves),
+  `ems_forensic_private_effective_permissions($pdo, $user)` (the single
+  source of truth: native access short-circuits to full access; otherwise
+  looks up the medic's row in `forensic_private_access_grants` and returns
+  `can_view_all`/`can_view_own`/`can_create`/`can_edit`/`can_delete`/
+  `has_any_access` — `can_view_own` is automatically implied by
+  `can_view_all`/`can_create`/`can_edit`/`can_delete` so a grant can never
+  end up "can create but can never see what I created"), and
+  `ems_forensic_private_can_view_row()`/`_can_edit_row()`/`_can_delete_row()`
+  (row-level: if `can_view_all` is false, the action only applies to
+  records the medic personally created — `record.created_by === userId`).
+  **Being the record's creator does NOT by itself grant access** — a medic
+  needs `can_create` (to make the record in the first place, which itself
+  requires `has_any_access`) or a live grant; this was verified explicitly
+  in testing, not assumed.
+- **Permission model is checkboxes, not a single-choice tier** (explicit
+  user decision when asked): a medic can be given any combination of Bisa
+  Melihat Semua / Hanya Bisa Melihat Miliknya Sendiri / Bisa Menginput /
+  Bisa Mengedit / Bisa Menghapus. Edit/Delete are scoped by whichever view
+  level is active (all vs. own-only) — there's no separate "edit all but
+  view own" state.
+- **UI**: a "Kelola Akses" button on `rekam_medis_list.php` (forensic
+  private mode only, gated by `ems_forensic_private_can_manage_access()`)
+  opens a modal with a `data-user-autocomplete` medic picker (scope `all`
+  — any active user, not just Medis) + the 5 checkboxes, POSTing to the new
+  `dashboard/forensic_private_access_action.php` (`action=save`/`revoke`).
+  The same modal lists every existing grant with a one-click "Cabut"
+  (revoke) button per row.
+- **Every one of the 4 mutation surfaces re-checks permissions
+  independently** (list gate, create gate in both `rekam_medis.php` and
+  `rekam_medis_action.php`, view gate in `rekam_medis_view.php`, edit gate
+  in both `rekam_medis_edit.php` and `_edit_action.php`, delete gate in
+  `rekam_medis_delete.php`) — matches this module's pre-existing
+  "copy-pasted, not centralized" bypass-rule convention (see above), just
+  extended with the same grant check at each site rather than refactored
+  into one shared gate.
+- **`ajax/secure_file.php`**'s `storage/medical_records/` rule now also
+  accepts the grant path for KTP/MRI/supporting-images/visum-letter files:
+  fetches the owning record's `visibility_scope` + `created_by`, and for
+  `forensic_private` scope calls `ems_forensic_private_can_view_row()`
+  instead of the old blanket division check.
+- **New attachment**: `medical_records.visum_letter_file_path` — "Surat
+  Permohonan Visum (DOJ/Instansi Lain)", optional, forensic-private-only
+  upload field (same `uploadAndCompressFile()` image-only pipeline as
+  KTP/MRI, folder `medical_records/visum_letter`), shown in the create
+  form, edit form (replace-on-reupload, deletes old file), the list page's
+  inline detail modal, and the dedicated view page.
+- **New activity log**: `forensic_private_record_logs` (`created`/
+  `viewed`/`edited`/`deleted`, actor name snapshotted so history survives
+  account renames) — written from all 4 mutation points plus every GET to
+  `rekam_medis_view.php` (forensic-private only; logging happens
+  unconditionally on view, not throttled/deduped). Shown as a history
+  table in both the list page's inline detail modal and the dedicated view
+  page's sidebar. The `deleted` log entry is written **before** the
+  `DELETE` runs (in the same request, just earlier) with a snapshot note
+  (record code + patient name) since the parent row won't exist to look up
+  afterward — log rows are intentionally never cascade-deleted with their
+  record.
+- **Sidebar**: a granted non-Forensic-division medic sees a `Forensic`
+  group containing **only** "Rekam Medis Private" (not List Medis/Data
+  Pasien Private/Hasil Visum/Arsip Forensic) — deliberately placed at the
+  very end of `partials/sidebar.php`'s `$groupedNav` mutation chain
+  (alongside the "Roxwood Hospital AI" repositioning logic, same reasoning:
+  it must survive the Alta-unit full-sidebar-override block that runs
+  earlier and fully replaces `$groupedNav`). Skipped entirely for users who
+  already have native Forensic access (the grant is purely additive, never
+  downgrades a real Forensic-division user's full group to one item).
+- **ACL whitelist**: `forensic_medical_records.php`/`_list.php`/`_view.php`
+  and the new `forensic_private_access_action.php` were added to both
+  Medis-division whitelist arrays in
+  `config/helpers.php::ems_division_allowed_dashboard_pages()` (the
+  Interviewer&Trainer-HR branch and the main Medis branch — **not** the
+  Alta-Medis branch, which doesn't expose any `rekam_medis*` pages at all
+  today and this feature doesn't change that scope), following the same
+  precedent as the Dispatcher module.
+- **Real bug caught during testing**: the first pass of
+  `ems_forensic_private_ensure_tables()` checked for the new
+  `visum_letter_file_path` column using the shared, request-cached
+  `ems_column_exists()` helper before adding it — which poisons that
+  helper's static cache with `false` for the rest of the request, so every
+  *later* call in the same request (the INSERT/UPDATE column-list
+  decisions in `rekam_medis_action.php`/`_edit_action.php`) would
+  incorrectly believe the column still didn't exist, even though it now
+  does. This is the exact same class of bug previously documented for
+  `ems_table_exists()` in the Cloudflare Workers AI section of this file
+  (§10) — caught here by deliberately dropping the column and re-running
+  the exact call sequence, not just assumed fixed. Fixed by having
+  `ensure_tables()` query `INFORMATION_SCHEMA.COLUMNS` directly instead of
+  going through the cached helper, so it never touches that cache.
+- Verified against the real local dev DB (not synthetic fixtures where
+  avoidable): migration applied cleanly as a single multi-statement file
+  (not just piecemeal), a 24-assertion CLI test suite covering
+  `can_manage_access` role/division combinations, permission computation
+  before/after/after-update/after-revoke, row-level view/edit/delete
+  checks for both `view_all` and `view_own`-only grants, grant upsert
+  (confirmed no duplicate rows on a second save), activity log ordering,
+  and the sidebar `Forensic` group appearing/disappearing correctly for a
+  real Medis-division user (`Michael Moore`, id 1) — plus a full simulated
+  create → view → edit-log → `secure_file.php`-authorization-query cycle
+  against a real inserted `medical_records` row with a `visum_letter_file_path`,
+  confirming a record's own creator does *not* get implicit access without
+  a grant. Also caught and fixed a pre-existing, unrelated latent bug while
+  touching `rekam_medis_list.php`'s search query: the own-only-filter
+  parameter was being silently discarded whenever a search keyword was
+  also present, because the search branch did `$params = [...]`
+  (reassignment) instead of appending — would have thrown a PDO
+  placeholder-count mismatch the first time any user with a `view_own`-only
+  grant used the search box. All test rows/grants/logs deleted after.
+  HTTP-level click-through (the actual modal UI, autocomplete picker,
+  checkbox form) was **not** exercised this session — no browser tooling
+  available — a future session should click through once a safe
+  opportunity exists.
+
 ### Specialist Medical Authority
 `specialist_authorizations.php`, `specialist_medical_authority_action.php`,
 `specialist_medics.php`+`_export.php`, `specialist_operation_recap.php`+
@@ -1879,10 +2010,13 @@ frontend rewrite is planned (`docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md`)
 
 ## 9. Database — 100 tables (97 + `police_partnership_records` + 2 dispatcher tables added later)
 
-Full authoritative history is `docs/sql/` — **64 chronological, numbered
-migration files** (`01_...` → `55_...` plus a handful of unnumbered early
-`2026-03-07_*` files), spanning 2026-03-07 → 2026-07-31. The 5 files under
-`migrations/` are older/superseded one-off scripts (kept for history only).
+Full authoritative history is `docs/sql/` — **67 chronological, numbered
+migration files** (`01_...` → `67_...` plus a handful of unnumbered early
+`2026-03-07_*` files), spanning 2026-03-07 → 2026-08-16 (this table count
+and the "100 tables" figure above predate several sessions of feature work
+— treat both as approximate, not authoritative; count `docs/sql/*.sql`
+directly if you need an exact number). The 5 files under `migrations/` are
+older/superseded one-off scripts (kept for history only).
 The repo also has a full DB dump at root (`fouf9972_ems (1).sql`, gitignored,
 ~28MB) — extract schema with targeted `sed`/`grep`, never read it wholesale.
 
@@ -1903,7 +2037,10 @@ interview_results/interview_scores/final_decisions`, `interview_criteria`,
 `dispatcher_assignments`/`_members` (dispatcher status/field-response
 coordination, see §5 Dispatcher),
 `farmasi_hospital_billing_entries`, `forensic_private_patients`,
-`forensic_visum_results`, `forensic_archives`, `specialist_authorizations`,
+`forensic_visum_results`, `forensic_archives`,
+`forensic_private_access_grants`/`forensic_private_record_logs` (granular
+Rekam Medis Private access grants + activity log, see §5 Medical
+Records/Forensic), `specialist_authorizations`,
 `specialist_promotion_assessments`, `specialist_training_records`,
 `secretary_*` (visit agendas / internal coordinations / confidential
 letters / file records, each + `_attachments`), `general_affair_cooperations`

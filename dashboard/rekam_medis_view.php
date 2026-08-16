@@ -5,18 +5,27 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $pageTitle = 'Detail Rekam Medis | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
+$userId = (int) ($user['id'] ?? 0);
 $mode = trim($_GET['mode'] ?? 'standard');
 $isForensicPrivate = ($mode === 'forensic_private');
 $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
+$forensicPerms = null;
 
 if ($isForensicPrivate) {
-    ems_require_division_access(['Forensic'], '/dashboard/index.php');
+    ems_forensic_private_ensure_tables($pdo);
+    $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
+    if (!$forensicPerms['has_any_access']) {
+        $_SESSION['flash_errors'][] = 'Akses Rekam Medis Private ditolak.';
+        header('Location: /dashboard/index.php');
+        exit;
+    }
 }
 
 $id = (int)($_GET['id'] ?? 0);
@@ -63,14 +72,27 @@ if (!$isForensicPrivate && $recordScope === 'forensic_private') {
     exit;
 }
 
+if ($isForensicPrivate && !ems_forensic_private_can_view_row($forensicPerms, $record, $userId)) {
+    $_SESSION['flash_errors'][] = 'Anda tidak memiliki izin untuk melihat rekam medis private ini.';
+    header('Location: forensic_medical_records_list.php');
+    exit;
+}
+
 $recordCode = (string)(($record['record_code'] ?? null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
 $backUrl = $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php';
 $editUrl = 'rekam_medis_edit.php?id=' . (int)$record['id'] . ($isForensicPrivate ? '&mode=forensic_private' : '');
 $assistants = ems_get_medical_record_assistants($pdo, (int) $record['id'], isset($record['assistant_id']) ? (int) $record['assistant_id'] : null);
 $supportingImages = ems_get_medical_record_supporting_images($pdo, (int)$record['id'], (string)($record['mri_file_path'] ?? ''));
 $canEditRecord = $recordScope === 'forensic_private'
-    ? ems_can_access_division_menu(ems_normalize_division($user['division'] ?? ''), 'Forensic')
+    ? ems_forensic_private_can_edit_row($forensicPerms, $record, $userId)
     : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
+$activityLogs = [];
+
+if ($isForensicPrivate) {
+    ems_forensic_private_log_action($pdo, (int) $record['id'], 'viewed', $user);
+    $activityLogs = ems_forensic_private_get_logs($pdo, (int) $record['id']);
+}
+
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
@@ -250,9 +272,46 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <div class="medical-document-card__empty">Foto MRI/CT Scan/USG/Dll belum tersedia.</div>
                                 <?php endif; ?>
                             </div>
+
+                            <?php if ($isForensicPrivate): ?>
+                            <div class="medical-document-card">
+                                <div class="medical-document-card__head">
+                                    <span class="medical-side-card__label">Surat Permohonan Visum (DOJ/Instansi Lain)</span>
+                                    <?php if (!empty($record['visum_letter_file_path'])): ?>
+                                        <a href="<?= htmlspecialchars(ems_secure_file_url((string) $record['visum_letter_file_path']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="btn-secondary btn-sm">Buka</a>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (!empty($record['visum_letter_file_path'])): ?>
+                                    <img src="<?= htmlspecialchars(ems_secure_file_url((string) $record['visum_letter_file_path']), ENT_QUOTES, 'UTF-8') ?>" alt="Surat Permohonan Visum" class="medical-document-card__image">
+                                <?php else: ?>
+                                    <div class="medical-document-card__empty">Surat permohonan visum belum diunggah.</div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
+
+                <?php if ($isForensicPrivate): ?>
+                <div class="card card-section">
+                    <div class="card-header">History / Log Aktivitas</div>
+                    <div class="card-body">
+                        <?php if ($activityLogs === []): ?>
+                            <div class="medical-document-card__empty">Belum ada aktivitas tercatat.</div>
+                        <?php else: ?>
+                            <div class="medical-stack">
+                                <?php foreach ($activityLogs as $logRow): ?>
+                                    <div class="medical-side-card">
+                                        <span class="medical-side-card__label"><?= htmlspecialchars(ems_forensic_private_action_label((string) $logRow['action']), ENT_QUOTES, 'UTF-8') ?></span>
+                                        <strong><?= htmlspecialchars((string) ($logRow['actor_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <div class="meta-text-xs"><?= htmlspecialchars(date('d M Y H:i', strtotime((string) $logRow['created_at'])), ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
             </aside>
         </div>
     </div>

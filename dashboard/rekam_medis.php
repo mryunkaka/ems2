@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Rekam Medis | Farmasi EMS';
@@ -15,7 +16,13 @@ $isForensicPrivate = ($mode === 'forensic_private');
 $hasJenisOperasiColumn = ems_column_exists($pdo, 'medical_records', 'jenis_operasi');
 
 if ($isForensicPrivate) {
-    ems_require_division_access(['Forensic'], '/dashboard/index.php');
+    ems_forensic_private_ensure_tables($pdo);
+    $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
+    if (!$forensicPerms['can_create']) {
+        $_SESSION['flash_errors'][] = 'Anda tidak memiliki izin untuk menginput Rekam Medis Private.';
+        header('Location: /dashboard/index.php');
+        exit;
+    }
 }
 
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -156,6 +163,28 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, bisa pilih banyak file, max <?= htmlspecialchars(emsUploadLimitLabel(), ENT_QUOTES, 'UTF-8') ?> per file</p>
                             </div>
                         </div>
+
+                        <?php if ($isForensicPrivate): ?>
+                        <!-- SURAT PERMOHONAN VISUM (KHUSUS FORENSIC PRIVATE) -->
+                        <div>
+                            <label class="form-label">Surat Permohonan Visum (DOJ/Instansi Lain) <span class="text-gray-400 text-xs">(Opsional)</span></label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" id="visum_letter_file" name="visum_letter_file"
+                                    accept="image/png,image/jpeg" hidden
+                                    @change="previewImage($event, 'visum_letter_preview')" />
+                                <label for="visum_letter_file" class="file-upload-label">
+                                    <div class="preview-container h-48 flex items-center justify-center bg-gray-50 rounded border border-gray-200"
+                                        id="visum_letter_preview">
+                                        <span class="text-gray-400 text-sm">Belum ada file</span>
+                                    </div>
+                                    <div class="mt-2 text-center">
+                                        <span class="btn-secondary btn-sm">Pilih File / Ambil Foto</span>
+                                    </div>
+                                </label>
+                                <p class="text-xs text-gray-500 mt-1">Format: JPG/PNG, foto/scan surat permohonan visum dari DOJ atau instansi lain</p>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

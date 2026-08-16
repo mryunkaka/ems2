@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 
 function secureFileAbort(int $statusCode = 404, string $message = 'File tidak ditemukan.'): void
 {
@@ -254,33 +255,58 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
-    $canAccessForensicMedicalRecord = ems_can_access_division_menu($userDivision, 'Forensic');
+    // Otorisasi untuk KTP/MRI/lampiran/surat visum rekam medis: file standard
+    // bebas diakses (matching aturan lama), file forensic_private butuh akses
+    // native (division Forensic dst) ATAU izin granular dari
+    // forensic_private_access_grants (lihat semua, atau lihat punya sendiri
+    // dan file itu memang milik record yang dia buat) — lihat
+    // config/forensic_private_access.php.
     $allowed = false;
+    $forensicRowChecked = false;
+    $forensicRowAllowed = false;
+
+    $checkForensicRow = function (array $record) use ($pdo, $user, $userId, &$forensicRowChecked, &$forensicRowAllowed): bool {
+        if (!$forensicRowChecked) {
+            ems_forensic_private_ensure_tables($pdo);
+            $perms = ems_forensic_private_effective_permissions($pdo, $user);
+            $forensicRowAllowed = ems_forensic_private_can_view_row($perms, $record, $userId);
+            $forensicRowChecked = true;
+        }
+
+        return $forensicRowAllowed;
+    };
+
+    $hasVisumColumn = ems_column_exists($pdo, 'medical_records', 'visum_letter_file_path');
+    $visumSelect = $hasVisumColumn ? ', mr.visum_letter_file_path' : '';
+    $visumWhere = $hasVisumColumn ? ' OR mr.visum_letter_file_path = ?' : '';
+    $visumParam = $hasVisumColumn ? [$relativePath] : [];
 
     $stmt = $pdo->prepare("
-        SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope
+        SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope, mr.created_by{$visumSelect}
         FROM medical_records mr
-        WHERE (mr.ktp_file_path = ? OR mr.mri_file_path = ?)
+        WHERE (mr.ktp_file_path = ? OR mr.mri_file_path = ?{$visumWhere})
         LIMIT 1
     ");
-    $stmt->execute([$relativePath, $relativePath]);
-    $scope = (string)($stmt->fetchColumn() ?: '');
-    if ($scope !== '') {
-        $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $canAccessForensicMedicalRecord);
+    $stmt->execute(array_merge([$relativePath, $relativePath], $visumParam));
+    $recordRow = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($recordRow) {
+        $scope = (string) ($recordRow['visibility_scope'] ?? 'standard');
+        $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $checkForensicRow($recordRow));
     }
 
     if (!$allowed && ems_table_exists($pdo, 'medical_record_supporting_images')) {
         $stmt = $pdo->prepare("
-            SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope
+            SELECT COALESCE(mr.visibility_scope, 'standard') AS visibility_scope, mr.created_by
             FROM medical_record_supporting_images si
             INNER JOIN medical_records mr ON mr.id = si.medical_record_id
             WHERE si.file_path = ?
             LIMIT 1
         ");
         $stmt->execute([$relativePath]);
-        $scope = (string)($stmt->fetchColumn() ?: '');
-        if ($scope !== '') {
-            $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $canAccessForensicMedicalRecord);
+        $recordRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($recordRow) {
+            $scope = (string) ($recordRow['visibility_scope'] ?? 'standard');
+            $allowed = $scope === 'standard' || ($scope === 'forensic_private' && $checkForensicRow($recordRow));
         }
     }
     if (!$allowed) {

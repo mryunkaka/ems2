@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -77,8 +78,12 @@ try {
         if ($recordScope !== 'forensic_private' && (int) ($record['created_by'] ?? 0) !== $userId) {
             throw new Exception('Hanya pembuat rekam medis yang dapat mengedit data ini.');
         }
-        if ($recordScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
-            throw new Exception('Akses rekam medis private ditolak.');
+        if ($recordScope === 'forensic_private') {
+            ems_forensic_private_ensure_tables($pdo);
+            $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
+            if (!ems_forensic_private_can_edit_row($forensicPerms, $record, $userId)) {
+                throw new Exception('Akses rekam medis private ditolak.');
+            }
         }
     }
     
@@ -148,10 +153,14 @@ try {
         throw new Exception('Scope rekam medis tidak valid.');
     }
 
-    if ($visibilityScope === 'forensic_private' && !ems_can_access_division_menu($userDivision, 'Forensic')) {
-        throw new Exception('Akses rekam medis private ditolak.');
+    if ($visibilityScope === 'forensic_private') {
+        ems_forensic_private_ensure_tables($pdo);
+        $forensicPerms ??= ems_forensic_private_effective_permissions($pdo, $user);
+        if (!$forensicPerms['can_edit']) {
+            throw new Exception('Akses rekam medis private ditolak.');
+        }
     }
-    
+
     // =====================
     // 2. FILE UPLOAD KTP (OPTIONAL - REPLACE)
     // =====================
@@ -189,7 +198,20 @@ try {
             }
         }
     }
-    
+
+    // Surat permohonan visum — khusus forensic_private, opsional, replace kalau upload baru.
+    $visumLetterPath = $record['visum_letter_file_path'] ?? null;
+    if ($visibilityScope === 'forensic_private' && isset($_FILES['visum_letter_file']) && ($_FILES['visum_letter_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+        if ($visumLetterPath && file_exists(__DIR__ . '/../' . $visumLetterPath)) {
+            unlink(__DIR__ . '/../' . $visumLetterPath);
+        }
+
+        $visumLetterPath = uploadAndCompressFile($_FILES['visum_letter_file'], 'medical_records/visum_letter', 500000, 5000000);
+        if (!$visumLetterPath) {
+            throw new Exception('Gagal upload surat permohonan visum baru.');
+        }
+    }
+
     // =====================
     // 4. HTML SANITIZATION
     // =====================
@@ -252,6 +274,11 @@ try {
         $setParts[] = 'visibility_scope = ?';
         $values[] = $visibilityScope;
     }
+
+    if (ems_column_exists($pdo, 'medical_records', 'visum_letter_file_path')) {
+        $setParts[] = 'visum_letter_file_path = ?';
+        $values[] = $visumLetterPath;
+    }
     $setParts[] = 'updated_at = NOW()';
     $values[] = $id;
 
@@ -264,11 +291,15 @@ try {
         SET " . implode(",\n            ", $setParts) . "
         WHERE id = ?
     ");
-    
+
     $stmt->execute($values);
 
     ems_save_medical_record_assistants($pdo, $id, $assistantIds);
     ems_store_medical_record_supporting_images($pdo, $id, $supportingImageFiles);
+
+    if ($visibilityScope === 'forensic_private') {
+        ems_forensic_private_log_action($pdo, $id, 'edited', $user);
+    }
     $pdo->commit();
     
     $_SESSION['flash_messages'][] = 'Rekam medis berhasil diupdate.';
