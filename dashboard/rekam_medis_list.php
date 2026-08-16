@@ -28,21 +28,18 @@ $forensicPerms = [
     'can_edit' => true, 'can_delete' => true, 'has_any_access' => true, 'is_native' => true,
 ];
 $canManageForensicAccess = false;
-$forensicAccessGrants = [];
+$canViewForensicHistory = false;
 
 if ($isForensicPrivate) {
     ems_forensic_private_ensure_tables($pdo);
     $forensicPerms = ems_forensic_private_effective_permissions($pdo, $user);
     $canManageForensicAccess = ems_forensic_private_can_manage_access($user);
+    $canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
     if (!$forensicPerms['has_any_access']) {
         $_SESSION['flash_errors'][] = 'Akses Rekam Medis Private ditolak.';
         header('Location: /dashboard/index.php');
         exit;
-    }
-
-    if ($canManageForensicAccess) {
-        $forensicAccessGrants = ems_forensic_private_list_grants($pdo);
     }
 }
 
@@ -282,10 +279,10 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
             <div class="flex gap-2 flex-wrap justify-end">
                 <?php if ($isForensicPrivate && $canManageForensicAccess): ?>
-                    <button type="button" id="forensicAccessOpenBtn" class="btn-secondary">
+                    <a href="forensic_private_access_manage.php" class="btn-secondary">
                         <?= ems_icon('lock-closed', 'h-4 w-4') ?>
                         <span>Kelola Akses</span>
-                    </button>
+                    </a>
                 <?php endif; ?>
                 <?php if (!$isForensicPrivate || $forensicPerms['can_create']): ?>
                     <a href="<?= $isForensicPrivate ? 'forensic_medical_records.php' : 'rekam_medis.php' ?>" class="btn-primary">
@@ -590,9 +587,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?php endif; ?>
                                         </div>
 
-                                        <?php if ($recordIsForensicPrivate): ?>
+                                        <?php if ($recordIsForensicPrivate && $canViewForensicHistory): ?>
                                         <div class="forensic-detail-block">
-                                            <div class="forensic-detail-label">History / Log Aktivitas</div>
+                                            <div class="forensic-detail-label">History / Log Aktivitas (khusus tim Forensic)</div>
                                             <?php $recordActivityLogs = ems_forensic_private_get_logs($pdo, (int) $record['id']); ?>
                                             <?php if ($recordActivityLogs === []): ?>
                                                 <div class="forensic-detail-value is-muted">Belum ada aktivitas tercatat.</div>
@@ -745,129 +742,6 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </div>
-
-<?php if ($isForensicPrivate && $canManageForensicAccess): ?>
-<div id="forensicAccessModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-lg forensic-detail-modal">
-        <div class="forensic-detail-head">
-            <div class="min-w-0">
-                <div class="forensic-detail-title">Kelola Akses Rekam Medis Private</div>
-                <div class="forensic-detail-subtitle">Beri atau cabut izin medis di luar division Forensic untuk membuka modul ini.</div>
-            </div>
-            <button type="button" class="modal-close-btn" id="forensicAccessCloseBtn" aria-label="Tutup modal">
-                <?= ems_icon('x-mark', 'h-5 w-5') ?>
-            </button>
-        </div>
-        <div class="forensic-detail-content">
-            <form method="POST" action="forensic_private_access_action.php" class="forensic-access-form">
-                <?= csrfField() ?>
-                <input type="hidden" name="action" value="save">
-
-                <div class="form-group">
-                    <label class="form-label">Nama Medis</label>
-                    <div class="ems-form-group relative" data-user-autocomplete data-autocomplete-required>
-                        <input type="text" class="form-input" data-user-autocomplete-input placeholder="Ketik nama medis..." required>
-                        <input type="hidden" name="medic_user_id" data-user-autocomplete-hidden required>
-                        <div class="ems-suggestion-box" data-user-autocomplete-list></div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Izin yang diberikan</label>
-                    <div class="forensic-access-checkbox-grid">
-                        <label class="forensic-access-checkbox"><input type="checkbox" name="can_view_all" value="1"> Bisa Melihat Semua Rekam Medis Private</label>
-                        <label class="forensic-access-checkbox"><input type="checkbox" name="can_view_own" value="1"> Hanya Bisa Melihat yang Dia Input Sendiri</label>
-                        <label class="forensic-access-checkbox"><input type="checkbox" name="can_create" value="1"> Bisa Menginput Rekam Medis Baru</label>
-                        <label class="forensic-access-checkbox"><input type="checkbox" name="can_edit" value="1"> Bisa Mengedit</label>
-                        <label class="forensic-access-checkbox"><input type="checkbox" name="can_delete" value="1"> Bisa Menghapus</label>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">Kalau "Bisa Melihat Semua" tidak dicentang, izin Edit/Hapus otomatis hanya berlaku untuk rekam medis yang dia input sendiri.</p>
-                </div>
-
-                <div class="modal-actions justify-end">
-                    <button type="submit" class="btn-primary">Simpan Izin</button>
-                </div>
-            </form>
-
-            <hr class="my-4">
-
-            <div class="forensic-access-list">
-                <div class="forensic-detail-label mb-2">Medis yang Sudah Diberi Izin (<?= count($forensicAccessGrants) ?>)</div>
-                <?php if ($forensicAccessGrants === []): ?>
-                    <div class="forensic-detail-value is-muted">Belum ada medis yang diberi izin khusus.</div>
-                <?php else: ?>
-                    <div class="medical-history-table-wrap">
-                        <table class="medical-history-table">
-                            <thead>
-                                <tr>
-                                    <th>Nama</th>
-                                    <th>Izin</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($forensicAccessGrants as $grant): ?>
-                                    <?php
-                                    $grantLabels = [];
-                                    if (!empty($grant['can_view_all'])) $grantLabels[] = 'Lihat Semua';
-                                    if (!empty($grant['can_view_own'])) $grantLabels[] = 'Lihat Punya Sendiri';
-                                    if (!empty($grant['can_create'])) $grantLabels[] = 'Input';
-                                    if (!empty($grant['can_edit'])) $grantLabels[] = 'Edit';
-                                    if (!empty($grant['can_delete'])) $grantLabels[] = 'Hapus';
-                                    ?>
-                                    <tr>
-                                        <td>
-                                            <div class="font-medium"><?= htmlspecialchars((string) ($grant['medic_current_name'] ?: $grant['medic_name_snapshot']), ENT_QUOTES, 'UTF-8') ?></div>
-                                            <div class="text-xs text-gray-500"><?= htmlspecialchars((string) ($grant['medic_division'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
-                                        </td>
-                                        <td><?= htmlspecialchars($grantLabels === [] ? '-' : implode(', ', $grantLabels), ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td>
-                                            <form method="POST" action="forensic_private_access_action.php" onsubmit="return confirm('Cabut akses Rekam Medis Private untuk user ini?');">
-                                                <?= csrfField() ?>
-                                                <input type="hidden" name="action" value="revoke">
-                                                <input type="hidden" name="medic_user_id" value="<?= (int) $grant['medic_user_id'] ?>">
-                                                <button type="submit" class="btn-error btn-sm">Cabut</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-</div>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var openBtn = document.getElementById('forensicAccessOpenBtn');
-    var closeBtn = document.getElementById('forensicAccessCloseBtn');
-    var accessModal = document.getElementById('forensicAccessModal');
-    if (!openBtn || !closeBtn || !accessModal) {
-        return;
-    }
-
-    function openAccessModal() {
-        accessModal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
-    }
-
-    function closeAccessModal() {
-        accessModal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
-    }
-
-    openBtn.addEventListener('click', openAccessModal);
-    closeBtn.addEventListener('click', closeAccessModal);
-    accessModal.addEventListener('click', function (event) {
-        if (event.target === accessModal) {
-            closeAccessModal();
-        }
-    });
-});
-</script>
-<?php endif; ?>
 
 <script>
 function confirmDelete(id, name, mode) {
@@ -1071,26 +945,6 @@ document.addEventListener('DOMContentLoaded', function () {
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #64748b;
-}
-
-.forensic-access-checkbox-grid {
-    display: grid;
-    gap: 0.6rem;
-    margin-top: 0.4rem;
-}
-
-.forensic-access-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #334155;
-}
-
-.forensic-access-checkbox input {
-    width: 1rem;
-    height: 1rem;
 }
 </style>
 

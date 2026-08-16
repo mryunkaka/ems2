@@ -6,8 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
-
-ems_require_division_access(['Forensic'], '/dashboard/index.php');
+require_once __DIR__ . '/../config/forensic_private_access.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -22,6 +21,20 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int) ($user['id'] ?? 0);
 $action = trim((string) ($_POST['action'] ?? ''));
+
+// Setiap aksi di sini memutasi salah satu dari 3 resource grup Forensic
+// (Data Pasien Private / Hasil Visum / Arsip Forensic), masing-masing
+// dengan model izin CRUD granular yang sama seperti Rekam Medis Private
+// (lihat semua/punya sendiri/input/edit/hapus). Akses native (division
+// Forensic dst) tetap bisa semua tanpa batasan; medis yang diberi grant
+// lewat forensic_private_access_grants dicek per-aksi di bawah — create
+// butuh can_create, update/delete row-level (own vs all) lewat
+// ems_forensic_private_can_edit_row()/_can_delete_row() terhadap
+// created_by baris yang dimutasi.
+ems_forensic_private_ensure_tables($pdo);
+$forensicPatientsPerms = ems_forensic_patients_permissions($pdo, $user);
+$forensicVisumPerms = ems_forensic_visum_permissions($pdo, $user);
+$forensicArchivePerms = ems_forensic_archive_permissions($pdo, $user);
 
 function forensicRedirect(string $fallback = 'forensic_private_patients.php'): void
 {
@@ -70,6 +83,10 @@ if ($userId <= 0) {
 
 try {
     if ($action === 'save_private_patient') {
+        if (!$forensicPatientsPerms['can_create']) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $medicalRecordId = (int) ($_POST['medical_record_id'] ?? 0);
         $medicalRecordNo = trim((string) ($_POST['medical_record_no'] ?? ''));
         $caseType = trim((string) ($_POST['case_type'] ?? ''));
@@ -143,6 +160,9 @@ try {
             $userId,
         ]);
 
+        $newCaseId = (int) $pdo->lastInsertId();
+        ems_forensic_private_log_action($pdo, $newCaseId, 'created', $user, '', 'private_patients');
+
         $_SESSION['flash_messages'][] = 'Kasus forensic berhasil disimpan.';
         forensicRedirect('forensic_private_patients.php');
     }
@@ -154,8 +174,19 @@ try {
             throw new Exception('Kasus forensic tidak valid.');
         }
 
+        $stmt = $pdo->prepare("SELECT id, created_by FROM forensic_private_patients WHERE id = ? LIMIT 1");
+        $stmt->execute([$caseId]);
+        $existingCase = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingCase) {
+            throw new Exception('Kasus forensic tidak ditemukan.');
+        }
+        if (!ems_forensic_private_can_edit_row($forensicPatientsPerms, $existingCase, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $stmt = $pdo->prepare("UPDATE forensic_private_patients SET status = ?, updated_by = ? WHERE id = ?");
         $stmt->execute([$status, $userId, $caseId]);
+        ems_forensic_private_log_action($pdo, $caseId, 'edited', $user, 'Status diubah menjadi ' . $status . '.', 'private_patients');
 
         $_SESSION['flash_messages'][] = 'Status kasus forensic diperbarui.';
         forensicRedirect('forensic_private_patients.php');
@@ -167,11 +198,17 @@ try {
             throw new Exception('Kasus forensic tidak valid.');
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM forensic_private_patients WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, case_code, patient_name, created_by FROM forensic_private_patients WHERE id = ? LIMIT 1");
         $stmt->execute([$caseId]);
-        if (!$stmt->fetchColumn()) {
+        $existingCase = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingCase) {
             throw new Exception('Kasus forensic tidak ditemukan.');
         }
+        if (!ems_forensic_private_can_delete_row($forensicPatientsPerms, $existingCase, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
+        ems_forensic_private_log_action($pdo, $caseId, 'deleted', $user, 'Kasus ' . (string) ($existingCase['case_code'] ?? '') . ' (' . (string) ($existingCase['patient_name'] ?? '') . ') dihapus.', 'private_patients');
 
         $stmt = $pdo->prepare("DELETE FROM forensic_private_patients WHERE id = ?");
         $stmt->execute([$caseId]);
@@ -181,6 +218,10 @@ try {
     }
 
     if ($action === 'save_visum') {
+        if (!$forensicVisumPerms['can_create']) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $privatePatientId = (int) ($_POST['private_patient_id'] ?? 0);
         $doctorUserId = (int) ($_POST['doctor_user_id'] ?? 0);
         $examinationDate = forensicDateOrNull($_POST['examination_date'] ?? null);
@@ -214,6 +255,9 @@ try {
             $userId,
         ]);
 
+        $newVisumId = (int) $pdo->lastInsertId();
+        ems_forensic_private_log_action($pdo, $newVisumId, 'created', $user, '', 'visum_results');
+
         $_SESSION['flash_messages'][] = 'Hasil visum berhasil disimpan.';
         forensicRedirect('forensic_visum_results.php');
     }
@@ -225,8 +269,19 @@ try {
             throw new Exception('Data visum tidak valid.');
         }
 
+        $stmt = $pdo->prepare("SELECT id, created_by FROM forensic_visum_results WHERE id = ? LIMIT 1");
+        $stmt->execute([$visumId]);
+        $existingVisum = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingVisum) {
+            throw new Exception('Data visum tidak ditemukan.');
+        }
+        if (!ems_forensic_private_can_edit_row($forensicVisumPerms, $existingVisum, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $stmt = $pdo->prepare("UPDATE forensic_visum_results SET status = ?, updated_by = ? WHERE id = ?");
         $stmt->execute([$status, $userId, $visumId]);
+        ems_forensic_private_log_action($pdo, $visumId, 'edited', $user, 'Status diubah menjadi ' . $status . '.', 'visum_results');
 
         $_SESSION['flash_messages'][] = 'Status visum diperbarui.';
         forensicRedirect('forensic_visum_results.php');
@@ -238,11 +293,17 @@ try {
             throw new Exception('Data visum tidak valid.');
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM forensic_visum_results WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, visum_code, created_by FROM forensic_visum_results WHERE id = ? LIMIT 1");
         $stmt->execute([$visumId]);
-        if (!$stmt->fetchColumn()) {
+        $existingVisum = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingVisum) {
             throw new Exception('Data visum tidak ditemukan.');
         }
+        if (!ems_forensic_private_can_delete_row($forensicVisumPerms, $existingVisum, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
+        ems_forensic_private_log_action($pdo, $visumId, 'deleted', $user, 'Visum ' . (string) ($existingVisum['visum_code'] ?? '') . ' dihapus.', 'visum_results');
 
         $stmt = $pdo->prepare("DELETE FROM forensic_visum_results WHERE id = ?");
         $stmt->execute([$visumId]);
@@ -252,6 +313,10 @@ try {
     }
 
     if ($action === 'save_archive') {
+        if (!$forensicArchivePerms['can_create']) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $privatePatientId = (int) ($_POST['private_patient_id'] ?? 0);
         $visumResultId = (int) ($_POST['visum_result_id'] ?? 0);
         $archiveTitle = trim((string) ($_POST['archive_title'] ?? ''));
@@ -287,6 +352,9 @@ try {
             $userId,
         ]);
 
+        $newArchiveId = (int) $pdo->lastInsertId();
+        ems_forensic_private_log_action($pdo, $newArchiveId, 'created', $user, '', 'archive');
+
         $_SESSION['flash_messages'][] = 'Arsip forensic berhasil disimpan.';
         forensicRedirect('forensic_archive.php');
     }
@@ -298,8 +366,19 @@ try {
             throw new Exception('Arsip forensic tidak valid.');
         }
 
+        $stmt = $pdo->prepare("SELECT id, created_by FROM forensic_archives WHERE id = ? LIMIT 1");
+        $stmt->execute([$archiveId]);
+        $existingArchive = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingArchive) {
+            throw new Exception('Arsip forensic tidak ditemukan.');
+        }
+        if (!ems_forensic_private_can_edit_row($forensicArchivePerms, $existingArchive, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
         $stmt = $pdo->prepare("UPDATE forensic_archives SET status = ?, updated_by = ? WHERE id = ?");
         $stmt->execute([$status, $userId, $archiveId]);
+        ems_forensic_private_log_action($pdo, $archiveId, 'edited', $user, 'Status diubah menjadi ' . $status . '.', 'archive');
 
         $_SESSION['flash_messages'][] = 'Status arsip forensic diperbarui.';
         forensicRedirect('forensic_archive.php');
@@ -311,11 +390,17 @@ try {
             throw new Exception('Arsip forensic tidak valid.');
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM forensic_archives WHERE id = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT id, archive_code, archive_title, created_by FROM forensic_archives WHERE id = ? LIMIT 1");
         $stmt->execute([$archiveId]);
-        if (!$stmt->fetchColumn()) {
+        $existingArchive = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existingArchive) {
             throw new Exception('Arsip forensic tidak ditemukan.');
         }
+        if (!ems_forensic_private_can_delete_row($forensicArchivePerms, $existingArchive, $userId)) {
+            throw new Exception('Akses ditolak.');
+        }
+
+        ems_forensic_private_log_action($pdo, $archiveId, 'deleted', $user, 'Arsip ' . (string) ($existingArchive['archive_code'] ?? '') . ' (' . (string) ($existingArchive['archive_title'] ?? '') . ') dihapus.', 'archive');
 
         $stmt = $pdo->prepare("DELETE FROM forensic_archives WHERE id = ?");
         $stmt->execute([$archiveId]);

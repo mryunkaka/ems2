@@ -87,10 +87,18 @@ $canEditRecord = $recordScope === 'forensic_private'
     ? ems_forensic_private_can_edit_row($forensicPerms, $record, $userId)
     : (int) ($record['created_by'] ?? 0) === (int) ($user['id'] ?? 0);
 $activityLogs = [];
+$canViewForensicHistory = false;
 
 if ($isForensicPrivate) {
+    // Log dicatat untuk SEMUA yang melihat (termasuk medis yang cuma dapat
+    // grant), tapi log-nya sendiri hanya ditampilkan ke tim Forensic native
+    // — sesuai permintaan eksplisit user ("history semua halaman forensic
+    // hanya bisa dilihat oleh tim forensic").
     ems_forensic_private_log_action($pdo, (int) $record['id'], 'viewed', $user);
-    $activityLogs = ems_forensic_private_get_logs($pdo, (int) $record['id']);
+    $canViewForensicHistory = ems_forensic_private_can_view_history($user);
+    if ($canViewForensicHistory) {
+        $activityLogs = ems_forensic_private_get_logs($pdo, (int) $record['id']);
+    }
 }
 
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -292,9 +300,9 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </div>
 
-                <?php if ($isForensicPrivate): ?>
+                <?php if ($isForensicPrivate && $canViewForensicHistory): ?>
                 <div class="card card-section">
-                    <div class="card-header">History / Log Aktivitas</div>
+                    <div class="card-header">History / Log Aktivitas (khusus tim Forensic)</div>
                     <div class="card-body">
                         <?php if ($activityLogs === []): ?>
                             <div class="medical-document-card__empty">Belum ada aktivitas tercatat.</div>

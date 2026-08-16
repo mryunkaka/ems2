@@ -6,9 +6,16 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['Forensic'], '/dashboard/index.php');
+ems_forensic_private_ensure_tables($pdo);
+$user = $_SESSION['user_rh'] ?? [];
+$userId = (int) ($user['id'] ?? 0);
+ems_forensic_private_require_page_access($pdo, $user, 'archive');
+
+$forensicArchivePerms = ems_forensic_archive_permissions($pdo, $user);
+$canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Arsip Forensic';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -35,6 +42,9 @@ $cases = [];
 $visumResults = [];
 $archives = [];
 
+$ownOnlyFilter = !$forensicArchivePerms['can_view_all'];
+$ownOnlyWhere = $ownOnlyFilter ? ' AND fa.created_by = ' . (int) $userId : '';
+
 try {
     $cases = $pdo->query("
         SELECT id, case_code, patient_name
@@ -56,6 +66,7 @@ try {
         FROM forensic_archives fa
         LEFT JOIN forensic_private_patients fpp ON fpp.id = fa.private_patient_id
         LEFT JOIN forensic_visum_results fvr ON fvr.id = fa.visum_result_id
+        WHERE 1=1{$ownOnlyWhere}
         ORDER BY fa.created_at DESC, fa.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -78,6 +89,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php endforeach; ?>
 
         <div class="grid gap-4 md:grid-cols-2">
+            <?php if ($forensicArchivePerms['can_create']): ?>
             <div class="card card-section">
                 <div class="card-header">Input Arsip Forensic</div>
                 <p class="meta-text mb-4">Hubungkan arsip ke kasus forensic, hasil visum, atau keduanya.</p>
@@ -135,6 +147,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <div class="card card-section">
                 <div class="card-header">Daftar Arsip Forensic</div>
@@ -178,6 +191,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             aria-label="Lihat detail arsip forensic">
                                             <?= ems_icon('eye', 'h-4 w-4') ?>
                                         </button>
+                                        <?php if (ems_forensic_private_can_edit_row($forensicArchivePerms, $archive, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_archive_status">
@@ -190,6 +204,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </select>
                                             <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status arsip forensic" aria-label="Update status arsip forensic"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
+                                        <?php if (ems_forensic_private_can_delete_row($forensicArchivePerms, $archive, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen arsip forensic ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_archive">
@@ -197,6 +213,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="hidden" name="archive_id" value="<?= (int) $archive['id'] ?>">
                                             <button type="submit" class="btn-error btn-sm action-icon-btn" title="Hapus arsip forensic" aria-label="Hapus arsip forensic"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
                                         <div class="hidden forensic-detail-template">
                                             <div class="forensic-detail-shell">
                                                 <div class="forensic-detail-hero">
@@ -233,6 +250,28 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <div class="forensic-detail-label">Catatan Arsip</div>
                                                     <div class="forensic-detail-value<?= trim((string) ($archive['notes'] ?? '')) === '' ? ' is-muted' : '' ?>"><?= htmlspecialchars(forensicArchiveValue($archive['notes']), ENT_QUOTES, 'UTF-8') ?></div>
                                                 </div>
+                                                <?php if ($canViewForensicHistory): ?>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">History / Log Aktivitas (khusus tim Forensic)</div>
+                                                    <?php $archiveLogs = ems_forensic_private_get_logs($pdo, (int) $archive['id'], 'archive'); ?>
+                                                    <?php if ($archiveLogs === []): ?>
+                                                        <div class="forensic-detail-value is-muted">Belum ada aktivitas tercatat.</div>
+                                                    <?php else: ?>
+                                                        <ul class="forensic-detail-history-list">
+                                                            <?php foreach ($archiveLogs as $logRow): ?>
+                                                                <li>
+                                                                    <strong><?= htmlspecialchars(ems_forensic_private_action_label((string) $logRow['action']), ENT_QUOTES, 'UTF-8') ?></strong>
+                                                                    oleh <?= htmlspecialchars((string) ($logRow['actor_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
+                                                                    &middot; <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $logRow['created_at'])), ENT_QUOTES, 'UTF-8') ?>
+                                                                    <?php if (!empty($logRow['notes'])): ?>
+                                                                        <div class="meta-text-xs"><?= htmlspecialchars((string) $logRow['notes'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                                    <?php endif; ?>
+                                                                </li>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                         </div>

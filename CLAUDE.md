@@ -549,12 +549,15 @@ table is purely additive).
   Bisa Mengedit / Bisa Menghapus. Edit/Delete are scoped by whichever view
   level is active (all vs. own-only) — there's no separate "edit all but
   view own" state.
-- **UI**: a "Kelola Akses" button on `rekam_medis_list.php` (forensic
-  private mode only, gated by `ems_forensic_private_can_manage_access()`)
-  opens a modal with a `data-user-autocomplete` medic picker (scope `all`
-  — any active user, not just Medis) + the 5 checkboxes, POSTing to the new
+- **UI**: originally an inline modal on `rekam_medis_list.php`; **moved to
+  its own dedicated page the same day** (see the redesign entry below) —
+  `dashboard/forensic_private_access_manage.php`, linked from a "Kelola
+  Akses" button on `rekam_medis_list.php` (forensic private mode only,
+  gated by `ems_forensic_private_can_manage_access()`). Has a
+  `data-user-autocomplete` medic picker (scope `all` — any active user, not
+  just Medis) + the checkboxes, POSTing to
   `dashboard/forensic_private_access_action.php` (`action=save`/`revoke`).
-  The same modal lists every existing grant with a one-click "Cabut"
+  The same page lists every existing grant with a one-click "Cabut"
   (revoke) button per row.
 - **Every one of the 4 mutation surfaces re-checks permissions
   independently** (list gate, create gate in both `rekam_medis.php` and
@@ -640,6 +643,209 @@ table is purely additive).
   checkbox form) was **not** exercised this session — no browser tooling
   available — a future session should click through once a safe
   opportunity exists.
+
+**"Kelola Akses" moved to its own page + expanded to cover the whole
+Forensic group, not just Rekam Medis Private (same day, 2026-08-16,
+user-requested redesign)**: the inline modal on `rekam_medis_list.php`
+described above was replaced with a dedicated page,
+**`dashboard/forensic_private_access_manage.php`**, and the grant model was
+widened from "5 CRUD checkboxes for Rekam Medis Private only" to also
+toggle access to the other 4 Forensic-group pages (List Medis, Data Pasien
+Private, Hasil Visum, Arsip Forensic) — per the user's explicit list. The
+`forensic_private_access_grants` table gained 4 more boolean columns
+(migration `docs/sql/68_2026-08-16_forensic_private_access_page_toggles.sql`):
+`can_view_forensic_medics`, `can_view_private_patients`,
+`can_view_visum_results`, `can_view_archive`. These 4 are **simple
+page-level toggles** ("can open this page, full functional access as if
+Forensic division"), deliberately **not** given the same per-row
+view-all/view-own/create/edit/delete granularity as Rekam Medis Private —
+none of the 4 pages have per-row creator-scoped data the way
+`medical_records` does, so a finer model wasn't warranted; "Rekam Medis
+Private" keeps its original 5-checkbox CRUD model unchanged, just now
+presented as one collapsible section within the broader page-picklist UI
+(checking its parent checkbox reveals the 5 sub-checkboxes; unchecking it
+clears them).
+- **`config/forensic_private_access.php`** gained
+  `ems_forensic_private_page_access($pdo, $user)` — the new single source of
+  truth returning `{forensic_medics, rekam_medis_private, private_patients,
+  visum_results, archive, is_native}` booleans (native access ⇒ all true;
+  otherwise per-column grant lookup, with `rekam_medis_private` derived from
+  `ems_forensic_private_effective_permissions()['has_any_access']` rather
+  than a dedicated column, since that page's access is already fully
+  described by the existing 5 CRUD flags) — and
+  `ems_forensic_private_require_page_access($pdo, $user, $pageKey,
+  $redirectTo)`, a drop-in replacement for the old
+  `ems_require_division_access(['Forensic'], ...)` call used at the top of
+  `forensic_medics.php`/`forensic_private_patients.php`/
+  `forensic_visum_results.php`/`forensic_archive.php`.
+- **`forensic_action.php`** (the shared POST controller for
+  private-patient/visum/archive create-update-delete, previously gated by
+  one blanket division check for every action) now maps each `action` value
+  to its owning page key (`save_visum`/`update_visum_status`/`delete_visum`
+  → `visum_results`, etc. — see the `match()` block near the top of the
+  file) and checks `ems_forensic_private_page_access()` **per action**, so
+  a medic granted only e.g. Hasil Visum can save/update/delete visum
+  records but gets a 403 on private-patient or archive actions even though
+  they hit the same shared endpoint. `forensic_medics.php` has no mutation
+  actions at all (pure read-only roster), so it only needed the page-level
+  view guard.
+- **Sidebar rebuilt to be dynamic per-grant** instead of hardcoding "just
+  show Rekam Medis Private": the end-of-file grant block in
+  `partials/sidebar.php` now calls `ems_forensic_private_page_access()` and
+  conditionally appends each of the 5 `sidebarItem(...)` calls (same
+  hrefs/icons as the native Forensic group) — a medic granted only Hasil
+  Visum + Arsip Forensic sees exactly those 2 items, in the same relative
+  order the native group uses, nothing else. The **native** Forensic group
+  block also gained a conditional 6th item, "Kelola Akses" (`cog-6-tooth`
+  icon, linking to the new manage page), shown only when
+  `ems_forensic_private_can_manage_access()` is true for the current user —
+  so an ordinary Forensic-division staff member doesn't see a management
+  link they can't use, but Head Manager Forensic (and Director/Vice
+  Director/Executive/Programmer Roxwood, who get the native-Forensic
+  sidebar branch via `ems_can_access_division_menu`) does.
+- **ACL whitelist**: `forensic_medics.php`, `forensic_private_patients.php`,
+  `forensic_visum_results.php`, `forensic_archive.php`, `forensic_action.php`,
+  and `forensic_private_access_manage.php` were added to both Medis-division
+  whitelist arrays in `ems_division_allowed_dashboard_pages()`, same
+  precedent as the original `forensic_medical_records*.php` additions.
+- **`forensic_private_access_action.php`** (`action=save`/`revoke`, POST
+  handler) now reads and persists the 4 new fields alongside the original
+  5, and redirects to `forensic_private_access_manage.php` on both
+  success and failure (previously redirected to
+  `forensic_medical_records_list.php`, which no longer hosts the grant
+  list/edit UI).
+- The manage page's "Edit" button per grant row embeds that row's full
+  permission set as a `data-grant` JSON attribute; clicking it repopulates
+  the form (including expanding the Rekam Medis Private sub-checkboxes if
+  any are set) via plain JS, no extra network round trip — same
+  no-backend-endpoint-needed pattern used elsewhere in this codebase for
+  "click a row to edit" UIs.
+- Verified against the real local dev DB (migration 68 applied cleanly as a
+  single multi-statement file): a fresh CLI test suite confirmed native
+  Forensic-division access still yields all 5 pages `true`; a no-grant
+  Medis user yields all 5 `false`; a grant with **only** `visum_results` +
+  `archive` toggled yields exactly those 2 `true` and the other 3
+  (including `rekam_medis_private`, since no CRUD flags were set) `false`;
+  the `forensic_action.php` action→pageKey mapping correctly allows
+  `save_visum` and blocks `save_private_patient` for that same partial
+  grant; and the sidebar block renders exactly the 2 granted items (Hasil
+  Visum, Arsip Forensic) in native-group order, nothing extra. All test
+  grants cleaned up after. HTTP-level click-through (the new page's
+  autocomplete, checkbox-reveal JS, edit-row prefill) was **not** exercised
+  this session — no browser tooling available.
+
+**Data Pasien Private / Hasil Visum / Arsip Forensic upgraded to full CRUD
+grants (same day, 2026-08-16), Sertifikasi Visum added to List Medis, and
+history/log restricted to the native Forensic team only (all
+user-requested)** — three more additions on top of the redesign above:
+- **CRUD upgrade**: the 4 simple page-level toggles
+  (`can_view_private_patients`/`can_view_visum_results`/`can_view_archive`
+  — `can_view_forensic_medics` unaffected, see below) were superseded by 15
+  new granular columns on `forensic_private_access_grants` (migration
+  `docs/sql/69_2026-08-16_forensic_private_access_full_crud.sql`):
+  `{patients,visum,archive}_{view_all,view_own,create,edit,delete}` —
+  identical shape to Rekam Medis Private's original 5. The 3 old toggle
+  columns are left in place unused (non-destructive migration) rather than
+  dropped. **`config/forensic_private_access.php`** gained
+  `ems_forensic_private_resource_permissions($pdo, $user, $columnPrefix)` —
+  one generic implementation (native ⇒ full access; else reads
+  `{prefix}_view_all`/`_view_own`/`_create`/`_edit`/`_delete` off the grant
+  row, with the same "create/edit/delete implies at least view_own" folding
+  rule as the original) reused via three thin named wrappers
+  (`ems_forensic_patients_permissions()`, `ems_forensic_visum_permissions()`,
+  `ems_forensic_archive_permissions()`) instead of copy-pasting
+  `ems_forensic_private_effective_permissions()` three times. The existing
+  **row-level** checks (`ems_forensic_private_can_view_row()`/`_can_edit_row()`/
+  `_can_delete_row()`) were already generic (just take a `$perms` shape +
+  `$record['created_by']` + `$userId`) so they're reused as-is across all 4
+  resources with zero new code. `ems_forensic_private_page_access()`'s
+  `private_patients`/`visum_results`/`archive` keys now derive from these
+  3 new functions' `has_any_access` (matching how `rekam_medis_private`
+  already worked) instead of the old single-toggle columns — `forensic_medics`
+  stays a simple toggle since that page is a read-only roster with no
+  per-row `created_by` to scope against.
+- **`forensic_private_patients.php`/`forensic_visum_results.php`/
+  `forensic_archive.php`** each gained: an own-only `WHERE created_by = ?`
+  filter on their list query (applied to both the summary stat counts and
+  the table itself) when `!can_view_all`; the "Input ..." card hidden
+  entirely unless `can_create`; per-row status-update and delete controls
+  gated by `ems_forensic_private_can_edit_row()`/`_can_delete_row()` instead
+  of being unconditional. **`forensic_action.php`** (the shared POST
+  controller) now computes all 3 resource permission sets once up front and
+  checks `can_create` before every `save_*` branch, and row-level
+  edit/delete (fetching the existing row's `created_by` first) before every
+  `update_*_status`/`delete_*` branch — replacing the old single blanket
+  page-access check that didn't distinguish create from edit from delete.
+- **History/log added to these 3 resources too**, reusing the SAME
+  `forensic_private_record_logs` table Rekam Medis Private already had —
+  extended with a `resource_type` column (default
+  `'rekam_medis_private'` for old rows, so existing call sites needed zero
+  changes) so one table now serves 4 resources without collision on
+  numeric ID reuse (verified explicitly: logs for `private_patients` id 5
+  and `rekam_medis_private` id 5 are correctly isolated by
+  `resource_type`, not just `medical_record_id`). `ems_forensic_private_log_action()`/
+  `_get_logs()` both gained an optional `$resourceType` parameter
+  (default preserves old behavior). Unlike Rekam Medis Private (which logs
+  a `viewed` entry on every dedicated-page GET), these 3 resources only log
+  `created`/`edited`/`deleted` — they have no separate view page (detail is
+  a client-side JS modal templated from data already in the list page's
+  DOM), so there's no natural per-record "view" event to hook into without
+  inventing an AJAX ping that wasn't asked for.
+- **History display restricted to the native Forensic team only** — the
+  explicit, cross-cutting part of this request ("history semua halaman
+  forensic hanya bisa dilihat oleh tim forensic"). New function
+  `ems_forensic_private_can_view_history(array $user): bool` (native
+  Forensic division OR `ems_forensic_private_can_manage_access()` — same
+  set as "native full access" elsewhere in this feature) gates the
+  History/Log section's **display** in all 4 places it appears
+  (`rekam_medis_view.php`, `rekam_medis_list.php`'s inline detail modal,
+  and the new blocks in `forensic_private_patients.php`/
+  `forensic_visum_results.php`/`forensic_archive.php`'s detail modals) —
+  **logging itself is unaffected** (every action from every user, granted
+  or native, still gets recorded; only the READ/display side is
+  restricted), confirmed explicitly in testing since the alternative
+  (skip logging entirely for granted users) would defeat the audit-trail
+  purpose of having a log at all. This is a **behavior change** from the
+  original Rekam Medis Private build earlier the same day, which showed
+  history to anyone who could view the record — retrofitted to match the
+  new cross-page rule.
+- **Sertifikasi Visum added to `forensic_medics.php`** (List Medis) —
+  reuses the pre-existing `user_rh.file_visum` column (already used
+  identically by `specialist_medics.php` as "Sertifikat Visum", added by
+  migration `52_2026-07-22_setting_akun_sertifikat_pelatihan_visum.sql`,
+  uploaded via `setting_akun.php`) rather than inventing a new field. New
+  "Sertifikasi Visum" table column, clickable through to the actual
+  certificate file via `ems_secure_file_url()` when present (same viewer
+  auth path `specialist_medics.php` already relies on — no `secure_file.php`
+  changes needed since it's the same `user_rh` document field, not a new
+  storage prefix). Also added to `forensicMedicCertificateRequirements()`'s
+  `specialist`-position requirement list (mirroring the exact same addition
+  in `specialist_medics.php`), so a specialist's overall "Certificate
+  Status" summary now correctly reflects a missing visum certificate too.
+- **`.forensic-detail-history-list`** (new shared CSS in
+  `assets/css/overrides.css`, alongside the other `.forensic-detail-*`
+  global classes) — a plain dashed-divider list style for the 3 new inline
+  history blocks, reusing the existing visual language instead of the
+  `<table>`-based history rendering `rekam_medis_list.php` uses (that one
+  predates this pass and already has its own table markup, left as-is).
+- Verified against the real local dev DB (migration 69 applied cleanly as
+  a single multi-statement file): a 27-assertion CLI test suite covering
+  native/no-grant/partial-grant permission computation for all 3 new
+  resource functions, `can_view_history` true only for native access (even
+  a medic with **full CRUD grants** on all 3 resources still can't see
+  history), row-level view/edit/delete reused correctly across
+  patients/visum/archive-shaped records, a real DB insert + own-only-filter
+  query cycle (confirmed a medic only sees the `forensic_private_patients`
+  row they created, not one created by a different real user — a genuine
+  FK constraint on `created_by` was discovered and worked around by using
+  a second real `user_rh` id in the test rather than a synthetic one), log
+  isolation between `resource_type='private_patients'` and the
+  default `'rekam_medis_private'` for the same numeric id, and the
+  `forensic_medics.php` visum-certificate badge logic. All test grants and
+  DB rows cleaned up / rolled back after. HTTP-level click-through (the
+  4 collapsible checkbox groups' reveal/hide JS, the expanded edit-row
+  prefill, the history sections rendering inside the live detail modals)
+  was **not** exercised this session — no browser tooling available.
 
 ### Specialist Medical Authority
 `specialist_authorizations.php`, `specialist_medical_authority_action.php`,

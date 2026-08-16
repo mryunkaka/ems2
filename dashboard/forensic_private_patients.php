@@ -6,10 +6,17 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Forensic'], '/dashboard/index.php');
+ems_forensic_private_ensure_tables($pdo);
+$user = $_SESSION['user_rh'] ?? [];
+$userId = (int) ($user['id'] ?? 0);
+ems_forensic_private_require_page_access($pdo, $user, 'private_patients');
+
+$forensicPatientsPerms = ems_forensic_patients_permissions($pdo, $user);
+$canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Data Pasien Private';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -46,11 +53,17 @@ function forensicTextValue(mixed $value, string $fallback = '-'): string
 $summary = ['total' => 0, 'active' => 0, 'sealed' => 0, 'archived' => 0];
 $cases = [];
 
+// User yang cuma punya izin "lihat punya sendiri" (bukan lihat semua/native)
+// hanya boleh melihat baris yang dia buat sendiri.
+$ownOnlyFilter = !$forensicPatientsPerms['can_view_all'];
+$ownOnlyWhere = $ownOnlyFilter ? ' AND created_by = ' . (int) $userId : '';
+$ownOnlyWhereAlias = $ownOnlyFilter ? ' AND fpp.created_by = ' . (int) $userId : '';
+
 try {
-    $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients")->fetchColumn();
-    $summary['active'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'active'")->fetchColumn();
-    $summary['sealed'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE confidentiality_level = 'sealed'")->fetchColumn();
-    $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'archived'")->fetchColumn();
+    $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE 1=1{$ownOnlyWhere}")->fetchColumn();
+    $summary['active'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'active'{$ownOnlyWhere}")->fetchColumn();
+    $summary['sealed'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE confidentiality_level = 'sealed'{$ownOnlyWhere}")->fetchColumn();
+    $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'archived'{$ownOnlyWhere}")->fetchColumn();
 
     $cases = $pdo->query("
         SELECT
@@ -62,6 +75,7 @@ try {
         FROM forensic_private_patients fpp
         INNER JOIN user_rh creator ON creator.id = fpp.created_by
         LEFT JOIN medical_records mr ON mr.id = fpp.medical_record_id
+        WHERE 1=1{$ownOnlyWhereAlias}
         ORDER BY fpp.incident_date DESC, fpp.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -93,6 +107,7 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
 
         <div class="grid gap-4 md:grid-cols-2">
+            <?php if ($forensicPatientsPerms['can_create']): ?>
             <div class="card card-section">
                 <div class="card-header">Input Kasus Private</div>
                 <p class="meta-text mb-4">Buat data dasar kasus forensic sebelum visum dan arsip disimpan.</p>
@@ -157,6 +172,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <div class="card card-section">
                 <div class="card-header">Daftar Kasus Forensic</div>
@@ -204,6 +220,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             aria-label="Lihat detail kasus forensic">
                                             <?= ems_icon('eye', 'h-4 w-4') ?>
                                         </button>
+                                        <?php if (ems_forensic_private_can_edit_row($forensicPatientsPerms, $case, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_case_status">
@@ -216,6 +233,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </select>
                                             <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status kasus forensic" aria-label="Update status kasus forensic"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
+                                        <?php if (ems_forensic_private_can_delete_row($forensicPatientsPerms, $case, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen kasus forensic ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_private_patient">
@@ -223,6 +242,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="hidden" name="case_id" value="<?= (int) $case['id'] ?>">
                                             <button type="submit" class="btn-error btn-sm action-icon-btn" title="Hapus kasus forensic" aria-label="Hapus kasus forensic"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
                                         <div class="hidden forensic-detail-template">
                                             <div class="forensic-detail-shell">
                                                 <div class="forensic-detail-hero">
@@ -269,6 +289,28 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <div class="forensic-detail-label">Catatan</div>
                                                     <div class="forensic-detail-value<?= trim((string) ($case['notes'] ?? '')) === '' ? ' is-muted' : '' ?>"><?= htmlspecialchars(forensicTextValue($case['notes']), ENT_QUOTES, 'UTF-8') ?></div>
                                                 </div>
+                                                <?php if ($canViewForensicHistory): ?>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">History / Log Aktivitas (khusus tim Forensic)</div>
+                                                    <?php $caseLogs = ems_forensic_private_get_logs($pdo, (int) $case['id'], 'private_patients'); ?>
+                                                    <?php if ($caseLogs === []): ?>
+                                                        <div class="forensic-detail-value is-muted">Belum ada aktivitas tercatat.</div>
+                                                    <?php else: ?>
+                                                        <ul class="forensic-detail-history-list">
+                                                            <?php foreach ($caseLogs as $logRow): ?>
+                                                                <li>
+                                                                    <strong><?= htmlspecialchars(ems_forensic_private_action_label((string) $logRow['action']), ENT_QUOTES, 'UTF-8') ?></strong>
+                                                                    oleh <?= htmlspecialchars((string) ($logRow['actor_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
+                                                                    &middot; <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $logRow['created_at'])), ENT_QUOTES, 'UTF-8') ?>
+                                                                    <?php if (!empty($logRow['notes'])): ?>
+                                                                        <div class="meta-text-xs"><?= htmlspecialchars((string) $logRow['notes'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                                    <?php endif; ?>
+                                                                </li>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                         </div>

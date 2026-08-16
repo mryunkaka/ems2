@@ -5,10 +5,12 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Forensic'], '/dashboard/index.php');
+ems_forensic_private_ensure_tables($pdo);
+ems_forensic_private_require_page_access($pdo, $_SESSION['user_rh'] ?? [], 'forensic_medics');
 
 $pageTitle = 'List Medis Forensic';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -161,6 +163,7 @@ function forensicMedicCertificateRequirements(array $user): array
     if ($position === 'specialist') {
         $requirements['sertifikat_operasi_besar'] = 'Operasi Besar';
         $requirements['sertifikat_operasi_plastik'] = 'Operasi Plastik';
+        $requirements['file_visum'] = 'Sertifikasi Visum';
     }
 
     return $requirements;
@@ -220,6 +223,7 @@ $optionalColumns = [
     'sertifikat_operasi_besar',
     'sertifikat_class_co_asst',
     'sertifikat_class_paramedic',
+    'file_visum',
     'tanggal_naik_paramedic',
     'tanggal_naik_co_asst',
     'tanggal_naik_dokter',
@@ -275,6 +279,7 @@ try {
         $plasticMeta = forensicMedicDocStatus($row['sertifikat_operasi_plastik'] ?? null);
         $minorMeta = forensicMedicDocStatus($row['sertifikat_operasi_kecil'] ?? null);
         $majorMeta = forensicMedicDocStatus($row['sertifikat_operasi_besar'] ?? null);
+        $visumMeta = forensicMedicDocStatus($row['file_visum'] ?? null, 'Bersertifikat', 'Belum Bersertifikat');
         $medicalClassMeta = forensicMedicMedicalClassMeta($row);
         $certificateSummary = forensicMedicCertificateSummary($row);
 
@@ -290,6 +295,8 @@ try {
             'plastic_meta' => $plasticMeta,
             'minor_meta' => $minorMeta,
             'major_meta' => $majorMeta,
+            'visum_meta' => $visumMeta,
+            'visum_file' => (string) ($row['file_visum'] ?? ''),
             'medical_class_meta' => $medicalClassMeta,
             'certificate_summary' => $certificateSummary,
         ];
@@ -391,6 +398,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Plastic Surgery</th>
                             <th>Minor Surgery</th>
                             <th>Major Surgery</th>
+                            <th>Sertifikasi Visum</th>
                             <th>Medical Class</th>
                             <th>Certificate Status</th>
                         </tr>
@@ -430,6 +438,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <span class="<?= htmlspecialchars($medic['major_meta']['class'], ENT_QUOTES, 'UTF-8') ?>">
                                         <?= htmlspecialchars($medic['major_meta']['label'], ENT_QUOTES, 'UTF-8') ?>
                                     </span>
+                                </td>
+                                <td data-order="<?= (int)$medic['visum_meta']['sort'] ?>">
+                                    <?php if ($medic['visum_file'] !== ''): ?>
+                                        <a href="<?= htmlspecialchars(ems_secure_file_url($medic['visum_file']), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="<?= htmlspecialchars($medic['visum_meta']['class'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($medic['visum_meta']['label'], ENT_QUOTES, 'UTF-8') ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="<?= htmlspecialchars($medic['visum_meta']['class'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($medic['visum_meta']['label'], ENT_QUOTES, 'UTF-8') ?>
+                                        </span>
+                                    <?php endif; ?>
                                 </td>
                                 <td data-order="<?= (int)$medic['medical_class_meta']['sort'] ?>">
                                     <span class="<?= htmlspecialchars($medic['medical_class_meta']['class'], ENT_QUOTES, 'UTF-8') ?>">

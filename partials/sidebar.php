@@ -168,6 +168,11 @@ if (ems_can_access_division_menu($division, 'Forensic')) {
         sidebarItem('/dashboard/forensic_visum_results.php', 'forensic_visum_results.php', 'Hasil Visum', 'document-text'),
         sidebarItem('/dashboard/forensic_archive.php', 'forensic_archive.php', 'Arsip Forensic', 'inbox'),
     ];
+
+    require_once __DIR__ . '/../config/forensic_private_access.php';
+    if (ems_forensic_private_can_manage_access($_SESSION['user_rh'] ?? [])) {
+        $groupedNav['Forensic'][] = sidebarItem('/dashboard/forensic_private_access_manage.php', 'forensic_private_access_manage.php', 'Kelola Akses', 'cog-6-tooth');
+    }
 }
 
 if (ems_can_access_division_menu($division, 'Secretary')) {
@@ -442,36 +447,49 @@ if (!$hasCooperationInputMenu) {
     }
 }
 
-// Medis di luar division Forensic yang sudah diberi izin khusus lewat modal
-// "Kelola Akses Rekam Medis Private" (forensic_private_access_grants) hanya
-// melihat SATU item ini — bukan seluruh grup Forensic biasa (List Medis, Data
-// Pasien Private, Hasil Visum, Arsip Forensic tetap tersembunyi) — sesuai
-// permintaan eksplisit user ("hanya rekam medis private saja"). Sengaja
-// dijalankan di titik PALING AKHIR ini (setelah override sidebar khusus unit
-// Alta di atas, yang mengganti $groupedNav sepenuhnya) supaya item ini tidak
-// ikut terhapus kalau medis yang diberi izin kebetulan juga berada di unit
-// Alta — pola yang sama seperti reposisi grup "Roxwood Hospital AI" di atas.
-// Tidak berlaku kalau user sudah punya akses native ke grup Forensic (division
-// Forensic asli) — grant tabel hanya jalur akses TAMBAHAN, bukan pengganti.
+// Medis di luar division Forensic yang sudah diberi izin khusus lewat
+// halaman "Kelola Akses Grup Forensic" (forensic_private_access_grants)
+// hanya melihat item-item grup Forensic yang MEMANG di-toggle untuknya —
+// bisa cuma satu (mis. Rekam Medis Private saja) atau kombinasi apa pun dari
+// List Medis / Rekam Medis Private / Data Pasien Private / Hasil Visum /
+// Arsip Forensic, tergantung apa yang dicentang admin di halaman itu.
+// Sengaja dijalankan di titik PALING AKHIR ini (setelah override sidebar
+// khusus unit Alta di atas, yang mengganti $groupedNav sepenuhnya) supaya
+// item ini tidak ikut terhapus kalau medis yang diberi izin kebetulan juga
+// berada di unit Alta — pola yang sama seperti reposisi grup "Roxwood
+// Hospital AI" di atas. Tidak berlaku kalau user sudah punya akses native ke
+// grup Forensic (division Forensic asli) — grant tabel hanya jalur akses
+// TAMBAHAN, bukan pengganti.
 if (!ems_can_access_division_menu($division, 'Forensic') && isset($pdo) && $pdo instanceof PDO) {
     require_once __DIR__ . '/../config/forensic_private_access.php';
     try {
         ems_forensic_private_ensure_tables($pdo);
-        $forensicPrivateGrant = ems_forensic_private_get_grant($pdo, (int) ($_SESSION['user_rh']['id'] ?? 0));
+        $forensicPageAccessForSidebar = ems_forensic_private_page_access($pdo, $_SESSION['user_rh'] ?? []);
     } catch (Throwable $e) {
-        $forensicPrivateGrant = null;
+        $forensicPageAccessForSidebar = null;
     }
 
-    if ($forensicPrivateGrant && (
-        !empty($forensicPrivateGrant['can_view_all'])
-        || !empty($forensicPrivateGrant['can_view_own'])
-        || !empty($forensicPrivateGrant['can_create'])
-        || !empty($forensicPrivateGrant['can_edit'])
-        || !empty($forensicPrivateGrant['can_delete'])
-    )) {
-        $groupedNav['Forensic'] = [
-            sidebarItem('/dashboard/forensic_medical_records_list.php', 'forensic_medical_records_list.php', 'Rekam Medis Private', 'lock-closed'),
-        ];
+    if ($forensicPageAccessForSidebar) {
+        $forensicGrantedItems = [];
+        if (!empty($forensicPageAccessForSidebar['forensic_medics'])) {
+            $forensicGrantedItems[] = sidebarItem('/dashboard/forensic_medics.php', 'forensic_medics.php', 'List Medis', 'table-cells');
+        }
+        if (!empty($forensicPageAccessForSidebar['rekam_medis_private'])) {
+            $forensicGrantedItems[] = sidebarItem('/dashboard/forensic_medical_records_list.php', 'forensic_medical_records_list.php', 'Rekam Medis Private', 'clipboard-document-list');
+        }
+        if (!empty($forensicPageAccessForSidebar['private_patients'])) {
+            $forensicGrantedItems[] = sidebarItem('/dashboard/forensic_private_patients.php', 'forensic_private_patients.php', 'Data Pasien Private', 'lock-closed');
+        }
+        if (!empty($forensicPageAccessForSidebar['visum_results'])) {
+            $forensicGrantedItems[] = sidebarItem('/dashboard/forensic_visum_results.php', 'forensic_visum_results.php', 'Hasil Visum', 'document-text');
+        }
+        if (!empty($forensicPageAccessForSidebar['archive'])) {
+            $forensicGrantedItems[] = sidebarItem('/dashboard/forensic_archive.php', 'forensic_archive.php', 'Arsip Forensic', 'inbox');
+        }
+
+        if ($forensicGrantedItems !== []) {
+            $groupedNav['Forensic'] = $forensicGrantedItems;
+        }
     }
 }
 

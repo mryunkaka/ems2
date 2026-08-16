@@ -6,9 +6,16 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['Forensic'], '/dashboard/index.php');
+ems_forensic_private_ensure_tables($pdo);
+$user = $_SESSION['user_rh'] ?? [];
+$userId = (int) ($user['id'] ?? 0);
+ems_forensic_private_require_page_access($pdo, $user, 'visum_results');
+
+$forensicVisumPerms = ems_forensic_visum_permissions($pdo, $user);
+$canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Hasil Visum';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -35,6 +42,9 @@ function forensicVisumValue(mixed $value, string $fallback = '-'): string
 $cases = [];
 $visumResults = [];
 
+$ownOnlyFilter = !$forensicVisumPerms['can_view_all'];
+$ownOnlyWhere = $ownOnlyFilter ? ' AND fvr.created_by = ' . (int) $userId : '';
+
 try {
     $cases = $pdo->query("
         SELECT id, case_code, patient_name, case_type
@@ -51,6 +61,7 @@ try {
         FROM forensic_visum_results fvr
         INNER JOIN forensic_private_patients fpp ON fpp.id = fvr.private_patient_id
         INNER JOIN user_rh doctor ON doctor.id = fvr.doctor_user_id
+        WHERE 1=1{$ownOnlyWhere}
         ORDER BY fvr.examination_date DESC, fvr.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
@@ -73,6 +84,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php endforeach; ?>
 
         <div class="grid gap-4 md:grid-cols-2">
+            <?php if ($forensicVisumPerms['can_create']): ?>
             <div class="card card-section">
                 <div class="card-header">Input Hasil Visum</div>
                 <p class="meta-text mb-4">Hubungkan hasil visum dengan kasus private yang sudah terdaftar.</p>
@@ -133,6 +145,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <div class="card card-section">
                 <div class="card-header">Daftar Hasil Visum</div>
@@ -179,6 +192,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             aria-label="Lihat detail visum forensic">
                                             <?= ems_icon('eye', 'h-4 w-4') ?>
                                         </button>
+                                        <?php if (ems_forensic_private_can_edit_row($forensicVisumPerms, $row, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" class="inline-flex gap-2 items-center">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="update_visum_status">
@@ -191,6 +205,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </select>
                                             <button type="submit" class="btn-secondary btn-sm action-icon-btn" title="Update status visum forensic" aria-label="Update status visum forensic"><?= ems_icon('arrow-path', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
+                                        <?php if (ems_forensic_private_can_delete_row($forensicVisumPerms, $row, $userId)): ?>
                                         <form method="POST" action="forensic_action.php" onsubmit="return confirm('Hapus permanen hasil visum ini? Tindakan ini tidak bisa dibatalkan.');" class="inline-flex">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_visum">
@@ -198,6 +214,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <input type="hidden" name="visum_id" value="<?= (int) $row['id'] ?>">
                                             <button type="submit" class="btn-error btn-sm action-icon-btn" title="Hapus visum forensic" aria-label="Hapus visum forensic"><?= ems_icon('trash', 'h-4 w-4') ?></button>
                                         </form>
+                                        <?php endif; ?>
                                         <div class="hidden forensic-detail-template">
                                             <div class="forensic-detail-shell">
                                                 <div class="forensic-detail-hero">
@@ -245,6 +262,28 @@ include __DIR__ . '/../partials/sidebar.php';
                                                         <div class="forensic-detail-value<?= trim((string) ($row['recommendation_text'] ?? '')) === '' ? ' is-muted' : '' ?>"><?= htmlspecialchars(forensicVisumValue($row['recommendation_text']), ENT_QUOTES, 'UTF-8') ?></div>
                                                     </div>
                                                 </div>
+                                                <?php if ($canViewForensicHistory): ?>
+                                                <div class="forensic-detail-block">
+                                                    <div class="forensic-detail-label">History / Log Aktivitas (khusus tim Forensic)</div>
+                                                    <?php $visumLogs = ems_forensic_private_get_logs($pdo, (int) $row['id'], 'visum_results'); ?>
+                                                    <?php if ($visumLogs === []): ?>
+                                                        <div class="forensic-detail-value is-muted">Belum ada aktivitas tercatat.</div>
+                                                    <?php else: ?>
+                                                        <ul class="forensic-detail-history-list">
+                                                            <?php foreach ($visumLogs as $logRow): ?>
+                                                                <li>
+                                                                    <strong><?= htmlspecialchars(ems_forensic_private_action_label((string) $logRow['action']), ENT_QUOTES, 'UTF-8') ?></strong>
+                                                                    oleh <?= htmlspecialchars((string) ($logRow['actor_name_snapshot'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
+                                                                    &middot; <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $logRow['created_at'])), ENT_QUOTES, 'UTF-8') ?>
+                                                                    <?php if (!empty($logRow['notes'])): ?>
+                                                                        <div class="meta-text-xs"><?= htmlspecialchars((string) $logRow['notes'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                                    <?php endif; ?>
+                                                                </li>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php endif; ?>
                                             </div>
                                         </div>
                                         </div>

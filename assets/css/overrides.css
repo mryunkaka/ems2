@@ -686,6 +686,26 @@ table.dataTable td + td {
   color: #64748b;
 }
 
+.forensic-detail-history-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forensic-detail-history-list li {
+  padding-bottom: 10px;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.4);
+  font-size: 13px;
+  color: #334155;
+}
+
+.forensic-detail-history-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .forensic-detail-badges {
   display: flex;
   flex-wrap: wrap;
