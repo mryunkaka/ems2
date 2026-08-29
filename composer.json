@@ -6,6 +6,7 @@
     "require": {
         "minishlink/web-push": "^10.0",
         "spipu/html2pdf": "^5.3",
-        "phpoffice/phpspreadsheet": "^5.5"
+        "phpoffice/phpspreadsheet": "^5.5",
+        "smalot/pdfparser": "^2.12"
     }
 }

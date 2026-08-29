@@ -22,8 +22,8 @@ $realtimeChatViewer = [
 <div id="globalUploadOverlay" class="global-upload-overlay hidden" aria-hidden="true">
     <div class="global-upload-overlay-box">
         <div class="global-upload-spinner" aria-hidden="true"></div>
-        <div class="global-upload-title">Upload sedang diproses</div>
-        <div class="global-upload-copy">Mohon tunggu. File besar mungkin memerlukan waktu lebih lama untuk diproses dan dikirim.</div>
+        <div class="global-upload-title" id="globalUploadOverlayTitle">Upload sedang diproses</div>
+        <div class="global-upload-copy" id="globalUploadOverlayCopy">Mohon tunggu. File besar mungkin memerlukan waktu lebih lama untuk diproses dan dikirim.</div>
     </div>
 </div>
 
@@ -220,7 +220,18 @@ window.addEventListener('resize', function() {
             return;
         }
 
-        function showOverlay() {
+        const titleEl = document.getElementById('globalUploadOverlayTitle');
+        const copyEl = document.getElementById('globalUploadOverlayCopy');
+        const defaultTitle = titleEl ? titleEl.textContent : '';
+        const defaultCopy = copyEl ? copyEl.textContent : '';
+
+        function showOverlay(title, copy) {
+            if (titleEl) {
+                titleEl.textContent = title || defaultTitle;
+            }
+            if (copyEl) {
+                copyEl.textContent = copy || defaultCopy;
+            }
             overlay.classList.remove('hidden');
             overlay.setAttribute('aria-hidden', 'false');
             document.body.classList.add('modal-open');

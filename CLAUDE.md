@@ -35,7 +35,7 @@ not assume real clinical/legal stakes when reasoning about correctness.
 | DB | MariaDB/MySQL, PDO, prepared statements, `utf8mb4` (a few legacy `latin1` tables) |
 | Frontend | Tailwind CSS 3.4 (custom design system, see §8), Alpine.js, jQuery |
 | Tables/Charts | DataTables.net, Chart.js |
-| Docs | `spipu/html2pdf`, `phpoffice/phpspreadsheet` (Excel import/export) |
+| Docs | `spipu/html2pdf`, `phpoffice/phpspreadsheet` (Excel import/export), `smalot/pdfparser` (PDF text extraction, Document Library module) |
 | Realtime | Firebase Realtime Database (live chat + live music sync + presence) |
 | Push | Web Push API via `minishlink/web-push`, VAPID |
 | AI | Google Gemini (`gemini-2.5-flash` default) for recruitment scoring/summaries, birthday messages, training-group naming |
@@ -61,7 +61,8 @@ public/         Unauthenticated recruitment portal + AI psychometric test + real
 assets/design/  Self-built PHP "component" design system + Tailwind source/tokens (see §8)
 storage/        Uploaded files (gitignored), served only via ajax/secure_file.php
 migrations/     5 old one-off migration files (superseded by docs/sql/)
-docs/sql/       61 chronological, numbered migration files — the REAL migration history
+docs/sql/       70 chronological, numbered migration files — the REAL migration history
+bin/            CLI-only one-off scripts (e.g. Document Library seed importer), blocked from web access via .htaccess directory rule
 docs/           Product docs, module docs, deploy/security docs (see §9)
 docs/EMS/       Untracked in-character reference binder (PDFs/handbooks) — not code, see §0
 vendor/, node_modules/   Composer/npm deps (gitignored)
@@ -489,6 +490,379 @@ a major extension on top of the base module above, migration
   verification (attributed to a test PIC account) were hard-deleted
   afterward; the real roster and the real live PIC toggle were left
   untouched.
+
+### Document Library ("Dokumen" module, added 2026-08-29)
+Full PRD/ERD/design rationale lives in `docs/DOCUMENT_LIBRARY_MODULE.md` —
+read that first for anything non-obvious; this entry is a summary. A
+searchable internal document library (SOP/handbook binder, previously just
+loose files) — explicitly **not** division-gated for reading (a deliberate
+exception to this codebase's usual per-division ACL philosophy, confirmed
+with the user): every logged-in user can search/browse every folder in
+their active unit, only mutation (upload/edit/delete/folder management) is
+division-restricted.
+- **Pages**: `dashboard/dokumen.php` (search + folder browse, read-only,
+  all users), `dashboard/document_view.php` (single-document viewer —
+  extracted text rendered as a formatted HTML block, native `<embed>`/
+  `<img>` fallback only when there's no usable extracted text (scanned
+  PDF, plain image), always offers the original file download via
+  `secure_file.php`), `dashboard/document_manage.php`
+  +`_action.php` (upload for any manager-plus, scoped to their own
+  division's existing folders; full folder CRUD — create/rename/
+  delete/move folders & subfolders, move any document — restricted to
+  **Executive-division manager-plus** via `ems_document_is_executive_manager()`),
+  `ajax/document_search.php` (live/debounced JSON search endpoint).
+  All 4 dashboard filenames are registered as page-level-open exceptions in
+  `ems_enforce_dashboard_page_access()` (same pattern as the "Roxwood
+  Hospital AI" suite / `police_partnership.php` / `konsumen.php`) — the
+  page itself is reachable by anyone logged in, real restriction happens
+  inside the page/query logic, not the ACL whitelist.
+- **Access decisions** (confirmed explicitly with the user, see
+  `docs/DOCUMENT_LIBRARY_MODULE.md` §11 for the full reasoning): manager
+  non-Executive can upload into their own division's **existing** folders
+  only (cannot create subfolders themselves — strict upload-only); can
+  edit/delete **only documents they personally uploaded**, not their whole
+  division's documents; Executive (manager-plus role, division Executive)
+  has full cross-division folder/document CRUD; deleting a non-empty
+  folder is blocked by default, Executive can force-cascade-delete (wipes
+  all descendant folders + documents + physical files, with a JS `confirm()`
+  that states the exact counts first); library is **unit-scoped**
+  (`unit_code`, roxwood vs alta kept separate, matching every other
+  multi-unit table in this codebase); upload cap is **10 MB**, matching
+  the production `.user.ini` ceiling exactly (no server-side infra change
+  needed) — implemented as its own `ems_document_upload_limit_bytes()` in
+  `config/document_library.php`, independent of the pre-existing
+  image-oriented `emsUploadLimitBytes()` (1 MB) used elsewhere.
+- **Data model**: `document_folders` (self-referencing `parent_id`, no
+  formal FK — tree built in PHP via a recursive closure, not SQL
+  `WITH RECURSIVE`, matching this codebase's avoid-exotic-SQL convention;
+  a subfolder always **inherits its parent's `division`** — enforced in
+  every mutation path, including on `move_folder`, which cascades the new
+  division down to every descendant folder AND every `document_files` row
+  under them in one transaction) and `document_files` (`division` is a
+  denormalized copy of the owning folder's division, re-synced on every
+  move, so ACL/ownership checks never need a JOIN). `document_activity_logs`
+  mirrors the `forensic_private_record_logs` audit-log convention (actor
+  name snapshotted).
+- **Search is the core feature**: content is extracted **once at upload
+  time** (or via "Ganti File" replace), not re-parsed per query — a
+  native MySQL/MariaDB `FULLTEXT` index on `(title, tags, extracted_text)`
+  is queried in `BOOLEAN MODE` with a trailing `*` per word (prefix match,
+  "search-as-you-type" feel), UNION'd in PHP with a plain `title/tags
+  LIKE` fallback to catch short queries below MySQL's
+  `ft_min_word_len`/`innodb_ft_min_token_size` floor. No external search
+  engine — this codebase has no such infra and doesn't need one at this
+  document-count scale. Result snippets are built by locating the first
+  keyword match in `extracted_text` and wrapping matches in `<mark>` after
+  `htmlspecialchars()`-escaping (never before — avoids injecting real
+  `<mark>` tags into unescaped user-controlled text).
+- **Text extraction** (`ems_document_extract_text()`): `.docx`/`.odt`/`.doc`
+  reuse the **pre-existing**, cross-platform-safe `emsExtractDocxText()`/
+  `emsExtractOdtText()`/`emsExtractLegacyDocText()` helpers already in
+  `config/helpers.php` (built for the Windows-only headless-Chrome
+  document-preview feature, but these particular text-only sub-functions
+  have zero OS dependency and were safe to reuse as-is). `.txt/.md/.csv/
+  .json/.xml/.log/.ini` read directly. **`.pdf` needed a brand-new
+  dependency** — `smalot/pdfparser` (added to `composer.json` this
+  session) — because nothing in this codebase could extract PDF text
+  before; deliberately chosen over extending the existing headless-Chrome
+  render-to-image pipeline (`emsRenderUrlToPng()` / `emsConvertDocumentToPng()`)
+  because that pipeline is **Windows-only** (hardcoded Chrome/Edge paths,
+  §10 gotcha) and would silently not work on the Linux/cPanel production
+  host. `.xlsx/.xls` and image OCR are explicitly out of scope (stored/
+  downloadable, `extraction_status='unsupported'`, searchable only via
+  title/manual tags) — flagged as a possible future phase 2 in the PRD,
+  not built.
+- **Storage**: flat `storage/documents/<uniqid>_<time>.<ext>` — folder
+  hierarchy is a pure database concept (`folder_id`), never a real
+  filesystem path, so moving a document between folders is a single
+  `UPDATE`, never a file move. Served exclusively through
+  `ajax/secure_file.php` (new `storage/documents/` prefix rule) — since
+  read access is intentionally global to every logged-in user (see access
+  decisions above), the authorization check is deliberately simple:
+  confirm the path is a real `document_files.file_path` row (defends
+  against path-guessing) rather than any division/ownership check.
+- **Bulk-seed import** (`bin/import_dokumen_seed.php`, CLI-only — added
+  to the `.htaccess` directory-block rewrite rule alongside `storage|
+  backup|logs|docs|migrations|vendor|node_modules|private_artifacts`, plus
+  a `PHP_SAPI !== 'cli'` guard in the script itself as defense-in-depth):
+  walks a real folder tree at `storage/dokumen_import/` (moved there
+  2026-08-29 from a root-level `Dokumen/` folder the user had been staging
+  documents in — root `Dokumen/` no longer exists) and recreates it
+  1:1 as `document_folders`/`document_files`, running the same extraction
+  pipeline as a normal upload. Idempotent (safe to re-run — skips folders/
+  files that already exist by exact name/parent or filename/folder match)
+  and supports `--dry-run` (prints the plan without writing anything) and
+  `--unit=`/`--actor-id=` flags. **Folder→division mapping is hardcoded by
+  exact folder name** (`ems_document_ensure_tables()`'s division-inherits-
+  from-parent rule means only branch-root folder names need mapping — see
+  the table in `docs/DOCUMENT_LIBRARY_MODULE.md` §11 point 8) since the
+  source binder (`Handbook-EMS/4. SOP EMS/...`) already had its own
+  per-division SOP subfolders (Committee Discipline, General Affairs,
+  Sekretariat Relation, Human Resource, Forensic) baked into its real
+  folder names; everything unmatched defaults to `Medis` (the binder's
+  overall subject). A loose file with no containing folder falls back into
+  an auto-created root `Umum` folder (division `Medis`) rather than being
+  rejected. **Actually run against the real local dev DB on 2026-08-29**
+  (not a synthetic test) — dry-run confirmed the exact plan first (27
+  folders, 75 files, correct division-per-branch), then the live run
+  imported all 75 real documents from the user's actual Handbook-EMS
+  binder: 39 PDFs (via the new `smalot/pdfparser`, verified with real
+  extracted Indonesian SOP text, not garbage/mojibake), 6 docx, 18 txt all
+  extracted successfully (`extraction_status='done'`), 8 xlsx + 4 png
+  correctly marked `unsupported` (phase-2 scope, not a bug). Live
+  FULLTEXT search verified against this real data with real queries
+  ("paramedic", "forensic", "SOP") returning correctly ranked, relevant
+  results with accurate highlighted snippets. Folder-CRUD mutation logic
+  (cascade delete, permission checks) was verified with synthetic
+  temporary rows created and fully cleaned up in the same test — the
+  user's real imported 75-document tree was never touched by that test.
+  HTTP-level click-through (the actual browser UI — search-as-you-type
+  dropdown, folder tree `<details>` disclosure, upload form, Executive's
+  folder-management inline forms, the edit modal) was **not** exercised
+  this session — no browser tooling available; a future session should
+  click through once a safe opportunity exists.
+- **Real bug found and fixed same day (2026-08-30, user-reported)**:
+  opening `document_view.php` for a PDF immediately triggered a browser
+  file download instead of showing the page — root cause was the
+  `<embed type="application/pdf">` tag: many browsers (Chrome's "always
+  download PDFs" setting, some Edge configurations) treat an embedded PDF
+  object as a download trigger rather than rendering it inline, regardless
+  of the `Content-Disposition: inline` header `secure_file.php` already
+  sends. Fixed by **flipping the render priority**: whenever
+  `extraction_status='done'` (true for the large majority of real
+  documents, since PDF/docx/odt/doc/txt all extract successfully — see
+  the import verification above), the pre-extracted text is now shown as
+  the primary HTML view for **every** file type including PDF, not just
+  the non-PDF types as originally built — this is a plain HTML page,
+  never triggers a download. The raw `<embed>`/`<img>` is now strictly a
+  **fallback for when there's no usable extracted text** (a scanned
+  image-only PDF, or a plain image file), and for PDFs specifically that
+  still have extracted text, the original embed is demoted to an opt-in
+  "Tampilkan Tampilan Asli PDF" button (JS `display:none` toggle, no page
+  reload) rather than being auto-loaded on page open.
+- **Manage scope corrected same day (2026-08-30, user-requested)**: the
+  original build's "manager non-Executive can only edit/delete documents
+  they personally uploaded" (§11 poin 2 of the PRD) turned out to be a
+  misreading of what the user actually wanted — clarified to: a manager
+  can edit/delete **every document in their own division**, uploader
+  identity is irrelevant, only division membership matters (Executive
+  still full cross-division as before). `ems_document_can_edit_or_delete()`
+  dropped its `uploaded_by === current user` check entirely, now purely
+  `division match OR Executive`. `document_manage.php`'s document table
+  query changed from `WHERE uploaded_by = ?` to `WHERE division = ?`
+  (renamed "Dokumen yang Saya Upload" → "Dokumen Division {X}", added an
+  "Diupload Oleh" column so who-uploaded is still visible even though it's
+  no longer the access boundary).
+- **Activity history surfaced in the UI same day** (previously
+  `document_activity_logs` was written on every mutation but never
+  displayed anywhere): `document_activity_logs` gained a `division` column
+  (migration `docs/sql/71_2026-08-30_document_activity_logs_division.sql`
+  + the standard `ems_column_exists()` defensive guard in
+  `ems_document_ensure_tables()`) — **stored directly at write time**
+  rather than derived via JOIN at read time, because a `deleted`/
+  `folder_deleted` log's target row is gone by the time anyone reads the
+  log, so a JOIN-based lookup would go permanently blank for exactly the
+  entries admins most want to audit. Every one of the 8
+  `ems_document_log_activity()` call sites in `document_manage_action.php`
+  and `bin/import_dokumen_seed.php` was updated to pass the relevant
+  division explicitly (folder's division for folder actions, the target
+  folder's division for `moved`, etc). New `document_manage.php` card
+  "Riwayat Aktivitas" lists the last 50 entries (action label translated
+  via `ems_document_activity_action_label()`, e.g. `folder_deleted` →
+  "Hapus folder"), filtered to the viewer's own division for regular
+  managers and unfiltered for Executive. The **102 pre-existing log rows**
+  from the 2026-08-29 real-data import (see above) predated this column
+  and were backfilled via a one-time `UPDATE ... JOIN document_files`/
+  `document_folders` script (not a migration — one-time data fix, not
+  schema) against the real local dev DB; the single row that couldn't
+  resolve (a `folder_deleted` cascade-test log whose folder no longer
+  existed, leftover from this module's own earlier verification testing)
+  was identified and deleted rather than left dangling. Verified end to
+  end against the real local dev DB: the corrected permission function
+  (division-mate can now edit a colleague's upload, cross-division still
+  blocked), the new `division` column populated correctly on a fresh log
+  write, and division-scoped log queries confirmed to never leak another
+  division's entries.
+- **Loading overlay added same day (2026-08-30, user-reported "looks
+  hung")**: every mutation on `document_manage.php` — upload (PDF
+  extraction can take a few real seconds), edit/replace, delete, move,
+  and all folder actions — gave zero visual feedback between clicking
+  submit and the page reloading, which read as a frozen/broken page for
+  anything slower than instant. Reuses the **already-existing**
+  `#globalUploadOverlay` (`partials/footer.php`, previously only
+  auto-triggered site-wide for forms with an actually-selected file
+  input) rather than building a new one — required making its title/copy
+  text parameterizable (`globalUploadOverlayTitle`/`globalUploadOverlayCopy`
+  ids + `emsShowUploadOverlay(title, copy)` optional args,
+  backward-compatible — every other existing call site across the AI
+  suite still calls it with no args and gets the original generic text).
+- **First implementation attempt was wrong, user reported it still didn't
+  show anything, rewritten same day**: the first pass used a single
+  capture-phase `document.addEventListener('submit', ..., true)` delegate
+  plus `requestAnimationFrame` to defer showing the overlay (mirroring the
+  existing footer.php pattern) and `event.stopImmediatePropagation()` to
+  stop footer.php's generic file-only handler from also firing and
+  clobbering the custom message. This was fragile for a **real (non-AJAX)
+  form POST that navigates away** — rAF-deferred work isn't guaranteed to
+  paint before the browser proceeds — and `stopImmediatePropagation()`
+  fired during the CAPTURE phase (before the event ever reaches the
+  form's own target-phase listeners) silently prevented the delete forms'
+  `onsubmit="return confirm(...)"` from running at all, which would have
+  made deletes skip confirmation entirely — a real regression caught
+  before it shipped further. **Replaced with the standard, synchronous
+  pattern**: every form on the page now calls `documentShowLoading(actionKey)`
+  directly from its own `onsubmit` (e.g.
+  `onsubmit="return documentShowLoading('upload');"`; for
+  confirm-gated deletes, `onsubmit="return confirm('...') &&
+  documentShowLoading('delete_document');"` — the overlay only shows if
+  the user actually confirms). This runs at the target phase, synchronously,
+  no timing race. It also incidentally fixes the footer.php-clobbering
+  concern for free: footer.php's capture-phase generic handler (which
+  still fires for the two file-bearing forms — upload, edit-with-replace)
+  now runs *before* the target-phase `onsubmit`, so the custom message
+  written second is simply the one left showing — no
+  `stopImmediatePropagation()` needed anywhere.
+- **`.xlsx`/`.xls` upgraded from "unsupported/phase 2" to fully supported
+  same day (2026-08-30, user asked "kenapa Excel tidak bisa dilihat tanpa
+  download")**: `ems_document_extract_text()` gained an `xlsx`/`xls`
+  branch using the **already-installed** `phpoffice/phpspreadsheet`
+  (no new dependency needed) — iterates every sheet via
+  `Spreadsheet::getWorksheetIterator()`, reads each cell with
+  `Worksheet::getCell([$col, $row])->getFormattedValue()` (the
+  `getCellByColumnAndRow()` method from older PhpSpreadsheet tutorials
+  **does not exist** in the installed v5.5.0 — confirmed by reading the
+  actual vendor source before writing this, not assumed from memory), and
+  joins cells with `" | "` per row for the FULLTEXT search index (same
+  plain-text contract as every other extractable type). **Separately**,
+  a new `ems_document_render_spreadsheet_html()` re-reads the file live
+  (not stored in DB — keeps `extracted_text` plain for search/snippets,
+  avoids bloating the table with markup) and renders a real `<table>` per
+  sheet, capped at 300 rows × 40 cols with a "showing first N of M rows"
+  note if truncated. `document_view.php` shows this table for `.xlsx`/
+  `.xls` **in preference to** the plain-text block (checked before the
+  general `$hasExtractedText` branch) since a real table reads far better
+  than a `"cell | cell | cell"` text dump. The 8 real `.xlsx` documents
+  from the 2026-08-29 import (`extraction_status='unsupported'` at the
+  time, since this wasn't built yet) were backfilled in place against the
+  real local dev DB — all 8 now `'done'`, confirmed a live search for
+  "seragam" now actually surfaces all 8 (it returned zero of them before
+  this fix). Known limitation, not fixed: these particular SOP-seragam
+  sheets are mostly reference photos/badges embedded as images with
+  little actual cell text, so their rendered table looks sparse — expected
+  (cell-text extraction was never going to pull image content; OCR would
+  be needed for that, already flagged as phase 2/optional in the PRD, not
+  built).
+
+### Announcement / Push-Notification-Modal ("Kelola Pengumuman", added 2026-08-30)
+A targeted broadcast modal — admin writes a message, picks who sees it and
+how often, and it pops up automatically wherever the targeted user next
+loads a dashboard page. Built on the **same visual pattern** as the
+pre-existing "Ulang Tahun Hari Ini" birthday modal (`.inbox-modal-overlay`/
+`.modal-shell.modal-frame-md`/`.modal-head`/`.modal-content`/`.modal-foot`
+in `partials/header.php`), but resolved **server-side** rather than via a
+client AJAX+localStorage check — since "who should see what, how often" is
+admin-configured data in a table, not a fixed once-a-year date rule, the
+simplest correct place to decide is PHP at render time, not JS after load.
+- **Only one new page**: `dashboard/announcement_manage.php` +
+  `_action.php` (manager-plus only, page-level-open ACL exception like the
+  Document Library/Roxwood AI suite — the page itself loads for anyone
+  logged in but redirects non-manager-plus users away in its own code).
+  Sidebar: "Kelola Pengumuman" (`megaphone` icon) in the `Administrasi`
+  group. **The modal display itself has no dedicated page** — it's
+  injected directly into `partials/header.php` (loaded on every dashboard
+  page already), so it surfaces wherever the targeted user happens to be
+  browsing, not on some specific "notifications" page.
+- **Targeting reuses the pre-existing "division scope" system** built for
+  Secretary Internal Coordination (`ems_division_scope_options()`/
+  `ems_division_scope_matches_division()`/`ems_all_division_scope_value()`/
+  `ems_management_division_scope_value()` in `config/helpers.php`) instead
+  of inventing a new one — `target_type='scope'` + `target_scope` covers
+  "Semua User", "Semua Divisi Manajemen (tanpa Medis)", or one specific
+  division (e.g. `Medis`); `target_type='user'` + `target_user_id` covers
+  a single specific person (picked via the existing `data-user-autocomplete`
+  widget, same one used by Forensic Private Access's grant picker — no new
+  JS needed, `assets/js/app.js` already wires it up globally). **Only
+  Executive-division manager-plus can pick the broadest scopes** ("Semua
+  User"/"Semua Divisi Manajemen") — `ems_announcement_can_target_all()`,
+  same Executive-only-for-broad-blast-radius precedent as the Document
+  Library module; enforced both by hiding those `<option>`s in the form
+  for non-Executive users AND re-validated server-side in
+  `announcement_manage_action.php` (never trust the hidden form state
+  alone). Any manager-plus (any division) can target one specific division
+  or one specific user — this is the intentionally-open primary use case
+  (e.g. HR/Disciplinary broadcasting to Medis, not just Medis broadcasting
+  to itself).
+- **Frequency is resolved, and its state marked, in ONE function**:
+  `ems_announcement_resolve_for_display(PDO $pdo, array $user, string
+  $unitCode): ?array` in `config/announcement.php` — called once per
+  page-load from `header.php`. Walks all active announcements
+  (`created_at DESC`), returns the **first** one that both matches the
+  viewer's targeting AND hasn't been suppressed by its own frequency rule,
+  marking suppression state as a side effect of that same decision (not a
+  separate "mark as dismissed" step triggered by JS clicking close) —
+  `once` inserts an `announcement_dismissals` row (unique per
+  announcement+user, persists forever, cross-device/cross-browser since
+  it's DB-backed not localStorage) the instant it's chosen for display;
+  `every_login` sets a `$_SESSION['ems_announcement_shown_<id>']` flag
+  (resets naturally on session end/next login, no DB write needed);
+  `every_visit` marks nothing and matches every single call. Only **one**
+  announcement is ever shown per page load even if several match the same
+  user — deliberate simplification to avoid modal-stacking; if multiple
+  are active for one user, the most-recently-created one wins that load,
+  others wait their turn on a future load. The close button (`Mengerti`/✕)
+  is a plain `element.remove()` — no network round-trip needed on close
+  since the "seen" state was already recorded at resolve time, before the
+  modal was ever rendered.
+- **Every send is also mirrored into the existing inbox system**
+  (`sendInbox()`, `config/inbox_helper.php`, `type='announcement'` — that
+  column is a plain `varchar(50)`, not an enum, so no schema change
+  needed to add this new type value) — `ems_announcement_mirror_to_inbox()`
+  runs as part of `ems_announcement_create()`, snapshotting the audience
+  **at creation time**: for `target_type='user'` it's one `sendInbox()`
+  call; for `target_type='scope'` it queries every active `user_rh` row
+  in the unit and calls `sendInbox()` for each one whose division matches
+  via the same `ems_division_scope_matches_division()` used for modal
+  targeting, so the two never drift out of sync with each other. This
+  gives every targeted user a persistent record even after the modal is
+  dismissed/never shown again (`once` frequency) — verified against the
+  real local dev DB with a real (small, `Forensic`-division) audience:
+  creating a scope-targeted announcement correctly produced exactly one
+  inbox row per active Forensic user (3 of 3), all cleaned up after. The
+  admin-facing dismissal count on `announcement_manage.php`
+  (`(SELECT COUNT(*) FROM announcement_dismissals ...) AS dismissal_count`
+  per row) is a separate, narrower signal — only meaningful for
+  `once`-frequency announcements, since `every_login`/`every_visit` never
+  write a dismissal row at all; it answers "how many have actually seen
+  the modal", while the inbox mirror answers "who was ever told".
+- **"Ada git commit baru" was explicitly NOT built as automatic
+  detection** (user asked for it, but production here is deployed via
+  **manual zip upload**, not `git pull` — see §0/§6 of
+  `docs/DOCUMENT_LIBRARY_MODULE.md`'s deploy-workflow context and this
+  file's own repeated "upload manual ke hosting" notes — the production
+  host has no reliable, live-synced `.git` to poll). Building real git-commit
+  polling would only ever fire on a local dev checkout, never on the
+  actual site medics use, so it was deliberately reshaped into a manual
+  one-click alternative instead: `quick_broadcast_update` action
+  (Executive-only, same button as the "Aksi Cepat" card on
+  `announcement_manage.php`) pre-fills a canned "Ada Update Baru — silakan
+  refresh halaman" announcement at scope=Semua User, frequency=once, and
+  sends it immediately — meant to be clicked by hand right after finishing
+  a production zip upload, not triggered by anything automatic.
+- Verified against the real local dev DB (not synthetic fixtures where
+  avoidable): migration applied cleanly; a full targeting+frequency matrix
+  was exercised with real DB rows and **properly isolated PHP sessions per
+  simulated user** (a first test pass that shared one `$_SESSION` across
+  multiple simulated users produced a misleading false negative for
+  `every_login` cross-division matching — correctly identified as a test-
+  script artifact, not a real bug, and re-verified with isolated sessions
+  before trusting the result) — confirmed: `once` marks-and-never-repeats
+  across repeated resolves for the same user, `every_login` repeats once
+  per fresh session but not within one, `every_visit` repeats on every
+  single call, scope-based targeting correctly matches/excludes by
+  division, user-targeted announcements only ever match that one user id,
+  and the "first active match wins, most-recent-created first" ordering
+  behaves as designed. All test rows deleted after — confirmed zero
+  leftover rows in both tables.
 
 ### Medical Records / Forensic
 `rekam_medis.php`+`_action.php`+`_list.php`+`_view.php`+`_edit.php`+
@@ -2216,9 +2590,9 @@ frontend rewrite is planned (`docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md`)
 
 ## 9. Database — 100 tables (97 + `police_partnership_records` + 2 dispatcher tables added later)
 
-Full authoritative history is `docs/sql/` — **67 chronological, numbered
-migration files** (`01_...` → `67_...` plus a handful of unnumbered early
-`2026-03-07_*` files), spanning 2026-03-07 → 2026-08-16 (this table count
+Full authoritative history is `docs/sql/` — **72 chronological, numbered
+migration files** (`01_...` → `72_...` plus a handful of unnumbered early
+`2026-03-07_*` files), spanning 2026-03-07 → 2026-08-30 (this table count
 and the "100 tables" figure above predate several sessions of feature work
 — treat both as approximate, not authoritative; count `docs/sql/*.sql`
 directly if you need an exact number). The 5 files under `migrations/` are
@@ -2259,7 +2633,10 @@ letters / file records, each + `_attachments`), `general_affair_cooperations`
 (+`_sessions`), `emt_doj`/`_deliveries`, `system_ai_settings`/
 `_request_logs`/`_prompt_templates`, `user_inbox`/`_state`,
 `user_push_subscriptions`, `remember_tokens`, `api_tokens`, `account_logs`/
-`account_update_logs`, `recruitment_portal_settings`.
+`account_update_logs`, `recruitment_portal_settings`, `document_folders`/
+`document_files`/`document_activity_logs` (Document Library / "Dokumen"
+module, see §5), `announcements`/`announcement_dismissals` (push-notification-
+modal / "Kelola Pengumuman" module, see §5).
 
 Schema evolution is almost entirely **feature-flagged at runtime**
 (`ems_column_exists()`/`ems_table_exists()` checks scattered through nearly

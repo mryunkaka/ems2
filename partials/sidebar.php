@@ -38,6 +38,7 @@ $groupedNav = [
         sidebarItem('/dashboard/index.php', 'index.php', 'Dashboard', 'home'),
         sidebarItem('/dashboard/medical_roster.php', 'medical_roster.php', 'Daftar Medis Roxwood', 'user-group'),
         sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
+        sidebarItem('/dashboard/dokumen.php', 'dokumen.php', 'Dokumen', 'folder'),
     ],
     'Medis' => [
         sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
@@ -85,6 +86,8 @@ if (!ems_is_staff_role($userRole)) {
     $groupedNav['Medis'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
     $groupedNav['Farmasi'][] = sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle');
     $groupedNav['Administrasi'][] = sidebarItem('/dashboard/training_group_generator.php', 'training_group_generator.php', 'Generator Kelompok', 'sparkles');
+    $groupedNav['Administrasi'][] = sidebarItem('/dashboard/document_manage.php', 'document_manage.php', 'Kelola Dokumen', 'arrow-up-tray');
+    $groupedNav['Administrasi'][] = sidebarItem('/dashboard/announcement_manage.php', 'announcement_manage.php', 'Kelola Pengumuman', 'megaphone');
 }
 
 if ($division !== 'General Affair') {

@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/announcement.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pushConfig = require __DIR__ . '/../config/push.php';
@@ -21,6 +22,12 @@ $realtimeMusicEnabled = !$hideAltaTopbarUtilities && !empty($realtimeSyncConfig[
 $currentHospitalName = ems_unit_hospital_name($currentUnit);
 $currentLogoPath = ems_unit_logo_path($currentUnit);
 $currentSystemName = ems_unit_system_name($currentUnit);
+
+$activeAnnouncement = null;
+if ($resolvedPdo instanceof PDO) {
+    ems_announcement_ensure_tables($resolvedPdo);
+    $activeAnnouncement = ems_announcement_resolve_for_display($resolvedPdo, $user, $currentUnit);
+}
 
 $medicName    = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '-');
@@ -292,6 +299,30 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                     </div>
                 </div>
             </div>
+        <?php endif; ?>
+
+        <?php if ($activeAnnouncement !== null): ?>
+        <div id="announcementModal" class="inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="announcementModalTitle">
+            <div class="inbox-modal-box modal-shell modal-frame-md">
+                <div class="modal-head">
+                    <div class="min-w-0">
+                        <div id="announcementModalTitle" class="modal-title"><?= htmlspecialchars((string)$activeAnnouncement['title'], ENT_QUOTES, 'UTF-8') ?></div>
+                        <div class="meta-text-xs mt-1 text-slate-500">Pengumuman dari tim manajemen</div>
+                    </div>
+                    <button onclick="document.getElementById('announcementModal').remove();" type="button" class="modal-close-btn" aria-label="Tutup modal">
+                        <?= ems_icon('x-mark', 'h-5 w-5') ?>
+                    </button>
+                </div>
+                <div class="modal-content">
+                    <p style="white-space:pre-wrap; line-height:1.7; color:#1e293b; margin:0;"><?= nl2br(htmlspecialchars((string)$activeAnnouncement['message'], ENT_QUOTES, 'UTF-8')) ?></p>
+                </div>
+                <div class="modal-foot">
+                    <div class="modal-actions justify-end">
+                        <button onclick="document.getElementById('announcementModal').remove();" type="button" class="btn-primary">Mengerti</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         <?php endif; ?>
 
         <div id="birthdayTodayModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="birthdayTodayTitle">

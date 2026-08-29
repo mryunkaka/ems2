@@ -1382,6 +1382,35 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Exception: Document Library ("Dokumen") — basis pengetahuan bersama,
+    // dokumen.php/document_view.php/document_search bisa dibuka & dibaca
+    // semua user login lintas division (§11 poin 3 docs/DOCUMENT_LIBRARY_MODULE.md).
+    // document_manage.php/_action.php juga page-level-open, tapi aksi
+    // mutasi di dalamnya tetap digating manager-plus/Executive di kode
+    // halaman itu sendiri (pola sama dengan Dispatcher).
+    $documentLibraryPages = [
+        'dokumen.php',
+        'document_view.php',
+        'document_manage.php',
+        'document_manage_action.php',
+    ];
+    if (in_array($scriptName, $documentLibraryPages, true)) {
+        return;
+    }
+
+    // Exception: Announcement / push-notification-modal module — page
+    // itself terbuka untuk semua user login (modal ditampilkan lewat
+    // partials/header.php ke semua orang yang ditarget), tapi
+    // announcement_manage.php sendiri masih digating manager-plus di
+    // dalam kode halamannya.
+    $announcementPages = [
+        'announcement_manage.php',
+        'announcement_manage_action.php',
+    ];
+    if (in_array($scriptName, $announcementPages, true)) {
+        return;
+    }
+
     // Exception: police partnership input accessible by all logged-in users
     if ($scriptName === 'police_partnership.php' || $scriptName === 'police_partnership_action.php') {
         return;

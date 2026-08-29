@@ -312,6 +312,16 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     if (!$allowed) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
+} elseif (str_starts_with($relativePath, 'storage/documents/')) {
+    // Document Library ("Dokumen"): basis pengetahuan bersama, semua user
+    // login boleh baca file apa pun di sini (keputusan §11 poin 3
+    // docs/DOCUMENT_LIBRARY_MODULE.md) — cukup pastikan path ini memang
+    // baris dokumen yang valid, bukan tebakan path.
+    $stmt = $pdo->prepare("SELECT 1 FROM document_files WHERE file_path = ? LIMIT 1");
+    $stmt->execute([$relativePath]);
+    if (!(bool)$stmt->fetchColumn()) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
 } else {
     secureFileAbort(403, 'Akses file tidak diizinkan.');
 }
