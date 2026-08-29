@@ -752,6 +752,53 @@ division-restricted.
   (cell-text extraction was never going to pull image content; OCR would
   be needed for that, already flagged as phase 2/optional in the PRD, not
   built).
+- **Production import + tree UX fix, same day (2026-08-30)**: the real
+  75-document import was also run against the **production** server
+  (`public_html/rh_ems` on the actual cPanel host, not just the local dev
+  DB) via `bin/import_dokumen_seed.php`. Hit one real, non-obvious bug in
+  the process: 2 of the source folder names (`...Handbook — Primary
+  Learning Guide`, `...Literature — Additional Reading`) contained an
+  em-dash that had been **mangled at the filesystem level** before ever
+  reaching the server — confirmed genuine (not a terminal/SSH display
+  artifact) by hex-dumping the raw filename bytes via `bin2hex(scandir()
+  entries)` from PHP, which bypasses any terminal charset entirely; the
+  bytes decoded as 3 real Cyrillic characters ("тАФ"), not just the em-dash
+  misdisplayed — so setting `LC_ALL=en_US.UTF-8` on the shell (tried
+  first, ruled out) did not and could not have fixed it, since the
+  corruption was already baked into the actual file on disk, most likely
+  from a Windows zip tool re-encoding the filename through a Cyrillic
+  codepage at zip-creation time. Fixed by renaming the 2 folders directly
+  via cPanel File Manager (browser UTF-8, guaranteed clean) rather than
+  attempting an automated mojibake-reversal script — deliberately not
+  worth the risk of a wrong guess permanently corrupting filenames further
+  for a 2-folder, one-time fix. Re-ran `--dry-run` after the rename to
+  confirm clean output before running for real.
+- **`dokumen.php`'s folder tree UX changed same day (2026-08-30,
+  user-reported: had to click into every single folder one at a time to
+  see subfolders/files)**: originally only leaf folders with **zero**
+  documents rendered as a plain (non-expandable) line, and even
+  `<details>`-based branches defaulted to **collapsed**, matching the
+  selected `?folder=` query param at most — browsing the full ~27-folder/
+  75-document tree required many individual clicks. Changed to: (1) every
+  `<details>` node now always renders `open` (whole tree expanded by
+  default, still collapsible per-node since it's a native disclosure
+  widget, not removed — a user can still manually collapse branches they
+  don't care about), and (2) documents are now rendered as clickable leaf
+  items **directly inside the tree itself** (new `dokumenRenderFileItem()`,
+  `.doc-file-leaf` class) rather than only appearing in the separate
+  right-hand panel after navigating to `?folder=X` — a folder is only
+  rendered as a plain non-expandable line now if it has **neither**
+  subfolders **nor** documents (truly empty). This required switching the
+  page's doc-count query to also fetch full rows (`id, folder_id, title,
+  file_ext`) grouped by folder in PHP (`$docsByFolder`), not just
+  `COUNT(*)` — verified against the real local DB mirroring production's
+  imported data: 75 documents correctly grouped across 22 folders,
+  including the loose `LOGO RH` file correctly attributed to the
+  `Handbook-EMS` root folder (folder_id=1) alongside its subfolders. The
+  right-hand per-folder panel (triggered by clicking a folder's own link)
+  was intentionally left in place, not removed — it still works via the
+  same `?folder=` query param, just less necessary now that the tree
+  itself shows everything inline.
 
 ### Announcement / Push-Notification-Modal ("Kelola Pengumuman", added 2026-08-30)
 A targeted broadcast modal — admin writes a message, picks who sees it and

@@ -34,10 +34,13 @@ $foldersById = ems_document_folders_by_id($allFolders);
 $tree = ems_document_build_tree($allFolders);
 
 $docCounts = [];
-$stmtCounts = $pdo->prepare("SELECT folder_id, COUNT(*) AS c FROM document_files WHERE unit_code = ? GROUP BY folder_id");
-$stmtCounts->execute([$unitCode]);
-foreach ($stmtCounts->fetchAll(PDO::FETCH_ASSOC) as $row) {
-    $docCounts[(int)$row['folder_id']] = (int)$row['c'];
+$docsByFolder = [];
+$stmtAllDocs = $pdo->prepare("SELECT id, folder_id, title, file_ext FROM document_files WHERE unit_code = ? ORDER BY title ASC");
+$stmtAllDocs->execute([$unitCode]);
+foreach ($stmtAllDocs->fetchAll(PDO::FETCH_ASSOC) as $row) {
+    $fid = (int)$row['folder_id'];
+    $docCounts[$fid] = ($docCounts[$fid] ?? 0) + 1;
+    $docsByFolder[$fid][] = $row;
 }
 
 $selectedFolderId = isset($_GET['folder']) ? (int)$_GET['folder'] : 0;
@@ -59,22 +62,39 @@ function dokumenExtIcon(string $ext): string
     };
 }
 
-function dokumenRenderFolderNode(array $node, array $docCounts, ?int $selectedFolderId): void
+function dokumenRenderFileItem(array $doc): void
+{
+    echo '<a href="/dashboard/document_view.php?id=' . (int)$doc['id'] . '" class="doc-file-leaf">';
+    echo ems_icon(dokumenExtIcon((string)$doc['file_ext']), 'h-4 w-4');
+    echo '<span>' . htmlspecialchars((string)$doc['title'], ENT_QUOTES, 'UTF-8') . '</span>';
+    echo '</a>';
+}
+
+// Tree selalu tampil terbuka penuh (folder + dokumennya langsung kelihatan
+// tanpa perlu klik satu-satu) — dokumen ditampilkan sebagai item di dalam
+// tree-nya sendiri, bukan cuma link ke panel kanan.
+function dokumenRenderFolderNode(array $node, array $docCounts, array $docsByFolder, ?int $selectedFolderId): void
 {
     $id = (int)$node['id'];
     $hasChildren = !empty($node['children']);
+    $docsHere = $docsByFolder[$id] ?? [];
     $count = $docCounts[$id] ?? 0;
     $isActive = $selectedFolderId === $id;
     $label = htmlspecialchars((string)$node['name'], ENT_QUOTES, 'UTF-8');
     $href = '?folder=' . $id;
 
-    if ($hasChildren) {
-        echo '<details class="doc-folder-node"' . ($isActive ? ' open' : '') . '>';
+    if ($hasChildren || !empty($docsHere)) {
+        echo '<details class="doc-folder-node" open>';
         echo '<summary>' . ems_icon('folder', 'h-4 w-4') . '<a href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') . '" class="' . ($isActive ? 'doc-folder-active' : '') . '">' . $label . '</a><span class="doc-folder-count">' . $count . '</span></summary>';
         echo '<ul class="doc-folder-children">';
         foreach ($node['children'] as $child) {
             echo '<li>';
-            dokumenRenderFolderNode($child, $docCounts, $selectedFolderId);
+            dokumenRenderFolderNode($child, $docCounts, $docsByFolder, $selectedFolderId);
+            echo '</li>';
+        }
+        foreach ($docsHere as $doc) {
+            echo '<li>';
+            dokumenRenderFileItem($doc);
             echo '</li>';
         }
         echo '</ul>';
@@ -116,18 +136,20 @@ include __DIR__ . '/../partials/sidebar.php';
 .doc-search-result-snippet mark { background: #fef08a; color: inherit; padding: 0 2px; border-radius: 2px; }
 .doc-search-empty, .doc-search-loading { padding: 16px; color: #64748b; font-size: 14px; }
 
-.doc-layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 16px; }
-@media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; } }
-.doc-folder-tree { max-height: 640px; overflow-y: auto; }
+.doc-layout { display: grid; grid-template-columns: 420px 1fr; gap: 16px; margin-top: 16px; }
+@media (max-width: 1000px) { .doc-layout { grid-template-columns: 1fr; } }
+.doc-folder-tree { max-height: 75vh; overflow-y: auto; }
 .doc-division-group { margin-bottom: 14px; }
 .doc-division-group-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; margin-bottom: 6px; }
 .doc-folder-node summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 4px; border-radius: 8px; }
 .doc-folder-node summary::-webkit-details-marker { display: none; }
-.doc-folder-node summary:hover, .doc-folder-leaf:hover { background: #f1f5f9; }
+.doc-folder-node summary:hover, .doc-folder-leaf:hover, .doc-file-leaf:hover { background: #f1f5f9; }
 .doc-folder-leaf { display: flex; align-items: center; gap: 6px; padding: 6px 4px; border-radius: 8px; margin-left: 18px; }
 .doc-folder-children { list-style: none; margin: 0 0 0 22px; padding: 0; }
 .doc-folder-active { color: #0ea5e9; font-weight: 600; }
 .doc-folder-count { margin-left: auto; font-size: 11px; color: #94a3b8; background: #f1f5f9; border-radius: 999px; padding: 1px 8px; }
+.doc-file-leaf { display: flex; align-items: center; gap: 6px; padding: 5px 4px; border-radius: 8px; text-decoration: none; color: #334155; font-size: 13px; }
+.doc-file-leaf svg { color: #94a3b8; flex-shrink: 0; }
 
 .doc-file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .doc-file-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; text-decoration: none; color: inherit; display: block; transition: box-shadow .15s, border-color .15s; }
@@ -182,7 +204,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="doc-division-group">
                             <div class="doc-division-group-title"><?= htmlspecialchars($divisionName, ENT_QUOTES, 'UTF-8') ?></div>
                             <?php foreach ($nodes as $node): ?>
-                                <?php dokumenRenderFolderNode($node, $docCounts, $selectedFolderId > 0 ? $selectedFolderId : null); ?>
+                                <?php dokumenRenderFolderNode($node, $docCounts, $docsByFolder, $selectedFolderId > 0 ? $selectedFolderId : null); ?>
                             <?php endforeach; ?>
                         </div>
                     <?php endforeach; ?>
