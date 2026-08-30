@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/inbox_helper.php';
+require_once __DIR__ . '/../config/attachment_extraction.php';
 
 ems_require_division_access(['Disciplinary Committee'], '/dashboard/index.php');
 
@@ -143,6 +144,7 @@ function disciplinaryStoreAttachments(
 
         $insert->execute([$parentId, $originalName, $path]);
         $storedPaths[] = $path;
+        ems_attachment_extract_and_store($pdo, $table, (int)$pdo->lastInsertId(), $path);
     }
 
     return $storedPaths;

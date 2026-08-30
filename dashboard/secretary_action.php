@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/surat_code_helper.php';
+require_once __DIR__ . '/../config/attachment_extraction.php';
 
 ems_require_division_access(['Secretary'], '/dashboard/index.php');
 
@@ -163,6 +164,20 @@ function secretaryNormalizeMultiUpload(array $fileBag): array
     return $files;
 }
 
+// Lampiran berupa foto tidak bisa dibaca otomatis — wajib disertai isi
+// lengkap secara manual. Dicek di server juga, tidak cukup lewat JS saja
+// (JS bisa dimatikan di browser).
+function secretaryHasImageAttachment(array $files): bool
+{
+    foreach ($files as $file) {
+        if (in_array(emsUploadedFileExtension($file), ['jpg', 'jpeg', 'png'], true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function secretaryAttachmentConfig(string $type): array
 {
     return match ($type) {
@@ -198,7 +213,7 @@ function secretaryAttachmentConfig(string $type): array
     };
 }
 
-function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $files): void
+function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $files, string $contentDescription = ''): void
 {
     if ($recordId <= 0 || empty($files)) {
         return;
@@ -222,7 +237,7 @@ function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $
         foreach (array_values($files) as $index => $file) {
             $path = uploadSecretaryAttachmentFile($file, $config['folder'], 400000, 10000000);
             if (!$path) {
-                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Hanya menerima DOC, DOCX, PDF, JPG, atau PNG dengan ukuran maksimal ' . emsUploadLimitLabel() . '.');
+                throw new Exception('Lampiran ' . $config['label'] . ' gagal diproses. Hanya menerima PDF, DOC, DOCX, TXT, JPG, atau PNG dengan ukuran maksimal ' . emsUploadLimitLabel() . '.');
             }
 
             $storedPaths[] = $path;
@@ -232,6 +247,9 @@ function secretarySaveAttachments(PDO $pdo, string $type, int $recordId, array $
                 trim((string) ($file['name'] ?? '')) ?: null,
                 $index + 1,
             ]);
+            $newId = (int) $pdo->lastInsertId();
+            ems_attachment_extract_and_store($pdo, $config['table'], $newId, $path);
+            ems_attachment_store_manual_description($pdo, $config['table'], $newId, $contentDescription);
         }
     } catch (Throwable $e) {
         foreach ($storedPaths as $path) {
@@ -299,9 +317,14 @@ try {
         $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'scheduled')), ['scheduled', 'ongoing', 'completed', 'cancelled'], 'Status agenda tidak valid.');
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($visitorName === '' || $visitPurpose === '' || $location === '' || $picUserId <= 0) {
             throw new Exception('Data agenda kunjungan wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -333,7 +356,7 @@ try {
             $userId,
         ]);
 
-        secretarySaveAttachments($pdo, 'visit_agenda', (int) $pdo->lastInsertId(), $attachmentFiles);
+        secretarySaveAttachments($pdo, 'visit_agenda', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Agenda kunjungan berhasil disimpan.';
@@ -367,9 +390,14 @@ try {
         $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'scheduled')), ['scheduled', 'ongoing', 'completed', 'cancelled'], 'Status agenda tidak valid.');
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($agendaId <= 0 || $visitorName === '' || $visitPurpose === '' || $location === '' || $picUserId <= 0) {
             throw new Exception('Data edit agenda kunjungan wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran baru berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -417,7 +445,7 @@ try {
             $agendaId,
         ]);
 
-        secretarySaveAttachments($pdo, 'visit_agenda', $agendaId, $attachmentFiles);
+        secretarySaveAttachments($pdo, 'visit_agenda', $agendaId, $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Agenda kunjungan berhasil diperbarui.';
@@ -461,9 +489,14 @@ try {
         $summaryNotes = trim((string) ($_POST['summary_notes'] ?? ''));
         $followUpNotes = trim((string) ($_POST['follow_up_notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($title === '' || $divisionScope === '' || $hostUserId <= 0) {
             throw new Exception('Data koordinasi internal wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -494,7 +527,7 @@ try {
             $userId,
         ]);
 
-        secretarySaveAttachments($pdo, 'internal_coordination', (int) $pdo->lastInsertId(), $attachmentFiles);
+        secretarySaveAttachments($pdo, 'internal_coordination', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Koordinasi internal berhasil disimpan.';
@@ -527,9 +560,14 @@ try {
         $summaryNotes = trim((string) ($_POST['summary_notes'] ?? ''));
         $followUpNotes = trim((string) ($_POST['follow_up_notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($coordinationId <= 0 || $title === '' || $divisionScope === '' || $hostUserId <= 0) {
             throw new Exception('Data edit koordinasi internal wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran baru berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -575,7 +613,7 @@ try {
             $coordinationId,
         ]);
 
-        secretarySaveAttachments($pdo, 'internal_coordination', $coordinationId, $attachmentFiles);
+        secretarySaveAttachments($pdo, 'internal_coordination', $coordinationId, $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Koordinasi internal berhasil diperbarui.';
@@ -619,9 +657,14 @@ try {
         $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'logged')), ['logged', 'sealed', 'distributed', 'archived'], 'Status surat rahasia tidak valid.');
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($referenceNumber === '' || $subject === '' || $counterpartyName === '') {
             throw new Exception('Data surat rahasia wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -652,7 +695,7 @@ try {
             $userId,
         ]);
 
-        secretarySaveAttachments($pdo, 'confidential_letter', (int) $pdo->lastInsertId(), $attachmentFiles);
+        secretarySaveAttachments($pdo, 'confidential_letter', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Register surat rahasia berhasil disimpan.';
@@ -685,9 +728,14 @@ try {
         $status = secretaryAssertAllowed(trim((string) ($_POST['status'] ?? 'logged')), ['logged', 'sealed', 'distributed', 'archived'], 'Status surat rahasia tidak valid.');
         $notes = trim((string) ($_POST['notes'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($letterId <= 0 || $referenceNumber === '' || $subject === '' || $counterpartyName === '') {
             throw new Exception('Data edit surat rahasia wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran baru berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -733,7 +781,7 @@ try {
             $letterId,
         ]);
 
-        secretarySaveAttachments($pdo, 'confidential_letter', $letterId, $attachmentFiles);
+        secretarySaveAttachments($pdo, 'confidential_letter', $letterId, $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Register surat rahasia berhasil diperbarui.';
@@ -777,9 +825,14 @@ try {
         $keywords = trim((string) ($_POST['keywords'] ?? ''));
         $description = trim((string) ($_POST['description'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($referenceNumber === '' || $title === '' || $counterpartyName === '') {
             throw new Exception('Data file secretary wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -810,7 +863,7 @@ try {
             $userId,
         ]);
 
-        secretarySaveAttachments($pdo, 'file_record', (int) $pdo->lastInsertId(), $attachmentFiles);
+        secretarySaveAttachments($pdo, 'file_record', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Data file secretary berhasil disimpan.';
@@ -843,9 +896,14 @@ try {
         $keywords = trim((string) ($_POST['keywords'] ?? ''));
         $description = trim((string) ($_POST['description'] ?? ''));
         $attachmentFiles = secretaryNormalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string) ($_POST['attachment_content'] ?? ''));
 
         if ($recordId <= 0 || $referenceNumber === '' || $title === '' || $counterpartyName === '') {
             throw new Exception('Data edit file secretary wajib lengkap.');
+        }
+
+        if (secretaryHasImageAttachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran baru berupa foto — isi dokumen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $pdo->beginTransaction();
@@ -891,7 +949,7 @@ try {
             $recordId,
         ]);
 
-        secretarySaveAttachments($pdo, 'file_record', $recordId, $attachmentFiles);
+        secretarySaveAttachments($pdo, 'file_record', $recordId, $attachmentFiles, $attachmentContentDescription);
         $pdo->commit();
 
         $_SESSION['flash_messages'][] = 'Data file secretary berhasil diperbarui.';

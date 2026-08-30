@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/surat_code_helper.php';
+require_once __DIR__ . '/../config/attachment_extraction.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -147,7 +148,21 @@ function normalizeMultiUpload(array $fileBag): array
     return $files;
 }
 
-function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files): void
+// Lampiran berupa foto tidak bisa dibaca otomatis — wajib disertai isi
+// lengkap secara manual. Dicek di server juga, tidak cukup lewat JS saja
+// (JS bisa dimatikan di browser).
+function surat_has_image_attachment(array $files): bool
+{
+    foreach ($files as $file) {
+        if (in_array(emsUploadedFileExtension($file), ['jpg', 'jpeg', 'png'], true)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files, string $contentDescription = ''): void
 {
     if ($outgoingLetterId <= 0 || empty($files)) {
         return;
@@ -164,9 +179,9 @@ function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files):
 
     try {
         foreach (array_values($files) as $index => $file) {
-            $path = uploadAndCompressFile($file, 'letters/outgoing', 400000, 5000000);
+            $path = uploadSecretaryAttachmentFile($file, 'letters/outgoing', 400000, 5000000);
             if (!$path) {
-                throw new Exception('Lampiran surat keluar gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
+                throw new Exception('Lampiran surat keluar gagal diproses. Gunakan PDF, DOC, DOCX, TXT, JPG, atau PNG maksimal ' . emsUploadLimitLabel() . '.');
             }
 
             $storedPaths[] = $path;
@@ -176,6 +191,9 @@ function saveOutgoingAttachments(PDO $pdo, int $outgoingLetterId, array $files):
                 trim((string)($file['name'] ?? '')) ?: null,
                 $index + 1,
             ]);
+            $newAttachmentId = (int)$pdo->lastInsertId();
+            ems_attachment_extract_and_store($pdo, 'outgoing_letter_attachments', $newAttachmentId, $path);
+            ems_attachment_store_manual_description($pdo, 'outgoing_letter_attachments', $newAttachmentId, $contentDescription);
         }
     } catch (Throwable $e) {
         foreach ($storedPaths as $path) {
@@ -199,49 +217,15 @@ function surat_store_minutes_attachment(array $file): ?string
         return null;
     }
 
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime = $finfo ? (string)finfo_file($finfo, $tmpPath) : '';
-    if ($finfo) {
-        finfo_close($finfo);
+    $path = uploadSecretaryAttachmentFile($file, 'letters/minutes', 400000, 5000000);
+    if ($path === null) {
+        throw new Exception('Lampiran notulen gagal diproses. Gunakan PDF, DOC, DOCX, TXT, JPG, atau PNG maksimal ' . emsUploadLimitLabel() . '.');
     }
 
-    $baseDir = __DIR__ . '/../storage/letters/minutes';
-    if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true) && !is_dir($baseDir)) {
-        throw new Exception('Folder lampiran notulen tidak dapat dibuat.');
-    }
-
-    if (in_array($mime, ['image/jpeg', 'image/png'], true)) {
-        $path = uploadAndCompressFile($file, 'letters/minutes', 400000, 5000000);
-        if ($path === null) {
-            throw new Exception('Lampiran gambar notulen gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
-        }
-
-        return $path;
-    }
-
-    if ($mime === 'application/pdf') {
-        $maxPdfSize = emsUploadLimitBytes();
-        $size = (int)($file['size'] ?? 0);
-        if ($size <= 0) {
-            throw new Exception('Ukuran PDF notulen tidak valid.');
-        }
-        if ($size > $maxPdfSize) {
-            throw new Exception('PDF notulen maksimal ' . emsUploadLimitLabel() . '.');
-        }
-
-        $filename = bin2hex(random_bytes(8)) . '_' . time() . '.pdf';
-        $targetPath = $baseDir . '/' . $filename;
-        if (!move_uploaded_file($tmpPath, $targetPath)) {
-            throw new Exception('Lampiran PDF notulen gagal disimpan.');
-        }
-
-        return 'storage/letters/minutes/' . $filename;
-    }
-
-    throw new Exception('Lampiran notulen hanya menerima JPG, PNG, atau PDF.');
+    return $path;
 }
 
-function saveMinutesAttachments(PDO $pdo, int $minutesId, array $files): void
+function saveMinutesAttachments(PDO $pdo, int $minutesId, array $files, string $contentDescription = ''): void
 {
     if ($minutesId <= 0 || empty($files)) {
         return;
@@ -274,6 +258,9 @@ function saveMinutesAttachments(PDO $pdo, int $minutesId, array $files): void
                 trim((string)($file['name'] ?? '')) ?: null,
                 $index + 1,
             ]);
+            $newId = (int)$pdo->lastInsertId();
+            ems_attachment_extract_and_store($pdo, 'meeting_minutes_attachments', $newId, $path);
+            ems_attachment_store_manual_description($pdo, 'meeting_minutes_attachments', $newId, $contentDescription);
         }
     } catch (Throwable $e) {
         deleteStoredFiles($storedPaths);
@@ -383,9 +370,14 @@ try {
         $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
         $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
 
         if ($institutionName === '' || $subject === '' || $letterBody === '') {
             throw new Exception('Data surat keluar belum lengkap.');
+        }
+
+        if (surat_has_image_attachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi surat lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $timeValue = null;
@@ -445,7 +437,7 @@ try {
         $stmt->execute($insertValues);
 
         $outgoingLetterId = (int)$pdo->lastInsertId();
-        saveOutgoingAttachments($pdo, $outgoingLetterId, $attachmentFiles);
+        saveOutgoingAttachments($pdo, $outgoingLetterId, $attachmentFiles, $attachmentContentDescription);
 
         $pdo->commit();
 
@@ -567,6 +559,7 @@ try {
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
             ? ems_all_division_scope_value()
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
@@ -579,6 +572,10 @@ try {
             $summary === ''
         ) {
             throw new Exception('Data notulen belum lengkap.');
+        }
+
+        if (surat_has_image_attachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran berupa foto — isi notulen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $timeObj = DateTime::createFromFormat('H:i', $meetingTime);
@@ -636,7 +633,7 @@ try {
         $stmt->execute($insertValues);
 
         $minutesId = (int)$pdo->lastInsertId();
-        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles);
+        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles, $attachmentContentDescription);
 
         $pdo->commit();
 
@@ -659,6 +656,7 @@ try {
         $decisions = trim((string)($_POST['decisions'] ?? ''));
         $followUp = trim((string)($_POST['follow_up'] ?? ''));
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
+        $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
             ? ems_all_division_scope_value()
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
@@ -672,6 +670,10 @@ try {
             $summary === ''
         ) {
             throw new Exception('Data edit notulen belum lengkap.');
+        }
+
+        if (surat_has_image_attachment($attachmentFiles) && $attachmentContentDescription === '') {
+            throw new Exception('Lampiran baru berupa foto — isi notulen lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.');
         }
 
         $timeObj = DateTime::createFromFormat('H:i', $meetingTime);
@@ -748,7 +750,7 @@ try {
         ");
         $stmt->execute($params);
 
-        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles);
+        saveMinutesAttachments($pdo, $minutesId, $attachmentFiles, $attachmentContentDescription);
 
         $pdo->commit();
 

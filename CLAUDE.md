@@ -61,8 +61,8 @@ public/         Unauthenticated recruitment portal + AI psychometric test + real
 assets/design/  Self-built PHP "component" design system + Tailwind source/tokens (see §8)
 storage/        Uploaded files (gitignored), served only via ajax/secure_file.php
 migrations/     5 old one-off migration files (superseded by docs/sql/)
-docs/sql/       70 chronological, numbered migration files — the REAL migration history
-bin/            CLI-only one-off scripts (e.g. Document Library seed importer), blocked from web access via .htaccess directory rule
+docs/sql/       74 chronological, numbered migration files — the REAL migration history
+bin/            CLI-only one-off scripts (e.g. Document Library seed importer, attachment-extraction backfill), blocked from web access via .htaccess directory rule
 docs/           Product docs, module docs, deploy/security docs (see §9)
 docs/EMS/       Untracked in-character reference binder (PDFs/handbooks) — not code, see §0
 vendor/, node_modules/   Composer/npm deps (gitignored)
@@ -800,6 +800,165 @@ division-restricted.
   same `?folder=` query param, just less necessary now that the tree
   itself shows everything inline.
 
+**Three real bugs fixed same day (2026-08-30, user-reported after clicking
+through the module for the first time)**:
+1. **Image upload disallowed** — `document_manage.php`'s upload/replace
+   forms used to accept jpg/jpeg/png alongside real document types, even
+   though the module's whole premise is searchable extracted text (an
+   image has none, per §11 poin 5 of the PRD — OCR was explicitly deferred
+   as phase 2, never built). `ems_document_allowed_extensions()`
+   (`config/document_library.php`) now returns only the extractable set
+   (pdf/doc/docx/odt/txt/md/csv/json/xml/log/ini/xlsx/xls) —
+   `ems_document_extractable_extensions()` is now redundant with it but
+   left as its own function rather than merged, to keep the diff minimal.
+   Both `accept=` attributes in `document_manage.php` (create form + edit
+   modal's "Ganti File") updated to match. **Old image rows already in the
+   DB (from the 2026-08-29 import) are untouched and still viewable** —
+   `document_view.php`'s `$isImage` fallback `<img>` rendering was
+   deliberately left in place; this change only closes the upload path
+   going forward, it does not retroactively reject/hide existing data.
+2. **Manual content input for extraction failures** (mirrors the
+   `extraction_status='manual'` pattern already built for Secretary/Surat
+   attachments in `config/attachment_extraction.php`, but this is a
+   separate, parallel implementation for `document_files` — different
+   table, own functions — not a shared call, since Document Library has
+   its own `ems_document_ensure_tables()`/schema). New enum value
+   `'manual'` on `document_files.extraction_status`
+   (`docs/sql/75_2026-08-30_document_manual_content.sql`), plus the same
+   "detect a stale enum missing 'manual' via `INFORMATION_SCHEMA.COLUMNS
+   .COLUMN_TYPE`, not just column presence" defensive upgrade inside
+   `ems_document_ensure_tables()` (copied pattern, not shared code, from
+   `ems_attachment_ensure_extraction_columns()`). New
+   `ems_document_store_manual_content(PDO $pdo, int $docId, string
+   $content): bool` — same `WHERE extraction_status != 'done'` guard so a
+   manual edit can never clobber a real successful extraction. Wired at
+   **two points**: (a) the upload form gained an optional "Isi Dokumen
+   (Manual)" textarea — if the freshly-extracted text comes back
+   `'failed'` and this was filled in, `document_manage_action.php`'s
+   `upload` branch uses it immediately instead of inserting a dead
+   `'failed'` row; if left blank on a failed extraction, the upload still
+   succeeds (never blocks the upload itself) but now surfaces a
+   `flash_warnings` toast telling the admin the doc won't be searchable
+   yet and needs manual content via Edit; (b) the edit modal's same field
+   is **required and highlighted red** (client-side `required` + red hint
+   text, server-side re-checked in the `edit_document` branch — "never
+   trust client-side `required` alone", same principle as every other
+   manual-content field in this codebase) whenever the document's
+   *current* `extraction_status` is `'failed'` — driven by new
+   `data-doc-status`/`data-doc-manual-content` attributes on the
+   pencil-icon edit-trigger buttons (both the "Dokumen Division X" table
+   and the Executive-only "Kelola Semua Dokumen" browse table), read by
+   the existing `[data-edit-trigger]` click handler. Editing a
+   **non-failed** document leaves the field optional (still available —
+   an admin can proactively add/correct manual content on a `'done'`
+   document too, though the `WHERE extraction_status != 'done'` guard
+   means that specific case silently no-ops rather than overwriting real
+   extracted text — matches the deliberate "never let manual input clobber
+   a real extraction" rule). The document list table also grew a red
+   "Ekstraksi gagal — isi manual lewat Edit" hint under any `failed`
+   status badge so a stuck document doesn't go unnoticed in a long list.
+3. **FULLTEXT search returned unrelated documents for a known, exact
+   phrase** — reported with a real example: searching the literal heading
+   "CONTOH PENULISAN OBJEKTIF DALAM LEMBAR IGD" (verbatim text inside one
+   specific real PDF) returned 3 unrelated documents, none showing that
+   full sentence, instead of the 1 document that actually contains it.
+   Root cause: `ems_document_search()`'s only strategy was
+   AND-every-word-as-a-prefix (`+contoh* +penulisan* +objektif* +dalam*
+   +lembar* +igd*`) — correct behavior for short/partial "search-as-you-
+   type" queries, but for a long, specific phrase this just means "any
+   document containing all 6 of these words *somewhere*", and several of
+   those words ("dalam", "lembar") are common enough in Indonesian medical
+   handbook prose to co-occur across many unrelated documents purely by
+   chance, with none of them actually containing the phrase together.
+   Fixed by trying an **exact-phrase FULLTEXT match first** for any
+   2+-word query — `MATCH(...) AGAINST ('"the whole query, quotes
+   stripped"' IN BOOLEAN MODE)`, MySQL/MariaDB's native BOOLEAN MODE phrase
+   search (respects word order, adjacency) — and **only falling back** to
+   the original AND-prefix-per-word behavior when the phrase search finds
+   nothing (so short/partial-keyword search-as-you-type is completely
+   unaffected). Refactored the duplicated query-execution SQL into a new
+   shared `ems_document_search_fulltext(PDO $pdo, string $unitCode, string
+   $boolExpr, int $limit): array` helper used by both the phrase attempt
+   and the word-AND fallback, rather than copy-pasting the `MATCH...
+   AGAINST` statement twice. Verified directly against the real local dev
+   DB (the actual imported Handbook-EMS documents, not synthetic fixtures):
+   the exact phrase query now returns exactly 1 result (`Basic Clinical
+   Skills & Patient Management`, the real document that contains that
+   heading) instead of 3; a short partial query (`"igd"`) still correctly
+   returns 5 broader results via the unaffected fallback path, confirming
+   the phrase-first change didn't regress ordinary keyword search.
+
+**Same-day follow-up (2026-08-30, user screenshot): highlight was still
+per-word, not the whole matched phrase, and clicking a search result never
+scrolled to the matched sentence.** The phrase-first fix above only changed
+*which documents match*, not *how the match is highlighted* —
+`ems_document_build_snippet()` still separately `<mark>`ed each individual
+word wherever it occurred (so "dalam" and "Contoh" lit up in two unrelated
+places in the snippet instead of the whole heading lighting up as one
+block), and nothing linked a search-result click to a location inside
+`document_view.php`. Fixed together:
+- New shared `ems_document_highlight_text(string $text, string $query,
+  ?string $firstMarkId = null): array` in `config/document_library.php` —
+  escapes the text then applies the exact same phrase-first-then-per-word
+  priority as `ems_document_search()`: for a 2+-word query it tries
+  wrapping the **whole phrase** in one `<mark>` first, and only falls back
+  to marking individual words (old behavior) if the exact phrase isn't
+  present in that particular piece of text. Returns `{html, matched}`.
+  `$firstMarkId` is stamped only on the very first `<mark>` produced, so a
+  caller can `scrollIntoView()` a specific element even when the phrase/
+  word repeats many times in a long document. `ems_document_build_snippet()`
+  was refactored to call this (its old separate per-word `<mark>` loop
+  deleted) — the search-result dropdown's snippet now highlights a found
+  heading/sentence as one contiguous yellow block, matching what the user
+  expected from the screenshot, and its snippet-window anchor point
+  (`mb_stripos` for where to center the 320-char window) now also tries
+  the full phrase before falling back to the first individual word.
+- **Click-to-scroll**: `dashboard/dokumen.php`'s search-result link gained
+  `&q=<the query>` (`encodeURIComponent`) alongside the existing `?id=`.
+  `document_view.php` reads `$_GET['q']`, and when present (and the
+  document has real extracted text) calls
+  `ems_document_highlight_text($doc['extracted_text'], $searchQuery,
+  'docSearchHit')` instead of a plain `htmlspecialchars()` for the
+  `.doc-view-text` block — so the full document view now also highlights
+  every match, not just the dropdown snippet. A small inline script
+  (`scrollIntoView({behavior:'smooth', block:'center'})` on
+  `#docSearchHit`, only rendered when `$textHighlight['matched']` is true)
+  auto-scrolls straight to the matched sentence on page load — works
+  correctly even though `.doc-view-text` is its own internally-scrolling
+  box (`max-height:70vh; overflow-y:auto`), since `scrollIntoView` handles
+  scrollable ancestors natively. New `.doc-view-text mark` CSS rule
+  (`background:#fef08a`, matching the dropdown snippet's `mark` color
+  exactly) plus `scroll-margin:80px` so the highlighted line doesn't land
+  flush against the box's top edge. Opening `document_view.php` directly
+  (no `?q=`, e.g. from the folder tree) is completely unaffected — falls
+  back to the original plain-escaped rendering, no highlighting/scrolling.
+- Verified directly against the real local dev DB/data (not synthetic):
+  the exact same "CONTOH PENULISAN OBJEKTIF DALAM LEMBAR IGD" query now
+  produces a snippet with the **entire heading wrapped in one `<mark>`**
+  (confirmed by inspecting the raw HTML output, not just visually assumed)
+  instead of two separate highlighted words in unrelated spots; a
+  full-text highlight of the same document's `extracted_text` confirmed
+  `matched: true` and located `<mark id="docSearchHit">` wrapping the
+  exact same complete phrase at its real position in the document (~28k
+  characters in). HTTP-level click-through (actually clicking a search
+  result and watching the browser auto-scroll) was **not** exercised this
+  session — no browser tooling available — a future session should verify
+  the scroll animation visually once a safe opportunity exists.
+- All 6 touched files across both same-day passes
+  (`config/document_library.php`, `dashboard/document_manage.php`,
+  `dashboard/document_manage_action.php`, `dashboard/document_view.php`,
+  `dashboard/dokumen.php`, migration `75_...`) lint-checked clean on the
+  8.4.22 binary; the enum upgrade, `ems_document_store_manual_content()`
+  (including its never-overwrite-`'done'` guard), the allowed-extensions
+  change, the phrase-first search fix, and the phrase-first highlight
+  fix were all verified with real queries/inserts against the real local
+  dev DB (test rows cleaned up after). HTTP-level click-through of the
+  new manual-content UI (the red-required-field behavior in the edit
+  modal, the upload-time optional field) and of the click-to-scroll
+  behavior was **not** exercised this session — no browser tooling
+  available — a future
+  session should click through once a safe opportunity exists.
+
 ### Announcement / Push-Notification-Modal ("Kelola Pengumuman", added 2026-08-30)
 A targeted broadcast modal — admin writes a message, picks who sees it and
 how often, and it pops up automatically wherever the targeted user next
@@ -910,6 +1069,274 @@ simplest correct place to decide is PHP at render time, not JS after load.
   and the "first active match wins, most-recent-created first" ordering
   behaves as designed. All test rows deleted after — confirmed zero
   leftover rows in both tables.
+
+### Attachment Text Extraction — non-Dokumen modules (added 2026-08-30)
+Groundwork for a planned future internal AI assistant (full PRD in
+`docs/AI_ASSISTANT_MODULE.md`) — before building the bot itself, the user
+asked to first extend text extraction to real documents living **outside**
+the Document Library module, so the eventual bot's knowledge base isn't
+blind to them. `config/attachment_extraction.php` is a thin wrapper reusing
+`ems_document_extract_text()` from `config/document_library.php` — **no
+new extraction logic**, just a way to store the result against a different
+table's row (`ems_attachment_extract_and_store(PDO $pdo, string $table, int
+$rowId, string $relativeFilePath)`, plus a defensive
+`ems_attachment_ensure_extraction_columns()` matching the
+`ems_column_exists()`-guard convention used everywhere else in this
+codebase).
+- **Scope was determined by actually checking every upload form's
+  `accept=` attribute across the app, not assumed** — only 4 tables
+  genuinely accept PDF/DOC/DOCX (not just images): `secretary_file_record_attachments`
+  (Secretary File Registry), `meeting_minutes_attachments` (Notulen),
+  `disciplinary_case_attachments`, `disciplinary_warning_letter_attachments`
+  (Komdis). Migration `docs/sql/73_2026-08-30_attachment_text_extraction.sql`
+  adds `extracted_text`/`extraction_status` to these 4 **plus 3 more**
+  Secretary tables (`secretary_visit_agenda_attachments`,
+  `secretary_internal_coordination_attachments`,
+  `secretary_confidential_letter_attachments`) purely for schema
+  uniformity, since all 4 non-file_record Secretary attachment types share
+  **one** generic upload function (`secretarySaveAttachments()` in
+  `dashboard/secretary_action.php`, config-driven by attachment `type` —
+  see its `secretaryAttachmentConfig()` match block) — those 3 will always
+  show `extraction_status='unsupported'` since their own forms only accept
+  `image/*`, which is correct/expected, not a bug.
+- **Explicitly out of scope, confirmed by checking, not guessed**: every
+  other file-bearing table in the app was checked the same way and found
+  to be image-only — `outgoing_letter_attachments`, all of `user_rh`'s
+  document columns (including `file_kontrak_kerja` — the employment
+  contract is uploaded as a **photo** of the contract via
+  `setting_akun.php`'s shared `renderDocInput()`, `accept="image/png,image/jpeg"`,
+  not a real PDF, somewhat surprising until actually checked), recruitment
+  `applicant_documents` (KTP/SKB/KTA all `accept="image/png,image/jpeg"`
+  in `public/recruitment_form.php`), `restaurant_consumptions.ktp_file`,
+  `police_partnership_records.badge_file_path`. OCR for this group is
+  explicitly left as a future/optional phase, not attempted here — text
+  extraction on a JPG of an ID card would produce nothing without it.
+- **Only 3 call sites needed wiring**, because 3 of the 4 target tables
+  are written through **shared, config-driven upload functions** already
+  (not copy-pasted per-type), so extending one function each covered every
+  variant: `secretarySaveAttachments()` (`dashboard/secretary_action.php`,
+  covers `file_record` — the other 3 config types in the same function get
+  the extraction call too, harmlessly resolving to `unsupported`),
+  `saveMinutesAttachments()` (`dashboard/surat_menyurat_action.php`),
+  `disciplinaryStoreAttachments()` (`dashboard/disciplinary_committee_action.php`,
+  shared by both case and warning-letter attachments via a `$table`
+  parameter). Each calls `ems_attachment_extract_and_store()` right after
+  its own `INSERT`, using `(int)$pdo->lastInsertId()`. A 4th site,
+  `general_affair_kerjasama_input_action.php`, also inserts into
+  `secretary_file_record_attachments` directly (bypassing the shared
+  function — GA cooperation-input proof photos reuse that table with a
+  tag convention, see §5 General Affair) but **always** forces `.jpg` via
+  `gaInputCompressImage()`, so it sets `extraction_status='unsupported'`
+  directly in its own `INSERT` rather than calling the extractor for a
+  guaranteed-image file.
+- **`bin/backfill_attachment_extraction.php`** (CLI-only, same
+  `--dry-run` pattern as `bin/import_dokumen_seed.php`) — one-time backfill
+  for rows that existed before these columns did (`extraction_status`
+  defaults to `'pending'` on the new columns, so the backfill just queries
+  `WHERE extraction_status = 'pending'` across the 4 real-document tables).
+  **Run against the real local dev DB, not synthetic data** — this
+  incidentally revealed real production-mirrored Secretary/Notulen records
+  already present locally: 25 documents successfully extracted with
+  genuinely coherent Indonesian text (verified by reading actual extracted
+  content — a real kerja-sama proposal, a real meeting notulen with
+  attendee names and agenda items), 62 rows correctly marked `unsupported`
+  (photos), 4 marked `failed` (likely scanned/image-only PDFs with no text
+  layer — expected graceful degradation, not a bug), and 27 skipped
+  because the physical file isn't present on this local machine (DB row
+  exists but `storage/` — gitignored — was never fully mirrored locally
+  for these older records; the script correctly detects and skips missing
+  files rather than erroring).
+- This work intentionally **preceded** any chat-bot code — see
+  `docs/AI_ASSISTANT_MODULE.md` for the full bot PRD, which remains
+  unimplemented pending the open questions listed there (§11 of that doc).
+- **Manual content description for image-only attachments, same day
+  (2026-08-30, user follow-up)**: photos of real letters/documents
+  (Surat Keluar, Surat Masuk via the public `surat_instansi.php`, Surat
+  Rahasia, Agenda Kunjungan, Koordinasi Internal — all confirmed
+  `accept="image/*"`-only, so real OCR would be needed to ever
+  auto-extract them, out of scope) can now have a **manually-typed**
+  content summary attached at upload time, so they're still searchable/
+  usable as future chat-bot knowledge even without OCR. New enum value
+  `'manual'` on `extraction_status` (added via
+  `docs/sql/74_2026-08-30_manual_attachment_description.sql`, and
+  defensively in `ems_attachment_ensure_extraction_columns()` — which now
+  also upgrades an *existing* enum missing `'manual'` by inspecting
+  `INFORMATION_SCHEMA.COLUMNS.COLUMN_TYPE` directly, not just checking
+  column presence, since `ems_column_exists()` alone can't detect "column
+  exists but enum is stale"). New `ems_attachment_store_manual_description()`
+  in `config/attachment_extraction.php` — deliberately **never overwrites**
+  a row whose `extraction_status` is already `'done'` (`WHERE
+  extraction_status != 'done'` in its own `UPDATE`), so a manual
+  description submitted alongside a real PDF/DOC upload (several of these
+  forms accept a mix of image + document types in one multi-file field)
+  can never clobber genuine auto-extracted text — verified directly with
+  real inserted rows against the local dev DB (an `'unsupported'` row
+  correctly became `'manual'` with the submitted text; a `'done'` row
+  with real extracted text was submitted the same call and confirmed
+  unchanged).
+  - **Also newly discovered while wiring this**: `incoming_letter_attachments`
+    (the table backing "Surat Masuk") turned out to have **no upload path
+    inside the authenticated dashboard at all** — `surat_menyurat.php`
+    only ever *displays* existing incoming attachments, never creates
+    them. They're actually created through the **public, unauthenticated**
+    `surat_instansi.php` (`actions/submit_surat_instansi.php`) — external
+    institutions attach a photo of their letter directly on that public
+    form. Missed on the first documentation pass of this codebase; now
+    covered by this same manual-description mechanism, with a new
+    "Isi/Ringkasan Surat" textarea added to that public form.
+  - Touches 6 pages (`surat_instansi.php`, `surat_menyurat.php`'s outgoing
+    + minutes create/edit forms, and all 4 Secretary attachment pages'
+    create/edit forms) and their respective action controllers, adding
+    one optional `attachment_content` textarea + one
+    `ems_attachment_store_manual_description()` call each — same
+    `$table`-parameterized shared-function pattern as the extraction work
+    above, so this was 3 backend call sites at the function level
+    (`secretarySaveAttachments()`, `saveOutgoingAttachments()`,
+    `saveIncomingAttachments()`) plus one already-shared
+    (`saveMinutesAttachments()`, extended for consistency even though its
+    primary path is already real PDF extraction) fanning out correctly to
+    all 9 attachment tables via each table's own config/call site.
+- **`incoming_letter_attachments` upgraded from image-only to real
+  document-capable, same day (2026-08-30, user follow-up)**: originally
+  left image-only (`saveIncomingAttachments()` used the image-compression
+  `uploadAndCompressFile()`), same as its Secretary siblings. User asked
+  specifically for this one to also accept PDF/DOC/TXT so real letters get
+  genuine auto-extraction instead of only ever falling back to manual
+  description. Swapped to the already-shared `uploadSecretaryAttachmentFile()`
+  (`config/helpers.php`) — the same function `secretary_action.php` already
+  used for File Registry — so no new upload-handling logic, just reusing
+  it here too; `emsIsAllowedSecretaryAttachment()` (also `config/helpers.php`,
+  shared by every Secretary-style attachment upload) gained a `.txt` case
+  (checks `mime` starts with `text/`, or `application/octet-stream`/empty
+  as a fallback for how some browsers report plain text files) since it
+  previously only allowed jpg/png/pdf/doc/docx — verified directly: a real
+  temp `.txt` file now passes the allow-list, and
+  `ems_document_extract_text()` correctly extracts its content. Once a
+  document type is genuinely supported, `saveIncomingAttachments()` now
+  calls `ems_attachment_extract_and_store()` (real extraction attempt)
+  before `ems_attachment_store_manual_description()` (manual fallback,
+  which already no-ops if the row came back `'done'` — see above), instead
+  of jumping straight to manual-only like before.
+- **The manual-description field is now conditionally shown/hidden by
+  file type on `surat_instansi.php`** (the only one of these 6 pages where
+  the attachment field can now hold either photos or real documents,
+  since it's the one that just got broadened) — extended the page's
+  existing `setupMultiImagePreview()` JS (already handled image preview
+  thumbnails) with an optional `contentWrapperId` parameter: on every
+  `change` event it now also toggles the "Isi Surat Lengkap" wrapper's
+  `hidden` class based on whether **any** selected file is an image
+  (`file.type` starting with `image/`) — visible by default before any
+  file is chosen (safer default than guessing), hidden once every
+  selected file is a real document type. The other 5 pages' equivalent
+  fields stay permanently visible without new JS, since their attachment
+  inputs remain image-only unchanged — there's no ambiguity to toggle for
+  those, so a static field is correct there, not a shortcut.
+- **All 6 manual-description fields reworded from "Ringkasan" framing to
+  "Isi ... Lengkap" framing, per explicit user correction**: the field
+  asks the uploader to retype the letter/document's **full** content, not
+  a summary — labels changed (e.g. "Isi/Ringkasan Dokumen" →
+  "Isi Dokumen Lengkap"), placeholders changed to "Ketik ulang isi lengkap
+  ... apa adanya...", and the textarea grew from 3 to 5 rows to fit more
+  text comfortably. This directly affects retrieval quality for the
+  future chat bot — a full transcription is far more useful as searchable
+  knowledge-base content than a one-line summary would have been.
+- **"Isi Surat Lengkap" made mandatory-when-shown on `surat_instansi.php`,
+  same day (2026-08-30, immediate user follow-up)**: was optional: user
+  clarified a photo attachment with no transcription is useless to the
+  future knowledge base, so it should be **required** whenever it's
+  actually relevant (i.e., whenever at least one selected attachment is
+  an image), while staying absent/not-required when every selected file
+  is already a real document (PDF/DOC/DOCX/TXT, auto-extracted). Enforced
+  on **both** sides, not just the client: `setupMultiImagePreview()`'s JS
+  now toggles the textarea's `required` attribute (and clears its value)
+  in sync with the wrapper's visibility on every file-input `change`, and
+  the wrapper starts `hidden` by default (no files selected yet — nothing
+  to require); `actions/submit_surat_instansi.php` independently checks
+  every uploaded file's extension server-side
+  (`in_array(emsUploadedFileExtension($f), ['jpg','jpeg','png'], true)`)
+  and rejects the whole submission with a clear error if any attachment
+  is an image and `attachment_content` was left blank — same "never trust
+  client-side `required` alone" principle this codebase already follows
+  everywhere else (CSRF, rate limits, etc.), since JS can be disabled.
+- **The same broadened-accept + conditional-required-content-field +
+  submit-loading-overlay treatment propagated to the other 5 pages, same
+  day (2026-08-30, user follow-up: "buat juga di semua halaman lainya
+  seperti surat_instansi.php")** — `dashboard/surat_menyurat.php` (outgoing
+  letter create form + minutes create form + minutes edit-modal's
+  "tambah lampiran" field; the outgoing edit-modal has no attachment
+  upload at all, so it only got the loading-overlay wiring) and all 4
+  Secretary pages (`secretary_visit_agenda.php`,
+  `secretary_internal_coordination.php`,
+  `secretary_confidential_letters.php`, `secretary_file_registry.php` —
+  each page's create **and** edit forms). Backend: `saveOutgoingAttachments()`
+  (`surat_menyurat_action.php`) swapped from image-only
+  `uploadAndCompressFile()` to `uploadSecretaryAttachmentFile()` (same
+  function already used elsewhere) plus a new
+  `ems_attachment_extract_and_store()` call;
+  `surat_store_minutes_attachment()`'s bespoke jpg/png/pdf-only
+  hand-rolled mime-sniffing logic was deleted entirely and replaced with a
+  single `uploadSecretaryAttachmentFile()` call, which was already a
+  strict superset (also gets DOC/DOCX/TXT for free, and drops ~50 lines of
+  now-redundant code). All 4 secretary-page add/edit action branches
+  (8 total: visit agenda, internal coordination, confidential letter, file
+  record, × create/edit) and both surat_menyurat create actions gained the
+  same server-side "reject if an image attachment has no
+  `attachment_content`" check as `submit_surat_instansi.php`, via two new
+  tiny shared helpers — `surat_has_image_attachment()` in
+  `surat_menyurat_action.php`, `secretaryHasImageAttachment()` in
+  `secretary_action.php` — rather than copy-pasting the `in_array(...jpg
+  jpeg png...)` check 10 times.
+- **Real, separate bug found and fixed while doing this same-day
+  propagation: every one of these 5 pages' client-side file-picker preview
+  silently did nothing visible for non-image files** — this was very
+  likely the actual root cause of the user's "tidak ada perubahan apa-apa
+  apakah setelah chose file, file berhasil terselect" (no visible change
+  after choosing a file) complaint for document uploads specifically,
+  independent of the loading-overlay gap. `surat_menyurat.php`'s
+  `setupAttachmentPreview()` and all 4 secretary pages' own copy-pasted
+  `setupMultiImagePreview()` (`secretary_file_registry.php`'s was a
+  differently-named `setupMultiFilePreview()` and already handled this
+  correctly — the other 3 secretary pages did not) had a `files.forEach`
+  loop that just `return`ed early for any file whose `type` didn't start
+  with `image/`, appending nothing to the preview grid at all — so
+  selecting a PDF/DOC/DOCX/TXT file (now newly allowed by the accept-
+  broadening above) produced literally zero visible feedback, looking
+  exactly like the file picker had silently failed. Fixed uniformly across
+  all 5 files: every preview function now renders a visible fallback tile
+  for non-image files (a short label like "Dokumen Word (akan diextract
+  otomatis)" / "PDF dipilih — akan diextract otomatis", derived from the
+  file extension) instead of skipping them, and the file-count line now
+  also lists every selected filename (not just "N file dipilih") so a
+  successful selection is unambiguous at a glance. This was a **pure JS
+  preview bug, unrelated to backend upload capability** — the backend
+  already accepted these file types correctly before this fix; only the
+  visual confirmation was missing.
+- **Same functions extended with a `contentWrapperId` parameter** so the
+  conditional-required "Isi ... Lengkap" behavior (visible/required only
+  when at least one *currently selected* file is an image; hidden and
+  non-required otherwise) works identically on all 6 pages, not just
+  `surat_instansi.php`. `resetMultiImagePreview()`/equivalent (called when
+  an edit modal is reopened) also resets the wrapper back to
+  hidden/non-required/empty each time, so a previous edit session's "this
+  field was required" state can't leak into the next modal open.
+- **Every affected form also gained a submit-time loading overlay**, none
+  of which had any before this round — each page defines its own small
+  `secretaryShowLoading(title, message)` / (already-existing)
+  `suratShowLoading(...)` wrapper around the shared
+  `window.emsShowUploadOverlay()` (from `partials/footer.php`, present on
+  every dashboard page) and wires it via a synchronous `onsubmit="return
+  ...(...)"` on each `<form>` — same proven-reliable synchronous-onsubmit
+  pattern established earlier this session for `document_manage.php`/
+  `announcement_manage.php`/`surat_instansi.php` (the earlier
+  capture-phase-delegated-listener approach in `footer.php` was already
+  known unreliable for real form submits and known to break
+  `confirm()`-gated delete forms — deliberately not reused here).
+- Lint-checked clean (`php -l`) on the corrected 8.4.22 binary for all 10
+  touched files after every edit; not re-verified via a live browser
+  click-through this session (no browser tooling available) — a future
+  session should still click through the 6 pages' file pickers once a
+  safe opportunity exists, per this codebase's established caveat for
+  UI-only changes made without browser access.
 
 ### Medical Records / Forensic
 `rekam_medis.php`+`_action.php`+`_list.php`+`_view.php`+`_edit.php`+
@@ -2637,8 +3064,8 @@ frontend rewrite is planned (`docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md`)
 
 ## 9. Database — 100 tables (97 + `police_partnership_records` + 2 dispatcher tables added later)
 
-Full authoritative history is `docs/sql/` — **72 chronological, numbered
-migration files** (`01_...` → `72_...` plus a handful of unnumbered early
+Full authoritative history is `docs/sql/` — **74 chronological, numbered
+migration files** (`01_...` → `74_...` plus a handful of unnumbered early
 `2026-03-07_*` files), spanning 2026-03-07 → 2026-08-30 (this table count
 and the "100 tables" figure above predate several sessions of feature work
 — treat both as approximate, not authoritative; count `docs/sql/*.sql`

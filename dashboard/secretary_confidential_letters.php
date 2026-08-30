@@ -181,7 +181,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-header">Input Surat Rahasia</div>
                 <p class="meta-text mb-4">Register surat masuk/keluar yang butuh kendali distribusi dan kerahasiaan.</p>
 
-                <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+                <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form" onsubmit="return secretaryShowLoading('Menyimpan Surat Rahasia', 'Mohon tunggu, surat dan lampiran sedang diupload dan diproses.');">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="save_confidential_letter">
                     <input type="hidden" name="redirect_to" value="secretary_confidential_letters.php">
@@ -249,13 +249,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih lampiran</strong>
-                                    <small>JPG / PNG, multi file</small>
+                                    <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                                 </span>
                             </label>
-                            <input type="file" id="confidentialAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                            <input type="file" id="confidentialAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="confidentialAttachments"></div>
                             <div id="confidentialAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
+                    </div>
+
+                    <div id="confidentialAttachmentContentWrapper" style="display:none;">
+                        <label class="text-sm font-semibold text-slate-900">Isi Dokumen Lengkap <span class="required">*</span></label>
+                        <p class="meta-text-xs mb-1">Dokumen (PDF/DOC/DOCX/TXT) sudah otomatis dibaca isinya — kolom ini wajib diisi kalau lampirannya berupa foto.</p>
+                        <textarea name="attachment_content" id="confidentialAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap lampiran ini apa adanya..."></textarea>
                     </div>
 
                     <div class="modal-actions mt-4">
@@ -421,7 +427,7 @@ include __DIR__ . '/../partials/sidebar.php';
             </button>
         </div>
         <div class="modal-content">
-            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form" onsubmit="return secretaryShowLoading('Menyimpan Perubahan', 'Mohon tunggu, perubahan surat rahasia dan lampiran sedang disimpan.');">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_confidential_letter">
                 <input type="hidden" name="redirect_to" value="secretary_confidential_letters.php">
@@ -495,13 +501,19 @@ include __DIR__ . '/../partials/sidebar.php';
                             <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                             <span class="file-text">
                                 <strong>Pilih lampiran</strong>
-                                <small>JPG / PNG, multi file</small>
+                                <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                             </span>
                         </label>
-                        <input type="file" id="editConfidentialAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                        <input type="file" id="editConfidentialAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                         <div class="file-selected-name" data-for="editConfidentialAttachments"></div>
                         <div id="editConfidentialAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                     </div>
+                </div>
+
+                <div id="editConfidentialAttachmentContentWrapper" style="display:none;">
+                    <label class="text-sm font-semibold text-slate-900">Isi Lampiran Baru Lengkap <span class="required">*</span></label>
+                    <p class="meta-text-xs mb-1">Wajib diisi kalau menambahkan lampiran baru berupa foto — dokumen (PDF/DOC/DOCX/TXT) sudah otomatis dibaca isinya.</p>
+                    <textarea name="attachment_content" id="editConfidentialAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap lampiran baru ini apa adanya..."></textarea>
                 </div>
 
                 <div class="modal-actions mt-4">
@@ -663,10 +675,27 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function setupMultiImagePreview(inputId, previewId) {
+    function secretaryShowLoading(title, message) {
+        if (typeof window.emsShowUploadOverlay === 'function') {
+            window.emsShowUploadOverlay(title, message);
+        }
+        return true;
+    }
+
+    function secretaryDocLabel(fileName) {
+        const ext = String(fileName || '').split('.').pop().toLowerCase();
+        if (ext === 'doc' || ext === 'docx') return 'Dokumen Word (akan diextract otomatis)';
+        if (ext === 'txt') return 'File Teks (akan diextract otomatis)';
+        if (ext === 'pdf') return 'PDF dipilih — akan diextract otomatis';
+        return 'Format tidak didukung';
+    }
+
+    function setupMultiImagePreview(inputId, previewId, contentWrapperId) {
         const input = document.getElementById(inputId);
         const preview = document.getElementById(previewId);
         const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
+        const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
         if (!input || !preview || !nameBox) {
             return;
         }
@@ -688,35 +717,52 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const files = Array.from(this.files || []);
             if (!files.length) {
+                if (contentWrapper) {
+                    contentWrapper.style.display = 'none';
+                    if (contentTextarea) contentTextarea.required = false;
+                }
                 return;
             }
 
-            nameBox.textContent = files.length + ' file dipilih';
+            nameBox.textContent = files.length + ' file dipilih: ' + files.map(function (f) { return f.name; }).join(', ');
             nameBox.classList.remove('hidden');
 
+            let hasImage = false;
+
             files.forEach(function (file) {
-                if (!String(file.type || '').startsWith('image/')) {
-                    return;
-                }
-
-                const url = URL.createObjectURL(file);
-                objectUrls.push(url);
-
                 const item = document.createElement('div');
                 item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
-                item.innerHTML = `
-                    <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
-                    <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
-                `;
+                const isImage = String(file.type || '').startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(String(file.name || ''));
+                if (isImage) {
+                    hasImage = true;
+                    const url = URL.createObjectURL(file);
+                    objectUrls.push(url);
+                    item.innerHTML = `
+                        <img src="${url}" class="identity-photo h-28 w-full rounded-xl object-cover cursor-zoom-in" alt="Preview lampiran">
+                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                    `;
+                } else {
+                    item.innerHTML = `
+                        <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">${secretaryDocLabel(file.name)}</div>
+                        <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
+                    `;
+                }
                 preview.appendChild(item);
             });
+
+            if (contentWrapper) {
+                contentWrapper.style.display = hasImage ? '' : 'none';
+                if (contentTextarea) contentTextarea.required = hasImage;
+            }
         });
     }
 
-    function resetMultiImagePreview(inputId, previewId) {
+    function resetMultiImagePreview(inputId, previewId, contentWrapperId) {
         const input = document.getElementById(inputId);
         const preview = document.getElementById(previewId);
         const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
+        const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
         if (input) {
             input.value = '';
         }
@@ -726,6 +772,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (nameBox) {
             nameBox.textContent = '';
             nameBox.classList.add('hidden');
+        }
+        if (contentWrapper) {
+            contentWrapper.style.display = 'none';
+        }
+        if (contentTextarea) {
+            contentTextarea.required = false;
+            contentTextarea.value = '';
         }
     }
 
@@ -797,8 +850,8 @@ document.addEventListener('DOMContentLoaded', function () {
         watchedInputIds: ['addConfidentialDate', 'addConfidentialCounterpartyName', 'addConfidentialDirection']
     });
 
-    setupMultiImagePreview('confidentialAttachments', 'confidentialAttachmentsPreview');
-    setupMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview');
+    setupMultiImagePreview('confidentialAttachments', 'confidentialAttachmentsPreview', 'confidentialAttachmentContentWrapper');
+    setupMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview', 'editConfidentialAttachmentContentWrapper');
 
     document.addEventListener('click', function (event) {
         const viewButton = event.target.closest('.btn-view-confidential');
@@ -834,7 +887,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('editConfidentialStatus').value = record.status || 'logged';
             document.getElementById('editConfidentialNotes').value = record.notes || '';
             renderAttachmentBadges(document.getElementById('editConfidentialCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
-            resetMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview');
+            resetMultiImagePreview('editConfidentialAttachments', 'editConfidentialAttachmentsPreview', 'editConfidentialAttachmentContentWrapper');
             editConfidentialCodeControl.refresh(false);
             openModal(confidentialEditModal);
         }

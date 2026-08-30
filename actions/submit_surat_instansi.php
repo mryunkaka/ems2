@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/surat_code_helper.php';
+require_once __DIR__ . '/../config/attachment_extraction.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -92,7 +93,7 @@ function normalizeMultiUpload(array $fileBag): array
     return $files;
 }
 
-function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files): void
+function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files, string $contentDescription = ''): void
 {
     if ($incomingLetterId <= 0 || empty($files)) {
         return;
@@ -109,9 +110,9 @@ function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files):
 
     try {
         foreach (array_values($files) as $index => $file) {
-            $path = uploadAndCompressFile($file, 'letters/incoming', 400000, 5000000);
+            $path = uploadSecretaryAttachmentFile($file, 'letters/incoming', 400000, 5000000);
             if (!$path) {
-                throw new Exception('Lampiran surat masuk gagal diproses. Gunakan JPG/PNG maksimal ' . emsUploadLimitLabel() . '.');
+                throw new Exception('Lampiran surat masuk gagal diproses. Gunakan PDF, DOC, DOCX, TXT, JPG, atau PNG maksimal ' . emsUploadLimitLabel() . '.');
             }
 
             $storedPaths[] = $path;
@@ -121,6 +122,9 @@ function saveIncomingAttachments(PDO $pdo, int $incomingLetterId, array $files):
                 trim((string)($file['name'] ?? '')) ?: null,
                 $index + 1,
             ]);
+            $newAttachmentId = (int)$pdo->lastInsertId();
+            ems_attachment_extract_and_store($pdo, 'incoming_letter_attachments', $newAttachmentId, $path);
+            ems_attachment_store_manual_description($pdo, 'incoming_letter_attachments', $newAttachmentId, $contentDescription);
         }
     } catch (Throwable $e) {
         foreach ($storedPaths as $path) {
@@ -142,6 +146,7 @@ $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
 $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
 $targetUserId = (int)($_POST['target_user_id'] ?? 0);
 $notes = trim((string)($_POST['notes'] ?? ''));
+$attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
 $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
 
 if (
@@ -163,6 +168,22 @@ $timeObj = DateTime::createFromFormat('H:i', $appointmentTime);
 if (!$dateObj || $dateObj->format('Y-m-d') !== $appointmentDate || !$timeObj) {
     redirect_public_form([
         'error' => 'Format tanggal atau jam tidak valid.',
+    ]);
+}
+
+// Lampiran berupa foto tidak bisa dibaca otomatis — wajib disertai isi
+// surat lengkap secara manual. Dicek di server juga, tidak cukup lewat
+// JS saja (JS bisa dimatikan di browser).
+$hasImageAttachment = false;
+foreach ($attachmentFiles as $attachmentFile) {
+    if (in_array(emsUploadedFileExtension($attachmentFile), ['jpg', 'jpeg', 'png'], true)) {
+        $hasImageAttachment = true;
+        break;
+    }
+}
+if ($hasImageAttachment && $attachmentContentDescription === '') {
+    redirect_public_form([
+        'error' => 'Lampiran berupa foto — isi surat lengkap wajib diketik ulang karena tidak bisa dibaca otomatis dari foto.',
     ]);
 }
 
@@ -237,7 +258,7 @@ try {
     $stmt->execute($insertValues);
 
     $incomingLetterId = (int)$pdo->lastInsertId();
-    saveIncomingAttachments($pdo, $incomingLetterId, $attachmentFiles);
+    saveIncomingAttachments($pdo, $incomingLetterId, $attachmentFiles, $attachmentContentDescription);
 
     $pdo->commit();
 

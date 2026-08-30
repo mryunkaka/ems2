@@ -498,7 +498,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="card card-section">
                 <div class="card-header">Input Surat Keluar</div>
-                <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
+                <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form" onsubmit="return suratShowLoading('Menyimpan Surat Keluar', 'Mohon tunggu, surat dan lampiran sedang diupload dan diproses.');">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="add_outgoing_letter">
 
@@ -572,13 +572,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih lampiran</strong>
-                                    <small>JPG / PNG, multi file</small>
+                                    <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                                 </span>
                             </label>
-                            <input type="file" id="outgoingAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                            <input type="file" id="outgoingAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="outgoingAttachments"></div>
                             <div id="outgoingAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
+                    </div>
+
+                    <div id="outgoingAttachmentContentWrapper" style="display:none;">
+                        <label class="text-sm font-semibold text-slate-900">Isi Surat Lengkap <span class="required">*</span></label>
+                        <p class="meta-text-xs mb-1">Lampiran berupa foto tidak bisa dibaca otomatis — ketik ulang isi lengkap suratnya di sini supaya tetap bisa dicari.</p>
+                        <textarea name="attachment_content" id="outgoingAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap surat keluar ini apa adanya..."></textarea>
                     </div>
 
                     <div class="modal-actions mt-4">
@@ -589,7 +595,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
             <div class="card card-section">
                 <div class="card-header">Input Notulen Pertemuan</div>
-                <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
+                <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form" onsubmit="return suratShowLoading('Menyimpan Notulen', 'Mohon tunggu, notulen dan lampiran sedang diupload dan diproses.');">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="add_meeting_minutes">
 
@@ -664,21 +670,27 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="doc-upload-wrapper m-0">
                         <div class="doc-upload-header">
                             <label class="text-sm font-semibold text-slate-900">Lampiran Notulen</label>
-                            <span class="badge-muted-mini">Opsional, gambar dan PDF</span>
+                            <span class="badge-muted-mini">Opsional, bisa beberapa file</span>
                         </div>
                         <div class="doc-upload-input">
                             <label for="minutesAttachments" class="file-upload-label">
                                 <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih lampiran</strong>
-                                    <small>JPG / PNG / PDF, multi file</small>
+                                    <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                                 </span>
                             </label>
-                            <input type="file" id="minutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
+                            <input type="file" id="minutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="minutesAttachments"></div>
-                            <div class="meta-text-xs mt-2">PDF maksimal 1 MB per file.</div>
+                            <div class="meta-text-xs mt-2">PDF/DOC/DOCX/TXT maksimal 1 MB per file.</div>
                             <div id="minutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
+                    </div>
+
+                    <div id="minutesAttachmentContentWrapper" style="display:none;">
+                        <label class="text-sm font-semibold text-slate-900">Isi Notulen Lengkap <span class="required">*</span></label>
+                        <p class="meta-text-xs mb-1">PDF/DOC/DOCX/TXT sudah otomatis dibaca isinya — kolom ini wajib diisi kalau lampirannya berupa foto.</p>
+                        <textarea name="attachment_content" id="minutesAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap notulen ini apa adanya..."></textarea>
                     </div>
 
                     <div class="modal-actions mt-4">
@@ -1216,7 +1228,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 Revisi terakhir: <strong id="outgoingEditRevisionLabel">draft-awal</strong>.
                 Saat disimpan, sistem akan menaikkan revisi otomatis.
             </div>
-            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
+            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form" onsubmit="return suratShowLoading('Menyimpan Perubahan', 'Mohon tunggu, perubahan surat keluar sedang disimpan.');">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_outgoing_letter">
                 <input type="hidden" name="letter_id" id="editOutgoingLetterId">
@@ -1306,7 +1318,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 Revisi terakhir: <strong id="minutesEditRevisionLabel">draft-awal</strong>.
                 Saat disimpan, sistem akan menaikkan revisi otomatis.
             </div>
-            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form">
+            <form method="POST" action="surat_menyurat_action.php" enctype="multipart/form-data" class="form" onsubmit="return suratShowLoading('Menyimpan Perubahan', 'Mohon tunggu, perubahan notulen sedang disimpan.');">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_meeting_minutes">
                 <input type="hidden" name="minutes_id" id="editMinutesId">
@@ -1388,14 +1400,20 @@ include __DIR__ . '/../partials/sidebar.php';
                             <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                             <span class="file-text">
                                 <strong>Pilih lampiran</strong>
-                                <small>JPG / PNG / PDF, multi file</small>
+                                <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                             </span>
                         </label>
-                        <input type="file" id="editMinutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="sr-only" multiple>
+                        <input type="file" id="editMinutesAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                         <div class="file-selected-name" data-for="editMinutesAttachments"></div>
-                        <div class="meta-text-xs mt-2">PDF maksimal 1 MB per file.</div>
+                        <div class="meta-text-xs mt-2">PDF/DOC/DOCX/TXT maksimal 1 MB per file.</div>
                         <div id="editMinutesAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                     </div>
+                </div>
+
+                <div id="editMinutesAttachmentContentWrapper" style="display:none;">
+                    <label class="text-sm font-semibold text-slate-900">Isi Notulen Baru Lengkap <span class="required">*</span></label>
+                    <p class="meta-text-xs mb-1">Wajib diisi kalau menambahkan lampiran baru berupa foto — dokumen (PDF/DOC/DOCX/TXT) sudah otomatis dibaca isinya.</p>
+                    <textarea name="attachment_content" id="editMinutesAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap lampiran baru ini apa adanya..."></textarea>
                 </div>
 
                 <div class="modal-actions mt-4">
@@ -1614,10 +1632,12 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         });
 
-        function setupAttachmentPreview(inputId, previewId) {
+        function setupAttachmentPreview(inputId, previewId, contentWrapperId) {
             const input = document.getElementById(inputId);
             const preview = document.getElementById(previewId);
             const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+            const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
+            const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
             if (!input || !preview || !nameBox) {
                 return;
             }
@@ -1634,21 +1654,36 @@ include __DIR__ . '/../partials/sidebar.php';
                 nameBox.classList.add('hidden');
             }
 
+            function docLabel(fileName) {
+                const ext = String(fileName || '').split('.').pop().toLowerCase();
+                if (ext === 'doc' || ext === 'docx') return 'Dokumen Word (akan diextract otomatis)';
+                if (ext === 'txt') return 'File Teks (akan diextract otomatis)';
+                return 'Format tidak didukung';
+            }
+
             input.addEventListener('change', function() {
                 clearPreview();
 
                 const files = Array.from(this.files || []);
                 if (!files.length) {
+                    if (contentWrapper) {
+                        contentWrapper.style.display = 'none';
+                        if (contentTextarea) contentTextarea.required = false;
+                    }
                     return;
                 }
 
-                nameBox.textContent = files.length + ' file dipilih';
+                nameBox.textContent = files.length + ' file dipilih: ' + files.map(function(f) { return f.name; }).join(', ');
                 nameBox.classList.remove('hidden');
+
+                let hasImage = false;
 
                 files.forEach(function(file) {
                     const item = document.createElement('div');
                     item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
-                    if (String(file.type || '').startsWith('image/')) {
+                    const isImage = String(file.type || '').startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(String(file.name || ''));
+                    if (isImage) {
+                        hasImage = true;
                         const url = URL.createObjectURL(file);
                         objectUrls.push(url);
                         item.innerHTML = `
@@ -1657,17 +1692,22 @@ include __DIR__ . '/../partials/sidebar.php';
                         `;
                     } else if (String(file.type || '') === 'application/pdf' || /\.pdf$/i.test(String(file.name || ''))) {
                         item.innerHTML = `
-                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">Preview PDF tidak tersedia</div>
+                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">PDF dipilih — akan diextract otomatis</div>
                             <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
                         `;
                     } else {
                         item.innerHTML = `
-                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">Format tidak didukung</div>
+                            <div class="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-center text-xs font-semibold text-slate-600">${docLabel(file.name)}</div>
                             <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
                         `;
                     }
                     preview.appendChild(item);
                 });
+
+                if (contentWrapper) {
+                    contentWrapper.style.display = hasImage ? '' : 'none';
+                    if (contentTextarea) contentTextarea.required = hasImage;
+                }
             });
         }
 
@@ -1702,9 +1742,9 @@ include __DIR__ . '/../partials/sidebar.php';
             return applyState;
         }
 
-        setupAttachmentPreview('outgoingAttachments', 'outgoingAttachmentsPreview');
-        setupAttachmentPreview('minutesAttachments', 'minutesAttachmentsPreview');
-        setupAttachmentPreview('editMinutesAttachments', 'editMinutesAttachmentsPreview');
+        setupAttachmentPreview('outgoingAttachments', 'outgoingAttachmentsPreview', 'outgoingAttachmentContentWrapper');
+        setupAttachmentPreview('minutesAttachments', 'minutesAttachmentsPreview', 'minutesAttachmentContentWrapper');
+        setupAttachmentPreview('editMinutesAttachments', 'editMinutesAttachmentsPreview', 'editMinutesAttachmentContentWrapper');
         setupAutoCode({
             type: 'outgoing',
             codeInputId: 'addOutgoingCode',
@@ -2004,6 +2044,20 @@ include __DIR__ . '/../partials/sidebar.php';
             });
         });
     });
+</script>
+<script>
+    // Loading overlay saat submit form lampiran (upload bisa makan waktu
+    // beberapa detik karena ekstraksi PDF otomatis) — reuse
+    // #globalUploadOverlay yang sudah dimuat partials/footer.php, dipanggil
+    // langsung dari onsubmit tiap form (synchronous), bukan lewat delegasi
+    // capture-phase generik yang sudah terbukti tidak reliable untuk form
+    // submit biasa (lihat catatan di modul Dokumen).
+    function suratShowLoading(title, message) {
+        if (typeof window.emsShowUploadOverlay === 'function') {
+            window.emsShowUploadOverlay(title, message);
+        }
+        return true;
+    }
 </script>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

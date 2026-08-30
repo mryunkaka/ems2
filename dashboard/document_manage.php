@@ -163,8 +163,13 @@ include __DIR__ . '/../partials/sidebar.php';
                         <input type="text" name="tags" maxlength="255" placeholder="paramedic, sop, luka bakar">
                     </div>
                     <div class="doc-form-full">
-                        <label>File (maks <?= ems_document_upload_limit_label() ?>)</label>
-                        <input type="file" name="document" required accept=".pdf,.doc,.docx,.odt,.txt,.md,.csv,.json,.xml,.log,.ini,.xlsx,.xls,.jpg,.jpeg,.png">
+                        <label>File (PDF, DOC/DOCX, ODT, TXT/MD/CSV/JSON/XML/LOG/INI, XLSX/XLS — maks <?= ems_document_upload_limit_label() ?>). Foto/gambar tidak diterima di sini.</label>
+                        <input type="file" name="document" required accept=".pdf,.doc,.docx,.odt,.txt,.md,.csv,.json,.xml,.log,.ini,.xlsx,.xls">
+                    </div>
+                    <div class="doc-form-full">
+                        <label>Isi Dokumen (Manual, opsional)</label>
+                        <p class="meta-text-xs" style="margin-bottom:4px;">Hanya perlu diisi kalau file berupa PDF hasil scan/berisi gambar yang tidak bisa dibaca otomatis — ekstraksi teksnya akan gagal dan dokumen tidak akan muncul di pencarian kecuali isi ini diketik manual. Kosongkan saja kalau tidak yakin; Anda bisa isi ini nanti lewat tombol Edit setelah upload jika ekstraksi otomatis ternyata gagal.</p>
+                        <textarea name="manual_content" rows="4" placeholder="Ketik ulang isi dokumen ini apa adanya (hanya jika ekstraksi otomatis gagal)..."></textarea>
                     </div>
                     <div style="margin-top:14px;">
                         <button type="submit" class="btn-primary"><?= ems_icon('arrow-up-tray', 'h-4 w-4') ?> Upload</button>
@@ -190,12 +195,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                     <td class="meta-text"><?= htmlspecialchars(ems_document_folder_breadcrumb($foldersById, (int)$doc['folder_id']), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="meta-text"><?= htmlspecialchars((string)$doc['uploaded_by_name_snapshot'] ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="meta-text"><?= htmlspecialchars(date('d M Y', strtotime((string)$doc['created_at'])), ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td><span class="doc-inline-badge"><?= htmlspecialchars((string)$doc['extraction_status'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                    <td>
+                                        <span class="doc-inline-badge"<?= $doc['extraction_status'] === 'failed' ? ' style="background:#fee2e2;color:#b91c1c;"' : '' ?>><?= htmlspecialchars((string)$doc['extraction_status'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <?php if ($doc['extraction_status'] === 'failed'): ?>
+                                            <div class="meta-text-xs" style="color:#b91c1c;">Ekstraksi gagal — isi manual lewat Edit</div>
+                                        <?php endif; ?>
+                                    </td>
                                     <td>
                                         <button type="button" class="btn-secondary" style="padding:4px 10px;"
                                             data-edit-trigger="<?= (int)$doc['id'] ?>"
                                             data-doc-title="<?= htmlspecialchars((string)$doc['title'], ENT_QUOTES, 'UTF-8') ?>"
-                                            data-doc-tags="<?= htmlspecialchars((string)$doc['tags'], ENT_QUOTES, 'UTF-8') ?>">
+                                            data-doc-tags="<?= htmlspecialchars((string)$doc['tags'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-doc-status="<?= htmlspecialchars((string)$doc['extraction_status'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-doc-manual-content="<?= $doc['extraction_status'] === 'manual' ? htmlspecialchars((string)$doc['extracted_text'], ENT_QUOTES, 'UTF-8') : '' ?>">
                                             <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                         </button>
                                         <form method="post" action="/dashboard/document_manage_action.php" style="display:inline;" onsubmit="return confirm('Hapus dokumen ini?') && documentShowLoading('delete_document');">
@@ -371,7 +383,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <button type="button" class="btn-secondary" style="padding:4px 10px;"
                                                         data-edit-trigger="<?= (int)$doc['id'] ?>"
                                                         data-doc-title="<?= htmlspecialchars((string)$doc['title'], ENT_QUOTES, 'UTF-8') ?>"
-                                                        data-doc-tags="<?= htmlspecialchars((string)$doc['tags'], ENT_QUOTES, 'UTF-8') ?>">
+                                                        data-doc-tags="<?= htmlspecialchars((string)$doc['tags'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-doc-status="<?= htmlspecialchars((string)$doc['extraction_status'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-doc-manual-content="<?= $doc['extraction_status'] === 'manual' ? htmlspecialchars((string)$doc['extracted_text'], ENT_QUOTES, 'UTF-8') : '' ?>">
                                                         <?= ems_icon('pencil-square', 'h-4 w-4') ?>
                                                     </button>
                                                     <form method="post" action="/dashboard/document_manage_action.php" style="display:inline;" onsubmit="return confirm('Hapus dokumen ini?') && documentShowLoading('delete_document');">
@@ -406,8 +420,13 @@ include __DIR__ . '/../partials/sidebar.php';
                 <input type="text" name="title" id="docEditTitle" required maxlength="255" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:12px;">
                 <label>Tag (opsional)</label>
                 <input type="text" name="tags" id="docEditTags" maxlength="255" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:12px;">
-                <label>Ganti File (opsional, kosongkan jika tidak ingin mengganti)</label>
-                <input type="file" name="document" accept=".pdf,.doc,.docx,.odt,.txt,.md,.csv,.json,.xml,.log,.ini,.xlsx,.xls,.jpg,.jpeg,.png">
+                <label>Ganti File (opsional, kosongkan jika tidak ingin mengganti). Foto/gambar tidak diterima.</label>
+                <input type="file" name="document" accept=".pdf,.doc,.docx,.odt,.txt,.md,.csv,.json,.xml,.log,.ini,.xlsx,.xls">
+                <div id="docEditManualWrap" style="margin-top:12px;">
+                    <label id="docEditManualLabel">Isi Dokumen (Manual, opsional)</label>
+                    <p class="meta-text-xs" id="docEditManualHint" style="margin-bottom:4px;">Hanya perlu diisi kalau ekstraksi teks otomatis dokumen ini gagal (mis. PDF hasil scan/berisi gambar).</p>
+                    <textarea name="manual_content" id="docEditManualContent" rows="4" style="width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px;" placeholder="Ketik ulang isi dokumen ini apa adanya..."></textarea>
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick="documentCloseEditModal();">Batal</button>
@@ -427,6 +446,25 @@ document.querySelectorAll('[data-edit-trigger]').forEach(function (btn) {
         document.getElementById('docEditId').value = btn.getAttribute('data-edit-trigger');
         document.getElementById('docEditTitle').value = btn.getAttribute('data-doc-title') || '';
         document.getElementById('docEditTags').value = btn.getAttribute('data-doc-tags') || '';
+
+        var status = btn.getAttribute('data-doc-status') || '';
+        var manualContent = btn.getAttribute('data-doc-manual-content') || '';
+        var manualTextarea = document.getElementById('docEditManualContent');
+        var manualLabel = document.getElementById('docEditManualLabel');
+        var manualHint = document.getElementById('docEditManualHint');
+        manualTextarea.value = manualContent;
+        if (status === 'failed') {
+            manualTextarea.required = true;
+            manualLabel.innerHTML = 'Isi Dokumen (Manual) <span class="required">*</span>';
+            manualHint.textContent = 'Ekstraksi otomatis dokumen ini GAGAL (kemungkinan PDF hasil scan/berisi gambar tanpa teks) — dokumen tidak akan muncul di pencarian sampai Anda isi ulang isinya di sini.';
+            manualHint.style.color = '#b91c1c';
+        } else {
+            manualTextarea.required = false;
+            manualLabel.textContent = 'Isi Dokumen (Manual, opsional)';
+            manualHint.textContent = 'Hanya perlu diisi kalau ekstraksi teks otomatis dokumen ini gagal (mis. PDF hasil scan/berisi gambar).';
+            manualHint.style.color = '';
+        }
+
         document.getElementById('docEditModalOverlay').style.display = 'flex';
     });
 });

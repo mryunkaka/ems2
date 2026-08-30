@@ -55,6 +55,7 @@ try {
         $folderId = (int)($_POST['folder_id'] ?? 0);
         $title = trim((string)($_POST['title'] ?? ''));
         $tags = trim((string)($_POST['tags'] ?? ''));
+        $manualContent = trim((string)($_POST['manual_content'] ?? ''));
 
         $folder = documentFetchFolder($pdo, $unitCode, $folderId);
         if (!$folder) {
@@ -76,6 +77,14 @@ try {
         }
 
         $extraction = ems_document_extract_text($saved['full_path'], $saved['ext']);
+
+        // Ekstraksi otomatis gagal (biasanya PDF hasil scan/berisi gambar,
+        // tidak punya text layer) tapi admin sudah isi manual di form —
+        // pakai isi manual itu langsung saat insert, bukan nunggu edit
+        // terpisah lewat ems_document_store_manual_content().
+        if ($extraction['status'] === 'failed' && $manualContent !== '') {
+            $extraction = ['text' => $manualContent, 'status' => 'manual'];
+        }
 
         $stmt = $pdo->prepare("
             INSERT INTO document_files (
@@ -103,7 +112,11 @@ try {
         $newId = (int)$pdo->lastInsertId();
         ems_document_log_activity($pdo, $unitCode, $newId, $folderId, (string)$folder['division'], 'uploaded', $title, $user);
 
-        $_SESSION['flash_messages'][] = 'Dokumen "' . $title . '" berhasil diupload.';
+        if ($extraction['status'] === 'failed') {
+            $_SESSION['flash_warnings'][] = 'Dokumen "' . $title . '" berhasil diupload, TAPI ekstraksi teks otomatis gagal (kemungkinan PDF hasil scan/berisi gambar) — dokumen ini belum bisa ditemukan lewat pencarian. Klik tombol Edit lalu isi "Isi Dokumen (Manual)" agar dokumen ini bisa dicari.';
+        } else {
+            $_SESSION['flash_messages'][] = 'Dokumen "' . $title . '" berhasil diupload.';
+        }
         header('Location: ' . $redirectTo);
         exit;
     }
@@ -112,6 +125,7 @@ try {
         $docId = (int)($_POST['document_id'] ?? 0);
         $title = trim((string)($_POST['title'] ?? ''));
         $tags = trim((string)($_POST['tags'] ?? ''));
+        $manualContent = trim((string)($_POST['manual_content'] ?? ''));
 
         $doc = documentFetchDoc($pdo, $unitCode, $docId);
         if (!$doc) {
@@ -123,6 +137,13 @@ try {
         if ($title === '') {
             throw new RuntimeException('Judul dokumen wajib diisi.');
         }
+        // "Isi Dokumen (Manual)" wajib diisi kalau ekstraksi otomatis
+        // dokumen ini (saat ini) gagal — sama seperti yang sudah
+        // ditandai `required` di sisi client (docEditManualContent),
+        // dicek ulang di server karena JS bisa dimatikan.
+        if ((string)$doc['extraction_status'] === 'failed' && $manualContent === '') {
+            throw new RuntimeException('Ekstraksi otomatis dokumen ini gagal — "Isi Dokumen (Manual)" wajib diisi supaya dokumen bisa ditemukan lewat pencarian.');
+        }
 
         $hasNewFile = !empty($_FILES['document']) && ($_FILES['document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
@@ -133,6 +154,9 @@ try {
             }
 
             $extraction = ems_document_extract_text($saved['full_path'], $saved['ext']);
+            if ($extraction['status'] === 'failed' && $manualContent !== '') {
+                $extraction = ['text' => $manualContent, 'status' => 'manual'];
+            }
             $oldFullPath = __DIR__ . '/../' . $doc['file_path'];
 
             $stmt = $pdo->prepare("
@@ -162,6 +186,9 @@ try {
         } else {
             $stmt = $pdo->prepare("UPDATE document_files SET title = ?, tags = ?, updated_at = NOW() WHERE id = ?");
             $stmt->execute([$title, $tags !== '' ? $tags : null, $docId]);
+            if ($manualContent !== '') {
+                ems_document_store_manual_content($pdo, $docId, $manualContent);
+            }
             ems_document_log_activity($pdo, $unitCode, $docId, (int)$doc['folder_id'], (string)$doc['division'], 'edited', $title, $user);
         }
 

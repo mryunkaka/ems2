@@ -139,23 +139,41 @@ try {
                                     <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                     <span class="file-text">
                                         <strong>Pilih lampiran</strong>
-                                        <small>JPG / PNG, multi file</small>
+                                        <small>PDF / DOC / DOCX / TXT / JPG / PNG, multi file</small>
                                     </span>
                                 </label>
-                                <input type="file" id="incomingAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,image/jpeg,image/png" class="sr-only" multiple>
+                                <input type="file" id="incomingAttachments" name="attachments[]" accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/jpeg,image/png" class="sr-only" multiple>
                                 <div class="file-selected-name" data-for="incomingAttachments"></div>
                                 <div id="incomingAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                             </div>
                         </div>
 
+                        <div id="incomingAttachmentContentWrapper" style="display:none;">
+                            <label class="text-sm font-semibold text-slate-900">Isi Surat Lengkap <span class="required">*</span></label>
+                            <p class="meta-text-xs mb-1">Lampirannya berupa foto (JPG/PNG) — isi suratnya tidak bisa dibaca otomatis dari foto, jadi <strong>wajib</strong> ketik ulang isi lengkapnya di sini. Kalau lampirannya PDF/DOC/DOCX/TXT, isinya sudah otomatis terbaca, kolom ini tidak akan diminta.</p>
+                            <textarea name="attachment_content" id="incomingAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap surat ini apa adanya..."></textarea>
+                        </div>
+
                         <div class="modal-actions mt-4">
-                            <button type="submit" class="btn-success"><?= ems_icon('document-text', 'h-4 w-4') ?> <span>Kirim Surat</span></button>
+                            <button type="submit" class="btn-success" id="submitSuratBtn"><?= ems_icon('document-text', 'h-4 w-4') ?> <span>Kirim Surat</span></button>
                         </div>
                     </form>
                 </div>
             </div>
         </section>
     </main>
+
+    <div id="suratInstansiLoadingOverlay" style="display:none; position:fixed; inset:0; z-index:999999; align-items:center; justify-content:center; background:rgba(15,23,42,0.72); backdrop-filter:blur(4px);">
+        <div style="width:min(100%,360px); border-radius:20px; background:#fff; padding:28px; text-align:center; box-shadow:0 24px 60px rgba(15,23,42,0.3);">
+            <div style="width:48px; height:48px; margin:0 auto 16px; border-radius:999px; border:4px solid #dbeafe; border-top-color:#0ea5e9; animation:suratInstansiSpin .8s linear infinite;"></div>
+            <div style="font-weight:700; color:#0f172a; margin-bottom:4px;">Surat sedang dikirim</div>
+            <div style="font-size:13px; color:#64748b;">Mohon tunggu, lampiran sedang diupload &amp; diproses. Jangan tutup halaman ini.</div>
+        </div>
+    </div>
+    <style>
+        @keyframes suratInstansiSpin { to { transform: rotate(360deg); } }
+    </style>
+
     <script>
         (function() {
             const generateCodeUrl = <?= json_encode(ems_url('/ajax/generate_surat_code.php')) ?>;
@@ -241,10 +259,11 @@ try {
                 }
             }
 
-            function setupMultiImagePreview(inputId, previewId) {
+            function setupMultiImagePreview(inputId, previewId, contentWrapperId) {
                 const input = document.getElementById(inputId);
                 const preview = document.getElementById(previewId);
                 const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+                const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
                 if (!input || !preview || !nameBox) return;
 
                 let objectUrls = [];
@@ -258,22 +277,53 @@ try {
                     objectUrls = [];
                     preview.innerHTML = '';
                     nameBox.textContent = '';
-                    nameBox.classList.add('hidden');
+                    // Pakai style.display langsung (bukan cuma toggle class
+                    // "hidden") supaya tidak bergantung stylesheet Tailwind
+                    // ikut men-scan file ini atau tidak — dipastikan jalan.
+                    nameBox.style.display = 'none';
+                }
+
+                // Kolom "Isi Surat Lengkap" cuma relevan & WAJIB kalau ADA
+                // lampiran berupa foto (tidak bisa dibaca otomatis) — kalau
+                // tidak ada lampiran sama sekali, atau semua lampiran yang
+                // dipilih berupa PDF/DOC/DOCX/TXT (otomatis terbaca), kolom
+                // ini disembunyikan & tidak wajib.
+                const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
+
+                function updateContentWrapperVisibility(files) {
+                    if (!contentWrapper) return;
+                    const hasImage = files.some(function(file) {
+                        return String(file.type || '').startsWith('image/');
+                    });
+                    contentWrapper.style.display = hasImage ? '' : 'none';
+                    if (contentTextarea) {
+                        contentTextarea.required = hasImage;
+                        if (!hasImage) {
+                            contentTextarea.value = '';
+                        }
+                    }
                 }
 
                 input.addEventListener('change', function() {
                     clearPreview();
 
                     const files = Array.from(this.files || []);
+                    updateContentWrapperVisibility(files);
+
                     if (!files.length) {
                         return;
                     }
 
-                    nameBox.textContent = files.length + ' file dipilih';
-                    nameBox.classList.remove('hidden');
+                    nameBox.textContent = files.length + ' file dipilih: ' + files.map(function(f) { return f.name; }).join(', ');
+                    nameBox.style.display = 'block';
 
                     files.forEach(function(file) {
                         if (!String(file.type || '').startsWith('image/')) {
+                            const item = document.createElement('div');
+                            item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
+                            item.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;color:#334155;';
+                            item.textContent = '📄 ' + file.name;
+                            preview.appendChild(item);
                             return;
                         }
 
@@ -291,7 +341,7 @@ try {
                 });
             }
 
-            setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview');
+            setupMultiImagePreview('incomingAttachments', 'incomingAttachmentsPreview', 'incomingAttachmentContentWrapper');
             setupAutoCode({
                 type: 'incoming',
                 codeInputId: 'incomingLetterCode',
@@ -300,6 +350,20 @@ try {
                 requiredInputIds: ['incomingInstitutionName'],
                 watchedInputIds: ['incomingInstitutionName']
             });
+
+            // Loading overlay saat form disubmit — halaman ini publik/berdiri
+            // sendiri (tidak load partials/footer.php), jadi tidak punya
+            // overlay bersama seperti halaman dashboard, dibuat sendiri di sini.
+            const suratForm = document.querySelector('form[action*="submit_surat_instansi.php"]');
+            const loadingOverlay = document.getElementById('suratInstansiLoadingOverlay');
+            const submitBtn = document.getElementById('submitSuratBtn');
+            if (suratForm && loadingOverlay) {
+                suratForm.addEventListener('submit', function(event) {
+                    if (event.defaultPrevented) return;
+                    if (submitBtn) submitBtn.disabled = true;
+                    loadingOverlay.style.display = 'flex';
+                });
+            }
         })();
     </script>
 

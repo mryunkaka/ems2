@@ -40,6 +40,15 @@ $isImage = in_array($ext, ['jpg', 'jpeg', 'png'], true);
 $isSpreadsheet = in_array($ext, ['xlsx', 'xls'], true);
 $hasExtractedText = (string)$doc['extraction_status'] === 'done' && trim((string)$doc['extracted_text']) !== '';
 
+// Datang dari hasil pencarian (dokumen.php) dengan ?q=... — sorot & auto-
+// scroll ke kalimat yang dicari, sama seperti mekanisme snippet-nya
+// ems_document_search() (frasa utuh dulu, fallback per-kata).
+$searchQuery = trim((string)($_GET['q'] ?? ''));
+$textHighlight = ['html' => htmlspecialchars((string)$doc['extracted_text'], ENT_QUOTES, 'UTF-8'), 'matched' => false];
+if ($hasExtractedText && $searchQuery !== '') {
+    $textHighlight = ems_document_highlight_text((string)$doc['extracted_text'], $searchQuery, 'docSearchHit');
+}
+
 $spreadsheetHtml = null;
 if ($isSpreadsheet) {
     $spreadsheetHtml = ems_document_render_spreadsheet_html(__DIR__ . '/../' . $doc['file_path']);
@@ -52,6 +61,7 @@ include __DIR__ . '/../partials/sidebar.php';
 <style>
 .doc-view-meta { display:flex; flex-wrap:wrap; gap:8px 20px; color:#64748b; font-size:13px; margin-bottom:16px; }
 .doc-view-text { white-space: pre-wrap; word-break: break-word; font: 15px/1.75 "Segoe UI", Tahoma, Arial, sans-serif; color:#1e293b; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:24px; max-height:70vh; overflow-y:auto; }
+.doc-view-text mark { background:#fef08a; color:inherit; padding:0 2px; border-radius:2px; scroll-margin:80px; }
 .doc-view-embed { width:100%; height:75vh; border:1px solid #e2e8f0; border-radius:12px; }
 .doc-view-image { max-width:100%; border-radius:12px; border:1px solid #e2e8f0; }
 .doc-xlsx-sheet-title { margin:20px 0 8px; font-size:16px; font-weight:600; color:#0f172a; }
@@ -100,7 +110,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <button type="button" class="btn-secondary" style="padding:4px 10px;" onclick="document.getElementById('docViewOriginalEmbed').style.display='block'; this.style.display='none';">Tampilkan Tampilan Asli PDF</button>
                     </div>
                 <?php endif; ?>
-                <div class="doc-view-text"><?= htmlspecialchars((string)$doc['extracted_text'], ENT_QUOTES, 'UTF-8') ?></div>
+                <div class="doc-view-text"><?= $textHighlight['html'] ?></div>
                 <?php if ($isPdf): ?>
                     <embed id="docViewOriginalEmbed" src="<?= htmlspecialchars($fileUrl, ENT_QUOTES, 'UTF-8') ?>" type="application/pdf" class="doc-view-embed" style="display:none; margin-top:16px;">
                 <?php endif; ?>
@@ -114,5 +124,18 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<?php if ($textHighlight['matched']): ?>
+<script>
+(function () {
+    var hit = document.getElementById('docSearchHit');
+    if (hit) {
+        setTimeout(function () {
+            hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+    }
+})();
+</script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -2556,6 +2556,10 @@ function emsIsAllowedSecretaryAttachment(array $file): bool
         ], true);
     }
 
+    if ($extension === 'txt') {
+        return str_starts_with($mime, 'text/') || $mime === 'application/octet-stream' || $mime === '';
+    }
+
     return false;
 }
 

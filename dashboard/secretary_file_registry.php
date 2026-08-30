@@ -241,9 +241,9 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="grid gap-4 md:grid-cols-2">
             <div class="card card-section">
                 <div class="card-header">Input Data File</div>
-                <p class="meta-text mb-4">Pilih jenis file lalu simpan nomor, judul, pihak terkait, kata kunci, dan lampiran dokumen. Lampiran yang diterima hanya DOC, DOCX, PDF, JPG, dan PNG.</p>
+                <p class="meta-text mb-4">Pilih jenis file lalu simpan nomor, judul, pihak terkait, kata kunci, dan lampiran dokumen. Lampiran yang diterima PDF, DOC, DOCX, TXT, JPG, dan PNG.</p>
 
-                <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+                <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form" onsubmit="return secretaryShowLoading('Menyimpan File', 'Mohon tunggu, file dan lampiran sedang diupload dan diproses.');">
                     <?= csrfField(); ?>
                     <input type="hidden" name="action" value="save_file_record">
                     <input type="hidden" name="redirect_to" value="secretary_file_registry.php">
@@ -307,13 +307,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                                 <span class="file-text">
                                     <strong>Pilih lampiran</strong>
-                                    <small>Hanya DOC, DOCX, PDF, JPG, PNG. Gambar akan dikompres otomatis.</small>
+                                    <small>PDF / DOC / DOCX / TXT / JPG / PNG. Gambar akan dikompres otomatis.</small>
                                 </span>
                             </label>
-                            <input type="file" id="fileAttachments" name="attachments[]" accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/jpeg,image/png" class="sr-only" multiple>
+                            <input type="file" id="fileAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                             <div class="file-selected-name" data-for="fileAttachments"></div>
                             <div id="fileAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                         </div>
+                    </div>
+
+                    <div id="fileAttachmentContentWrapper" style="display:none;">
+                        <label class="text-sm font-semibold text-slate-900">Isi Dokumen Lengkap <span class="required">*</span></label>
+                        <p class="meta-text-xs mb-1">Dokumen (PDF/DOC/DOCX/TXT) sudah otomatis dibaca isinya — kolom ini wajib diisi kalau lampirannya berupa foto.</p>
+                        <textarea name="attachment_content" id="fileAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap lampiran ini apa adanya..."></textarea>
                     </div>
 
                     <div class="modal-actions mt-4">
@@ -479,7 +485,7 @@ include __DIR__ . '/../partials/sidebar.php';
             </button>
         </div>
         <div class="modal-content">
-            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form">
+            <form method="POST" action="secretary_action.php" enctype="multipart/form-data" class="form" onsubmit="return secretaryShowLoading('Menyimpan Perubahan', 'Mohon tunggu, perubahan file dan lampiran sedang disimpan.');">
                 <?= csrfField(); ?>
                 <input type="hidden" name="action" value="edit_file_record">
                 <input type="hidden" name="redirect_to" value="secretary_file_registry.php">
@@ -548,13 +554,19 @@ include __DIR__ . '/../partials/sidebar.php';
                             <span class="file-icon"><?= ems_icon('paper-clip', 'h-5 w-5') ?></span>
                             <span class="file-text">
                                 <strong>Pilih lampiran</strong>
-                                <small>Hanya DOC, DOCX, PDF, JPG, PNG. Gambar akan dikompres otomatis.</small>
+                                <small>PDF / DOC / DOCX / TXT / JPG / PNG. Gambar akan dikompres otomatis.</small>
                             </span>
                         </label>
-                        <input type="file" id="editFileAttachments" name="attachments[]" accept=".doc,.docx,.pdf,.jpg,.jpeg,.png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,image/jpeg,image/png" class="sr-only" multiple>
+                        <input type="file" id="editFileAttachments" name="attachments[]" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.txt,image/jpeg,image/png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" class="sr-only" multiple>
                         <div class="file-selected-name" data-for="editFileAttachments"></div>
                         <div id="editFileAttachmentsPreview" class="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3"></div>
                     </div>
+                </div>
+
+                <div id="editFileAttachmentContentWrapper" style="display:none;">
+                    <label class="text-sm font-semibold text-slate-900">Isi Lampiran Baru Lengkap <span class="required">*</span></label>
+                    <p class="meta-text-xs mb-1">Wajib diisi kalau menambahkan lampiran baru berupa foto — dokumen (PDF/DOC/DOCX/TXT) sudah otomatis dibaca isinya.</p>
+                    <textarea name="attachment_content" id="editFileAttachmentContent" rows="5" placeholder="Ketik ulang isi lengkap lampiran baru ini apa adanya..."></textarea>
                 </div>
 
                 <div class="modal-actions mt-4">
@@ -872,10 +884,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function setupMultiFilePreview(inputId, previewId) {
+    function secretaryShowLoading(title, message) {
+        if (typeof window.emsShowUploadOverlay === 'function') {
+            window.emsShowUploadOverlay(title, message);
+        }
+        return true;
+    }
+
+    function setupMultiFilePreview(inputId, previewId, contentWrapperId) {
         const input = document.getElementById(inputId);
         const preview = document.getElementById(previewId);
         const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
+        const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
         if (!input || !preview || !nameBox) {
             return;
         }
@@ -897,17 +918,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const files = Array.from(this.files || []);
             if (!files.length) {
+                if (contentWrapper) {
+                    contentWrapper.style.display = 'none';
+                    if (contentTextarea) contentTextarea.required = false;
+                }
                 return;
             }
 
-            nameBox.textContent = files.length + ' file dipilih';
+            nameBox.textContent = files.length + ' file dipilih: ' + files.map(function (f) { return f.name; }).join(', ');
             nameBox.classList.remove('hidden');
+
+            let hasImage = false;
 
             files.forEach(function (file) {
                 const item = document.createElement('div');
                 item.className = 'rounded-2xl border border-slate-200 bg-slate-50 p-2';
 
-                if (String(file.type || '').startsWith('image/')) {
+                const isImage = String(file.type || '').startsWith('image/') || /\.(jpg|jpeg|png)$/i.test(String(file.name || ''));
+                if (isImage) {
+                    hasImage = true;
                     const url = URL.createObjectURL(file);
                     objectUrls.push(url);
                     item.innerHTML = `
@@ -916,20 +945,27 @@ document.addEventListener('DOMContentLoaded', function () {
                     `;
                 } else {
                     item.innerHTML = `
-                        <div class="flex h-28 items-center justify-center rounded-xl bg-slate-100 px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Dokumen akan disimpan sebagai file asli</div>
+                        <div class="flex h-28 items-center justify-center rounded-xl bg-slate-100 px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">Dokumen akan disimpan &amp; diextract otomatis</div>
                         <div class="mt-2 truncate text-xs text-slate-600">${file.name}</div>
                     `;
                 }
 
                 preview.appendChild(item);
             });
+
+            if (contentWrapper) {
+                contentWrapper.style.display = hasImage ? '' : 'none';
+                if (contentTextarea) contentTextarea.required = hasImage;
+            }
         });
     }
 
-    function resetMultiImagePreview(inputId, previewId) {
+    function resetMultiImagePreview(inputId, previewId, contentWrapperId) {
         const input = document.getElementById(inputId);
         const preview = document.getElementById(previewId);
         const nameBox = document.querySelector('.file-selected-name[data-for="' + inputId + '"]');
+        const contentWrapper = contentWrapperId ? document.getElementById(contentWrapperId) : null;
+        const contentTextarea = contentWrapper ? contentWrapper.querySelector('textarea') : null;
         if (input) {
             input.value = '';
         }
@@ -939,6 +975,13 @@ document.addEventListener('DOMContentLoaded', function () {
         if (nameBox) {
             nameBox.textContent = '';
             nameBox.classList.add('hidden');
+        }
+        if (contentWrapper) {
+            contentWrapper.style.display = 'none';
+        }
+        if (contentTextarea) {
+            contentTextarea.required = false;
+            contentTextarea.value = '';
         }
     }
 
@@ -1148,8 +1191,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    setupMultiFilePreview('fileAttachments', 'fileAttachmentsPreview');
-    setupMultiFilePreview('editFileAttachments', 'editFileAttachmentsPreview');
+    setupMultiFilePreview('fileAttachments', 'fileAttachmentsPreview', 'fileAttachmentContentWrapper');
+    setupMultiFilePreview('editFileAttachments', 'editFileAttachmentsPreview', 'editFileAttachmentContentWrapper');
 
     document.addEventListener('click', function (event) {
         const previewLink = event.target.closest('.btn-preview-doc');
@@ -1191,7 +1234,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('editFileKeywords').value = record.keywords || '';
             document.getElementById('editFileDescription').value = record.description || '';
             renderAttachmentBadges(document.getElementById('editFileCurrentAttachments'), record.attachments || [], 'Tidak ada lampiran');
-            resetMultiImagePreview('editFileAttachments', 'editFileAttachmentsPreview');
+            resetMultiImagePreview('editFileAttachments', 'editFileAttachmentsPreview', 'editFileAttachmentContentWrapper');
             editFileReferenceControl.refresh(false);
             openModal(fileRecordEditModal);
         }

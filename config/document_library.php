@@ -80,6 +80,22 @@ function ems_document_ensure_tables(PDO $pdo): void
         $pdo->exec("ALTER TABLE document_activity_logs ADD COLUMN division varchar(60) DEFAULT NULL AFTER folder_id");
         $pdo->exec("ALTER TABLE document_activity_logs ADD KEY idx_document_activity_logs_division (unit_code, division)");
     }
+
+    // Nilai enum 'manual' (dokumen — biasanya PDF hasil scan/gambar — yang
+    // ekstraksi otomatisnya gagal, lalu isinya diketik manual oleh admin)
+    // ditambahkan belakangan (2026-08-30, lihat docs/sql/75_...) — cek
+    // COLUMN_TYPE langsung dari INFORMATION_SCHEMA, bukan cuma
+    // ems_column_exists(), karena kolomnya sudah ada dari awal, yang perlu
+    // dideteksi adalah enum-nya yang mungkin masih versi lama.
+    $stmt = $pdo->prepare("
+        SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'document_files' AND COLUMN_NAME = 'extraction_status'
+    ");
+    $stmt->execute();
+    $columnType = (string) $stmt->fetchColumn();
+    if ($columnType !== '' && strpos($columnType, "'manual'") === false) {
+        $pdo->exec("ALTER TABLE document_files MODIFY COLUMN extraction_status ENUM('pending','done','unsupported','failed','manual') NOT NULL DEFAULT 'pending'");
+    }
 }
 
 // ===================================================================
@@ -137,9 +153,18 @@ function ems_document_upload_limit_label(): string
     return '10 MB';
 }
 
+// Foto/gambar (jpg/jpeg/png) sengaja TIDAK diizinkan lagi di sini
+// (2026-08-30, user-requested) — modul Dokumen ini untuk dokumen asli yang
+// bisa dibaca/di-extract, bukan tempat upload foto; dokumen jenis
+// gambar-saja (PDF hasil scan) tetap bisa masuk lewat isi manual
+// (`extraction_status='manual'`, lihat ems_document_store_manual_content()),
+// bukan lewat upload file gambar langsung. Baris document_files lama yang
+// masih berekstensi jpg/jpeg/png (dari import awal) tetap bisa dibuka —
+// lihat cabang gambar di document_view.php — ini hanya menutup jalur
+// upload BARU, bukan menghapus data lama.
 function ems_document_allowed_extensions(): array
 {
-    return ['pdf', 'doc', 'docx', 'odt', 'txt', 'md', 'csv', 'json', 'xml', 'log', 'ini', 'xlsx', 'xls', 'jpg', 'jpeg', 'png'];
+    return ['pdf', 'doc', 'docx', 'odt', 'txt', 'md', 'csv', 'json', 'xml', 'log', 'ini', 'xlsx', 'xls'];
 }
 
 function ems_document_extractable_extensions(): array
@@ -303,6 +328,30 @@ function ems_document_extract_text(string $fullPath, string $ext): array
     }
 
     return ['text' => '', 'status' => 'unsupported'];
+}
+
+// Untuk dokumen yang ekstraksi otomatisnya gagal (paling sering: PDF hasil
+// scan/berisi gambar, tidak punya text layer sama sekali) — admin bisa
+// ketik ulang isinya secara manual lewat form upload/edit di
+// document_manage.php, supaya dokumen tsb tetap masuk index FULLTEXT.
+// Sengaja TIDAK menimpa baris yang status-nya sudah 'done' (ekstraksi asli
+// berhasil) — sama seperti ems_attachment_store_manual_description() di
+// config/attachment_extraction.php.
+function ems_document_store_manual_content(PDO $pdo, int $docId, string $content): bool
+{
+    $content = trim($content);
+    if ($content === '' || $docId <= 0) {
+        return false;
+    }
+
+    $stmt = $pdo->prepare("
+        UPDATE document_files
+        SET extracted_text = ?, extraction_status = 'manual', updated_at = NOW()
+        WHERE id = ? AND extraction_status != 'done'
+    ");
+    $stmt->execute([$content, $docId]);
+
+    return $stmt->rowCount() > 0;
 }
 
 // Render tabel HTML dari xlsx/xls untuk ditampilkan langsung di
@@ -497,6 +546,32 @@ function ems_document_delete_folder_cascade(PDO $pdo, string $unitCode, int $fol
 // hanya filter unit_code (§11 poin 7).
 // ===================================================================
 
+function ems_document_search_fulltext(PDO $pdo, string $unitCode, string $boolExpr, int $limit): array
+{
+    if ($boolExpr === '') {
+        return [];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT df.*, MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr IN BOOLEAN MODE) AS relevance
+            FROM document_files df
+            WHERE df.unit_code = :unitCode
+              AND MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr2 IN BOOLEAN MODE)
+            ORDER BY relevance DESC, df.created_at DESC
+            LIMIT :limitVal
+        ");
+        $stmt->bindValue(':boolExpr', $boolExpr, PDO::PARAM_STR);
+        $stmt->bindValue(':boolExpr2', $boolExpr, PDO::PARAM_STR);
+        $stmt->bindValue(':unitCode', $unitCode, PDO::PARAM_STR);
+        $stmt->bindValue(':limitVal', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
 function ems_document_search(PDO $pdo, string $unitCode, string $query, int $limit = 20): array
 {
     $query = trim($query);
@@ -505,35 +580,35 @@ function ems_document_search(PDO $pdo, string $unitCode, string $query, int $lim
     }
 
     $words = preg_split('/\s+/', $query, -1, PREG_SPLIT_NO_EMPTY);
-    $boolTerms = [];
-    foreach ($words as $w) {
-        $clean = preg_replace('/[+\-<>()~*"@]+/', '', $w);
-        if ($clean !== '') {
-            $boolTerms[] = '+' . $clean . '*';
+    $rows = [];
+
+    // Query 2+ kata dicoba dulu sebagai FRASA UTUH (diapit tanda kutip di
+    // BOOLEAN MODE) — supaya mencari kalimat lengkap yang memang persis ada
+    // di dokumen (mis. judul sub-bab) langsung ketemu 1 dokumen yang tepat,
+    // bukan "AND semua kata muncul di mana saja" yang gampang cocok ke
+    // banyak dokumen tak terkait hanya karena sama-sama mengandung kata umum
+    // seperti "dalam"/"dan". Baru jatuh ke pencarian per-kata (AND, prefix
+    // match) di bawah kalau pencarian frasa ini nihil — supaya pencarian
+    // kata kunci pendek/sebagian tetap jalan seperti sebelumnya.
+    if (count($words) >= 2) {
+        $phraseClean = trim(preg_replace('/[+\-<>()~*"@]+/', ' ', $query));
+        if ($phraseClean !== '') {
+            $phraseExpr = '"' . $phraseClean . '"';
+            $rows = ems_document_search_fulltext($pdo, $unitCode, $phraseExpr, $limit);
         }
     }
-    $boolExpr = implode(' ', $boolTerms);
 
-    $rows = [];
-    if ($boolExpr !== '') {
-        try {
-            $stmt = $pdo->prepare("
-                SELECT df.*, MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr IN BOOLEAN MODE) AS relevance
-                FROM document_files df
-                WHERE df.unit_code = :unitCode
-                  AND MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr2 IN BOOLEAN MODE)
-                ORDER BY relevance DESC, df.created_at DESC
-                LIMIT :limitVal
-            ");
-            $stmt->bindValue(':boolExpr', $boolExpr, PDO::PARAM_STR);
-            $stmt->bindValue(':boolExpr2', $boolExpr, PDO::PARAM_STR);
-            $stmt->bindValue(':unitCode', $unitCode, PDO::PARAM_STR);
-            $stmt->bindValue(':limitVal', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch (\Throwable $e) {
-            $rows = [];
+    // Fallback: AND-kan tiap kata dengan prefix match (search-as-you-type).
+    if (empty($rows)) {
+        $boolTerms = [];
+        foreach ($words as $w) {
+            $clean = preg_replace('/[+\-<>()~*"@]+/', '', $w);
+            if ($clean !== '') {
+                $boolTerms[] = '+' . $clean . '*';
+            }
         }
+        $boolExpr = implode(' ', $boolTerms);
+        $rows = ems_document_search_fulltext($pdo, $unitCode, $boolExpr, $limit);
     }
 
     $foundIds = array_map(static fn($r) => (int)$r['id'], $rows);
@@ -563,6 +638,61 @@ function ems_document_search(PDO $pdo, string $unitCode, string $query, int $lim
     return array_slice($rows, 0, $limit);
 }
 
+// Meng-escape $text lalu menandai kemunculan match terbaik dari $query
+// dengan <mark> — coba FRASA UTUH dulu (persis seperti prioritas di
+// ems_document_search(): kalimat lengkap yang memang ada di teks harus
+// tersorot sebagai satu blok, bukan pecah per-kata umum yang kebetulan ada
+// di tempat lain). Baru fallback ke tiap kata individual kalau frasa utuh
+// itu tidak ditemukan sama sekali di potongan teks ini. $firstMarkId
+// (opsional) ditempelkan HANYA ke kemunculan <mark> pertama, supaya
+// caller bisa scrollIntoView() ke situ secara presisi (dipakai
+// document_view.php untuk auto-scroll ke kalimat yang dicari).
+function ems_document_highlight_text(string $text, string $query, ?string $firstMarkId = null): array
+{
+    $safe = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+    $words = array_values(array_filter(preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY)));
+    if (empty($words)) {
+        return ['html' => $safe, 'matched' => false];
+    }
+
+    $markCounter = 0;
+    $applyMark = function (string $inner) use (&$markCounter, $firstMarkId): string {
+        $markCounter++;
+        $attr = ($markCounter === 1 && $firstMarkId !== null)
+            ? ' id="' . htmlspecialchars($firstMarkId, ENT_QUOTES, 'UTF-8') . '"'
+            : '';
+        return '<mark' . $attr . '>' . $inner . '</mark>';
+    };
+
+    if (count($words) >= 2) {
+        $safeQuery = htmlspecialchars(trim($query), ENT_QUOTES, 'UTF-8');
+        if ($safeQuery !== '') {
+            $phraseResult = preg_replace_callback(
+                '/(' . preg_quote($safeQuery, '/') . ')/iu',
+                static fn($m) => $applyMark($m[1]),
+                $safe
+            );
+            if ($phraseResult !== null && $markCounter > 0) {
+                return ['html' => $phraseResult, 'matched' => true];
+            }
+        }
+    }
+
+    foreach ($words as $w) {
+        $safeWord = htmlspecialchars($w, ENT_QUOTES, 'UTF-8');
+        if ($safeWord === '') {
+            continue;
+        }
+        $safe = preg_replace_callback(
+            '/(' . preg_quote($safeWord, '/') . ')/iu',
+            static fn($m) => $applyMark($m[1]),
+            $safe
+        ) ?? $safe;
+    }
+
+    return ['html' => $safe, 'matched' => $markCounter > 0];
+}
+
 function ems_document_build_snippet(string $text, string $query, int $radius = 160): string
 {
     $text = trim($text);
@@ -571,19 +701,28 @@ function ems_document_build_snippet(string $text, string $query, int $radius = 1
     }
 
     $words = array_values(array_filter(preg_split('/\s+/', trim($query), -1, PREG_SPLIT_NO_EMPTY)));
+
+    // Cari titik jangkar potongan teks: coba frasa utuh dulu (biar
+    // potongannya berpusat di kalimat yang benar-benar cocok), baru kata
+    // pertama yang ketemu kalau frasa utuh tidak ada di dokumen ini.
     $pos = false;
-    foreach ($words as $w) {
-        $p = mb_stripos($text, $w);
-        if ($p !== false) {
-            $pos = $p;
-            break;
+    if (count($words) >= 2) {
+        $pos = mb_stripos($text, trim($query));
+    }
+    if ($pos === false) {
+        foreach ($words as $w) {
+            $p = mb_stripos($text, $w);
+            if ($p !== false) {
+                $pos = $p;
+                break;
+            }
         }
     }
 
     if ($pos === false) {
         $snippet = mb_substr($text, 0, $radius * 2);
-        $safe = htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
-        return $safe . (mb_strlen($text) > $radius * 2 ? '…' : '');
+        $highlighted = ems_document_highlight_text($snippet, $query);
+        return $highlighted['html'] . (mb_strlen($text) > $radius * 2 ? '…' : '');
     }
 
     $start = max(0, $pos - $radius);
@@ -591,17 +730,9 @@ function ems_document_build_snippet(string $text, string $query, int $radius = 1
     $snippet = mb_substr($text, $start, $length);
     $prefix = $start > 0 ? '…' : '';
     $suffix = ($start + $length) < mb_strlen($text) ? '…' : '';
-    $safe = htmlspecialchars($snippet, ENT_QUOTES, 'UTF-8');
+    $highlighted = ems_document_highlight_text($snippet, $query);
 
-    foreach ($words as $w) {
-        $safeWord = htmlspecialchars($w, ENT_QUOTES, 'UTF-8');
-        if ($safeWord === '') {
-            continue;
-        }
-        $safe = preg_replace('/(' . preg_quote($safeWord, '/') . ')/iu', '<mark>$1</mark>', $safe) ?? $safe;
-    }
-
-    return $prefix . $safe . $suffix;
+    return $prefix . $highlighted['html'] . $suffix;
 }
 
 // ===================================================================

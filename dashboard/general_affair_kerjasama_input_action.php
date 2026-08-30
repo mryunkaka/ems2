@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
+require_once __DIR__ . '/../config/attachment_extraction.php';
 
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -263,13 +264,17 @@ function gaInputStoreAttachment(PDO $pdo, int $recordId, array $file, string $la
 
     $path = 'storage/general_affair/cooperation_inputs/' . $filename;
 
+    ems_attachment_ensure_extraction_columns($pdo, 'secretary_file_record_attachments');
+
     $stmt = $pdo->prepare("
         INSERT INTO secretary_file_record_attachments
-            (record_id, file_path, file_name, sort_order)
+            (record_id, file_path, file_name, sort_order, extraction_status)
         VALUES
-            (?, ?, ?, ?)
+            (?, ?, ?, ?, 'unsupported')
     ");
     $stmt->execute([$recordId, $path, $label, $sortOrder]);
+    // Selalu foto (dipaksa .jpg oleh gaInputCompressImage() di atas), jadi
+    // langsung ditandai unsupported tanpa perlu memanggil ekstraktor teks.
 
     return $path;
 }

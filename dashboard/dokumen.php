@@ -265,7 +265,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         var html = '';
         items.forEach(function (item) {
-            html += '<a class="doc-search-result-item" href="/dashboard/document_view.php?id=' + encodeURIComponent(item.id) + '">';
+            html += '<a class="doc-search-result-item" href="/dashboard/document_view.php?id=' + encodeURIComponent(item.id) + '&q=' + encodeURIComponent(query) + '">';
             html += '<div class="doc-search-result-title">' + escapeHtml(item.title) + '</div>';
             html += '<div class="doc-search-result-meta">' + escapeHtml(item.breadcrumb) + '</div>';
             if (item.snippet) {
