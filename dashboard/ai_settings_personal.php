@@ -7,6 +7,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/groq_settings.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 ems_ai_ds_ensure_tables($pdo);
@@ -31,6 +32,13 @@ $defaultModel = trim((string) ($userSettings['default_model'] ?? '')) !== ''
 $modelOptions = ems_ai_model_options();
 $savedAt = $userSettings['updated_at'] ?? $userSettings['created_at'] ?? null;
 
+$groqKeyMasked = ems_groq_mask_key($userSettings['groq_api_key'] ?? '');
+$groqModel = trim((string) ($userSettings['groq_default_model'] ?? '')) !== ''
+    ? (string) $userSettings['groq_default_model']
+    : 'openai/gpt-oss-120b';
+$groqModelOptions = ems_groq_model_options();
+$groqSavedAt = $userSettings['updated_at'] ?? null;
+
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
 ?>
@@ -39,7 +47,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
                 <h1 class="page-title">Setting AI Saya</h1>
-                <p class="page-subtitle">API key Gemini pribadi Anda — dipakai untuk seluruh fitur Roxwood Hospital AI (AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI, Psychiatry Center, dan Rekam Medis AI).</p>
+                <p class="page-subtitle">API key AI pribadi Anda — Gemini untuk seluruh fitur Roxwood Hospital AI (AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI, Psychiatry Center, Rekam Medis AI), dan Groq untuk chat bot internal Roxy.</p>
             </div>
             <div class="badge-info">Akses: Semua User</div>
         </div>
@@ -171,6 +179,96 @@ include __DIR__ . '/../partials/sidebar.php';
                     <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection" class="btn-success">
                         <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                         <span>Test Koneksi Gemini</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- TUTORIAL: CARA MENDAPATKAN API KEY GROQ (untuk chat bot Roxy) -->
+        <div class="card mt-4 mb-4">
+            <div class="card-header">
+                <?= ems_icon('chat-bubble-left-right', 'h-5 w-5') ?>
+                <span>Cara Mendapatkan API Key Groq — untuk Chat Bot Roxy (Gratis, ± 2 Menit)</span>
+            </div>
+            <div class="card-body space-y-3 text-sm text-slate-700">
+                <p>
+                    Chat bot internal <strong>Roxy</strong> butuh API key Groq <strong>milik Anda sendiri</strong>
+                    (tidak boleh pinjam/pakai bareng punya orang lain) — ini terpisah total dari API key Gemini
+                    di atas, dan providernya beda (Groq, bukan Google). Alasan kenapa harus per-orang: tier
+                    gratis Groq cuma 1.000 request/hari per akun, jadi kalau dipakai bareng-bareng oleh semua
+                    staff, jatahnya akan cepat habis.
+                </p>
+
+                <ol class="list-decimal ml-5 space-y-2">
+                    <li>
+                        Buka
+                        <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" class="font-semibold underline" style="color:#0284c7;">https://console.groq.com</a>
+                        di tab baru, lalu <strong>login/daftar</strong> (bisa pakai akun Google/GitHub/email
+                        pribadi, tidak perlu kartu kredit).
+                    </li>
+                    <li>
+                        Di dashboard, buka menu <strong>API Keys</strong> di sidebar kiri.
+                    </li>
+                    <li>
+                        Klik <strong>Create API Key</strong>, beri nama bebas (mis. "Roxy"), lalu salin key
+                        yang muncul (formatnya diawali <code>gsk_...</code>, <strong>hanya tampil sekali</strong>
+                        — kalau lupa menyalin, tinggal buat key baru).
+                    </li>
+                    <li>
+                        Kembali ke halaman ini, tempel key tadi ke kolom <strong>"Groq API Key"</strong> di
+                        bawah, klik <strong>"Simpan"</strong>, lalu <strong>"Test Koneksi Groq"</strong>.
+                    </li>
+                </ol>
+
+                <div class="alert alert-warning !mt-3">
+                    <strong>Penting soal keamanan:</strong> perlakukan API key Groq sama seperti password
+                    pribadi dan API key Gemini — jangan pernah dibagikan ke siapa pun.
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-0">
+            <div class="card-header">
+                <?= ems_icon('chat-bubble-left-right', 'h-5 w-5') ?>
+                <span>Konfigurasi Groq (Chat Bot Roxy)</span>
+            </div>
+
+            <form method="post" action="ai_settings_personal_action.php?action=save_groq" class="space-y-4">
+                <?= csrfField(); ?>
+
+                <div>
+                    <label class="text-sm font-semibold text-slate-900" for="groq_api_key">Groq API Key</label>
+                    <input
+                        id="groq_api_key"
+                        name="groq_api_key"
+                        type="password"
+                        placeholder="<?= $groqKeyMasked !== '' ? htmlspecialchars($groqKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan Groq API Key (gsk_...)' ?>"
+                        autocomplete="new-password">
+                    <div class="helper-note mt-1">
+                        Biarkan kosong jika tidak ingin mengganti key. Key aktif saat ini: <strong><?= $groqKeyMasked !== '' ? htmlspecialchars($groqKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong>
+                        <?php if ($groqSavedAt && $groqKeyMasked !== ''): ?>
+                            <span>(terakhir diperbarui <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $groqSavedAt)), ENT_QUOTES, 'UTF-8') ?>)</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-semibold text-slate-900" for="groq_model">Model</label>
+                    <select id="groq_model" name="groq_model">
+                        <?php foreach ($groqModelOptions as $modelValue => $modelLabel): ?>
+                            <option value="<?= htmlspecialchars($modelValue, ENT_QUOTES, 'UTF-8') ?>" <?= $groqModel === $modelValue ? 'selected' : '' ?>><?= htmlspecialchars($modelLabel, ENT_QUOTES, 'UTF-8') ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="flex flex-wrap gap-3 pt-2">
+                    <button type="submit" class="btn-primary">
+                        <?= ems_icon('check', 'h-4 w-4') ?>
+                        <span>Simpan</span>
+                    </button>
+                    <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection_groq" class="btn-success">
+                        <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                        <span>Test Koneksi Groq</span>
                     </button>
                 </div>
             </form>

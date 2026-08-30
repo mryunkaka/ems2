@@ -7,6 +7,8 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/groq_settings.php';
+require_once __DIR__ . '/../actions/groq_client.php';
 
 ems_ai_ds_ensure_tables($pdo);
 
@@ -35,35 +37,42 @@ if ($userId <= 0) {
 $existing = ems_ai_ds_get_user_settings($pdo, $userId);
 $isProgrammer = ems_current_user_is_programmer_roxwood();
 
-$apiKeyInput = trim((string) ($_POST['gemini_api_key'] ?? ''));
-$apiKey = $apiKeyInput !== '' ? $apiKeyInput : (string) ($existing['gemini_api_key'] ?? '');
+// Validasi field Gemini di bawah ini HANYA relevan untuk action Gemini
+// ('save'/'test_connection') — dilewati sama sekali untuk action Groq
+// ('save_groq'/'test_connection_groq', lihat blok tersendiri di bawah),
+// supaya user yang belum pernah setting Gemini sama sekali tetap bisa
+// setup Groq saja tanpa ketolak validasi "API key Gemini wajib diisi".
+if (in_array($action, ['save', 'test_connection'], true)) {
+    $apiKeyInput = trim((string) ($_POST['gemini_api_key'] ?? ''));
+    $apiKey = $apiKeyInput !== '' ? $apiKeyInput : (string) ($existing['gemini_api_key'] ?? '');
 
-// Base URL & Model hanya boleh diubah oleh Programmer Roxwood — user lain (medis)
-// tidak diberi field ini di UI, dan di sini nilai POST dari mereka diabaikan sama
-// sekali (bukan cuma disembunyikan di form) supaya tidak bisa dilewati lewat
-// request mentah. Mereka tetap memakai nilai yang sudah tersimpan / default sistem.
-if ($isProgrammer) {
-    $baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-    $model = trim((string) ($_POST['default_model'] ?? 'gemini-3.5-flash-lite'));
-} else {
-    $baseUrl = rtrim(trim((string) ($existing['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-    $model = trim((string) ($existing['default_model'] ?? 'gemini-3.5-flash-lite'));
-}
+    // Base URL & Model hanya boleh diubah oleh Programmer Roxwood — user lain (medis)
+    // tidak diberi field ini di UI, dan di sini nilai POST dari mereka diabaikan sama
+    // sekali (bukan cuma disembunyikan di form) supaya tidak bisa dilewati lewat
+    // request mentah. Mereka tetap memakai nilai yang sudah tersimpan / default sistem.
+    if ($isProgrammer) {
+        $baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
+        $model = trim((string) ($_POST['default_model'] ?? 'gemini-3.5-flash-lite'));
+    } else {
+        $baseUrl = rtrim(trim((string) ($existing['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
+        $model = trim((string) ($existing['default_model'] ?? 'gemini-3.5-flash-lite'));
+    }
 
-if (!in_array($model, ems_ai_model_options(), true)) {
-    $_SESSION['flash_errors'] = ['Model AI yang dipilih tidak valid.'];
-    header('Location: ' . $redirectTo);
-    exit;
-}
-if ($baseUrl === '') {
-    $_SESSION['flash_errors'] = ['Base URL Gemini wajib diisi.'];
-    header('Location: ' . $redirectTo);
-    exit;
-}
-if ($apiKey === '') {
-    $_SESSION['flash_errors'] = ['API key Gemini wajib diisi.'];
-    header('Location: ' . $redirectTo);
-    exit;
+    if (!in_array($model, ems_ai_model_options(), true)) {
+        $_SESSION['flash_errors'] = ['Model AI yang dipilih tidak valid.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+    if ($baseUrl === '') {
+        $_SESSION['flash_errors'] = ['Base URL Gemini wajib diisi.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+    if ($apiKey === '') {
+        $_SESSION['flash_errors'] = ['API key Gemini wajib diisi.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
 }
 
 if ($action === 'save') {
@@ -99,6 +108,52 @@ if ($action === 'test_connection') {
         ];
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Test koneksi Gemini gagal: ' . $e->getMessage()];
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
+if ($action === 'save_groq' || $action === 'test_connection_groq') {
+    $groqExisting = ems_groq_get_user_settings($pdo, $userId) ?? [];
+    $groqKeyInput = trim((string) ($_POST['groq_api_key'] ?? ''));
+    $groqApiKey = $groqKeyInput !== '' ? $groqKeyInput : (string) ($groqExisting['groq_api_key'] ?? '');
+    $groqModel = trim((string) ($_POST['groq_model'] ?? 'openai/gpt-oss-120b'));
+
+    if (!array_key_exists($groqModel, ems_groq_model_options())) {
+        $_SESSION['flash_errors'] = ['Model Groq yang dipilih tidak valid.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+    if ($groqApiKey === '') {
+        $_SESSION['flash_errors'] = ['API key Groq wajib diisi.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    if ($action === 'save_groq') {
+        try {
+            ems_groq_save_user_settings($pdo, $userId, $groqApiKey, $groqModel);
+            $_SESSION['flash_messages'] = ['Setting Groq berhasil disimpan.'];
+        } catch (Throwable $e) {
+            $_SESSION['flash_errors'] = ['Gagal menyimpan setting Groq: ' . $e->getMessage()];
+        }
+
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    try {
+        $result = ems_groq_test_connection($pdo, [
+            'groq_api_key' => $groqApiKey,
+            'groq_default_model' => $groqModel,
+        ], $userId);
+        $_SESSION['flash_messages'] = [
+            'Test koneksi Groq berhasil dengan model ' . $result['model'] . '.',
+            'Response: ' . trim((string) $result['content']),
+        ];
+    } catch (Throwable $e) {
+        $_SESSION['flash_errors'] = ['Test koneksi Groq gagal: ' . $e->getMessage()];
     }
 
     header('Location: ' . $redirectTo);

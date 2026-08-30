@@ -97,6 +97,20 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
         ");
     }
+
+    // Groq API key pribadi untuk chat bot Roxy (docs/AI_ASSISTANT_MODULE.md) —
+    // ditambahkan di tabel yang sama dengan Gemini pribadi, BUKAN tabel/setting
+    // global, karena tier gratis Groq cuma 1.000 request/hari PER AKUN (dicek
+    // langsung lewat header rate-limit API sungguhan, 2026-08-30) — dengan 154
+    // staff aktif, satu key global dibagi rata tidak cukup untuk desain Roxy
+    // yang mengirim ulang seluruh riwayat percakapan tiap balasan.
+    if (ems_table_exists($pdo, 'user_ai_settings') && !ems_column_exists($pdo, 'user_ai_settings', 'groq_api_key')) {
+        $pdo->exec("
+            ALTER TABLE `user_ai_settings`
+                ADD COLUMN `groq_api_key` VARCHAR(255) NULL AFTER `default_model`,
+                ADD COLUMN `groq_default_model` VARCHAR(100) NOT NULL DEFAULT 'openai/gpt-oss-120b' AFTER `groq_api_key`
+        ");
+    }
 }
 
 /**
