@@ -161,6 +161,252 @@ $realtimeChatViewer = [
     </div>
 <?php endif; ?>
 
+<?php
+// Widget bubble Roxy (docs/AI_ASSISTANT_MODULE.md §4a) — bersebelahan
+// (ditumpuk di atas) bubble Live Chat di atas, untuk obrolan cepat tanpa
+// pindah halaman. Isinya murni personal (percakapan user yang sedang
+// login saja) — reuse endpoint yang sama dengan halaman chat penuh
+// (dashboard/ai_assistant.php), bukan implementasi terpisah.
+$roxyWidgetEnabled = isset($pdo) && !empty($_SESSION['user_rh']['id']);
+$roxyHasGroqKey = false;
+if ($roxyWidgetEnabled) {
+    require_once __DIR__ . '/../config/groq_settings.php';
+    $roxyWidgetSettings = ems_groq_get_user_settings($pdo, (int) $_SESSION['user_rh']['id']);
+    $roxyHasGroqKey = $roxyWidgetSettings !== null && trim((string) ($roxyWidgetSettings['groq_api_key'] ?? '')) !== '';
+}
+?>
+<?php if ($roxyWidgetEnabled): ?>
+    <div id="roxyWidget" class="roxy-widget" aria-live="polite">
+        <div id="roxyWidgetPanel" class="roxy-widget-panel hidden">
+            <div class="roxy-widget-head">
+                <div class="roxy-widget-head-title">
+                    <div id="roxyWidgetAvatar" class="roxy-widget-avatar">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12c0-4.97 4.03-9 9-9 2.397 0 4.575.938 6.19 2.468A8.962 8.962 0 0 1 20.25 12a8.962 8.962 0 0 1-2.81 6.532A8.962 8.962 0 0 1 11.25 21a8.962 8.962 0 0 1-6.364-2.636L2.25 21l1.636-4.636A8.962 8.962 0 0 1 2.25 12Z" /></svg>
+                    </div>
+                    <div>
+                        <div class="roxy-widget-title">Roxy</div>
+                        <div id="roxyWidgetStatus" class="roxy-widget-subtitle">Siap membantu</div>
+                    </div>
+                </div>
+                <div class="roxy-widget-head-actions">
+                    <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_assistant.php'), ENT_QUOTES, 'UTF-8') ?>" class="roxy-widget-iconbtn" title="Buka halaman penuh">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H19.5m0 0v6m0-6-7.5 7.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5H5.25A2.25 2.25 0 0 0 3 9.75v9A2.25 2.25 0 0 0 5.25 21h9a2.25 2.25 0 0 0 2.25-2.25V18" /></svg>
+                    </a>
+                    <button type="button" id="roxyWidgetClose" class="roxy-widget-iconbtn" aria-label="Tutup Roxy">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            </div>
+
+            <?php if (!$roxyHasGroqKey): ?>
+                <div class="roxy-widget-warning">
+                    Kamu belum atur API key Groq pribadi.
+                    <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>">Atur di Setting AI Saya</a>.
+                </div>
+            <?php endif; ?>
+
+            <div id="roxyWidgetMessages" class="roxy-widget-messages"></div>
+            <div id="roxyWidgetTyping" class="roxy-widget-typing hidden">Roxy sedang mengetik...</div>
+
+            <form id="roxyWidgetForm" class="roxy-widget-form">
+                <textarea id="roxyWidgetInput" rows="1" maxlength="4000" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$roxyHasGroqKey ? 'disabled' : '' ?>></textarea>
+                <button type="submit" id="roxyWidgetSend" class="roxy-widget-send" aria-label="Kirim" <?= !$roxyHasGroqKey ? 'disabled' : '' ?>>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
+                </button>
+            </form>
+        </div>
+
+        <button type="button" id="roxyWidgetToggle" class="roxy-widget-toggle" aria-label="Buka Roxy">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12c0-4.97 4.03-9 9-9 2.397 0 4.575.938 6.19 2.468A8.962 8.962 0 0 1 20.25 12a8.962 8.962 0 0 1-2.81 6.532A8.962 8.962 0 0 1 11.25 21a8.962 8.962 0 0 1-6.364-2.636L2.25 21l1.636-4.636A8.962 8.962 0 0 1 2.25 12Z" /></svg>
+            <span class="roxy-widget-toggle-label">Roxy</span>
+        </button>
+    </div>
+
+    <style>
+        .roxy-widget { position: fixed; right: 16px; bottom: 90px; z-index: 99985; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; font-family: inherit; }
+        .roxy-widget-toggle { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: none; background: #0ea5e9; color: #fff; box-shadow: 0 10px 25px rgba(14,165,233,.35); cursor: pointer; font-size: 13px; font-weight: 700; }
+        .roxy-widget-toggle:hover { background: #0284c7; }
+        .roxy-widget-panel { width: 320px; max-width: calc(100vw - 32px); height: 440px; max-height: calc(100vh - 140px); background: #fff; border-radius: 16px; box-shadow: 0 20px 45px rgba(15,23,42,.25); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #e2e8f0; }
+        .roxy-widget-panel.hidden { display: none; }
+        .roxy-widget-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+        .roxy-widget-head-title { display: flex; align-items: center; gap: 8px; }
+        .roxy-widget-avatar { width: 32px; height: 32px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: #e2e8f0; color: #475569; flex-shrink: 0; transition: background-color .2s, color .2s; }
+        .roxy-widget-title { font-size: 13px; font-weight: 700; color: #0f172a; }
+        .roxy-widget-subtitle { font-size: 11px; color: #64748b; }
+        .roxy-widget-head-actions { display: flex; align-items: center; gap: 4px; }
+        .roxy-widget-iconbtn { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; margin: 0; box-sizing: border-box; border-radius: 8px; border: none; background: transparent; color: #64748b; cursor: pointer; appearance: none; -webkit-appearance: none; line-height: 1; text-decoration: none; flex-shrink: 0; }
+        .roxy-widget-iconbtn:hover { background: #e2e8f0; }
+        .roxy-widget-iconbtn svg { display: block; flex-shrink: 0; pointer-events: none; }
+        .roxy-widget-warning { font-size: 11px; color: #92400e; background: #fef3c7; padding: 8px 12px; border-bottom: 1px solid #fde68a; }
+        .roxy-widget-warning a { font-weight: 700; text-decoration: underline; }
+        .roxy-widget-messages { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: #f8fafc; }
+        .roxy-widget-bubble-wrap { display: flex; flex-direction: column; max-width: 85%; }
+        .roxy-widget-bubble-wrap.user { align-self: flex-end; align-items: flex-end; }
+        .roxy-widget-bubble-wrap.bot { align-self: flex-start; align-items: flex-start; }
+        .roxy-widget-bubble { padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .roxy-widget-bubble-wrap.user .roxy-widget-bubble { background: #0ea5e9; color: #fff; border-bottom-right-radius: 3px; }
+        .roxy-widget-bubble-wrap.bot .roxy-widget-bubble { background: #fff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+        .roxy-widget-typing { font-size: 11px; color: #94a3b8; font-style: italic; padding: 0 12px 4px; background: #f8fafc; }
+        .roxy-widget-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #e2e8f0; }
+        .roxy-widget-form textarea { flex: 1; resize: none; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; max-height: 80px; }
+        .roxy-widget-send { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: none; background: #0ea5e9; color: #fff; cursor: pointer; flex-shrink: 0; }
+        .roxy-widget-send:disabled, .roxy-widget-form textarea:disabled { opacity: .5; cursor: not-allowed; }
+        .roxy-widget-send:hover:not(:disabled) { background: #0284c7; }
+        @media (max-width: 480px) {
+            .roxy-widget { right: 10px; bottom: 78px; }
+            .roxy-widget-panel { width: calc(100vw - 20px); }
+        }
+    </style>
+
+    <script>
+    (function () {
+        var CSRF_TOKEN = String(window.EMS_CSRF_TOKEN || '');
+        var HAS_GROQ_KEY = <?= $roxyHasGroqKey ? 'true' : 'false' ?>;
+        var conversationId = 0;
+        var loaded = false;
+
+        var toggle = document.getElementById('roxyWidgetToggle');
+        var panel = document.getElementById('roxyWidgetPanel');
+        var closeBtn = document.getElementById('roxyWidgetClose');
+        var messagesEl = document.getElementById('roxyWidgetMessages');
+        var typingEl = document.getElementById('roxyWidgetTyping');
+        var form = document.getElementById('roxyWidgetForm');
+        var input = document.getElementById('roxyWidgetInput');
+        var sendBtn = document.getElementById('roxyWidgetSend');
+        var avatarEl = document.getElementById('roxyWidgetAvatar');
+        var statusEl = document.getElementById('roxyWidgetStatus');
+
+        var EXPRESSION_STYLE = {
+            netral: { bg: '#e2e8f0', color: '#475569', label: 'Siap membantu' },
+            thinking: { bg: '#fef3c7', color: '#92400e', label: 'Sedang berpikir' },
+            happy: { bg: '#dcfce7', color: '#166534', label: 'Senang membantu' },
+            empathetic: { bg: '#fce7f3', color: '#9d174d', label: 'Memahami situasimu' },
+            alert: { bg: '#fee2e2', color: '#991b1b', label: 'Perlu perhatian' },
+            confused: { bg: '#dbeafe', color: '#1e40af', label: 'Butuh klarifikasi' },
+        };
+
+        function setExpression(expr) {
+            var s = EXPRESSION_STYLE[expr] || EXPRESSION_STYLE.netral;
+            avatarEl.style.background = s.bg;
+            avatarEl.style.color = s.color;
+            statusEl.textContent = s.label;
+        }
+
+        function escapeHtml(str) {
+            var div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function appendBubble(sender, text) {
+            var wrap = document.createElement('div');
+            wrap.className = 'roxy-widget-bubble-wrap ' + (sender === 'user' ? 'user' : 'bot');
+            var bubble = document.createElement('div');
+            bubble.className = 'roxy-widget-bubble';
+            bubble.textContent = text;
+            wrap.appendChild(bubble);
+            messagesEl.appendChild(wrap);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function greet() {
+            appendBubble('bot', 'Halo! Aku Roxy. Ada yang bisa aku bantu soal aplikasi ini atau SOP medis?');
+        }
+
+        function loadLatestConversation() {
+            fetch('<?= htmlspecialchars(ems_url('/ajax/roxy_conversations.php'), ENT_QUOTES, 'UTF-8') ?>?action=list')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data.success || !data.conversations.length) {
+                        greet();
+                        return;
+                    }
+                    conversationId = data.conversations[0].id;
+                    return fetch('<?= htmlspecialchars(ems_url('/ajax/roxy_conversations.php'), ENT_QUOTES, 'UTF-8') ?>?action=messages&conversation_id=' + conversationId)
+                        .then(function (r) { return r.json(); })
+                        .then(function (msgData) {
+                            if (!msgData.success || !msgData.messages.length) {
+                                greet();
+                                return;
+                            }
+                            msgData.messages.forEach(function (m) { appendBubble(m.sender, m.content); });
+                            var last = msgData.messages[msgData.messages.length - 1];
+                            if (last.sender === 'bot' && last.expression_tag) setExpression(last.expression_tag);
+                        });
+                })
+                .catch(function () { greet(); });
+        }
+
+        toggle.addEventListener('click', function () {
+            panel.classList.remove('hidden');
+            toggle.classList.add('hidden');
+            if (!loaded) {
+                loaded = true;
+                loadLatestConversation();
+            }
+            if (HAS_GROQ_KEY) input.focus();
+        });
+
+        closeBtn.addEventListener('click', function () {
+            panel.classList.add('hidden');
+            toggle.classList.remove('hidden');
+        });
+
+        function sendMessage() {
+            var text = input.value.trim();
+            if (!text || sendBtn.disabled) return;
+
+            appendBubble('user', text);
+            input.value = '';
+            sendBtn.disabled = true;
+            typingEl.classList.remove('hidden');
+            setExpression('thinking');
+
+            var body = new URLSearchParams();
+            body.set('csrf_token', CSRF_TOKEN);
+            body.set('conversation_id', String(conversationId));
+            body.set('message', text);
+
+            fetch('<?= htmlspecialchars(ems_url('/actions/roxy_chat_action.php'), ENT_QUOTES, 'UTF-8') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    typingEl.classList.add('hidden');
+                    sendBtn.disabled = false;
+                    if (!data.success) {
+                        setExpression('alert');
+                        appendBubble('bot', data.message || 'Roxy gagal menjawab, coba lagi.');
+                        return;
+                    }
+                    conversationId = data.conversation_id;
+                    setExpression(data.expression || 'netral');
+                    appendBubble('bot', data.answer);
+                })
+                .catch(function () {
+                    typingEl.classList.add('hidden');
+                    sendBtn.disabled = false;
+                    setExpression('alert');
+                    appendBubble('bot', 'Koneksi ke Roxy gagal. Coba lagi.');
+                });
+        }
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            sendMessage();
+        });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    })();
+    </script>
+<?php endif; ?>
+
 <script src="<?= htmlspecialchars(ems_asset('/assets/js/app.js?refresh=20260501-setting-akun-fast'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/design/js/app-shell.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
 <script src="<?= htmlspecialchars(ems_asset('/assets/vendor/photoswipe/photoswipe.umd.min.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
