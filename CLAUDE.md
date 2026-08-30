@@ -1407,6 +1407,74 @@ codebase).
   safe opportunity exists, per this codebase's established caveat for
   UI-only changes made without browser access.
 
+### Roxy — internal AI chat bot (Fase 1 MVP, added 2026-08-30)
+Full PRD/ERD lives in `docs/AI_ASSISTANT_MODULE.md` — read that first for
+anything non-obvious; this entry is a summary. General-purpose assistant
+for "how do I use this app" / SOP questions, distinct from the
+per-feature "Roxwood Hospital AI" suite (Diagnosis/Surgery/Radiology/etc).
+- **Provider architecture**: tingkat 1 = **Groq** (`openai/gpt-oss-120b`
+  default — verified live against `GET /openai/v1/models`, NOT the
+  Llama/Gemma names originally assumed, since Groq's catalog had already
+  moved on), **per-user API key** (`user_ai_settings.groq_api_key`/
+  `groq_default_model`, same table as Gemini personal — NOT a global
+  setting as first built, corrected same-day after checking real
+  rate-limit headers: Groq free tier is 1.000 req/day + 8.000 tok/min
+  **per account**, and with 154 active staff a shared key would starve
+  everyone). Tingkat 2 = existing personal Gemini key
+  (`ems_ai_ds_call_gemini()`, full reuse), triggered only when Groq's
+  structured response sets `needs_deeper_research: true`.
+- **Retrieval** (`config/roxy_chatbot.php`): FULLTEXT across 3 sources —
+  `bot_knowledge_base` (manual how-to articles, empty until seeded),
+  `document_files` (reuses `ems_document_search()` from the Document
+  Library module as-is), and a **hardcoded whitelist** of 6 Secretary/
+  Surat attachment tables (`ems_roxy_secretary_sources()`) — Surat
+  Rahasia and Komdis attachments are deliberately **never** in that
+  whitelist, even though they're technically FULLTEXT-searchable now, so
+  there is no code path for Roxy to ever quote them to any user. Needed a
+  new migration (`77_...roxy_secretary_fulltext.sql`) since those 6
+  tables had the `extracted_text` column but no FULLTEXT index yet.
+- **Data model**: `bot_conversations`/`bot_messages` (own tables, one
+  conversation = one user, never mixed), `bot_knowledge_base` (FULLTEXT,
+  manager-plus-managed — management UI not built yet in Fase 1).
+  `bot_answer_corrections`/`bot_learned_answers` (training/correction
+  loop) are Fase 2, tables don't exist yet.
+- **Guardrails**: system prompt (`ems_roxy_default_system_prompt()`)
+  hard-locks scope to the app/SOP, explicitly labels retrieved context as
+  data-not-instructions (prompt-injection defense), forbids any
+  code/tool-execution claims. Rate-limited per user
+  (`emsRequireRateLimit()`), every Groq/Gemini call logged via the
+  existing `system_ai_request_logs` pattern.
+- **Pages**: `dashboard/ai_assistant.php` (own chat + conversation
+  history, avatar with 6 expression states — **rendered via the existing
+  `ems_icon()` heroicon set + color, not custom character SVG artwork**,
+  a deliberate scope call given this is plain PHP with no design/game
+  engine), `dashboard/ai_assistant_monitoring.php` (manager-plus,
+  conversations grouped by medic per §4c of the PRD). Both registered in
+  `$roxwoodHospitalAiPages` (open to any logged-in user/division) and the
+  "Roxwood Hospital AI" sidebar group, positioned after the clinical-case
+  chain but before "Setting AI Saya" (general-purpose tool, not a case
+  step, not account settings).
+- **Endpoints**: `actions/roxy_chat_action.php` (send message — CSRF +
+  per-user rate limit, creates/reuses a conversation, saves both sides of
+  the turn), `ajax/roxy_conversations.php` (list/read — ownership-checked
+  for regular users, manager-plus can read any conversation for the
+  monitoring page only).
+- Verified against the real local dev DB and the real Groq API (not
+  mocked): full retrieval → prompt → Groq structured-JSON round trip with
+  a real question ("Bagaimana cara penanganan awal pasien di IGD?")
+  produced a coherent, context-grounded answer citing the actual
+  `document_files` handbook section; the Secretary/Surat whitelist
+  retrieval independently verified against real imported data ("kerja
+  sama", "notulen" queries correctly surfaced real File Registry/Notulen
+  rows). HTTP-level click-through (the actual chat page UI, avatar
+  expression switching, monitoring modal) **not** exercised this session —
+  no browser tooling available.
+- **Not yet built**: the footer bubble widget (§4a of the PRD) — the full
+  chat page works as a substitute for now; the knowledge-base management
+  UI for `bot_knowledge_base` (§4, manager-plus) — rows can only be
+  inserted directly against the DB today, no admin page yet; Fase 2
+  (correction/training loop) entirely.
+
 ### Medical Records / Forensic
 `rekam_medis.php`+`_action.php`+`_list.php`+`_view.php`+`_edit.php`+
 `_edit_action.php`+`_delete.php` (Quill.js rich-text report; KTP mandatory,

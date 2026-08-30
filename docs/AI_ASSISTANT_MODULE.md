@@ -581,14 +581,42 @@ non-rahasia (§6.3), panggilan Groq (tingkat 1) + eskalasi Gemini pribadi
 lengkap (§10, termasuk whitelist-bukan-blacklist untuk tabel sensitif),
 rate limiting, audit log.
 
-**Status Fase 1 per 2026-08-30**: fondasi sudah selesai & diuji dengan
-API key Groq real milik user — migrasi `76_...roxy_chatbot_foundation.sql`
-(`bot_conversations`/`bot_messages`/`bot_knowledge_base` + kolom Groq di
-`user_ai_settings`), `config/groq_settings.php`, `actions/groq_client.php`,
-dan card "Konfigurasi Groq (Chat Bot Roxy)" sudah jalan (test koneksi
-sungguhan berhasil, model `openai/gpt-oss-120b`). **Belum dikerjakan**:
-logika retrieval whitelist §6.3, endpoint chat, halaman chat +
-monitoring, widget bubble, avatar.
+**Status Fase 1 per 2026-08-30**: hampir seluruh Fase 1 selesai & diuji
+end-to-end dengan API key Groq real milik user (lint-checked semua file +
+diuji langsung terhadap DB lokal nyata, bukan cuma dry-run):
+- Fondasi: migrasi `76_...roxy_chatbot_foundation.sql` (`bot_conversations`/
+  `bot_messages`/`bot_knowledge_base` + kolom Groq di `user_ai_settings`),
+  `config/groq_settings.php`, `actions/groq_client.php`, card "Konfigurasi
+  Groq (Chat Bot Roxy)" di `ai_settings_personal.php`.
+- Retrieval §6.3: `config/roxy_chatbot.php` — 3 sumber aktif
+  (`bot_knowledge_base`, `document_files` via `ems_document_search()`
+  reuse, whitelist 6 tabel Secretary/Surat via
+  `ems_roxy_search_secretary_attachments()`) + migrasi
+  `77_...roxy_secretary_fulltext.sql` (index FULLTEXT `extracted_text` 6
+  tabel itu, belum ada sebelumnya). Diverifikasi dengan query nyata
+  ("kerja sama", "notulen") mengembalikan hasil relevan dari data real
+  (proposal kerja sama Motionline Media, notulen SAR, dst).
+- Orkestrasi chat: `ems_roxy_ask()` (system prompt + guardrail + retrieval
+  + riwayat percakapan → Groq JSON terstruktur → eskalasi Gemini pribadi
+  kalau `needs_deeper_research=true`). Diuji end-to-end dengan pertanyaan
+  nyata ("Bagaimana cara penanganan awal pasien di IGD?") — jawaban
+  koheren, mengutip modul PRIMARY SURVEY & KEGAWATDARURATAN yang benar
+  dari `document_files`.
+- Endpoint: `actions/roxy_chat_action.php` (kirim pesan, CSRF + rate
+  limit), `ajax/roxy_conversations.php` (list/messages, isolasi per-user
+  untuk staff biasa, akses lintas-user untuk manager-plus khusus
+  monitoring).
+- Halaman: `dashboard/ai_assistant.php` (chat + riwayat percakapan
+  pribadi, avatar 6 ekspresi berbasis `ems_icon()` + warna, bukan SVG
+  karakter custom — realistis untuk scope PHP tanpa game engine, lihat
+  §8), `dashboard/ai_assistant_monitoring.php` (manager-plus, dikelompokkan
+  per medis sesuai §4c). Terdaftar di whitelist ACL
+  `$roxwoodHospitalAiPages` + sidebar grup "Roxwood Hospital AI".
+
+**Belum dikerjakan**: widget bubble di footer (§4a — chat halaman penuh
+sudah bisa dipakai sebagai gantinya untuk sekarang), klik-uji langsung
+lewat browser (belum ada akses browser sesi ini, semua verifikasi lewat
+CLI + query langsung ke DB lokal).
 
 **Fase 2**: alur koreksi & pelatihan penuh (`bot_answer_corrections` +
 `bot_learned_answers` + verifikasi otomatis + halaman review manager).

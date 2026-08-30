@@ -1377,6 +1377,8 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         'psychiatry_center.php',
         'psychiatry_center_action.php',
         'psychiatry_report.php',
+        'ai_assistant.php',
+        'ai_assistant_monitoring.php',
     ];
     if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
         return;
