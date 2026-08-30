@@ -297,7 +297,19 @@ function ems_document_extract_text(string $fullPath, string $ext): array
             require_once __DIR__ . '/../vendor/autoload.php';
             $parser = new \Smalot\PdfParser\Parser();
             $pdf = $parser->parseFile($fullPath);
-            $content = ems_document_normalize_extracted_text((string)$pdf->getText());
+            $rawText = (string)$pdf->getText();
+            // smalot/pdfparser sisip literal "<>" kosong di antara tiap
+            // karakter untuk font/PDF tertentu (glyph-per-glyph text run
+            // yang di-join dengan delimiter kosong ini oleh library-nya
+            // sendiri, bukan bug di kode kita) — ditemukan langsung lewat
+            // hex-dump byte demi byte pada dokumen real (2026-08-30), bukan
+            // ditebak. HANYA pasangan kosong "<>" yang dibuang — perbandingan
+            // literal seperti "< 60 kali per menit" (ada isi di dalam
+            // kurungnya) TIDAK tersentuh, dicek eksplisit di dokumen real
+            // yang sama (7561 kemunculan "<>" kosong vs hanya 3 kemunculan
+            // "<...>" berisi, semuanya perbandingan angka yang sah).
+            $rawText = str_replace('<>', '', $rawText);
+            $content = ems_document_normalize_extracted_text($rawText);
             return ['text' => $content, 'status' => $content !== '' ? 'done' : 'failed'];
         }
 

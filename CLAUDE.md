@@ -959,6 +959,77 @@ block), and nothing linked a search-result click to a location inside
   available — a future
   session should click through once a safe opportunity exists.
 
+**Two more real bugs found the same day (2026-08-30), reported via
+production screenshots comparing hosting vs. local**: user searched a
+known heading on the **production** site and got "Tidak ada dokumen yang
+cocok" (no match), while the exact same search on the local dev copy found
+it correctly — screenshots also showed the local copy's extracted text
+riddled with stray `<>` characters between letters (`R<>O<>X<>W<>O<>O<>D`
+instead of `ROXWOOD`).
+1. **`smalot/pdfparser` inserts literal empty `<>` between text runs for
+   certain PDFs/fonts** — confirmed by hex-dumping `Parser::getText()`'s
+   raw output directly (`3c 3e` = ASCII `<>`) on the real imported PDF
+   before any of this codebase's own code touches it, so this is a
+   `pdfparser`-library quirk, not a bug introduced here (title-page/heading
+   text using certain embedded fonts gets emitted as one `<>`-joined
+   character per glyph; body-paragraph text mostly emits `<>` between
+   *words* instead of *letters* — inconsistent per-font, but always the
+   same literal empty-pair token). Confirmed safe to strip: on the actual
+   affected document, literal empty `<>` occurred **7561** times vs. only
+   **3** genuine non-empty `<...>` occurrences (all legitimate numeric
+   comparisons like `< 60 kali per menit`) — so `ems_document_extract_text()`'s
+   `pdf` branch now does `str_replace('<>', '', $rawText)` on the raw
+   `getText()` output before normalizing/storing, which cannot touch a
+   real non-empty `<...>` span. Verified end-to-end: the same PDF now
+   extracts as clean, fully readable "ROXWOOD HOSPITAL / MEDICAL TRAINING
+   HANDBOOK / ..." with zero remaining `<>` occurrences, and the
+   phrase-search fix (above) now correctly finds the heading. This same
+   cleanup automatically benefits `config/attachment_extraction.php` too
+   (Secretary/Notulen/Komdis attachments) since it reuses
+   `ems_document_extract_text()` — no separate fix needed there.
+2. **Root cause of "not found on hosting at all": hosting's `vendor/`
+   directory almost certainly doesn't have `smalot/pdfparser` (added to
+   `composer.json` mid-project) actually installed** — `vendor/` is
+   gitignored (confirmed in `.gitignore`), and **production deploy turned
+   out to be via cPanel's "Git™ Version Control" pull feature, not manual
+   zip upload as previously assumed** (user corrected this directly this
+   same session — see the dedicated correction note in §10 gotcha 6c). A
+   `git`-based pull only updates tracked files; it never touches
+   `vendor/`, so unless `composer install`/`update` (or a manual `vendor/`
+   re-upload, same pattern already used for the gitignored
+   `storage/dokumen_import/` seed data) was run separately on the host
+   after `smalot/pdfparser` was added, every PDF extraction attempt there
+   silently lands in `ems_document_extract_text()`'s `catch` block and
+   returns `status: 'failed'` — which is exactly what the hosting
+   screenshot showed (no extracted-text banner at all, straight to the
+   raw PDF embed, meaning `extraction_status` never reached `'done'`).
+   **Not independently confirmed via hosting shell in this session** (no
+   direct access) — this is the single most likely explanation given the
+   confirmed gitignore/deploy-mechanism facts, and the user was given
+   verification steps (`php -r "require 'vendor/autoload.php'; var_dump
+   (class_exists('Smalot\\PdfParser\\Parser'));"`) plus a fix path
+   (`composer install` on the host if available, else re-upload `vendor/`
+   manually) rather than being told this as settled fact — **a future
+   session should confirm this was the actual cause once the user reports
+   back**, rather than assuming it's resolved.
+- **New `bin/backfill_document_extraction.php`** (CLI-only, same
+  `--dry-run` convention as the existing `bin/backfill_attachment_extraction.php`
+  and `bin/import_dokumen_seed.php`) — re-runs `ems_document_extract_text()`
+  for every `document_files` row **except** `extraction_status='manual'`
+  (never touches human-typed manual content), covering both "never
+  extracted yet" (`pending`/`failed`) and "extracted before the `<>`
+  cleanup fix existed" (`done`, safely re-extracted since it's fully
+  deterministic from the source file) in one pass — this script didn't
+  exist before today; the pre-existing backfill script only ever covered
+  the 4 Secretary/Komdis attachment tables, never `document_files`. Run
+  for real against the real local dev DB (not just `--dry-run`): all 75
+  imported documents reprocessed, 71 `done` (now `<>`-free, confirmed
+  directly on the affected `id=13` row), 4 correctly still `unsupported`
+  (genuine image files, unchanged), 0 `failed`, 0 missing-from-disk — this
+  is the same script the user should run on hosting (after fixing the
+  `vendor/` situation above) to fix the reported search-not-found issue
+  there. Lint-checked clean on the 8.4.22 binary.
+
 ### Announcement / Push-Notification-Modal ("Kelola Pengumuman", added 2026-08-30)
 A targeted broadcast modal — admin writes a message, picks who sees it and
 how often, and it pops up automatically wherever the targeted user next
@@ -1041,19 +1112,17 @@ simplest correct place to decide is PHP at render time, not JS after load.
   write a dismissal row at all; it answers "how many have actually seen
   the modal", while the inbox mirror answers "who was ever told".
 - **"Ada git commit baru" was explicitly NOT built as automatic
-  detection** (user asked for it, but production here is deployed via
-  **manual zip upload**, not `git pull` — see §0/§6 of
-  `docs/DOCUMENT_LIBRARY_MODULE.md`'s deploy-workflow context and this
-  file's own repeated "upload manual ke hosting" notes — the production
-  host has no reliable, live-synced `.git` to poll). Building real git-commit
-  polling would only ever fire on a local dev checkout, never on the
-  actual site medics use, so it was deliberately reshaped into a manual
-  one-click alternative instead: `quick_broadcast_update` action
-  (Executive-only, same button as the "Aksi Cepat" card on
+  detection** — at the time this was built, believed (from an earlier,
+  now-**corrected** assumption — see the deploy-mechanism note in §0/§10
+  below) that production had no live-synced `.git` to poll, and reshaped
+  into a manual one-click alternative instead: `quick_broadcast_update`
+  action (Executive-only, same button as the "Aksi Cepat" card on
   `announcement_manage.php`) pre-fills a canned "Ada Update Baru — silakan
   refresh halaman" announcement at scope=Semua User, frequency=once, and
-  sends it immediately — meant to be clicked by hand right after finishing
-  a production zip upload, not triggered by anything automatic.
+  sends it immediately — meant to be clicked by hand right after
+  deploying. **Not revisited as of this note** even though the corrected
+  deploy mechanism (below) may make real git-commit detection feasible
+  now — flagged for a future session, not built.
 - Verified against the real local dev DB (not synthetic fixtures where
   avoidable): migration applied cleanly; a full targeting+frequency matrix
   was exercised with real DB rows and **properly isolated PHP sessions per
@@ -3409,6 +3478,31 @@ style single-model-per-request REST pattern, just with different auth
   extreme 5700-char anamnesis → 1883 total, no anamnesis → 1321 total),
   then confirmed with one real Cloudflare API call reproducing the exact
   failing scenario — succeeded, real JPEG returned.
+6c. **Deploy-mechanism assumption corrected (2026-08-30)**: earlier
+    sessions (and the original `docs/DOCUMENT_LIBRARY_MODULE.md` write-up)
+    assumed production was deployed via **manual zip upload**, with no
+    live-synced `.git` on the host — this was used as the explicit
+    justification for NOT building automatic git-commit-based update
+    detection in the Announcement module (see "Ada git commit baru" in
+    §5). **User corrected this directly**: production PHP code is
+    actually deployed via **cPanel's "Git™ Version Control" feature**
+    (pulls from the GitHub repo `mryunkaka/ems2`) — so the host DOES have
+    a real, live-synced `.git` after all, just not `git pull`-by-hand over
+    SSH. The manual-upload part still applies, but only to **non-code
+    assets that are gitignored** (confirmed real example: `storage/`
+    contents, e.g. `storage/dokumen_import/` for the Document Library
+    seed importer — those still get zipped and extracted by hand since
+    git never tracks them). **Practical implication for future sessions**:
+    (1) don't assume a `bin/*.php` CLI script needs re-uploading
+    file-by-file — it likely arrives via the next Git Version Control
+    pull; (2) SSH/terminal access to the host **does exist** (used
+    successfully in this same session, `fouf9972@maron` host, to run
+    `php bin/import_dokumen_seed.php` and `bin/backfill_attachment_extraction.php`
+    from `~/public_html/rh_ems`) — don't assume CLI scripts are
+    unreachable on production; (3) the Announcement module's "Ada git
+    commit baru" reasoning above is now stale — automatic git-commit
+    detection may actually be feasible against the real `.git` on the
+    host, this just hasn't been revisited/rebuilt.
 7. **Upload size layering**: `.user.ini` allows 10MB at the PHP level, but
    the app enforces its own **1MB** cap (`emsUploadLimitBytes()`,
    disciplinary attachments capped tighter at 500KB) and aggressively
