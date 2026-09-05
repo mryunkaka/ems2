@@ -107,6 +107,13 @@ $portalLabel = $track === 'assistant_manager' ? 'Rekrutmen Calon Asisten Manager
                         Portal rekrutmen sedang ditutup sementara. Akses akan kembali tersedia setelah status diubah menjadi open oleh admin.
                     </p>
                 </div>
+
+                <div class="form-submit-wrapper mt-6">
+                    <a href="/public/ga_recruitment.php?reset=1" class="btn-success justify-center">
+                        <?= ems_icon('arrow-uturn-left', 'h-4 w-4') ?>
+                        <span>Clear Session dan Buka Jalur Asisten Manager</span>
+                    </a>
+                </div>
             </main>
         </div>
     </div>

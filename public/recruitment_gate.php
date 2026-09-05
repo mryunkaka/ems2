@@ -5,6 +5,7 @@ require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/recruitment_settings.php';
 
 const EMS_PUBLIC_RECRUITMENT_GATE_SESSION = 'ems_public_recruitment_gate';
+const EMS_PUBLIC_RECRUITMENT_TRACK_MAP_SESSION = 'recruitment_track_map';
 const EMS_PUBLIC_RECRUITMENT_CLOSED_PATH = '/public/recruitment_closed.php';
 
 function ems_public_recruitment_start_session(): void
@@ -14,17 +15,44 @@ function ems_public_recruitment_start_session(): void
     }
 }
 
-function ems_public_recruitment_gate_clear(): void
+function ems_public_recruitment_gate_clear(?string $track = null): void
 {
     ems_public_recruitment_start_session();
-    unset($_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION]);
+
+    if ($track === null) {
+        unset($_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION]);
+        unset($_SESSION[EMS_PUBLIC_RECRUITMENT_TRACK_MAP_SESSION]);
+        return;
+    }
+
+    $gate = $_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION] ?? null;
+    $gateTrack = is_array($gate)
+        ? ems_normalize_recruitment_type($gate['recruitment_type'] ?? 'medical_candidate')
+        : null;
+
+    if ($gateTrack === ems_normalize_recruitment_type($track)) {
+        unset($_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION]);
+        unset($_SESSION[EMS_PUBLIC_RECRUITMENT_TRACK_MAP_SESSION]);
+    }
 }
 
-function ems_public_recruitment_gate_get(): ?array
+function ems_public_recruitment_gate_get(?string $track = null): ?array
 {
     ems_public_recruitment_start_session();
     $gate = $_SESSION[EMS_PUBLIC_RECRUITMENT_GATE_SESSION] ?? null;
-    return is_array($gate) ? $gate : null;
+
+    if (!is_array($gate)) {
+        return null;
+    }
+
+    if ($track !== null) {
+        $gateTrack = ems_normalize_recruitment_type($gate['recruitment_type'] ?? 'medical_candidate');
+        if ($gateTrack !== ems_normalize_recruitment_type($track)) {
+            return null;
+        }
+    }
+
+    return $gate;
 }
 
 function ems_public_recruitment_gate_set(array $gate): void

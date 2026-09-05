@@ -3,15 +3,15 @@ require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/recruitment_gate.php';
 
-ems_public_recruitment_require_portal_open();
-
 if (isset($_GET['reset']) && $_GET['reset'] === '1') {
     ems_public_recruitment_gate_clear();
     header('Location: ' . ems_url('/public/index.php'));
     exit;
 }
 
-$existingGate = ems_public_recruitment_gate_get();
+ems_public_recruitment_require_portal_open('medical_candidate');
+
+$existingGate = ems_public_recruitment_gate_get('medical_candidate');
 if ($existingGate && !empty($existingGate['citizen_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $freshGate = ems_public_recruitment_build_gate($pdo, (string)$existingGate['citizen_id'], [
         'ic_name' => (string)($existingGate['ic_name'] ?? ''),

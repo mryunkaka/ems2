@@ -75,11 +75,15 @@ $profile = ems_recruitment_profile('assistant_manager');
                         <h2 class="public-form-title">Formulir Calon Asisten Manager</h2>
                         <p class="public-form-subtitle">Isi seluruh kolom wajib sebelum melanjutkan ke assessment Asisten Manager.</p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <button type="button" id="clearAssistantManagerDraft" class="btn-secondary px-3 py-2 text-xs">
                             <?= ems_icon('trash', 'h-4 w-4') ?>
                             <span>Clear Draft</span>
                         </button>
+                        <a href="/public/ga_recruitment.php?reset=1" class="btn-secondary px-3 py-2 text-xs">
+                            <?= ems_icon('arrow-uturn-left', 'h-4 w-4') ?>
+                            <span>Clear Session</span>
+                        </a>
                         <div class="badge-muted"><?= htmlspecialchars($profile['badge']) ?></div>
                     </div>
                 </div>
