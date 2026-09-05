@@ -780,15 +780,34 @@ include __DIR__ . '/../partials/sidebar.php';
 <!-- =========================
 MODAL IMPORT KONSUMEN (EMS)
 ========================= -->
-<div id="importModal" class="ems-modal-overlay hidden">
+<div id="importModal" class="ems-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
     <div class="ems-modal-card modal-frame-md">
 
-        <h4 class="inline-flex items-center gap-2">
+        <h4 id="importModalTitle" class="inline-flex items-center gap-2">
             <?= ems_icon('arrow-up-tray', 'h-5 w-5') ?>
-            <span>Import Data Transaksi</span>
+            <span>Import / Download Excel</span>
         </h4>
 
         <form id="importForm" enctype="multipart/form-data">
+
+            <div class="info-box mb-4">
+                <div class="info-icon">
+                    <?= ems_icon('information-circle', 'h-5 w-5') ?>
+                </div>
+                <div>
+                    <strong>Gunakan format template agar data terbaca benar.</strong>
+                    <div class="mt-1">Template berisi sheet Data Import, Contoh Import, Petunjuk, dan Referensi Paket.</div>
+                </div>
+            </div>
+
+            <div class="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
+                <div class="font-semibold text-slate-900">Belum punya format file?</div>
+                <div class="mt-1 text-sm text-slate-600">Download template, lalu isi data pada sheet Data Import. Jangan mengubah urutan tiga kolom.</div>
+                <a href="/actions/download_import_sales_template.php" class="btn btn-secondary mt-3 inline-flex" download>
+                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
+                    <span>Download Example Import</span>
+                </a>
+            </div>
 
             <div class="ems-form-group">
                 <label>Nama Medis Yang Input</label>
@@ -1104,13 +1123,24 @@ MODAL IMPORT KONSUMEN (EMS)
     // IMPORT MODAL HANDLERS
     // ================================================
     function openImportModal() {
-        document.getElementById('importModal').style.display = 'flex';
+        const modal = document.getElementById('importModal');
+        if (!modal) return;
+
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+        document.body.classList.add('modal-open');
         document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
     }
 
     function closeImportModal() {
-        document.getElementById('importModal').style.display = 'none';
-        document.getElementById('importForm').reset();
+        const modal = document.getElementById('importModal');
+        const form = document.getElementById('importForm');
+        if (!modal || !form) return;
+
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+        document.body.classList.remove('modal-open');
+        form.reset();
         document.getElementById('importProgress').style.display = 'none';
         document.getElementById('medicSuggestions').style.display = 'none';
     }
