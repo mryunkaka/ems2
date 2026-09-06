@@ -413,7 +413,7 @@ if ($q !== '' || ($startDate && $endDate)) {
         FROM sales s
         LEFT JOIN identity_master im ON im.id = s.identity_id
         WHERE 1=1
-          AND s.unit_code = :unit_code
+          AND COALESCE(s.unit_code, 'roxwood') = :unit_code
     ";
 
     $params = [
@@ -802,7 +802,7 @@ MODAL IMPORT KONSUMEN (EMS)
 
             <div class="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-4">
                 <div class="font-semibold text-slate-900">Belum punya format file?</div>
-                <div class="mt-1 text-sm text-slate-600">Download template, lalu isi data pada sheet Data Import. Jangan mengubah urutan tiga kolom.</div>
+                <div class="mt-1 text-sm text-slate-600">Download template, lalu isi data pada sheet Data Import. Jangan mengubah urutan empat kolom.</div>
                 <a href="/actions/download_import_sales_template.php" class="btn btn-secondary mt-3 inline-flex" download>
                     <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
                     <span>Download Example Import</span>
@@ -822,14 +822,6 @@ MODAL IMPORT KONSUMEN (EMS)
             </div>
 
             <div class="ems-form-group">
-                <label>Tanggal Transaksi</label>
-                <input type="date"
-                    name="transaction_date"
-                    id="transactionDate"
-                    required>
-            </div>
-
-            <div class="ems-form-group">
                 <label>File Excel (.xlsx / .xls)</label>
                 <input type="file"
                     name="excel_file"
@@ -843,6 +835,8 @@ MODAL IMPORT KONSUMEN (EMS)
                 <div class="ems-spinner"></div>
                 <p>Mengupload dan memproses data...</p>
             </div>
+
+            <div id="importResult" class="hidden" role="status" aria-live="polite"></div>
 
             <div class="modal-actions">
                 <button type="button" class="ems-btn-cancel" onclick="closeImportModal()">
@@ -1129,7 +1123,7 @@ MODAL IMPORT KONSUMEN (EMS)
         modal.classList.remove('hidden');
         modal.style.display = 'flex';
         document.body.classList.add('modal-open');
-        document.getElementById('transactionDate').value = new Date().toISOString().split('T')[0];
+
     }
 
     function closeImportModal() {
@@ -1143,6 +1137,8 @@ MODAL IMPORT KONSUMEN (EMS)
         form.reset();
         document.getElementById('importProgress').style.display = 'none';
         document.getElementById('medicSuggestions').style.display = 'none';
+        document.getElementById('importResult').className = 'hidden';
+        document.getElementById('importResult').textContent = '';
     }
 
     // ================================================
@@ -1217,6 +1213,35 @@ MODAL IMPORT KONSUMEN (EMS)
         document.getElementById('importProgress').style.display = 'block';
         document.getElementById('importBtn').disabled = true;
 
+        const resultBox = document.getElementById('importResult');
+        resultBox.className = 'hidden';
+        resultBox.textContent = '';
+
+        function showImportResult(message, type, rowErrors = []) {
+            const className = type === 'success'
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+                : type === 'warning'
+                    ? 'border border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border border-red-200 bg-red-50 text-red-800';
+            resultBox.className = `mt-4 rounded-xl p-4 text-sm ${className}`;
+            resultBox.innerHTML = '';
+
+            const summary = document.createElement('strong');
+            summary.textContent = message;
+            resultBox.appendChild(summary);
+
+            if (rowErrors.length > 0) {
+                const list = document.createElement('ul');
+                list.className = 'mt-2 list-disc space-y-1 pl-5';
+                rowErrors.forEach(function(error) {
+                    const item = document.createElement('li');
+                    item.textContent = error;
+                    list.appendChild(item);
+                });
+                resultBox.appendChild(list);
+            }
+        }
+
         try {
             formData.append('csrf_token', String(window.EMS_CSRF_TOKEN || ''));
             const res = await fetch('/actions/import_sales_excel.php', {
@@ -1225,18 +1250,47 @@ MODAL IMPORT KONSUMEN (EMS)
                 body: formData
             });
 
-            const result = await res.json();
+            const rawResponse = await res.text();
+            let result;
+            try {
+                result = JSON.parse(rawResponse);
+            } catch (parseError) {
+                throw new Error(`Server mengembalikan response tidak valid (HTTP ${res.status}).`);
+            }
 
             if (result.success) {
-                alert(`Berhasil import ${result.imported} transaksi!`);
-                closeImportModal();
-                location.reload();
+                const imported = Number(result.imported || 0);
+                const skipped = Number(result.skipped || 0);
+                const resultType = imported > 0 && skipped === 0 ? 'success' : 'warning';
+                showImportResult(
+                    `Import selesai: ${imported} berhasil, ${skipped} dilewati.`,
+                    resultType,
+                    Array.isArray(result.row_errors) ? result.row_errors : []
+                );
+                if (typeof window.emsToast === 'function') {
+                    window.emsToast(
+                        `Import selesai: ${imported} berhasil, ${skipped} dilewati.`,
+                        resultType,
+                        { title: 'Import Data', duration: 7000 }
+                    );
+                }
+                // Hasil tetap tampil di modal. User menutup modal setelah membaca hasil.
             } else {
-                alert('Error: ' + (result.message || 'Import gagal'));
+                const message = result.message || 'Import gagal';
+                showImportResult(message, 'error', Array.isArray(result.row_errors) ? result.row_errors : []);
+                if (typeof window.emsToast === 'function') {
+                    window.emsToast(message, 'error', { title: 'Import Gagal', duration: 7000 });
+                }
             }
         } catch (error) {
             console.error('Import error:', error);
-            alert('Terjadi kesalahan saat import data');
+            showImportResult(error.message || 'Terjadi kesalahan saat import data.', 'error');
+            if (typeof window.emsToast === 'function') {
+                window.emsToast(error.message || 'Terjadi kesalahan saat import data.', 'error', {
+                    title: 'Import Gagal',
+                    duration: 7000
+                });
+            }
         } finally {
             document.getElementById('importProgress').style.display = 'none';
             document.getElementById('importBtn').disabled = false;

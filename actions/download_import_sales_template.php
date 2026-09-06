@@ -42,13 +42,16 @@ try {
             'Consumer Identifier / Legacy Consumer Name',
             'Package Name',
             'Citizen ID (Optional)',
+            'Tanggal Transaksi',
         ],
     ], null, 'A1');
     $importSheet->freezePane('A2');
-    $importSheet->setAutoFilter('A1:C1');
+    $importSheet->setAutoFilter('A1:D1');
     $importSheet->getColumnDimension('A')->setWidth(42);
     $importSheet->getColumnDimension('B')->setWidth(32);
     $importSheet->getColumnDimension('C')->setWidth(24);
+    $importSheet->getColumnDimension('D')->setWidth(20);
+
     $importSheet->getRowDimension(1)->setRowHeight(30);
 
     $instructionsSheet = $spreadsheet->createSheet();
@@ -57,40 +60,42 @@ try {
         ['PETUNJUK IMPORT DATA KONSUMEN'],
         ['File ini mengikuti format importer Data Konsumen EMS2.'],
         [''],
-        ['Kolom', 'Isi', 'Keterangan'],
+        ['Kolom', 'Isi', 'Keterangan', 'Format / Contoh'],
         ['A', 'Consumer Identifier / Legacy Consumer Name', 'Isi Citizen ID konsumen atau nama konsumen lama.'],
         ['B', 'Package Name', 'Wajib. Salin nama paket persis dari sheet Referensi Paket.'],
         ['C', 'Citizen ID (Optional)', 'Opsional. Jika diisi, nilai ini diprioritaskan sebagai identitas konsumen baru.'],
+        ['D', 'Tanggal Transaksi', 'Wajib. Format yyyy-mm-dd, contoh 2026-09-06. Tanggal transaksi tiap baris.'],
         [''],
         ['CONTOH NILAI (JANGAN SALIN BARIS INI KE SHEET DATA IMPORT)', '', ''],
-        ['RHCONTOH001', $packageNames[0] ?? 'Nama paket dari Referensi Paket', 'RHCONTOH001'],
+        ['RHCONTOH001', $packageNames[0] ?? 'Nama paket dari Referensi Paket', 'RHCONTOH001', date('Y-m-d')],
         [''],
         ['Catatan penting', '', ''],
-        ['1', 'Nama medis dan tanggal transaksi diisi pada modal Import Excel.', ''],
+        ['1', 'Nama medis diisi pada modal Import Excel. Tanggal transaksi diisi per baris pada kolom D.', ''],
         ['2', 'Satu baris berisi satu transaksi untuk satu paket.', ''],
-        ['3', 'Jangan mengubah urutan tiga kolom pada sheet Data Import.', ''],
+        ['3', 'Jangan mengubah urutan empat kolom pada sheet Data Import.', ''],
         ['4', 'Jangan menambahkan judul atau baris contoh sebelum header pada sheet Data Import.', ''],
         ['5', 'Baris kosong akan dilewati. Baris dengan nama paket yang tidak persis sama akan dilewati importer.', ''],
         ['6', 'Sheet Data Import sengaja hanya berisi header agar tidak ada transaksi contoh yang ikut tersimpan.', ''],
     ], null, 'A1');
-    $instructionsSheet->mergeCells('A1:C1');
-    $instructionsSheet->mergeCells('A2:C2');
+    $instructionsSheet->mergeCells('A1:D1');
+    $instructionsSheet->mergeCells('A2:D2');
     $instructionsSheet->getColumnDimension('A')->setWidth(16);
     $instructionsSheet->getColumnDimension('B')->setWidth(64);
     $instructionsSheet->getColumnDimension('C')->setWidth(68);
+    $instructionsSheet->getColumnDimension('D')->setWidth(28);
     $instructionsSheet->getRowDimension(1)->setRowHeight(28);
-    $instructionsSheet->getStyle('A1:C1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-    $instructionsSheet->getStyle('A1:C1')->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
-    $instructionsSheet->getStyle('A2:C2')->getAlignment()->setWrapText(true);
-    $instructionsSheet->getStyle('A4:C4')->getFont()->setBold(true);
-    $instructionsSheet->getStyle('A4:C4')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0EA5E9');
-    $instructionsSheet->getStyle('A4:C4')->getFont()->getColor()->setARGB('FFFFFFFF');
-    $instructionsSheet->getStyle('A9:C9')->getFont()->setBold(true);
-    $instructionsSheet->getStyle('A9:C9')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF3CD');
-    $instructionsSheet->getStyle('A12:C12')->getFont()->setBold(true);
-    $instructionsSheet->getStyle('A1:C18')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
-    $instructionsSheet->getStyle('A1:C18')->getAlignment()->setWrapText(true);
-    $instructionsSheet->getStyle('A4:C18')->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+    $instructionsSheet->getStyle('A1:D1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+    $instructionsSheet->getStyle('A1:D1')->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+    $instructionsSheet->getStyle('A2:D2')->getAlignment()->setWrapText(true);
+    $instructionsSheet->getStyle('A4:D4')->getFont()->setBold(true);
+    $instructionsSheet->getStyle('A4:D4')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FF0EA5E9');
+    $instructionsSheet->getStyle('A4:D4')->getFont()->getColor()->setARGB('FFFFFFFF');
+    $instructionsSheet->getStyle('A9:D9')->getFont()->setBold(true);
+    $instructionsSheet->getStyle('A9:D9')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF3CD');
+    $instructionsSheet->getStyle('A12:D12')->getFont()->setBold(true);
+    $instructionsSheet->getStyle('A1:D19')->getAlignment()->setVertical(Alignment::VERTICAL_TOP);
+    $instructionsSheet->getStyle('A1:D19')->getAlignment()->setWrapText(true);
+    $instructionsSheet->getStyle('A4:D19')->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
     $instructionsSheet->freezePane('A4');
 
     $referenceSheet = $spreadsheet->createSheet();
@@ -130,23 +135,25 @@ try {
             ],
         ],
     ];
-    $importSheet->getStyle('A1:C1')->applyFromArray($headerStyle);
+    $importSheet->getStyle('A1:D1')->applyFromArray($headerStyle);
     $referenceSheet->getStyle('A1')->applyFromArray($headerStyle);
 
     $exampleSheet = $spreadsheet->createSheet();
     $exampleSheet->setTitle('Contoh Import');
     $exampleSheet->fromArray([
-        ['Consumer Identifier / Legacy Consumer Name', 'Package Name', 'Citizen ID (Optional)'],
-        ['RHCONTOH001', $packageNames[0] ?? 'Nama paket dari Referensi Paket', 'RHCONTOH001'],
+        ['Consumer Identifier / Legacy Consumer Name', 'Package Name', 'Citizen ID (Optional)', 'Tanggal Transaksi'],
+        ['RHCONTOH001', $packageNames[0] ?? 'Nama paket dari Referensi Paket', 'RHCONTOH001', date('Y-m-d')],
     ], null, 'A1');
     $exampleSheet->getColumnDimension('A')->setWidth(42);
     $exampleSheet->getColumnDimension('B')->setWidth(32);
     $exampleSheet->getColumnDimension('C')->setWidth(24);
+    $exampleSheet->getColumnDimension('D')->setWidth(20);
     $exampleSheet->getRowDimension(1)->setRowHeight(30);
-    $exampleSheet->getStyle('A1:C1')->applyFromArray($headerStyle);
-    $exampleSheet->getStyle('A1:C2')->getAlignment()->setWrapText(true);
-    $exampleSheet->getStyle('A1:C2')->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
-    $exampleSheet->getStyle('A2:C2')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF3CD');
+    $exampleSheet->getStyle('A1:D1')->applyFromArray($headerStyle);
+    $exampleSheet->getStyle('A1:D2')->getAlignment()->setWrapText(true);
+    $exampleSheet->getStyle('A1:D2')->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setARGB('FFE2E8F0');
+    $exampleSheet->getStyle('A2:D2')->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF3CD');
+    $exampleSheet->getStyle('D2')->getNumberFormat()->setFormatCode('yyyy-mm-dd');
     $exampleSheet->freezePane('A2');
 
     $spreadsheet->setIndexByName('Contoh Import', 1);
