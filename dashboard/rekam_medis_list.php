@@ -258,6 +258,15 @@ $patientHistoryMap = medicalRecordHistoryMap($pdo, $hasPatientCitizenId, $hasJen
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
+if ($isForensicPrivate) {
+    $errors = array_values(array_filter(
+        $errors,
+        static fn (mixed $error): bool => !in_array((string) $error, [
+            'Akses halaman ditolak untuk division Anda.',
+            'Akses division ditolak.',
+        ], true)
+    ));
+}
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 if ($migrationMissing) {

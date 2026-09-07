@@ -1423,6 +1423,24 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Forensic pages have their own per-user grant checks. Let those guards
+    // decide access instead of rejecting non-Forensic users here.
+    $forensicGrantPages = [
+        'forensic_medics.php',
+        'forensic_medical_records.php',
+        'forensic_medical_records_list.php',
+        'forensic_medical_records_view.php',
+        'forensic_private_access_manage.php',
+        'forensic_private_access_action.php',
+        'forensic_private_patients.php',
+        'forensic_visum_results.php',
+        'forensic_archive.php',
+        'forensic_action.php',
+    ];
+    if (in_array($scriptName, $forensicGrantPages, true)) {
+        return;
+    }
+
     $sessionUser = $_SESSION['user_rh'] ?? [];
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);

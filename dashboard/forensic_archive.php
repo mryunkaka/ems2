@@ -19,7 +19,13 @@ $canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Arsip Forensic';
 $messages = $_SESSION['flash_messages'] ?? [];
-$errors = $_SESSION['flash_errors'] ?? [];
+$errors = array_values(array_filter(
+    $_SESSION['flash_errors'] ?? [],
+    static fn (mixed $error): bool => !in_array((string) $error, [
+        'Akses halaman ditolak untuk division Anda.',
+        'Akses division ditolak.',
+    ], true)
+));
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 function forensicArchiveStatusMeta(string $status): array
@@ -42,9 +48,6 @@ $cases = [];
 $visumResults = [];
 $archives = [];
 
-$ownOnlyFilter = !$forensicArchivePerms['can_view_all'];
-$ownOnlyWhere = $ownOnlyFilter ? ' AND fa.created_by = ' . (int) $userId : '';
-
 try {
     $cases = $pdo->query("
         SELECT id, case_code, patient_name
@@ -66,7 +69,6 @@ try {
         FROM forensic_archives fa
         LEFT JOIN forensic_private_patients fpp ON fpp.id = fa.private_patient_id
         LEFT JOIN forensic_visum_results fvr ON fvr.id = fa.visum_result_id
-        WHERE 1=1{$ownOnlyWhere}
         ORDER BY fa.created_at DESC, fa.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {

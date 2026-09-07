@@ -19,7 +19,13 @@ $canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Hasil Visum';
 $messages = $_SESSION['flash_messages'] ?? [];
-$errors = $_SESSION['flash_errors'] ?? [];
+$errors = array_values(array_filter(
+    $_SESSION['flash_errors'] ?? [],
+    static fn (mixed $error): bool => !in_array((string) $error, [
+        'Akses halaman ditolak untuk division Anda.',
+        'Akses division ditolak.',
+    ], true)
+));
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 function forensicVisumStatusMeta(string $status): array
@@ -42,9 +48,6 @@ function forensicVisumValue(mixed $value, string $fallback = '-'): string
 $cases = [];
 $visumResults = [];
 
-$ownOnlyFilter = !$forensicVisumPerms['can_view_all'];
-$ownOnlyWhere = $ownOnlyFilter ? ' AND fvr.created_by = ' . (int) $userId : '';
-
 try {
     $cases = $pdo->query("
         SELECT id, case_code, patient_name, case_type
@@ -61,7 +64,6 @@ try {
         FROM forensic_visum_results fvr
         INNER JOIN forensic_private_patients fpp ON fpp.id = fvr.private_patient_id
         INNER JOIN user_rh doctor ON doctor.id = fvr.doctor_user_id
-        WHERE 1=1{$ownOnlyWhere}
         ORDER BY fvr.examination_date DESC, fvr.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {

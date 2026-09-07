@@ -96,6 +96,15 @@ if ($assistants === []) {
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
+if ($isForensicPrivate) {
+    $errors = array_values(array_filter(
+        $errors,
+        static fn (mixed $error): bool => !in_array((string) $error, [
+            'Akses halaman ditolak untuk division Anda.',
+            'Akses division ditolak.',
+        ], true)
+    ));
+}
 
 // Filter out stale creator-only error for programmer/executive
 $errors = array_values(array_filter($errors, static function ($error) {

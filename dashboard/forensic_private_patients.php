@@ -20,7 +20,13 @@ $canViewForensicHistory = ems_forensic_private_can_view_history($user);
 
 $pageTitle = 'Data Pasien Private';
 $messages = $_SESSION['flash_messages'] ?? [];
-$errors = $_SESSION['flash_errors'] ?? [];
+$errors = array_values(array_filter(
+    $_SESSION['flash_errors'] ?? [],
+    static fn (mixed $error): bool => !in_array((string) $error, [
+        'Akses halaman ditolak untuk division Anda.',
+        'Akses division ditolak.',
+    ], true)
+));
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 function forensicCaseStatusMeta(string $status): array
@@ -53,17 +59,11 @@ function forensicTextValue(mixed $value, string $fallback = '-'): string
 $summary = ['total' => 0, 'active' => 0, 'sealed' => 0, 'archived' => 0];
 $cases = [];
 
-// User yang cuma punya izin "lihat punya sendiri" (bukan lihat semua/native)
-// hanya boleh melihat baris yang dia buat sendiri.
-$ownOnlyFilter = !$forensicPatientsPerms['can_view_all'];
-$ownOnlyWhere = $ownOnlyFilter ? ' AND created_by = ' . (int) $userId : '';
-$ownOnlyWhereAlias = $ownOnlyFilter ? ' AND fpp.created_by = ' . (int) $userId : '';
-
 try {
-    $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE 1=1{$ownOnlyWhere}")->fetchColumn();
-    $summary['active'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'active'{$ownOnlyWhere}")->fetchColumn();
-    $summary['sealed'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE confidentiality_level = 'sealed'{$ownOnlyWhere}")->fetchColumn();
-    $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'archived'{$ownOnlyWhere}")->fetchColumn();
+    $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients")->fetchColumn();
+    $summary['active'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'active'")->fetchColumn();
+    $summary['sealed'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE confidentiality_level = 'sealed'")->fetchColumn();
+    $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM forensic_private_patients WHERE status = 'archived'")->fetchColumn();
 
     $cases = $pdo->query("
         SELECT
@@ -75,7 +75,6 @@ try {
         FROM forensic_private_patients fpp
         INNER JOIN user_rh creator ON creator.id = fpp.created_by
         LEFT JOIN medical_records mr ON mr.id = fpp.medical_record_id
-        WHERE 1=1{$ownOnlyWhereAlias}
         ORDER BY fpp.incident_date DESC, fpp.id DESC
     ")->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $e) {
