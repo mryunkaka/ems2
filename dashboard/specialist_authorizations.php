@@ -7,7 +7,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 
 $pageTitle = 'Otorisasi Medis Spesialis';
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -41,7 +41,7 @@ try {
     );
     $authorizations = $authorizationStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $exception) {
-    $errors[] = 'Data otorisasi Specialist Medical Authority belum tersedia. Jalankan SQL `docs/sql/04_2026-03-10_specialist_medical_authority_module.sql` terlebih dahulu.';
+    $errors[] = 'Data otorisasi Medical Affair belum tersedia. Jalankan SQL `docs/sql/04_2026-03-10_specialist_medical_authority_module.sql` terlebih dahulu.';
 }
 
 include __DIR__ . '/../partials/header.php';

@@ -15,7 +15,7 @@ if ($userRole === 'staff') {
     exit('Akses ditolak');
 }
 
-$canDeleteRequest = ($userDivision === 'Specialist Medical Authority');
+$canDeleteRequest = ($userDivision === 'Medical Affair');
 
 $pageTitle = 'Review Pengajuan Jabatan';
 

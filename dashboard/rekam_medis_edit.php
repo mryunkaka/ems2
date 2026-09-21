@@ -46,6 +46,12 @@ if (!$record) {
     exit;
 }
 
+if (!$isForensicPrivate && ($record['source_provider'] ?? '') === 'medical_center') {
+    $_SESSION['flash_errors'][] = 'Rekam medis Medical Center hanya dapat diedit dari Medical Center.';
+    header('Location: rekam_medis_view.php?id=' . $id);
+    exit;
+}
+
 $recordScope = $record['visibility_scope'] ?? 'standard';
 $userName = strtolower(trim($user['full_name'] ?? ''));
 $userDivision = strtolower(trim($user['division'] ?? ''));

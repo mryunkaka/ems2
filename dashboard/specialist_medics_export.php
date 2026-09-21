@@ -15,7 +15,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 
 $positionFilter = ems_normalize_position($_GET['position'] ?? '');
 $allowedPositionFilters = [

@@ -290,6 +290,8 @@ try {
         }
     }
 
+    ems_auto_create_disciplinary_reduction_requests_for_medical_record($pdo, $recordId);
+
     $pdo->commit();
 
     if (!empty($notificationUserIds)) {

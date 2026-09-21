@@ -36,10 +36,10 @@ if ($requestId <= 0 || !in_array($action, ['approve', 'reject', 'delete'], true)
     exit;
 }
 
-// Delete action - only for Specialist Medical Authority
+// Delete action - only for Medical Affair
 if ($action === 'delete') {
-    if ($userDivision !== 'Specialist Medical Authority') {
-        $_SESSION['flash_errors'][] = 'Hanya divisi Specialist Medical Authority yang dapat menghapus pengajuan.';
+    if ($userDivision !== 'Medical Affair') {
+        $_SESSION['flash_errors'][] = 'Hanya divisi Medical Affair yang dapat menghapus pengajuan.';
         header('Location: review_pengajuan_jabatan.php?status=pending&id=' . $requestId);
         exit;
     }

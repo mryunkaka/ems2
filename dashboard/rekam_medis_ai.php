@@ -652,7 +652,7 @@ include __DIR__ . '/../partials/sidebar.php';
             sections.push(sectionBlock(7, 'Manajemen Anestesi & Table Score', [
                 fieldRow('Jenis Anestesi', s.jenis_anestesi_input),
                 fieldRow('Obat Pra-Operasi (Induksi, Inhalasi, Analgesik, Relaksan)', praOp.map(function (m) { return m.nama + ' ' + m.dosis; }).join('\n')),
-                fieldRow('Obat Pasca-Operasi (Antidote, Anti Mual, Analgesik)', (farm.post_operatif || []).map(function (m) { return m.nama + ' ' + m.dosis; }).join('\n')),
+                fieldRow('Obat Pasca-Operasi (Antidote/Anti Mual/Analgesik)', (farm.post_operatif || []).map(function (m) { return m.nama + ' ' + m.dosis; }).join('\n')),
             ], 'Status Lokalis & Score Pemulihan Pasca Anestesi (Kesadaran/Respon Mual/Pernapasan/Aktivitas Motorik/Tekanan Darah/Warna Kulit Pasca) tidak tersedia dari data AI — isi manual saat pemulihan pasien.'));
         }
 

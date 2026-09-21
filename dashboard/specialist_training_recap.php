@@ -8,7 +8,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 
 $pageTitle = 'Rekap Pelatihan Medis';
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -45,7 +45,7 @@ try {
     );
     $trainingRecords = $recordsStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Throwable $exception) {
-    $errors[] = 'Tabel Specialist Medical Authority belum tersedia. Jalankan SQL `docs/sql/04_2026-03-10_specialist_medical_authority_module.sql` terlebih dahulu.';
+    $errors[] = 'Tabel Medical Affair belum tersedia. Jalankan SQL `docs/sql/04_2026-03-10_specialist_medical_authority_module.sql` terlebih dahulu.';
 }
 
 include __DIR__ . '/../partials/header.php';

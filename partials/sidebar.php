@@ -11,6 +11,16 @@ $userUnit = isset($pdo) ? ems_current_user_unit($pdo, $_SESSION['user_rh'] ?? []
 $canViewAllUnits = isset($pdo) ? ems_user_can_view_all_units($pdo, $_SESSION['user_rh'] ?? []) : !empty($_SESSION['user_rh']['can_view_all_units']);
 $isMedicalPosition = ems_is_medical_position($_SESSION['user_rh']['position'] ?? '');
 $isMedicalDivision = $division === 'Medis';
+$hasActiveDisciplinaryPoints = false;
+if (isset($pdo) && $pdo instanceof PDO && $userRole !== '') {
+    try {
+        $pointStmt = $pdo->prepare('SELECT COALESCE(SUM(dc.total_points), 0) - COALESCE((SELECT SUM(dpr.reduction_points) FROM disciplinary_point_reductions dpr WHERE dpr.subject_user_id = ?), 0) FROM disciplinary_cases dc WHERE dc.subject_user_id = ?');
+        $pointStmt->execute([(int)($_SESSION['user_rh']['id'] ?? 0), (int)($_SESSION['user_rh']['id'] ?? 0)]);
+        $hasActiveDisciplinaryPoints = (int)$pointStmt->fetchColumn() > 0;
+    } catch (Throwable $e) {
+        $hasActiveDisciplinaryPoints = false;
+    }
+}
 $isInterviewerTrainerHr = $division === 'Human Resource' && ems_is_interviewer_trainer_role($_SESSION['user_rh']['role'] ?? '');
 $isAltaUnit = $userUnit === 'alta';
 $currentHospitalName = ems_unit_hospital_name($currentUnit);
@@ -82,6 +92,10 @@ if ($hasActiveEvent) {
     array_splice($groupedNav['Utama'], 2, 0, [sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket')]);
 }
 
+if ($isMedicalDivision && $hasActiveDisciplinaryPoints) {
+    $groupedNav['Administrasi'][] = sidebarItem('/dashboard/disciplinary_point_reduction_requests.php', 'disciplinary_point_reduction_requests.php', 'Pengajuan Pengurangan Poin', 'arrow-down-tray');
+}
+
 if (!ems_is_staff_role($userRole)) {
     $groupedNav['Medis'][] = sidebarItem('/dashboard/input_dokumen_medis.php', 'input_dokumen_medis.php', 'Input Dokumen Medis', 'arrow-up-tray');
     $groupedNav['Farmasi'][] = sidebarItem('/dashboard/farmasi_billing_audit.php', 'farmasi_billing_audit.php', 'Audit Billing Farmasi', 'exclamation-triangle');
@@ -129,6 +143,7 @@ if (ems_can_access_division_menu($division, 'Disciplinary Committee')) {
         sidebarItem('/dashboard/disciplinary_indications.php', 'disciplinary_indications.php', 'Point Pelanggaran', 'clipboard-document-list'),
         sidebarItem('/dashboard/disciplinary_warning_letters.php', 'disciplinary_warning_letters.php', 'Surat Peringatan', 'exclamation-triangle'),
         sidebarItem('/dashboard/disciplinary_cases.php', 'disciplinary_cases.php', 'Disciplinary Cases', 'document-text'),
+        sidebarItem('/dashboard/disciplinary_point_reduction_validation.php', 'disciplinary_point_reduction_validation.php', 'Validasi Pengurangan Poin', 'check-circle'),
     ];
 }
 
@@ -151,8 +166,8 @@ if (ems_can_access_division_menu($division, 'General Affair')) {
     }
 }
 
-if (ems_can_access_division_menu($division, 'Specialist Medical Authority')) {
-    $groupedNav['Specialist Medical Authority'] = [
+if (ems_can_access_division_menu($division, 'Medical Affair')) {
+    $groupedNav['Medical Affair'] = [
         sidebarItem('/dashboard/specialist_medics.php', 'specialist_medics.php', 'List Medis', 'table-cells'),
         sidebarItem('/dashboard/specialist_operation_recap.php', 'specialist_operation_recap.php', 'Rekap Operasi Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/specialist_training_recap.php', 'specialist_training_recap.php', 'Rekap Pelatihan Medis', 'clipboard-document-list'),
@@ -245,6 +260,22 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/setting_akun.php', 'setting_akun.php', 'Setting Akun', 'cog-6-tooth'),
             ],
         ];
+    }
+}
+
+if ($isMedicalDivision && $hasActiveDisciplinaryPoints) {
+    if (!isset($groupedNav['Administrasi']) || !is_array($groupedNav['Administrasi'])) {
+        $groupedNav['Administrasi'] = [];
+    }
+    $hasReductionRequestMenu = false;
+    foreach ($groupedNav['Administrasi'] as $item) {
+        if (($item['page'] ?? '') === 'disciplinary_point_reduction_requests.php') {
+            $hasReductionRequestMenu = true;
+            break;
+        }
+    }
+    if (!$hasReductionRequestMenu) {
+        $groupedNav['Administrasi'][] = sidebarItem('/dashboard/disciplinary_point_reduction_requests.php', 'disciplinary_point_reduction_requests.php', 'Pengajuan Pengurangan Poin', 'arrow-down-tray');
     }
 }
 
@@ -368,6 +399,16 @@ if ($isAltaUnit && !$canViewAllUnits && ems_is_manager_plus_role($_SESSION['user
             $groupedNav['Keuangan'][] = $requiredItem;
         }
     }
+}
+
+$medicalCenterMonitoringItem = (ems_current_user_is_programmer_roxwood() || $division === 'Executive')
+    ? sidebarItem('/dashboard/medical_center_records_monitor.php', 'medical_center_records_monitor.php', 'Monitoring Rekam Medis GET', 'eye')
+    : null;
+if ($medicalCenterMonitoringItem !== null) {
+    if (!isset($groupedNav['Medis']) || !is_array($groupedNav['Medis'])) {
+        $groupedNav['Medis'] = [];
+    }
+    $groupedNav['Medis'][] = $medicalCenterMonitoringItem;
 }
 
 if (!isset($groupedNav['Keuangan']) || !is_array($groupedNav['Keuangan'])) {

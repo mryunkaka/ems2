@@ -7,7 +7,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $pageTitle = 'Detail Riwayat Operasi Medis';

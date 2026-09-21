@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/medical_records_api.php';
 require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -187,6 +188,8 @@ $hasVisibilityScope = medicalRecordsHasColumn($pdo, 'visibility_scope');
 $hasRecordCode = medicalRecordsHasColumn($pdo, 'record_code');
 $hasPatientCitizenId = medicalRecordsHasColumn($pdo, 'patient_citizen_id');
 $hasJenisOperasi = medicalRecordsHasColumn($pdo, 'jenis_operasi');
+$hasRemoteRecordId = medicalRecordsHasColumn($pdo, 'remote_record_id');
+$hasRemoteRecordNumber = medicalRecordsHasColumn($pdo, 'remote_record_number');
 
 $whereClause = '1=1';
 $migrationMissing = false;
@@ -377,8 +380,26 @@ include __DIR__ . '/../partials/sidebar.php';
                                         $canDeleteRecord = true;
                                     }
 
+                                    $isRemoteMedicalCenterRecord = trim((string) ($record['source_provider'] ?? '')) === 'medical_center';
+                                    $remoteDpjp = $isRemoteMedicalCenterRecord ? ems_medical_center_decode_array($record['remote_dpjp_json'] ?? []) : [];
+                                    $remoteAssistantMap = $isRemoteMedicalCenterRecord ? ems_medical_center_decode_array($record['remote_assistants_json'] ?? []) : [];
+                                    $remoteAssistantNames = [];
+                                    foreach ($remoteAssistantMap as $assistantKey => $assistantValue) {
+                                        if (is_array($assistantValue)) {
+                                            $assistantValue = ($assistantValue['local_name'] ?? '') ?: ($assistantValue['remote_name'] ?? $assistantValue['name'] ?? '');
+                                        }
+                                        $assistantValue = trim((string) $assistantValue);
+                                        if ($assistantValue !== '') {
+                                            $remoteAssistantNames[] = $assistantValue;
+                                        }
+                                    }
                                     $assistantNames = trim((string) ($assistantNamesMap[(int) ($record['id'] ?? 0)] ?? ($record['assistant_name'] ?? '')));
+                                    $assistantNames = $remoteAssistantNames !== [] ? implode(', ', $remoteAssistantNames) : $assistantNames;
                                     $recordCode = (string)(($hasRecordCode ? ($record['record_code'] ?? null) : null) ?: ('MR-' . str_pad((string)$record['id'], 6, '0', STR_PAD_LEFT)));
+                                    if ($isRemoteMedicalCenterRecord) {
+                                        $canEditRecord = false;
+                                        $canDeleteRecord = false;
+                                    }
                                     ?>
                                     <?php
                                     $historyKey = '';
@@ -399,6 +420,11 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <a href="<?= $isForensicPrivate ? 'forensic_medical_records_view.php' : 'rekam_medis_view.php' ?>?id=<?= (int)$record['id'] ?><?= $isForensicPrivate ? '&mode=forensic_private' : '' ?>" class="text-primary hover:underline">
                                                 <?= htmlspecialchars($recordCode, ENT_QUOTES, 'UTF-8') ?>
                                             </a>
+                                            <?php if ($isRemoteMedicalCenterRecord && trim((string) ($record['remote_record_id'] ?? '')) !== ''): ?>
+                                                <div class="text-xs text-gray-500">
+                                                    <a href="<?= htmlspecialchars((string) ($record['remote_record_url'] ?: ems_medical_center_remote_detail_url($record['remote_record_id'])), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="text-primary hover:underline">Medical Center #<?= htmlspecialchars((string) $record['remote_record_id'], ENT_QUOTES, 'UTF-8') ?></a>
+                                                </div>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="font-semibold medical-cell-nowrap">
                                             <button
@@ -423,8 +449,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td class="medical-cell-nowrap">
                                             <div class="text-sm">
-                                                <div class="font-medium"><?= htmlspecialchars($record['doctor_name'] ?? '-') ?></div>
-                                                <div class="text-gray-500 text-xs"><?= htmlspecialchars($record['doctor_position'] ?? '') ?></div>
+                                                <div class="font-medium"><?= htmlspecialchars((string) ($record['doctor_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="text-gray-500 text-xs"><?= htmlspecialchars((string) ($record['doctor_position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </td>
                                         <td class="medical-cell-nowrap">
@@ -501,8 +527,16 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     </span>
                                                 </div>
                                                 <div class="forensic-detail-meta">
-                                                    DPJP: <?= htmlspecialchars(medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
-                                                    Asisten: <?= htmlspecialchars(medicalRecordValue($assistantNames), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    DPJP: <?= htmlspecialchars($isRemoteMedicalCenterRecord
+                                                        ? medicalRecordValue($record['doctor_name'] ?? null)
+                                                        : medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    <?php if ($isRemoteMedicalCenterRecord && $remoteAssistantNames !== []): ?>
+                                                        <?php foreach ($remoteAssistantNames as $remoteAssistantLabel): ?>
+                                                            <?= htmlspecialchars($remoteAssistantLabel, ENT_QUOTES, 'UTF-8') ?><br>
+                                                        <?php endforeach; ?>
+                                                    <?php else: ?>
+                                                        Asisten: <?= htmlspecialchars(medicalRecordValue($assistantNames), ENT_QUOTES, 'UTF-8') ?><br>
+                                                    <?php endif; ?>
                                                     <?php if ($hasJenisOperasi && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
                                                         Nama operasi: <?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?><br>
                                                     <?php endif; ?>

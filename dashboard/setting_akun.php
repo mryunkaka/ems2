@@ -8,6 +8,7 @@ session_start();
 |--------------------------------------------------------------------------
 */
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
@@ -292,6 +293,7 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
                 data-user-position="<?= htmlspecialchars($medicPosNormalized) ?>"
                 novalidate
                 enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
 
                 <!-- ===============================
                 IDENTITAS MEDIS
@@ -406,7 +408,7 @@ DOKUMEN PENDUKUNG
                 <?php
                 function renderDocInput($label, $name, $path = null, $required = false, ?string $issuedDateField = null, ?string $issuedDateValue = null)
                 {
-                    $canDelete = !$required && !empty($path);
+                    $canDelete = !empty($path);
                     $hasIssuedDateValue = trim((string)$issuedDateValue) !== '';
                     $shouldShowIssuedDate = $issuedDateField !== null && (!empty($path) || $hasIssuedDateValue);
                     $issuedDateLabel = $label !== '' ? 'Tanggal Dikeluarkan ' . $label : 'Tanggal Dikeluarkan';
@@ -549,6 +551,25 @@ DOKUMEN PENDUKUNG
                     }
                     ?>
                 </div>
+
+                <?php if (!empty($otherDocs)): ?>
+                    <div class="card card-section mt-4" data-other-documents>
+                        <div class="card-header">Dokumen Lainnya</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <?php foreach ($otherDocs as $otherDoc): ?>
+                                <?php $otherDocId = (string)($otherDoc['id'] ?? ''); ?>
+                                <div class="doc-status-badge border rounded-lg p-3" data-other-doc-wrapper="<?= htmlspecialchars($otherDocId, ENT_QUOTES, 'UTF-8') ?>">
+                                    <div class="flex-1 min-w-0">
+                                        <strong><?= htmlspecialchars((string)($otherDoc['name'] ?? 'File Lainnya'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                        <div class="meta-text-xs truncate">File tersimpan</div>
+                                    </div>
+                                    <a href="#" class="btn-link btn-preview-doc btn-doc-pill" data-src="<?= htmlspecialchars(settingAkunPreviewUrl((string)($otherDoc['path'] ?? '')), ENT_QUOTES, 'UTF-8') ?>" data-title="<?= htmlspecialchars((string)($otherDoc['name'] ?? 'File Lainnya'), ENT_QUOTES, 'UTF-8') ?>">Lihat</a>
+                                    <button type="button" class="btn-danger button-compact btn-delete-academy-doc btn-doc-pill" data-academy-doc-id="<?= htmlspecialchars($otherDocId, ENT_QUOTES, 'UTF-8') ?>">Hapus permanen</button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (!empty($visiblePromotionDateFields)): ?>
                     <hr class="section-divider">
@@ -870,24 +891,95 @@ DOKUMEN PENDUKUNG
                 return;
             }
 
-            if (!window.confirm('Hapus dokumen ini saat disimpan? File akan dihapus permanen dari server.')) {
+            if (!window.confirm('Hapus dokumen ini secara permanen dari server?')) {
                 return;
             }
 
-            deleteInput.value = '1';
-            if (fileInput) {
-                fileInput.value = '';
-            }
-
-            wrapper.classList.add('doc-pending-delete');
             deleteButton.disabled = true;
-            deleteButton.textContent = 'Akan dihapus';
-            wrapper.setAttribute('data-has-existing-file', '0');
-            syncIssuedDateVisibility(wrapper);
+            deleteButton.textContent = 'Menghapus...';
 
-            if (hint) {
-                hint.textContent = 'Dokumen akan dihapus permanen saat perubahan disimpan.';
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const formData = new FormData();
+            formData.append('csrf_token', csrfInput ? csrfInput.value : '');
+            formData.append('doc_field', target);
+
+            fetch('setting_akun_delete_document.php', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            }).then(function(response) {
+                return response.json().then(function(payload) {
+                    return { response: response, payload: payload };
+                });
+            }).then(function(result) {
+                if (!result.response.ok || !result.payload.ok) {
+                    throw new Error(result.payload.message || 'Dokumen gagal dihapus.');
+                }
+                window.location.reload();
+            }).catch(function(error) {
+                deleteButton.disabled = false;
+                deleteButton.textContent = 'Hapus';
+                const pageShell = document.querySelector('.page.page-shell-sm');
+                if (pageShell) {
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-error';
+                    alert.textContent = error.message || 'Dokumen gagal dihapus.';
+                    pageShell.insertBefore(alert, pageShell.querySelector('.card') || pageShell.firstChild);
+                }
+            });
+        });
+
+        document.addEventListener('click', function(e) {
+            const deleteButton = e.target.closest('.btn-delete-academy-doc');
+            if (!deleteButton) {
+                return;
             }
+
+            const academyDocId = deleteButton.getAttribute('data-academy-doc-id');
+            if (!academyDocId || !window.confirm('Hapus dokumen ini secara permanen dari server?')) {
+                return;
+            }
+
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const formData = new FormData();
+            formData.append('csrf_token', csrfInput ? csrfInput.value : '');
+            formData.append('doc_field', 'dokumen_lainnya');
+            formData.append('academy_doc_id', academyDocId);
+            deleteButton.disabled = true;
+            deleteButton.textContent = 'Menghapus...';
+
+            fetch('setting_akun_delete_document.php', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            }).then(function(response) {
+                return response.json().then(function(payload) {
+                    return { response: response, payload: payload };
+                });
+            }).then(function(result) {
+                if (!result.response.ok || !result.payload.ok) {
+                    throw new Error(result.payload.message || 'Dokumen gagal dihapus.');
+                }
+                window.location.reload();
+            }).catch(function(error) {
+                deleteButton.disabled = false;
+                deleteButton.textContent = 'Hapus permanen';
+                const pageShell = document.querySelector('.page.page-shell-sm');
+                if (pageShell) {
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-error';
+                    alert.textContent = error.message || 'Dokumen gagal dihapus.';
+                    pageShell.insertBefore(alert, pageShell.querySelector('.card') || pageShell.firstChild);
+                }
+            });
         });
 
         document.addEventListener('change', function(e) {

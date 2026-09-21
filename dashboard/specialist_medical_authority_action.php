@@ -6,7 +6,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: ' . ems_url('/dashboard/index.php'));
@@ -204,8 +204,8 @@ try {
         smaRedirect('specialist_authorizations.php');
     }
 
-    throw new RuntimeException('Aksi Specialist Medical Authority tidak dikenali.');
+    throw new RuntimeException('Aksi Medical Affair tidak dikenali.');
 } catch (Throwable $exception) {
-    $_SESSION['flash_errors'] = ['Gagal memproses Specialist Medical Authority: ' . $exception->getMessage()];
+    $_SESSION['flash_errors'] = ['Gagal memproses Medical Affair: ' . $exception->getMessage()];
     smaRedirect();
 }

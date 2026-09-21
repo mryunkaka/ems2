@@ -66,6 +66,9 @@ try {
     if (!$record) {
         throw new Exception('Rekam medis tidak ditemukan.');
     }
+    if (($record['source_provider'] ?? '') === 'medical_center' && ($record['visibility_scope'] ?? 'standard') !== 'forensic_private') {
+        throw new Exception('Rekam medis Medical Center hanya dapat diedit dari Medical Center.');
+    }
 
     $recordScope = $record['visibility_scope'] ?? 'standard';
     $userName = strtolower(trim($user['full_name'] ?? ''));

@@ -55,7 +55,7 @@ ems_document_ensure_tables($pdo);
 // (case-sensitive) yang punya division pemilik spesifik; selain itu
 // mewarisi division folder induknya, default root = Medis.
 $divisionNameMap = [
-    '1. KEBIJAKAN DAN SOP SMA' => 'Specialist Medical Authority',
+    '1. KEBIJAKAN DAN SOP SMA' => 'Medical Affair',
     '2. SOP Committee Discipline' => 'Disciplinary Committee',
     '3. SOP General Affairs' => 'General Affair',
     '4. SOP Sekretariat Relation' => 'Secretary',

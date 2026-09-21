@@ -985,7 +985,7 @@ function ems_division_options(): array
         ['value' => 'Disciplinary Committee', 'label' => 'Disciplinary Committee'],
         ['value' => 'Human Resource', 'label' => 'Human Resource'],
         ['value' => 'General Affair', 'label' => 'General Affair'],
-        ['value' => 'Specialist Medical Authority', 'label' => 'Specialist Medical Authority'],
+        ['value' => 'Medical Affair', 'label' => 'Medical Affair'],
         ['value' => 'Forensic', 'label' => 'Forensic'],
     ];
 }
@@ -1024,7 +1024,7 @@ function ems_normalize_division(?string $division): string
         'human resource', 'devisi human resource', 'divisi human resource', 'division human resource' => 'Human Resource',
         'disciplinary committee', 'discipline committee', 'disiplin committee', 'disiplin committe', 'deivisi disiplin committe', 'devisi disiplin committe', 'divisi disiplin committe', 'division disciplinary committee' => 'Disciplinary Committee',
         'general affair', 'devisi general affair', 'divisi general affair', 'division general affair' => 'General Affair',
-        'specialist medical authority', 'devisi specialist medical authority', 'divisi specialist medical authority', 'division specialist medical authority' => 'Specialist Medical Authority',
+        'medical affair', 'devisi medical affair', 'divisi medical affair', 'division medical affair', 'specialist medical authority', 'devisi specialist medical authority', 'divisi specialist medical authority', 'division specialist medical authority' => 'Medical Affair',
         'forensic', 'forensik', 'devisi forensic', 'divisi forensic', 'division forensic' => 'Forensic',
         default => $division !== null ? trim($division) : '',
     };
@@ -1119,7 +1119,7 @@ function ems_can_access_division_menu(?string $userDivision, ?string $targetDivi
         return true;
     }
 
-    if ($userDivision === 'Forensic' && $targetDivision === 'Specialist Medical Authority') {
+    if ($userDivision === 'Forensic' && $targetDivision === 'Medical Affair') {
         return true;
     }
 
@@ -1180,6 +1180,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'police_partnership_pay_process.php',
             'police_partnership_action.php',
             'rekam_medis_list.php',
+            'medical_center_records_list.php',
+            'medical_center_records_monitor.php',
             'rekam_medis_view.php',
             'rekam_medis.php',
             'rekam_medis_edit.php',
@@ -1223,6 +1225,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'candidate_interview_multi.php',
             'setting_akun.php',
             'setting_akun_action.php',
+            'setting_akun_delete_document.php',
             'dispatcher.php',
             'dispatcher_action.php',
             'dispatcher_monitoring.php',
@@ -1249,6 +1252,7 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
             'general_affair_kerjasama_input_action.php',
             'setting_akun.php',
             'setting_akun_action.php',
+            'setting_akun_delete_document.php',
             'sertifikat_heli_pendaftaran.php',
             'dispatcher.php',
             'dispatcher_action.php',
@@ -1275,6 +1279,8 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'police_partnership_pay_process.php',
         'police_partnership_action.php',
         'rekam_medis_list.php',
+        'medical_center_records_list.php',
+        'medical_center_records_monitor.php',
         'rekam_medis_view.php',
         'rekam_medis.php',
         'rekam_medis_edit.php',
@@ -1312,18 +1318,21 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
         'pengajuan_cuti_resign_action.php',
         'setting_akun.php',
         'setting_akun_action.php',
+        'setting_akun_delete_document.php',
         'input_dokumen_medis.php',
         'input_dokumen_medis_action.php',
         'sertifikat_heli_pendaftaran.php',
         'dispatcher.php',
         'dispatcher_action.php',
         'dispatcher_monitoring.php',
+        'disciplinary_point_reduction_requests.php',
+        'disciplinary_point_reduction_request_action.php',
     ];
 }
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
-    if ($scriptName === 'setting_akun.php' || $scriptName === 'setting_akun_action.php') {
+    if (in_array($scriptName, ['setting_akun.php', 'setting_akun_action.php', 'setting_akun_quick_save.php', 'setting_akun_delete_document.php'], true)) {
         return;
     }
 
@@ -1347,8 +1356,13 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
-    // Exception: monitoring point pelanggaran personal accessible by all logged-in users
-    if ($scriptName === 'disciplinary_points_monitor.php') {
+    // Exception: monitoring and personal point-reduction request pages are
+    // accessible to logged-in users; mutations enforce ownership in-page.
+    if (in_array($scriptName, [
+        'disciplinary_points_monitor.php',
+        'disciplinary_point_reduction_requests.php',
+        'disciplinary_point_reduction_request_action.php',
+    ], true)) {
         return;
     }
 
@@ -1520,6 +1534,127 @@ function ems_disciplinary_point_reduction_label(string $reductionType): string
 {
     $options = ems_disciplinary_point_reduction_options();
     return $options[$reductionType]['label'] ?? ucwords(str_replace('_', ' ', $reductionType));
+}
+
+function ems_auto_create_disciplinary_reduction_requests_for_medical_record(PDO $pdo, int $medicalRecordId): int
+{
+    if ($medicalRecordId <= 0
+        || !ems_table_exists($pdo, 'medical_records')
+        || !ems_table_exists($pdo, 'disciplinary_cases')
+        || !ems_table_exists($pdo, 'disciplinary_point_reduction_requests')
+        || !ems_column_exists($pdo, 'disciplinary_point_reduction_requests', 'medical_record_id')) {
+        return 0;
+    }
+
+    $recordStmt = $pdo->prepare(
+        'SELECT id, record_code, patient_name, doctor_id, assistant_id, operasi_type, created_at
+         FROM medical_records
+         WHERE id = ?
+         LIMIT 1'
+    );
+    $recordStmt->execute([$medicalRecordId]);
+    $record = $recordStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$record) {
+        return 0;
+    }
+
+    $operationTier = strtolower((string) ($record['operasi_type'] ?? 'minor')) === 'major' ? 'major' : 'minor';
+    $activityDate = substr((string) ($record['created_at'] ?? ''), 0, 10);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $activityDate)) {
+        $activityDate = date('Y-m-d');
+    }
+
+    $participants = [];
+    $doctorId = (int) ($record['doctor_id'] ?? 0);
+    if ($doctorId > 0) {
+        $participants[$doctorId] = 'dpjp_' . $operationTier;
+    }
+
+    $assistantIds = [];
+    if (ems_table_exists($pdo, 'medical_record_assistants')) {
+        $assistantStmt = $pdo->prepare(
+            'SELECT assistant_user_id
+             FROM medical_record_assistants
+             WHERE medical_record_id = ?
+             ORDER BY sort_order ASC, id ASC'
+        );
+        $assistantStmt->execute([$medicalRecordId]);
+        $assistantIds = array_map(
+            static fn (array $row): int => (int) ($row['assistant_user_id'] ?? 0),
+            $assistantStmt->fetchAll(PDO::FETCH_ASSOC) ?: []
+        );
+    }
+    if ($assistantIds === [] && (int) ($record['assistant_id'] ?? 0) > 0) {
+        $assistantIds[] = (int) $record['assistant_id'];
+    }
+    foreach (array_values(array_unique(array_filter($assistantIds))) as $assistantId) {
+        $participants[$assistantId] = 'assistant_' . $operationTier;
+    }
+
+    if ($participants === []) {
+        return 0;
+    }
+
+    $options = ems_disciplinary_point_reduction_options();
+    $userStmt = $pdo->prepare('SELECT id, full_name, division, is_active FROM user_rh WHERE id = ? LIMIT 1');
+    $casePointsStmt = $pdo->prepare('SELECT COALESCE(SUM(total_points), 0) FROM disciplinary_cases WHERE subject_user_id = ?');
+    $reductionStmt = $pdo->prepare('SELECT COALESCE(SUM(reduction_points), 0) FROM disciplinary_point_reductions WHERE subject_user_id = ?');
+    $caseStmt = $pdo->prepare(
+        'SELECT id
+         FROM disciplinary_cases
+         WHERE subject_user_id = ?
+         ORDER BY case_date DESC, id DESC
+         LIMIT 1'
+    );
+    $insertStmt = $pdo->prepare(
+        'INSERT IGNORE INTO disciplinary_point_reduction_requests
+            (medical_record_id, subject_user_id, related_case_id, reduction_type, reduction_points,
+             activity_date, notes, submitted_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $created = 0;
+
+    foreach ($participants as $subjectUserId => $reductionType) {
+        if (!isset($options[$reductionType])) {
+            continue;
+        }
+
+        $userStmt->execute([(int) $subjectUserId]);
+        $subject = $userStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$subject
+            || (int) ($subject['is_active'] ?? 0) !== 1
+            || ems_normalize_division((string) ($subject['division'] ?? '')) !== 'Medis') {
+            continue;
+        }
+
+        $casePointsStmt->execute([(int) $subjectUserId]);
+        $reductionStmt->execute([(int) $subjectUserId]);
+        $activePoints = max(0, (int) $casePointsStmt->fetchColumn() - (int) $reductionStmt->fetchColumn());
+        if ($activePoints <= 0) {
+            continue;
+        }
+
+        $caseStmt->execute([(int) $subjectUserId]);
+        $relatedCaseId = (int) ($caseStmt->fetchColumn() ?: 0);
+        $recordCode = trim((string) ($record['record_code'] ?? '')) ?: ('#' . $medicalRecordId);
+        $notes = 'Otomatis dari rekam medis ' . $recordCode
+            . ' | Pasien: ' . trim((string) ($record['patient_name'] ?? '-'))
+            . ' | Peran: ' . ($reductionType === 'dpjp_' . $operationTier ? 'DPJP' : 'Asisten');
+
+        $insertStmt->execute([
+            $medicalRecordId,
+            (int) $subjectUserId,
+            $relatedCaseId > 0 ? $relatedCaseId : null,
+            $reductionType,
+            (int) $options[$reductionType]['points'],
+            $activityDate,
+            $notes,
+            (int) $subjectUserId,
+        ]);
+        $created += $insertStmt->rowCount();
+    }
+
+    return $created;
 }
 
 function ems_is_letter_receiver_role(?string $role): bool

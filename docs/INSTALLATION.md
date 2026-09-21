@@ -34,6 +34,12 @@ DB_NAME=ems2_local
 DB_USER=ems2
 DB_PASS=change_me
 DB_TIMEZONE=+07:00
+
+# Medical Center GET-only read integration
+MEDICAL_CENTER_API_URL=https://medicalcenterime.my.id/api/rekam-medis?hospital=roxwood
+MEDICAL_CENTER_API_KEY=<server-secret>
+MEDICAL_CENTER_API_TIMEOUT=45
+MEDICAL_CENTER_API_MAX_PAGES=100
 ```
 
 Firebase settings are optional unless you use realtime chat, live music, or presence features.
@@ -49,7 +55,7 @@ GRANT ALL PRIVILEGES ON ems2_local.* TO 'ems2'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-Apply SQL files from `docs/sql/` in chronological order. Review each file first, especially before using it against a non-empty database.
+Apply SQL files from `docs/sql/` in chronological order. Review each file first, especially before using it against a non-empty database. For Medical Center GET-only mirror, apply `docs/sql/78_2026-09-21_medical_center_get_cache.sql` then `docs/sql/79_2026-09-21_medical_center_remote_mirror.sql` before enabling the pull job.
 
 ## 4. Build Assets
 
@@ -92,6 +98,14 @@ Before enabling cron jobs:
 - Verify `.env` database access.
 - Confirm logs are writable.
 - Run each job manually in a staging environment.
+
+Medical Center GET-only pull, after applying migrations `78_2026-09-21_medical_center_get_cache.sql` and `79_2026-09-21_medical_center_remote_mirror.sql`, then setting `MEDICAL_CENTER_API_KEY` server-side:
+
+```cron
+*/5 * * * * cd /path/to/ems2 && /usr/bin/php cron/pull_medical_center_records.php >> storage/logs/medical_center_get.log 2>&1
+```
+
+Do not expose API key in cron arguments. Worker sends only GET and never sends POST, PUT, PATCH, or DELETE.
 
 ## 8. Upgrade Process
 

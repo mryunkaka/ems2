@@ -67,6 +67,7 @@ function authGuardRequiresTanggalLahirIc(string $scriptName): bool
         'setting_akun.php',
         'setting_akun_action.php',
         'setting_akun_quick_save.php',
+        'setting_akun_delete_document.php',
     ], true);
 }
 
@@ -76,6 +77,7 @@ function authGuardRequiresKontrakKerja(string $scriptName): bool
         'setting_akun.php',
         'setting_akun_action.php',
         'setting_akun_quick_save.php',
+        'setting_akun_delete_document.php',
     ], true);
 }
 

@@ -9,9 +9,9 @@ require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 
-$pageTitle = 'List Medis Specialist Medical Authority';
+$pageTitle = 'List Medis Medical Affair';
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
@@ -343,7 +343,7 @@ include __DIR__ . '/../partials/sidebar.php';
     <div class="page page-shell">
         <div class="forensic-medics-hero mb-4">
             <div>
-                <div class="forensic-medics-kicker">Specialist Medical Authority</div>
+                <div class="forensic-medics-kicker">Medical Affair</div>
                 <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
                 <p class="page-subtitle">Daftar tenaga medis berdasarkan jabatan, status operasional, dan kelengkapan sertifikat dari data `user_rh`.</p>
             </div>

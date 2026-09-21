@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/medical_records_api.php';
 require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -59,7 +60,28 @@ if (!$record) {
     exit;
 }
 
+$isRemoteMedicalCenterRecord = ems_column_exists($pdo, 'medical_records', 'source_provider')
+    && trim((string) ($record['source_provider'] ?? '')) === 'medical_center';
+$remotePhotos = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_photos_json'] ?? [])
+    : [];
+$remoteTeam = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_team_json'] ?? [])
+    : [];
+$remoteDpjp = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_dpjp_json'] ?? [])
+    : [];
+$remoteAssistants = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_assistants_json'] ?? [])
+    : [];
+$remoteMedicalDetails = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_medical_details_json'] ?? [])
+    : [];
+$remoteSupportingMedications = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_list_text($remoteMedicalDetails['obat_obatan'] ?? '')
+    : '';
 $recordScope = $record['visibility_scope'] ?? 'standard';
+$canEditRecord = false;
 if ($isForensicPrivate && $recordScope !== 'forensic_private') {
     $_SESSION['flash_errors'][] = 'Rekam medis private tidak ditemukan.';
     header('Location: forensic_medical_records_list.php');
@@ -164,8 +186,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 <?php endif; ?>
                 <div class="medical-meta-pill">
                     <span class="medical-meta-pill__label">Scope</span>
-                    <strong><?= htmlspecialchars($recordScope === 'forensic_private' ? 'Forensic Private' : 'Standard', ENT_QUOTES, 'UTF-8') ?></strong>
+                    <strong><?= htmlspecialchars($isRemoteMedicalCenterRecord ? 'Medical Center · Read-only' : ($recordScope === 'forensic_private' ? 'Forensic Private' : 'Standard'), ENT_QUOTES, 'UTF-8') ?></strong>
                 </div>
+                <?php if ($isRemoteMedicalCenterRecord && trim((string) ($record['remote_record_id'] ?? '')) !== ''): ?>
+                    <div class="medical-meta-pill">
+                        <span class="medical-meta-pill__label">ID Remote</span>
+                        <a href="<?= htmlspecialchars((string) ($record['remote_record_url'] ?: ems_medical_center_remote_detail_url($record['remote_record_id'])), ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="text-primary hover:underline">
+                            <?= htmlspecialchars((string) $record['remote_record_id'], ENT_QUOTES, 'UTF-8') ?>
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -210,6 +240,135 @@ include __DIR__ . '/../partials/sidebar.php';
                     </div>
                 </div>
 
+                <?php if ($isRemoteMedicalCenterRecord): ?>
+                <div class="card card-section mb-4">
+                    <div class="card-header">ANAMNESIS &amp; RIWAYAT KESEHATAN</div>
+                    <div class="card-body medical-detail-sections">
+                        <?php foreach ([
+                            'Anamnesis / Keluhan Utama' => 'remote_anamnesis',
+                            'Diagnosis Utama' => 'remote_diagnosis',
+                        ] as $label => $column): ?>
+                            <div class="medical-detail-block">
+                                <span class="medical-side-card__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                <div class="medical-detail-value"><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="medical-info-grid medical-info-grid--history">
+                            <?php foreach ([
+                                'Riwayat Penyakit Dahulu' => 'remote_past_medical_history',
+                                'Riwayat Penyakit Keluarga' => 'remote_family_history',
+                                'Riwayat Alergi' => 'remote_allergy_history',
+                                'Riwayat Pengobatan' => 'remote_medication_history',
+                            ] as $label => $column): ?>
+                                <div class="medical-info-item">
+                                    <span class="medical-info-item__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <strong><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-section mb-4">
+                    <div class="card-header">PEMERIKSAAN FISIK &amp; TTV (TANDA VITAL)</div>
+                    <div class="card-body">
+                        <div class="medical-info-grid medical-info-grid--vitals">
+                            <?php foreach ([
+                                'Keadaan Umum' => 'remote_general_condition',
+                                'Kesadaran / GCS' => 'remote_gcs',
+                                'Tekanan Darah' => 'remote_blood_pressure',
+                                'Nadi' => 'remote_pulse',
+                                'Respirasi (RR)' => 'remote_respiratory_rate',
+                                'Suhu Body' => 'remote_temperature',
+                                'Saturasi O2' => 'remote_oxygen_saturation',
+                                'Golongan Darah' => 'patient_blood_type',
+                            ] as $label => $column): ?>
+                                <div class="medical-info-item">
+                                    <span class="medical-info-item__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <strong><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-section mb-4">
+                    <div class="card-header">TINDAKAN / OPERASI</div>
+                    <div class="card-body medical-detail-sections">
+                        <div class="medical-info-grid medical-info-grid--action">
+                            <?php foreach ([
+                                'Nama Tindakan' => 'remote_operation_name',
+                                'Waktu Mulai' => 'remote_operation_start_at',
+                                'Waktu Selesai' => 'remote_operation_end_at',
+                            ] as $label => $column): ?>
+                                <div class="medical-info-item">
+                                    <span class="medical-info-item__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <strong><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php foreach ([
+                            'Langkah-Langkah Tindakan' => 'remote_operation_steps',
+                            'Hasil Operasi' => 'remote_operation_result',
+                        ] as $label => $column): ?>
+                            <div class="medical-detail-block">
+                                <span class="medical-side-card__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                <div class="medical-detail-value"><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <div class="card card-section mb-4">
+                    <div class="card-header">MANAJEMEN ANESTESI &amp; TABLE SCORE</div>
+                    <div class="card-body medical-detail-sections">
+                        <div class="medical-info-grid medical-info-grid--anesthesia">
+                            <?php foreach ([
+                                'Jenis Anestesi' => 'remote_anesthesia_type',
+                                'Petugas Anestesi' => 'remote_anesthesia_officer',
+                            ] as $label => $column): ?>
+                                <div class="medical-info-item">
+                                    <span class="medical-info-item__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <strong><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></strong>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php foreach ([
+                            'Obat Pra-Operasi' => 'remote_preop_medications',
+                            'Obat Pasca-Operasi (Antidote/Anti Mual/Analgesik)' => 'remote_postop_medications',
+                        ] as $label => $column): ?>
+                            <div class="medical-detail-block">
+                                <span class="medical-side-card__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                <div class="medical-detail-value"><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="medical-detail-block">
+                            <span class="medical-side-card__label">SCORE PEMULIHAN PASCA ANESTESI (ALDRETE SCORE)</span>
+                            <div class="medical-detail-value"><?= nl2br(htmlspecialchars((string) ($record['remote_aldrete'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card card-section mb-4">
+                    <div class="card-header">PENUNJANG, OBAT &amp; SARAN ANJURAN</div>
+                    <div class="card-body medical-detail-sections">
+                        <?php foreach ([
+                            'Hasil Laboratorium' => 'remote_laboratory_result',
+                            'Hasil Radiologi / X-Ray' => 'remote_radiology_result',
+                            'Saran dan Anjuran Dokter' => 'remote_postop_advice',
+                        ] as $label => $column): ?>
+                            <div class="medical-detail-block">
+                                <span class="medical-side-card__label"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></span>
+                                <div class="medical-detail-value"><?= nl2br(htmlspecialchars((string) ($record[$column] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="medical-detail-block">
+                            <span class="medical-side-card__label">Obat-Obatan Post Operasi</span>
+                            <div class="medical-detail-value"><?= nl2br(htmlspecialchars($remoteSupportingMedications, ENT_QUOTES, 'UTF-8')) ?></div>
+                        </div>
+                    </div>
+                </div>
+                <?php else: ?>
                 <div class="card card-section mb-4">
                     <div class="card-header">Hasil Rekam Medis</div>
                     <div class="card-body">
@@ -218,21 +377,41 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
                 </div>
+                <?php endif; ?>
             </div>
 
             <aside class="medical-view-side">
                 <div class="card card-section mb-4">
-                    <div class="card-header">Tim Medis</div>
+                    <div class="card-header">Tim Operasi Medis</div>
                     <div class="card-body">
                         <div class="medical-stack">
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Dokter DPJP</span>
-                                <strong><?= htmlspecialchars((string)($record['doctor_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
-                                <div class="meta-text-xs"><?= htmlspecialchars((string)($record['doctor_position'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php if ($isRemoteMedicalCenterRecord): ?>
+                                    <strong><?= htmlspecialchars((string) ($remoteDpjp['local_name'] ?? ($remoteDpjp['name'] ?? '-')), ENT_QUOTES, 'UTF-8') ?></strong>
+                                    <div class="meta-text-xs">Citizen ID: <?= htmlspecialchars((string) ($remoteDpjp['local_citizen_id'] ?? ($remoteDpjp['staff_id'] ?? '-')), ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php else: ?>
+                                    <strong><?= htmlspecialchars((string)($record['doctor_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                    <div class="meta-text-xs"><?= htmlspecialchars((string)($record['doctor_position'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php endif; ?>
                             </div>
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Asisten Operasi</span>
-                                <?php if ($assistants !== []): ?>
+                                <?php if ($isRemoteMedicalCenterRecord && $remoteAssistants !== []): ?>
+                                    <?php foreach ($remoteAssistants as $assistantKey => $assistantValue): ?>
+                                        <?php if (is_array($assistantValue)) {
+                                            $assistantName = ($assistantValue['local_name'] ?? '') ?: ($assistantValue['remote_name'] ?? $assistantValue['name'] ?? $assistantValue['full_name'] ?? $assistantValue['nama'] ?? '-');
+                                            $assistantStaffId = $assistantValue['local_citizen_id'] ?? ($assistantValue['staff_id'] ?? '');
+                                        } else {
+                                            $assistantName = $assistantValue;
+                                            $assistantStaffId = '';
+                                        } ?>
+                                        <div class="medical-assistant-item">
+                                            <strong><?= htmlspecialchars((string) $assistantName, ENT_QUOTES, 'UTF-8') ?></strong>
+                                            <?php if ($assistantStaffId !== ''): ?><div class="meta-text-xs">Staff ID: <?= htmlspecialchars((string) $assistantStaffId, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php elseif ($assistants !== []): ?>
                                     <?php foreach ($assistants as $assistant): ?>
                                         <div class="medical-assistant-item">
                                             <strong><?= htmlspecialchars((string) ($assistant['full_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
@@ -275,7 +454,17 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <div class="medical-document-card__head">
                                     <span class="medical-side-card__label">Foto MRI/CT Scan/USG/Dll</span>
                                 </div>
-                                <?php if ($supportingImages !== []): ?>
+                                <?php if ($isRemoteMedicalCenterRecord && $remotePhotos !== []): ?>
+                                    <div class="medical-document-gallery">
+                                        <?php foreach ($remotePhotos as $remotePhoto): ?>
+                                            <?php $remotePhotoUrl = ems_medical_center_photo_url($remotePhoto); ?>
+                                            <?php if ($remotePhotoUrl === '') continue; ?>
+                                            <a href="<?= htmlspecialchars($remotePhotoUrl, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener" class="medical-document-gallery__item">
+                                                <img src="<?= htmlspecialchars($remotePhotoUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Foto remote Medical Center" class="medical-document-card__image">
+                                            </a>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php elseif ($supportingImages !== []): ?>
                                     <div class="medical-document-gallery">
                                         <?php foreach ($supportingImages as $image): ?>
                                             <?php $imagePath = trim((string)($image['file_path'] ?? '')); ?>
@@ -386,6 +575,7 @@ include __DIR__ . '/../partials/sidebar.php';
     background: rgba(255, 255, 255, 0.82);
     border-radius: 1rem;
     padding: 1rem 1.1rem;
+    min-width: 0;
 }
 
 .medical-meta-pill__label,
@@ -402,14 +592,49 @@ include __DIR__ . '/../partials/sidebar.php';
 
 .medical-view-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
-    gap: 1.25rem;
+    grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+    gap: 1.5rem;
 }
 
 .medical-info-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
+    align-items: stretch;
+}
+
+.medical-info-grid--history {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.medical-info-grid--vitals {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.medical-info-grid--action {
+    grid-template-columns: minmax(0, 1.8fr) repeat(2, minmax(0, 0.8fr));
+}
+
+.medical-info-grid--anesthesia {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.medical-detail-sections {
+    display: grid;
+    gap: 1rem;
+}
+
+.medical-detail-block {
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(248, 250, 252, 0.82);
+    border-radius: 1rem;
+    padding: 1rem 1.1rem;
+}
+
+.medical-detail-value {
+    color: #1e293b;
+    white-space: pre-line;
+    line-height: 1.72;
 }
 
 .medical-richtext {

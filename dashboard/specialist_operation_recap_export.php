@@ -13,7 +13,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
-ems_require_division_access(['Specialist Medical Authority'], '/dashboard/index.php');
+ems_require_division_access(['Medical Affair'], '/dashboard/index.php');
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $search = trim((string) ($_GET['search'] ?? ''));
@@ -277,7 +277,7 @@ $sheet->getStyle('A1')->applyFromArray([
     ],
 ]);
 
-$sheet->setCellValue('A2', 'Specialist Medical Authority' . ($search !== '' ? ' | Pencarian: ' . $search : ''));
+$sheet->setCellValue('A2', 'Medical Affair' . ($search !== '' ? ' | Pencarian: ' . $search : ''));
 $sheet->mergeCells('A2:K2');
 $sheet->getStyle('A2')->applyFromArray([
     'font' => [

@@ -78,7 +78,7 @@ function orgDivisionRank(string $division): int
         'Human Resource' => 3,
         'Disciplinary Committee' => 4,
         'General Affair' => 5,
-        'Specialist Medical Authority' => 6,
+        'Medical Affair' => 6,
         'Forensic' => 7,
     ];
 
@@ -297,7 +297,7 @@ function orgRenderPosterPdfDocument(array $stats, array $directors, array $viceD
     $secretaryNode = orgPosterFindNode($orgTree, 'Secretary');
     $humanCapitalNode = orgPosterFindNode($orgTree, 'Human Capital');
     $generalAffairNode = orgPosterFindNode($orgTree, 'General Affair');
-    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Specialist Medical Authority');
+    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Medical Affair');
 
     return '
     <style>
@@ -532,7 +532,7 @@ function orgRenderPosterPdfDirect(TCPDF $pdf, array $stats, array $directors, ar
     $secretaryNode = orgPosterFindNode($orgTree, 'Secretary');
     $humanCapitalNode = orgPosterFindNode($orgTree, 'Human Capital');
     $generalAffairNode = orgPosterFindNode($orgTree, 'General Affair');
-    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Specialist Medical Authority');
+    $medicalAuthorityNode = orgPosterFindNode($orgTree, 'Medical Affair');
     $ceoPeople = $directors !== [] ? $directors : $viceDirectors;
 
     $pageWidth = $pdf->getPageWidth();
@@ -788,8 +788,8 @@ try {
         ],
         [
             'type' => 'branch',
-            'division' => 'Specialist Medical Authority',
-            'people' => $divisionManagers['Specialist Medical Authority'] ?? [],
+            'division' => 'Medical Affair',
+            'people' => $divisionManagers['Medical Affair'] ?? [],
             'children' => [
                 [
                     'division' => 'Forensic',
@@ -868,7 +868,7 @@ if (!$isPdfPreview) {
             <div>
                 <div class="org-kicker">Landscape View</div>
                 <h2 class="org-hero-title">Struktur organisasi manager dengan urutan komando yang tetap.</h2>
-                <p class="org-hero-copy">Susunan dibaca dari Director, turun ke Vice Director, lalu Secretary, kemudian bercabang ke Human Capital, General Affair, dan Specialist Medical Authority beserta turunan divisinya.</p>
+                <p class="org-hero-copy">Susunan dibaca dari Director, turun ke Vice Director, lalu Secretary, kemudian bercabang ke Human Capital, General Affair, dan Medical Affair beserta turunan divisinya.</p>
             </div>
             <div class="org-stats">
                 <article class="org-stat-card">
