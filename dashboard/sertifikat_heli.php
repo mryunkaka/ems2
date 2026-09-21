@@ -79,6 +79,13 @@ $stmt = $pdo->query("
         u.sertifikat_heli
     FROM user_rh u
     WHERE TRIM(COALESCE(u.sertifikat_heli, '')) <> ''
+      AND NOT (
+          COALESCE(u.is_active, 0) = 0
+          AND (
+              u.resigned_at IS NOT NULL
+              OR TRIM(COALESCE(u.resign_reason, '')) <> ''
+          )
+      )
     ORDER BY u.is_active DESC, u.full_name ASC
 ");
 $certificateUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
