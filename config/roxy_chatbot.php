@@ -257,6 +257,7 @@ function ems_roxy_retrieval_query(string $query): string
         'coba', 'jelaskan', 'sebutkan', 'termasuk', 'mohon', 'minta', 'yang',
         'dan', 'atau', 'dari', 'dengan', 'pada', 'untuk', 'itu', 'ini', 'saya',
         'nya', 'kah', 'ke', 'dalam', 'adalah', 'bagi', 'bisa', 'hanya',
+        'masuk', 'point', 'poin', 'nama', 'dokumen',
     ];
     $tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower(trim($query)), -1, PREG_SPLIT_NO_EMPTY);
     $tokens = array_values(array_unique(array_filter(
@@ -296,8 +297,45 @@ function ems_roxy_extract_document_evidence(string $text, string $query): string
         $position = (int) $anchors[0]['position'];
     }
 
+    // Pilih subbab yang memuat paling banyak kata inti. Ini menghindari
+    // kemunculan pertama di Daftar Isi ketika isi subbab ada di bawahnya.
+    $sectionPattern = '/^\\s*((?:\\d+\\.){2,}\\d*)\\s+([^\\r\\n]+)$/imu';
+    preg_match_all($sectionPattern, $text, $sectionMatches, PREG_OFFSET_CAPTURE);
+    $bestSection = null;
+    foreach ($sectionMatches[0] ?? [] as $index => $match) {
+        $byteStart = (int) $match[1];
+        $next = $sectionMatches[0][$index + 1] ?? null;
+        $nextStart = $next !== null ? (int) $next[1] : strlen($text);
+        $charStart = mb_strlen(substr($text, 0, $byteStart));
+        $charEnd = mb_strlen(substr($text, 0, $nextStart));
+        $sectionText = mb_strtolower(mb_substr($text, $charStart, min(12000, $charEnd - $charStart)));
+        $score = 0;
+        foreach ($tokens as $token) {
+            if (mb_stripos($sectionText, mb_strtolower($token)) !== false) {
+                $score++;
+            }
+        }
+        if (mb_stripos($sectionText, 'initial assessment') !== false) {
+            $score += 4;
+        }
+        if ($bestSection === null || $score > $bestSection['score']) {
+            $bestSection = [
+                'score' => $score,
+                'charStart' => $charStart,
+                'charEnd' => $charEnd,
+            ];
+        }
+    }
+    if ($bestSection !== null && $bestSection['score'] >= 2) {
+        return mb_substr(
+            trim(mb_substr($text, $bestSection['charStart'], $bestSection['charEnd'] - $bestSection['charStart'])),
+            0,
+            7000
+        );
+    }
+
     // Ambil seluruh pasal yang memuat bukti, bukan 800 karakter awal dokumen.
-    $headingPattern = '/^.*\bPASAL\s+\d+[^\r\n]*$/imu';
+    $headingPattern = '/^.*\\bPASAL\\s+\\d+[^\\r\\n]*$/imu';
     preg_match_all($headingPattern, $text, $headingMatches, PREG_OFFSET_CAPTURE);
     foreach ($headingMatches[0] ?? [] as $index => $match) {
         $byteStart = (int) $match[1];
@@ -311,7 +349,6 @@ function ems_roxy_extract_document_evidence(string $text, string $query): string
         }
     }
 
-    return mb_substr($text, max(0, $position - 1200), 3000);
 }
 
 function ems_roxy_retrieve_context(PDO $pdo, string $unitCode, string $query): array
@@ -387,15 +424,22 @@ TUGASMU:
   salah kalau memang sudah sesuai SOP.
 
 ATURAN GAYA BAHASA:
-- Bahasa Indonesia, santai-profesional, ringkas.
-- JANGAN mengulang-ulang kalimat pembuka template seperti "Terima kasih
-  atas pertanyaan Anda..." — langsung ke jawaban, seperti rekan kerja
-  senior menjelaskan.
+- Bahasa Indonesia, profesional, jelas, rapi, dan mudah dipindai.
+- Jangan mengulang pembuka template seperti "Terima kasih atas pertanyaan
+  Anda" — langsung ke inti jawaban.
+- Untuk pertanyaan yang meminta lokasi aturan/dokumen, susun jawaban dengan
+  urutan: "Jawaban", "Dokumen", "Bagian/Poin", "Bukti", lalu "Catatan".
+- Gunakan baris baru, nomor, dan tanda "-" agar jawaban tetap rapi saat
+  ditampilkan sebagai teks chat. Jangan membuat paragraf panjang tanpa struktur.
+- Untuk pertanyaan klinis atau roleplay medis, susun: klasifikasi/kesimpulan,
+  kondisi yang mendukung, alasan, batasan, dan langkah penanganan sesuai
+  dokumen. Jangan mengubah contoh umum menjadi aturan resmi server.
 
 ATURAN AKURASI (PALING PENTING):
-- HANYA jawab berdasarkan konteks yang diberikan di blok "=== KONTEKS ==="
-  di bawah, dan riwayat percakapan ini. JANGAN mengarang informasi yang
-  tidak ada di konteks — itu dianggap kesalahan fatal.
+- HANYA jawab berdasarkan blok "=== KONTEKS ===" dan bukti dokumen resmi.
+  Riwayat percakapan dipakai untuk memahami maksud pertanyaan, BUKAN sebagai
+  sumber fakta. Jawaban lama yang bertentangan harus dikoreksi, bukan diikuti.
+  JANGAN mengarang informasi yang tidak ada di konteks — itu kesalahan fatal.
 - Prioritaskan blok "BUKTI" dari dokumen resmi. Jika bukti memuat nomor
   PASAL/ayat, sebutkan nomor PASAL dan ayat secara eksplisit.
 - Bedakan tegas antara fakta tertulis, kesimpulan langsung, dan informasi
