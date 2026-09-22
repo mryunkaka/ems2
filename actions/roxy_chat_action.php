@@ -71,16 +71,34 @@ try {
     // the bot answer, otherwise PDO may reuse a closed MariaDB connection.
     ems_reconnect_database_if_needed($pdo);
 
-    $botMessageId = ems_roxy_save_message(
-        $pdo,
-        $conversationId,
-        $userId,
-        'bot',
-        $result['answer'],
-        $result['answer_source'],
-        $result['expression'],
-        $userMessageId
-    );
+    try {
+        $botMessageId = ems_roxy_save_message(
+            $pdo,
+            $conversationId,
+            $userId,
+            'bot',
+            $result['answer'],
+            $result['answer_source'],
+            $result['expression'],
+            $userMessageId
+        );
+    } catch (Throwable $saveError) {
+        if (!preg_match('/(?:SQLSTATE\[HY000\].*2006|server has gone away|mysql server has gone away)/i', $saveError->getMessage())) {
+            throw $saveError;
+        }
+
+        ems_reconnect_database_if_needed($pdo);
+        $botMessageId = ems_roxy_save_message(
+            $pdo,
+            $conversationId,
+            $userId,
+            'bot',
+            $result['answer'],
+            $result['answer_source'],
+            $result['expression'],
+            $userMessageId
+        );
+    }
 
     echo json_encode([
         'success' => true,

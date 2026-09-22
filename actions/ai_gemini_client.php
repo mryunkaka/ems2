@@ -4,64 +4,58 @@ require_once __DIR__ . '/../config/ai_settings.php';
 
 function ems_ai_log_request(PDO &$pdo, array $data): void
 {
-    if (function_exists('ems_reconnect_database_if_needed')) {
-        ems_reconnect_database_if_needed($pdo);
-    }
-
-    if (!ems_ai_request_logs_table_exists($pdo)) {
-        return;
-    }
-
     $insertLog = static function (PDO $connection) use ($data): void {
+        if (!ems_ai_request_logs_table_exists($connection)) {
+            return;
+        }
+
         $stmt = $connection->prepare("
-        INSERT INTO system_ai_request_logs
-        (
-            feature_key,
-            provider,
-            model_name,
-            request_hash,
-            request_payload,
-            response_payload,
-            prompt_tokens,
-            response_tokens,
-            total_tokens,
-            http_status,
-            latency_ms,
-            success_flag,
-            error_message,
-            created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
+            INSERT INTO system_ai_request_logs
+            (
+                feature_key, provider, model_name, request_hash,
+                request_payload, response_payload, prompt_tokens,
+                response_tokens, total_tokens, http_status, latency_ms,
+                success_flag, error_message, created_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
 
         $stmt->execute([
-        $data['feature_key'] ?? 'unknown',
-        $data['provider'] ?? 'gemini',
-        $data['model_name'] ?? '',
-        $data['request_hash'] ?? '',
-        $data['request_payload'] ?? null,
-        $data['response_payload'] ?? null,
-        $data['prompt_tokens'] ?? null,
-        $data['response_tokens'] ?? null,
-        $data['total_tokens'] ?? null,
-        $data['http_status'] ?? null,
-        $data['latency_ms'] ?? null,
-        !empty($data['success_flag']) ? 1 : 0,
-        $data['error_message'] ?? null,
-        $data['created_by'] ?? null,
+            $data['feature_key'] ?? 'unknown',
+            $data['provider'] ?? 'gemini',
+            $data['model_name'] ?? '',
+            $data['request_hash'] ?? '',
+            $data['request_payload'] ?? null,
+            $data['response_payload'] ?? null,
+            $data['prompt_tokens'] ?? null,
+            $data['response_tokens'] ?? null,
+            $data['total_tokens'] ?? null,
+            $data['http_status'] ?? null,
+            $data['latency_ms'] ?? null,
+            !empty($data['success_flag']) ? 1 : 0,
+            $data['error_message'] ?? null,
+            $data['created_by'] ?? null,
         ]);
     };
 
     try {
+        if (function_exists('ems_reconnect_database_if_needed')) {
+            ems_reconnect_database_if_needed($pdo);
+        }
         $insertLog($pdo);
-    } catch (PDOException $e) {
+    } catch (Throwable $e) {
         if (!preg_match('/(?:SQLSTATE\[HY000\].*2006|server has gone away|mysql server has gone away)/i', $e->getMessage())) {
-            throw $e;
+            error_log('[Roxy] AI request log failed: ' . $e->getMessage());
+            return;
         }
 
-        $pdo = function_exists('ems_create_database_connection')
-            ? ems_create_database_connection()
-            : $pdo;
-        $insertLog($pdo);
+        try {
+            $pdo = function_exists('ems_create_database_connection')
+                ? ems_create_database_connection()
+                : $pdo;
+            $insertLog($pdo);
+        } catch (Throwable $retryError) {
+            error_log('[Roxy] AI request log retry failed: ' . $retryError->getMessage());
+        }
     }
 }
 
