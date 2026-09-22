@@ -431,6 +431,9 @@ ATURAN GAYA BAHASA:
   urutan: "Jawaban", "Dokumen", "Bagian/Poin", "Bukti", lalu "Catatan".
 - Gunakan baris baru, nomor, dan tanda "-" agar jawaban tetap rapi saat
   ditampilkan sebagai teks chat. Jangan membuat paragraf panjang tanpa struktur.
+- Gunakan Markdown sederhana yang akan dirender aplikasi: **bold** untuk
+  judul/label penting, *italic* untuk istilah teknis, nomor untuk langkah,
+  dan tanda "-" untuk bullet. Jangan kirim HTML.
 - Untuk pertanyaan klinis atau roleplay medis, susun: klasifikasi/kesimpulan,
   kondisi yang mendukung, alasan, batasan, dan langkah penanganan sesuai
   dokumen. Jangan mengubah contoh umum menjadi aturan resmi server.

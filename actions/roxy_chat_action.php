@@ -67,6 +67,10 @@ try {
         ]);
     }
 
+    // AI call can exceed hosting wait_timeout (30s). Reconnect before writing
+    // the bot answer, otherwise PDO may reuse a closed MariaDB connection.
+    ems_reconnect_database_if_needed($pdo);
+
     $botMessageId = ems_roxy_save_message(
         $pdo,
         $conversationId,
@@ -89,5 +93,16 @@ try {
         'gemini_key_missing' => $result['gemini_key_missing'],
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
-    emsJsonAbort(500, ['success' => false, 'message' => 'Terjadi kesalahan tak terduga: ' . $e->getMessage()]);
+    error_log(sprintf(
+        '[Roxy] request failed: %s in %s:%d',
+        $e->getMessage(),
+        $e->getFile(),
+        $e->getLine()
+    ));
+
+    emsJsonAbort(500, [
+        'success' => false,
+        'message' => 'Roxy sedang mengalami gangguan koneksi sementara. Pesan Anda belum dapat diproses. Coba ulangi beberapa saat lagi.',
+        'error_code' => 'roxy_temporary_failure',
+    ]);
 }

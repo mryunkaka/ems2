@@ -40,9 +40,17 @@ include __DIR__ . '/../partials/sidebar.php';
 .roxy-bubble-wrap.user { align-self:flex-end; align-items:flex-end; }
 .roxy-bubble-wrap.bot { align-self:flex-start; align-items:flex-start; }
 .roxy-bubble-label { font-size:10px; font-weight:700; color:#64748b; margin-bottom:3px; text-transform:uppercase; letter-spacing:.03em; }
-.roxy-bubble { padding:10px 14px; border-radius:14px; font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; }
+.roxy-bubble { padding:10px 14px; border-radius:14px; font-size:13px; line-height:1.6; word-break:break-word; }
 .roxy-bubble-wrap.user .roxy-bubble { background:#0ea5e9; color:#fff; border-bottom-right-radius:4px; }
 .roxy-bubble-wrap.bot .roxy-bubble { background:#fff; color:#1e293b; border:1px solid #e2e8f0; border-bottom-left-radius:4px; }
+.roxy-rich-line { min-height:1.25em; }
+.roxy-rich-heading { margin:8px 0 4px; font-weight:800; color:#0f172a; }
+.roxy-rich-list { display:flex; gap:6px; margin:2px 0; }
+.roxy-rich-list-marker { flex:0 0 auto; font-weight:700; color:#0284c7; }
+.roxy-rich-label { font-weight:700; color:#0f172a; }
+.roxy-rich-separator { height:8px; }
+.roxy-bubble-wrap.user .roxy-rich-label,
+.roxy-bubble-wrap.user .roxy-rich-heading { color:#fff; }
 .roxy-bubble-source { font-size:10px; color:#94a3b8; margin-top:3px; }
 .roxy-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid #e2e8f0; }
 .roxy-input-row textarea { flex:1; resize:none; }
@@ -161,6 +169,54 @@ include __DIR__ . '/../partials/sidebar.php';
         return div.innerHTML;
     }
 
+    function renderInlineMarkdown(value) {
+        var html = escapeHtml(value);
+        html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+        html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+        html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+        html = html.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+        return html;
+    }
+
+    function renderAnswer(text) {
+        var fragment = document.createDocumentFragment();
+        String(text || '').replace(/\r\n?/g, '\n').split('\n').forEach(function (line) {
+            var trimmed = line.trim();
+            if (/^---+$/.test(trimmed)) {
+                var separator = document.createElement('div');
+                separator.className = 'roxy-rich-separator';
+                fragment.appendChild(separator);
+                return;
+            }
+
+            var heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+            var list = trimmed.match(/^(?:[-*•]|(\d+)[.)])\s+(.+)$/);
+            var node = document.createElement('div');
+            node.className = 'roxy-rich-line';
+
+            if (heading) {
+                node.className += ' roxy-rich-heading';
+                node.innerHTML = renderInlineMarkdown(heading[2]);
+            } else if (list) {
+                node.className += ' roxy-rich-list';
+                var marker = document.createElement('span');
+                marker.className = 'roxy-rich-list-marker';
+                marker.textContent = list[1] ? list[1] + '.' : '•';
+                var item = document.createElement('span');
+                item.innerHTML = renderInlineMarkdown(list[2]);
+                node.appendChild(marker);
+                node.appendChild(item);
+            } else if (trimmed === '') {
+                node.innerHTML = '&nbsp;';
+            } else {
+                node.innerHTML = renderInlineMarkdown(line);
+            }
+            fragment.appendChild(node);
+        });
+        return fragment;
+    }
+
     function appendBubble(sender, text, sourceLabel) {
         var wrap = document.createElement('div');
         wrap.className = 'roxy-bubble-wrap ' + (sender === 'user' ? 'user' : 'bot');
@@ -169,7 +225,7 @@ include __DIR__ . '/../partials/sidebar.php';
         label.textContent = sender === 'user' ? 'Anda' : 'Roxy';
         var bubble = document.createElement('div');
         bubble.className = 'roxy-bubble';
-        bubble.textContent = text;
+        bubble.appendChild(renderAnswer(text));
         wrap.appendChild(label);
         wrap.appendChild(bubble);
         if (sourceLabel) {

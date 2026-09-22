@@ -14,17 +14,49 @@ if ($DB_NAME === '' || $DB_USER === '') {
     exit('Database configuration missing');
 }
 
-try {
-    $pdo = new PDO(
-        "mysql:host=$DB_HOST;dbname=$DB_NAME;charset=utf8mb4",
-        $DB_USER,
-        $DB_PASS,
+function ems_create_database_connection(): PDO
+{
+    $host = (string) ems_env('DB_HOST', '127.0.0.1');
+    $name = (string) ems_env('DB_NAME', '');
+    $user = (string) ems_env('DB_USER', '');
+    $pass = (string) ems_env('DB_PASS', '');
+    $timezone = (string) ems_env('DB_TIMEZONE', '+07:00');
+
+    if ($name === '' || $user === '') {
+        throw new RuntimeException('Database configuration missing');
+    }
+
+    $connection = new PDO(
+        "mysql:host=$host;dbname=$name;charset=utf8mb4",
+        $user,
+        $pass,
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 10,
         ]
     );
-    $pdo->exec("SET time_zone = " . $pdo->quote($DB_TIMEZONE));
-} catch (PDOException $e) {
+    $connection->exec("SET time_zone = " . $connection->quote($timezone));
+
+    return $connection;
+}
+
+/**
+ * MariaDB hosting can close idle PDO connections while an external AI request
+ * is running. Reconnect before the next DB operation instead of exposing
+ * SQLSTATE[HY000] 2006 to the user.
+ */
+function ems_reconnect_database_if_needed(PDO &$pdo): void
+{
+    try {
+        $pdo->query('SELECT 1');
+    } catch (PDOException $e) {
+        $pdo = ems_create_database_connection();
+    }
+}
+
+try {
+    $pdo = ems_create_database_connection();
+} catch (Throwable $e) {
     die("Database connection failed");
 }

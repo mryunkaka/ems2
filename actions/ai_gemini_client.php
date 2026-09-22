@@ -2,13 +2,18 @@
 
 require_once __DIR__ . '/../config/ai_settings.php';
 
-function ems_ai_log_request(PDO $pdo, array $data): void
+function ems_ai_log_request(PDO &$pdo, array $data): void
 {
+    if (function_exists('ems_reconnect_database_if_needed')) {
+        ems_reconnect_database_if_needed($pdo);
+    }
+
     if (!ems_ai_request_logs_table_exists($pdo)) {
         return;
     }
 
-    $stmt = $pdo->prepare("
+    $insertLog = static function (PDO $connection) use ($data): void {
+        $stmt = $connection->prepare("
         INSERT INTO system_ai_request_logs
         (
             feature_key,
@@ -28,7 +33,7 @@ function ems_ai_log_request(PDO $pdo, array $data): void
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
 
-    $stmt->execute([
+        $stmt->execute([
         $data['feature_key'] ?? 'unknown',
         $data['provider'] ?? 'gemini',
         $data['model_name'] ?? '',
@@ -43,7 +48,21 @@ function ems_ai_log_request(PDO $pdo, array $data): void
         !empty($data['success_flag']) ? 1 : 0,
         $data['error_message'] ?? null,
         $data['created_by'] ?? null,
-    ]);
+        ]);
+    };
+
+    try {
+        $insertLog($pdo);
+    } catch (PDOException $e) {
+        if (!preg_match('/(?:SQLSTATE\[HY000\].*2006|server has gone away|mysql server has gone away)/i', $e->getMessage())) {
+            throw $e;
+        }
+
+        $pdo = function_exists('ems_create_database_connection')
+            ? ems_create_database_connection()
+            : $pdo;
+        $insertLog($pdo);
+    }
 }
 
 /**
