@@ -299,7 +299,7 @@ function ems_roxy_extract_document_evidence(string $text, string $query): string
 
     // Pilih subbab yang memuat paling banyak kata inti. Ini menghindari
     // kemunculan pertama di Daftar Isi ketika isi subbab ada di bawahnya.
-    $sectionPattern = '/^\\s*((?:\\d+\\.){2,}\\d*)\\s+([^\\r\\n]+)$/imu';
+    $sectionPattern = '/^\s*((?:\d+\.){2,}\d*)\s+([^\r\n]+)$/imu';
     preg_match_all($sectionPattern, $text, $sectionMatches, PREG_OFFSET_CAPTURE);
     $bestSection = null;
     foreach ($sectionMatches[0] ?? [] as $index => $match) {
@@ -349,6 +349,12 @@ function ems_roxy_extract_document_evidence(string $text, string $query): string
         }
     }
 
+    if ($anchors !== []) {
+        $start = max(0, $position - 1500);
+        return trim(mb_substr($text, $start, 7000));
+    }
+
+    return mb_substr($text, 0, 7000);
 }
 
 function ems_roxy_retrieve_context(PDO $pdo, string $unitCode, string $query): array
@@ -579,62 +585,79 @@ function ems_roxy_ask(PDO $pdo, array $user, string $unitCode, array $historyMes
 {
     $userId = (int) ($user['id'] ?? 0);
 
-    $groqSettings = ems_groq_get_user_settings($pdo, $userId);
-    if ($groqSettings === null || trim((string) ($groqSettings['groq_api_key'] ?? '')) === '') {
-        return [
-            'ok' => false,
-            'error_code' => 'groq_not_configured',
-            'message' => 'Anda belum mengatur API key Groq pribadi. Atur dulu di menu Roxwood Hospital AI > Setting AI Saya.',
-        ];
-    }
-
     $context = ems_roxy_retrieve_context($pdo, $unitCode, $userMessage);
     $contextBlock = ems_roxy_build_context_block($context);
     $systemPrompt = ems_roxy_default_system_prompt($user) . "\n\n=== KONTEKS ===\n" . $contextBlock;
 
     $messages = [['role' => 'system', 'content' => $systemPrompt]];
+    $historyText = '';
     foreach ($historyMessages as $h) {
-        $messages[] = [
-            'role' => ((string) $h['sender']) === 'user' ? 'user' : 'assistant',
-            'content' => (string) $h['content'],
-        ];
+        $role = ((string) $h['sender']) === 'user' ? 'user' : 'assistant';
+        $content = (string) $h['content'];
+        $messages[] = ['role' => $role, 'content' => $content];
+        $historyText .= ($role === 'user' ? 'User: ' : 'Roxy: ') . $content . "\n";
     }
     $messages[] = ['role' => 'user', 'content' => $userMessage];
+    $historyText .= 'User: ' . $userMessage;
 
-    try {
-        $groqResult = ems_groq_chat_completion($pdo, $groqSettings, $messages, null, 'roxy_chat', $userId, true);
-    } catch (Throwable $e) {
-        $providerError = strtolower($e->getMessage());
-        if (str_contains($providerError, 'invalid api key') || str_contains($providerError, 'unauthorized')) {
-            return [
-                'ok' => false,
-                'error_code' => 'groq_invalid_api_key',
-                'message' => 'API key Groq ditolak atau sudah kedaluwarsa. Perbarui API key di menu Roxwood Hospital AI > Setting AI Saya.',
-            ];
-        }
-        if (str_contains($providerError, 'rate limit') || str_contains($providerError, 'too many requests')) {
-            return [
-                'ok' => false,
-                'error_code' => 'groq_rate_limited',
-                'message' => 'Batas request Groq tercapai. Tunggu beberapa saat atau gunakan API key Groq lain di Setting AI Saya.',
-            ];
-        }
+    $parsed = null;
+    $usedGeminiFallback = false;
+    $groqFailure = '';
+    $groqSettings = ems_groq_get_user_settings($pdo, $userId);
+    $hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
 
-        return ['ok' => false, 'error_code' => 'groq_call_failed', 'message' => 'Layanan AI Groq sedang tidak tersedia. Coba lagi beberapa saat.'];
+    if ($hasGroqKey) {
+        try {
+            $groqResult = ems_groq_chat_completion($pdo, $groqSettings, $messages, null, 'roxy_chat', $userId, true);
+            $parsed = ems_roxy_parse_structured_response((string) $groqResult['content']);
+            if ($parsed === null) {
+                $groqFailure = 'Respons Groq tidak valid.';
+            }
+        } catch (Throwable $e) {
+            $providerError = strtolower($e->getMessage());
+            $groqFailure = str_contains($providerError, 'invalid api key') || str_contains($providerError, 'unauthorized')
+                ? 'API key Groq ditolak atau sudah kedaluwarsa.'
+                : (str_contains($providerError, 'rate limit') || str_contains($providerError, 'too many requests')
+                    ? 'Batas request Groq tercapai.'
+                    : 'Groq sedang tidak tersedia.');
+        }
+    } else {
+        $groqFailure = 'Groq belum dikonfigurasi.';
     }
 
-    $parsed = ems_roxy_parse_structured_response((string) $groqResult['content']);
     if ($parsed === null) {
-        return ['ok' => false, 'error_code' => 'invalid_response', 'message' => 'Respons Roxy tidak valid, coba lagi.'];
+        $geminiResult = ems_ai_ds_call_gemini(
+            $pdo,
+            $systemPrompt,
+            $historyText,
+            'roxy_chat_fallback_gemini',
+            $userId
+        );
+        if (!empty($geminiResult['ok']) && isset($geminiResult['data']['answer'])) {
+            $parsed = ems_roxy_parse_structured_response(
+                json_encode($geminiResult['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            );
+            $usedGeminiFallback = $parsed !== null;
+        }
+
+        if ($parsed === null) {
+            $geminiFailure = trim((string) ($geminiResult['error'] ?? ''));
+            error_log('[Roxy] Groq fallback Gemini gagal. Groq=' . $groqFailure . '; Gemini=' . $geminiFailure);
+            return [
+                'ok' => false,
+                'error_code' => 'ai_providers_unavailable',
+                'message' => 'Roxy belum dapat menjawab. Groq tidak tersedia dan Gemini pribadi juga gagal. Periksa API key di Setting AI Saya.',
+            ];
+        }
     }
 
     $answer = $parsed['answer'];
     $expression = $parsed['expression'];
-    $answerSource = 'free_model';
+    $answerSource = $usedGeminiFallback ? 'gemini_personal' : 'free_model';
     $usedDeepResearch = false;
     $geminiKeyMissing = false;
 
-    if ($parsed['needs_deeper_research']) {
+    if (!$usedGeminiFallback && $parsed['needs_deeper_research']) {
         $geminiSettings = ems_ai_ds_get_user_settings($pdo, $userId);
         if ($geminiSettings !== null && trim((string) ($geminiSettings['gemini_api_key'] ?? '')) !== '') {
             $historyText = '';

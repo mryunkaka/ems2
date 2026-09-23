@@ -131,7 +131,6 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
     $body = curl_exec($ch);
     $curlError = curl_error($ch);
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     if ($body === false) {
         throw new RuntimeException('Request Gemini gagal: ' . $curlError);

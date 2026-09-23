@@ -70,7 +70,6 @@ function ems_groq_chat_completion(
     $responseBody = curl_exec($ch);
     $curlError = curl_error($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     $latencyMs = (int) round((microtime(true) - $startedAt) * 1000);
 

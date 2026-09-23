@@ -17,7 +17,10 @@ $userId = (int) ($user['id'] ?? 0);
 $isManagerPlus = ems_is_manager_plus_role((string) ($user['role'] ?? ''));
 
 $groqSettings = ems_groq_get_user_settings($pdo, $userId);
+$aiSettings = ems_ai_ds_get_user_settings($pdo, $userId);
 $hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
+$hasGeminiKey = $aiSettings !== null && trim((string) ($aiSettings['gemini_api_key'] ?? '')) !== '';
+$hasAiProvider = $hasGroqKey || $hasGeminiKey;
 
 $csrfToken = generateCsrfToken();
 
@@ -69,10 +72,14 @@ include __DIR__ . '/../partials/sidebar.php';
             <?php endif; ?>
         </div>
 
-        <?php if (!$hasGroqKey): ?>
+        <?php if (!$hasAiProvider): ?>
             <div class="alert alert-warning mt-3">
-                Anda belum mengatur API key Groq pribadi — Roxy belum bisa dipakai. Atur dulu di
-                <a href="/dashboard/ai_settings_personal.php" class="underline font-semibold">Setting AI Saya</a> (card "Konfigurasi Groq").
+                Atur API key Gemini atau Groq di
+                <a href="/dashboard/ai_settings_personal.php" class="underline font-semibold">Setting AI Saya</a> agar Roxy bisa dipakai.
+            </div>
+        <?php elseif (!$hasGroqKey && $hasGeminiKey): ?>
+            <div class="alert alert-info mt-3">
+                Groq belum diatur. Roxy memakai Gemini pribadi sebagai jalur cadangan.
             </div>
         <?php endif; ?>
 
@@ -103,8 +110,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
                 <div id="roxyTyping" class="roxy-typing hidden">Roxy sedang mengetik...</div>
                 <div class="roxy-input-row">
-                    <textarea id="roxyInput" rows="1" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$hasGroqKey ? 'disabled' : '' ?>></textarea>
-                    <button type="button" id="roxySendBtn" class="btn-primary" <?= !$hasGroqKey ? 'disabled' : '' ?>>
+                    <textarea id="roxyInput" rows="1" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$hasAiProvider ? 'disabled' : '' ?>></textarea>
+                    <button type="button" id="roxySendBtn" class="btn-primary" <?= !$hasAiProvider ? 'disabled' : '' ?>>
                         <?= ems_icon('paper-airplane', 'h-4 w-4') ?>
                     </button>
                 </div>
