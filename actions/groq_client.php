@@ -54,7 +54,7 @@ function ems_groq_chat_completion(
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . $apiKey,
+            'Authorization: ' . 'Bearer ' . $apiKey,
             'Content-Type: application/json',
         ],
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),

@@ -604,7 +604,23 @@ function ems_roxy_ask(PDO $pdo, array $user, string $unitCode, array $historyMes
     try {
         $groqResult = ems_groq_chat_completion($pdo, $groqSettings, $messages, null, 'roxy_chat', $userId, true);
     } catch (Throwable $e) {
-        return ['ok' => false, 'error_code' => 'groq_call_failed', 'message' => $e->getMessage()];
+        $providerError = strtolower($e->getMessage());
+        if (str_contains($providerError, 'invalid api key') || str_contains($providerError, 'unauthorized')) {
+            return [
+                'ok' => false,
+                'error_code' => 'groq_invalid_api_key',
+                'message' => 'API key Groq ditolak atau sudah kedaluwarsa. Perbarui API key di menu Roxwood Hospital AI > Setting AI Saya.',
+            ];
+        }
+        if (str_contains($providerError, 'rate limit') || str_contains($providerError, 'too many requests')) {
+            return [
+                'ok' => false,
+                'error_code' => 'groq_rate_limited',
+                'message' => 'Batas request Groq tercapai. Tunggu beberapa saat atau gunakan API key Groq lain di Setting AI Saya.',
+            ];
+        }
+
+        return ['ok' => false, 'error_code' => 'groq_call_failed', 'message' => 'Layanan AI Groq sedang tidak tersedia. Coba lagi beberapa saat.'];
     }
 
     $parsed = ems_roxy_parse_structured_response((string) $groqResult['content']);

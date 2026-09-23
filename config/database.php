@@ -14,8 +14,9 @@ if ($DB_NAME === '' || $DB_USER === '') {
     exit('Database configuration missing');
 }
 
-function ems_create_database_connection(): PDO
-{
+if (!function_exists('ems_create_database_connection')) {
+    function ems_create_database_connection(): PDO
+    {
     $host = (string) ems_env('DB_HOST', '127.0.0.1');
     $name = (string) ems_env('DB_NAME', '');
     $user = (string) ems_env('DB_USER', '');
@@ -38,7 +39,8 @@ function ems_create_database_connection(): PDO
     );
     $connection->exec("SET time_zone = " . $connection->quote($timezone));
 
-    return $connection;
+        return $connection;
+    }
 }
 
 /**
@@ -46,12 +48,14 @@ function ems_create_database_connection(): PDO
  * is running. Reconnect before the next DB operation instead of exposing
  * SQLSTATE[HY000] 2006 to the user.
  */
-function ems_reconnect_database_if_needed(PDO &$pdo): void
-{
-    try {
-        $pdo->query('SELECT 1');
-    } catch (PDOException $e) {
-        $pdo = ems_create_database_connection();
+if (!function_exists('ems_reconnect_database_if_needed')) {
+    function ems_reconnect_database_if_needed(PDO &$pdo): void
+    {
+        try {
+            $pdo->query('SELECT 1');
+        } catch (PDOException $e) {
+            $pdo = ems_create_database_connection();
+        }
     }
 }
 

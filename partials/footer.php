@@ -352,6 +352,24 @@ if ($roxyWidgetEnabled) {
             toggle.classList.remove('hidden');
         });
 
+        function readJsonResponse(response) {
+            return response.text().then(function (raw) {
+                var data = null;
+                try {
+                    data = JSON.parse(raw);
+                } catch (error) {
+                    data = {
+                        success: false,
+                        message: response.status >= 500
+                            ? 'Server Roxy mengalami gangguan. Coba lagi beberapa saat.'
+                            : 'Respons Roxy tidak valid (HTTP ' + response.status + ').',
+                    };
+                }
+                data.http_status = response.status;
+                return data;
+            });
+        }
+
         function sendMessage() {
             var text = input.value.trim();
             if (!text || sendBtn.disabled) return;
@@ -372,7 +390,7 @@ if ($roxyWidgetEnabled) {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body.toString(),
             })
-                .then(function (r) { return r.json(); })
+                .then(readJsonResponse)
                 .then(function (data) {
                     typingEl.classList.add('hidden');
                     sendBtn.disabled = false;

@@ -2,6 +2,30 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
+register_shutdown_function(static function (): void {
+    $lastError = error_get_last();
+    if ($lastError === null || !in_array($lastError['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        return;
+    }
+
+    error_log(sprintf(
+        '[Roxy][FATAL] %s in %s:%d',
+        $lastError['message'],
+        $lastError['file'],
+        $lastError['line']
+    ));
+
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Roxy mengalami gangguan pada server. Detail sudah dicatat untuk pemeriksaan.',
+            'error_code' => 'roxy_fatal_error',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+});
+
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
@@ -27,9 +51,6 @@ if ($userId <= 0) {
 // request/hari per akun, lihat docs/AI_ASSISTANT_MODULE.md §3).
 emsRequireRateLimit('roxy_chat', emsCurrentRequestIdentifier($userId), 20, 60, 'Terlalu banyak pesan ke Roxy dalam waktu singkat. Tunggu sebentar lalu coba lagi.');
 
-ems_roxy_ensure_tables($pdo);
-
-$unitCode = ems_effective_unit($pdo, $user);
 $conversationIdInput = (int) ($_POST['conversation_id'] ?? 0);
 $message = trim((string) ($_POST['message'] ?? ''));
 
@@ -41,6 +62,9 @@ if (mb_strlen($message) > 4000) {
 }
 
 try {
+    ems_roxy_ensure_tables($pdo);
+    $unitCode = ems_effective_unit($pdo, $user);
+
     $conversationId = ems_roxy_get_or_create_conversation(
         $pdo,
         $userId,

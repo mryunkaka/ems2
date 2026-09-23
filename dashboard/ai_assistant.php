@@ -299,6 +299,24 @@ include __DIR__ . '/../partials/sidebar.php';
         els.input.focus();
     });
 
+    function readJsonResponse(response) {
+        return response.text().then(function (raw) {
+            var data = null;
+            try {
+                data = JSON.parse(raw);
+            } catch (error) {
+                data = {
+                    success: false,
+                    message: response.status >= 500
+                        ? 'Server Roxy mengalami gangguan. Coba lagi beberapa saat.'
+                        : 'Respons Roxy tidak valid (HTTP ' + response.status + ').',
+                };
+            }
+            data.http_status = response.status;
+            return data;
+        });
+    }
+
     function sendMessage() {
         var text = els.input.value.trim();
         if (!text || els.sendBtn.disabled) return;
@@ -319,19 +337,19 @@ include __DIR__ . '/../partials/sidebar.php';
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body.toString(),
         })
-            .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
-            .then(function (res) {
+            .then(readJsonResponse)
+            .then(function (data) {
                 els.typing.classList.add('hidden');
                 els.sendBtn.disabled = false;
-                if (!res.data.success) {
+                if (!data.success) {
                     setExpression('alert');
-                    appendBubble('bot', res.data.message || 'Roxy gagal menjawab, coba lagi.');
+                    appendBubble('bot', data.message || 'Roxy gagal menjawab, coba lagi.');
                     return;
                 }
-                currentConversationId = res.data.conversation_id;
-                setExpression(res.data.expression || 'netral');
-                appendBubble('bot', res.data.answer, answerSourceLabel(res.data.answer_source, res.data.used_deep_research));
-                if (res.data.gemini_key_missing) {
+                currentConversationId = data.conversation_id;
+                setExpression(data.expression || 'netral');
+                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research));
+                if (data.gemini_key_missing) {
                     appendBubble('bot', 'Catatan: pertanyaan ini sebenarnya butuh riset lebih dalam, tapi kamu belum atur API key Gemini pribadi. Atur di Setting AI Saya kalau mau jawaban yang lebih mendalam untuk pertanyaan semacam ini.');
                 }
                 loadConversationList(currentConversationId);

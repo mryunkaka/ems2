@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/ai_settings.php';
 
+if (!function_exists('ems_ai_log_request')) {
 function ems_ai_log_request(PDO &$pdo, array $data): void
 {
     $insertLog = static function (PDO $connection) use ($data): void {
@@ -57,6 +58,7 @@ function ems_ai_log_request(PDO &$pdo, array $data): void
             error_log('[Roxy] AI request log retry failed: ' . $retryError->getMessage());
         }
     }
+}
 }
 
 /**
