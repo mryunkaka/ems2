@@ -50,16 +50,15 @@ function medicalCenterRemoteRecordIds(array $records): array
     return $ids;
 }
 
-function deleteMissingMedicalCenterMirrors(PDO $pdo, array $remoteIds, DateTimeImmutable $cutoff): int
+function deleteMissingMedicalCenterMirrors(PDO $pdo, array $remoteIds): int
 {
     $stmt = $pdo->prepare(
         "SELECT id, remote_record_id
          FROM medical_records
          WHERE source_provider = 'medical_center'
-           AND source_hospital = 'roxwood'
-           AND remote_event_at >= ?"
+           AND source_hospital = 'roxwood'"
     );
-    $stmt->execute([$cutoff->format('Y-m-d H:i:s')]);
+    $stmt->execute();
     $missing = [];
     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $row) {
         $remoteId = trim((string) ($row['remote_record_id'] ?? ''));
@@ -97,8 +96,7 @@ try {
     $pagesFetched = (int) ($result['pages'] ?? 0);
     $remoteRecords = $result['records'] ?? [];
     $recordsReceived = count($remoteRecords);
-    $cutoff = ems_medical_center_cutoff();
-    $recordsDeleted = deleteMissingMedicalCenterMirrors($pdo, medicalCenterRemoteRecordIds($remoteRecords), $cutoff);
+    $recordsDeleted = deleteMissingMedicalCenterMirrors($pdo, medicalCenterRemoteRecordIds($remoteRecords));
     $now = $startedAt->format('Y-m-d H:i:s');
 
     $find = $pdo->prepare(
@@ -157,11 +155,6 @@ try {
         }
 
         $eventAt = ems_medical_center_parse_datetime($record['tanggal_waktu'] ?? null);
-        if ($eventAt !== null && $eventAt < $cutoff) {
-            $recordsSkipped++;
-            continue;
-        }
-
         $recordStatus = $eventAt === null ? 'needs_review' : 'synced';
         $mapped = ems_medical_center_normalize_record($record, $pdo);
         $payloadJson = $mapped['remote_payload_json'];

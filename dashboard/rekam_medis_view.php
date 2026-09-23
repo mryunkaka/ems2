@@ -49,9 +49,10 @@ $stmt = $pdo->prepare("
     LEFT JOIN user_rh assistant ON assistant.id = r.assistant_id
     LEFT JOIN user_rh creator ON creator.id = r.created_by
     WHERE r.id = ?
+       OR (r.source_provider = 'medical_center' AND r.remote_record_id = ?)
     LIMIT 1
 ");
-$stmt->execute([$id]);
+$stmt->execute([$id, (string) $id]);
 $record = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$record) {
@@ -223,6 +224,10 @@ include __DIR__ . '/../partials/sidebar.php';
                             <div class="medical-info-item">
                                 <span class="medical-info-item__label">Tanggal Lahir</span>
                                 <strong><?= htmlspecialchars((string)($record['patient_dob'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                            </div>
+                            <div class="medical-info-item">
+                                <span class="medical-info-item__label">Jenis Kelamin</span>
+                                <strong><?= htmlspecialchars((string)($record['patient_gender'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
                             <div class="medical-info-item">
                                 <span class="medical-info-item__label">No HP</span>

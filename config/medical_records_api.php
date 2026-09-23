@@ -31,7 +31,7 @@ if (!function_exists('ems_medical_center_api_key')) {
 if (!function_exists('ems_medical_center_cutoff')) {
     function ems_medical_center_cutoff(): DateTimeImmutable
     {
-        return new DateTimeImmutable('2026-09-21 00:00:00', new DateTimeZone('Asia/Jakarta'));
+        return new DateTimeImmutable('1970-01-01 00:00:00', new DateTimeZone('Asia/Jakarta'));
     }
 }
 
@@ -547,10 +547,13 @@ if (!function_exists('ems_medical_center_normalize_record')) {
         ]));
         $patientName = ems_medical_center_scalar_text($get(['nama_pasien', 'patient_name']), '-');
         $dob = ems_medical_center_date_for_db($get(['dob', 'patient_dob', 'tanggal_lahir']));
-        $gender = ems_medical_center_scalar_text($get(['jenis_kelamin', 'gender', 'patient_gender']));
-        if (!in_array($gender, ['Laki-laki', 'Perempuan'], true)) {
-            $gender = null;
-        }
+        $gender = strtolower(trim((string) $get(['jenis_kelamin', 'gender', 'patient_gender'])));
+        $gender = str_replace(['-', '_', ' '], '', $gender);
+        $gender = match ($gender) {
+            'lakilaki', 'male', 'pria' => 'Laki-laki',
+            'perempuan', 'female', 'wanita' => 'Perempuan',
+            default => null,
+        };
 
         $mapped = [
             'source_provider' => 'medical_center',

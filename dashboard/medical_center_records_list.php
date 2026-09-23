@@ -16,7 +16,6 @@ require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
 $pageTitle = 'Rekam Medis Medical Center | Farmasi EMS';
 $search = trim((string) ($_GET['search'] ?? ''));
-$cutoff = ems_medical_center_cutoff();
 $records = [];
 $source = 'local_database';
 $syncError = null;
@@ -26,9 +25,8 @@ $remoteRecordsReceived = 0;
 $where = [
     "r.source_provider = 'medical_center'",
     "r.source_hospital = 'roxwood'",
-    'r.remote_event_at >= ?',
 ];
-$params = [$cutoff->format('Y-m-d H:i:s')];
+$params = [];
 if ($search !== '') {
     $where[] = '(r.remote_record_id LIKE ? OR r.record_code LIKE ? OR r.patient_name LIKE ? OR r.remote_payload_json LIKE ?)';
     $term = '%' . $search . '%';
@@ -130,7 +128,7 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
 
         <div class="card card-section">
-            <div class="card-header">Data dari Medical Center · Mulai 21 September 2026</div>
+            <div class="card-header">Semua Data dari Medical Center</div>
             <div class="card-body">
                 <?php if ($records === []): ?>
                     <div class="text-center py-8 text-gray-500">Tidak ada data remote yang sesuai.</div>
