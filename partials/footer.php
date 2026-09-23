@@ -169,11 +169,17 @@ $realtimeChatViewer = [
 // (dashboard/ai_assistant.php), bukan implementasi terpisah.
 $roxyWidgetEnabled = isset($pdo) && !empty($_SESSION['user_rh']['id']);
 $roxyHasGroqKey = false;
+$roxyHasGeminiKey = false;
 if ($roxyWidgetEnabled) {
     require_once __DIR__ . '/../config/groq_settings.php';
-    $roxyWidgetSettings = ems_groq_get_user_settings($pdo, (int) $_SESSION['user_rh']['id']);
+    require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+    $roxyUserId = (int) $_SESSION['user_rh']['id'];
+    $roxyWidgetSettings = ems_groq_get_user_settings($pdo, $roxyUserId);
+    $roxyGeminiSettings = ems_ai_ds_get_user_settings($pdo, $roxyUserId);
     $roxyHasGroqKey = $roxyWidgetSettings !== null && trim((string) ($roxyWidgetSettings['groq_api_key'] ?? '')) !== '';
+    $roxyHasGeminiKey = $roxyGeminiSettings !== null && trim((string) ($roxyGeminiSettings['gemini_api_key'] ?? '')) !== '';
 }
+$roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 ?>
 <?php if ($roxyWidgetEnabled): ?>
     <div id="roxyWidget" class="roxy-widget" aria-live="polite">
@@ -198,19 +204,25 @@ if ($roxyWidgetEnabled) {
                 </div>
             </div>
 
-            <?php if (!$roxyHasGroqKey): ?>
+            <?php if (!$roxyHasAiProvider): ?>
                 <div class="roxy-widget-warning">
-                    Kamu belum atur API key Groq pribadi.
-                    <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>">Atur di Setting AI Saya</a>.
+                    Atur API key Gemini atau Groq di
+                    <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>">Setting AI Saya</a>.
+                </div>
+            <?php elseif (!$roxyHasGroqKey && $roxyHasGeminiKey): ?>
+                <div class="roxy-widget-info">
+                    Groq belum diatur. Roxy memakai Gemini pribadi.
                 </div>
             <?php endif; ?>
+
+            <div class="roxy-widget-messages-label">Percakapan</div>
 
             <div id="roxyWidgetMessages" class="roxy-widget-messages"></div>
             <div id="roxyWidgetTyping" class="roxy-widget-typing hidden">Roxy sedang mengetik...</div>
 
             <form id="roxyWidgetForm" class="roxy-widget-form">
-                <textarea id="roxyWidgetInput" rows="1" maxlength="4000" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$roxyHasGroqKey ? 'disabled' : '' ?>></textarea>
-                <button type="submit" id="roxyWidgetSend" class="roxy-widget-send" aria-label="Kirim" <?= !$roxyHasGroqKey ? 'disabled' : '' ?>>
+                <textarea id="roxyWidgetInput" rows="1" maxlength="4000" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$roxyHasAiProvider ? 'disabled' : '' ?>></textarea>
+                <button type="submit" id="roxyWidgetSend" class="roxy-widget-send" aria-label="Kirim" <?= !$roxyHasAiProvider ? 'disabled' : '' ?>>
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>
                 </button>
             </form>
@@ -237,16 +249,29 @@ if ($roxyWidgetEnabled) {
         .roxy-widget-iconbtn { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; margin: 0; box-sizing: border-box; border-radius: 8px; border: none; background: transparent; color: #64748b; cursor: pointer; appearance: none; -webkit-appearance: none; line-height: 1; text-decoration: none; flex-shrink: 0; }
         .roxy-widget-iconbtn:hover { background: #e2e8f0; }
         .roxy-widget-iconbtn svg { display: block; flex-shrink: 0; pointer-events: none; }
-        .roxy-widget-warning { font-size: 11px; color: #92400e; background: #fef3c7; padding: 8px 12px; border-bottom: 1px solid #fde68a; }
+        .roxy-widget-warning, .roxy-widget-info { font-size: 11px; padding: 8px 12px; border-bottom: 1px solid; }
+        .roxy-widget-warning { color: #92400e; background: #fef3c7; border-color: #fde68a; }
+        .roxy-widget-info { color: #075985; background: #e0f2fe; border-color: #bae6fd; }
         .roxy-widget-warning a { font-weight: 700; text-decoration: underline; }
-        .roxy-widget-messages { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: #f8fafc; }
+        .roxy-widget-messages-label { padding: 7px 12px 5px; background: #f8fafc; color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+        .roxy-widget-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: #f8fafc; }
         .roxy-widget-bubble-wrap { display: flex; flex-direction: column; max-width: 85%; }
         .roxy-widget-bubble-wrap.user { align-self: flex-end; align-items: flex-end; }
         .roxy-widget-bubble-wrap.bot { align-self: flex-start; align-items: flex-start; }
-        .roxy-widget-bubble { padding: 8px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+        .roxy-widget-bubble { padding: 10px 13px; border-radius: 13px; font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+        .roxy-widget-bubble strong, .roxy-widget-bubble b { font-weight: 800; }
+        .roxy-widget-rich-line { min-height: 1.3em; }
+        .roxy-widget-rich-heading { margin: 5px 0 3px; font-weight: 800; color: #0f172a; }
+        .roxy-widget-rich-list { display: flex; gap: 6px; margin: 2px 0; }
+        .roxy-widget-rich-list-marker { flex: 0 0 auto; font-weight: 800; color: #0284c7; }
+        .roxy-widget-rich-separator { height: 7px; }
+        .roxy-widget-bubble-wrap.user .roxy-widget-rich-heading { color: #fff; }
+        .roxy-widget-bubble-wrap.user .roxy-widget-rich-list-marker { color: #e0f2fe; }
+        .roxy-widget-bubble code { padding: 1px 4px; border-radius: 4px; background: #f1f5f9; font-size: .92em; }
+        .roxy-widget-bubble-wrap.user .roxy-widget-bubble code { background: rgba(255,255,255,.2); }
         .roxy-widget-bubble-wrap.user .roxy-widget-bubble { background: #0ea5e9; color: #fff; border-bottom-right-radius: 3px; }
         .roxy-widget-bubble-wrap.bot .roxy-widget-bubble { background: #fff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
-        .roxy-widget-typing { font-size: 11px; color: #94a3b8; font-style: italic; padding: 0 12px 4px; background: #f8fafc; }
+        .roxy-widget-typing { font-size: 11px; color: #94a3b8; font-style: italic; padding: 0 12px 6px; background: #f8fafc; }
         .roxy-widget-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #e2e8f0; }
         .roxy-widget-form textarea { flex: 1; resize: none; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; max-height: 80px; }
         .roxy-widget-send { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: none; background: #0ea5e9; color: #fff; cursor: pointer; flex-shrink: 0; }
@@ -261,7 +286,7 @@ if ($roxyWidgetEnabled) {
     <script>
     (function () {
         var CSRF_TOKEN = String(window.EMS_CSRF_TOKEN || '');
-        var HAS_GROQ_KEY = <?= $roxyHasGroqKey ? 'true' : 'false' ?>;
+        var HAS_AI_PROVIDER = <?= $roxyHasAiProvider ? 'true' : 'false' ?>;
         var conversationId = 0;
         var loaded = false;
 
@@ -298,12 +323,56 @@ if ($roxyWidgetEnabled) {
             return div.innerHTML;
         }
 
+        function renderInlineMarkdown(value) {
+            var html = escapeHtml(value);
+            html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+            html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+            html = html.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+            return html;
+        }
+
+        function renderBubbleText(text) {
+            var fragment = document.createDocumentFragment();
+            String(text || '').replace(/\r\n?/g, '\n').split('\n').forEach(function (line) {
+                var trimmed = line.trim();
+                var node = document.createElement('div');
+                node.className = 'roxy-widget-rich-line';
+
+                if (/^---+$/.test(trimmed)) {
+                    node.className += ' roxy-widget-rich-separator';
+                } else {
+                    var heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+                    var list = trimmed.match(/^(?:[-*•]|(\d+)[.)])\s+(.+)$/);
+                    if (heading) {
+                        node.className += ' roxy-widget-rich-heading';
+                        node.innerHTML = renderInlineMarkdown(heading[2]);
+                    } else if (list) {
+                        node.className += ' roxy-widget-rich-list';
+                        var marker = document.createElement('span');
+                        marker.className = 'roxy-widget-rich-list-marker';
+                        marker.textContent = list[1] ? list[1] + '.' : '•';
+                        var item = document.createElement('span');
+                        item.innerHTML = renderInlineMarkdown(list[2]);
+                        node.appendChild(marker);
+                        node.appendChild(item);
+                    } else if (trimmed === '') {
+                        node.innerHTML = '&nbsp;';
+                    } else {
+                        node.innerHTML = renderInlineMarkdown(line);
+                    }
+                }
+                fragment.appendChild(node);
+            });
+            return fragment;
+        }
+
         function appendBubble(sender, text) {
             var wrap = document.createElement('div');
             wrap.className = 'roxy-widget-bubble-wrap ' + (sender === 'user' ? 'user' : 'bot');
             var bubble = document.createElement('div');
             bubble.className = 'roxy-widget-bubble';
-            bubble.textContent = text;
+            bubble.appendChild(renderBubbleText(text));
             wrap.appendChild(bubble);
             messagesEl.appendChild(wrap);
             messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -344,7 +413,7 @@ if ($roxyWidgetEnabled) {
                 loaded = true;
                 loadLatestConversation();
             }
-            if (HAS_GROQ_KEY) input.focus();
+            if (HAS_AI_PROVIDER) input.focus();
         });
 
         closeBtn.addEventListener('click', function () {
