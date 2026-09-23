@@ -387,17 +387,16 @@ function ems_ai_laboratory_default_system_prompt(): string
 {
     return "Anda adalah Kepala Laboratorium Roxwood Hospital bergelar Dokter Spesialis Patologi Klinik (Sp.PK) dengan pengalaman lebih dari 15 tahun, menyusun hasil pemeriksaan laboratorium untuk simulasi/roleplay EMS. Tugas Anda: dari konfigurasi pemeriksaan dan info klinis pasien (sepadat apa pun), susun hasil laboratorium yang LENGKAP, realistis, dan konsisten secara medis.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. JANGAN PERNAH menolak atau meminta data tambahan. Hasilkan SENDIRI nilai parameter, satuan (SI units baku), dan rentang rujukan (reference range) yang akurat sesuai standar medis internasional untuk pemeriksaan yang diminta.\n"
-        . "2. Field \"flag\" pada setiap parameter WAJIB PERSIS salah satu dari tiga string: \"Normal\", \"High\", atau \"Low\" (bukan variasi lain, bukan bahasa Indonesia, huruf besar-kecil sesuai contoh).\n"
-        . "3. Hasil parameter WAJIB konsisten dengan info klinis pasien — kalau ada indikasi penyakit tertentu, berikan flag \"High\"/\"Low\" pada parameter yang secara medis relevan menunjang kondisi tersebut, sisanya \"Normal\". JANGAN membuat seluruh parameter normal jika info klinis jelas menunjukkan patologi.\n"
-        . "4. Kalau ada \"PARAMETER KUSTOM YANG DIMINTA\" pada instruksi user, SEMUA parameter itu WAJIB muncul di \"results\" — jangan ada yang terlewat, jangan menambah parameter di luar yang diminta kalau daftar kustom itu ada.\n"
-        . "5. \"interpretation\", \"clinical_correlation\", \"diagnosis\" WAJIB bahasa Indonesia medis baku, profesional, dan terstruktur — bukan daftar poin, tapi kalimat/paragraf padat.\n"
-        . "6. \"diagnosis\" adalah kesan/kesimpulan patologi (suspek klinis) berdasarkan hasil lab, bukan sekadar mengulang info klinis yang diberikan user.\n"
-        . "7. \"recommendations\" berisi 2-5 rekomendasi tindak lanjut konkret (mis. pemeriksaan lanjutan, kontrol, terapi awal) yang logis mengikuti hasil dan diagnosis.\n"
-        . "8. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
+        . "1. Jangan mengarang hasil pemeriksaan pasien. Jika tidak ada hasil pengukuran aktual dalam input, setiap parameter wajib ditulis \"Belum dilakukan\"/\"Data belum tersedia\" dan flag \"Normal\" tidak boleh dipakai sebagai pengganti data.\n"
+        . "2. Field \"flag\" wajib \"Normal\", \"High\", atau \"Low\" bila nilai aktual tersedia; bila nilai tidak tersedia, gunakan \"Belum dinilai\" dan jangan menyimpulkan Normal.\n"
+        . "3. Jangan mengubah gejala menjadi diagnosis pasti. \"interpretation\", \"clinical_correlation\", dan \"diagnosis\" wajib membedakan data terukur, interpretasi, dan dugaan; data belum tersedia wajib disebutkan.\n"
+        . "4. Kalau ada \"PARAMETER KUSTOM YANG DIMINTA\", semua parameter itu wajib muncul di \"results\" tanpa menambah parameter yang tidak diminta.\n"
+        . "5. Bahasa Indonesia medis baku, objektif, dan tidak berspekulasi. Rekomendasi tidak boleh dipakai untuk menutupi ketiadaan hasil aktual.\n"
+        . "6. Dokumen resmi Roxwood menjadi referensi nilai rujukan/SOP bila relevan, bukan bukti bahwa pasien sudah menjalani pemeriksaan.\n"
+        . "7. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
         . "Struktur JSON WAJIB:\n"
         . "{\n"
-        . "  \"results\": [{\"parameter\": \"nama parameter\", \"result\": \"nilai konkret\", \"unit\": \"satuan SI\", \"reference_range\": \"rentang rujukan\", \"flag\": \"Normal atau High atau Low\"}],\n"
+        . "  \"results\": [{\"parameter\": \"nama parameter\", \"result\": \"nilai aktual atau Data belum tersedia\", \"unit\": \"satuan SI atau kosong\", \"reference_range\": \"rentang rujukan\", \"flag\": \"Normal/High/Low jika terukur, atau Belum dinilai\"}],\n"
         . "  \"interpretation\": \"interpretasi hasil laboratorium\",\n"
         . "  \"clinical_correlation\": \"korelasi dengan kondisi klinis pasien\",\n"
         . "  \"diagnosis\": \"kesan/kesimpulan patologi\",\n"
@@ -443,7 +442,7 @@ function ems_ai_laboratory_sanitize_result(array $data): array
         return match (true) {
             str_starts_with($flag, 'high') || $flag === 'h' || str_contains($flag, 'tinggi') => 'High',
             str_starts_with($flag, 'low') || $flag === 'l' || str_contains($flag, 'rendah') => 'Low',
-            default => 'Normal',
+            default => 'Belum dinilai',
         };
     };
 
@@ -452,12 +451,14 @@ function ems_ai_laboratory_sanitize_result(array $data): array
         if (!is_array($item)) {
             $item = [];
         }
+        $result = trim((string) ($item['result'] ?? ''));
+        $hasMeasuredResult = $result !== '' && !in_array(strtolower($result), ['-', 'belum dilakukan', 'data belum tersedia'], true);
         return [
             'parameter' => trim((string) ($item['parameter'] ?? '-')),
-            'result' => trim((string) ($item['result'] ?? '-')),
+            'result' => $hasMeasuredResult ? $result : 'Data belum tersedia',
             'unit' => trim((string) ($item['unit'] ?? '')),
             'reference_range' => trim((string) ($item['reference_range'] ?? '-')),
-            'flag' => $normalizeFlag($item['flag'] ?? 'Normal'),
+            'flag' => $hasMeasuredResult ? $normalizeFlag($item['flag'] ?? 'Normal') : 'Belum dinilai',
         ];
     }, $results);
 

@@ -423,12 +423,12 @@ function ems_ai_radiology_default_report_system_prompt(): string
 {
     return "Anda adalah Dokter Spesialis Radiologi (Sp.Rad) senior di Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menuliskan bacaan/ekspertise radiologi formal untuk melengkapi citra pencitraan yang sudah dihasilkan. Tugas Anda: dari konfigurasi pemeriksaan dan konteks klinis pasien (sepadat apa pun), susun bacaan radiologi LENGKAP, definitif, sistematis, dan siap masuk rekam medis.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. JANGAN PERNAH menolak atau meminta data tambahan. Susun SENDIRI temuan yang konsisten secara medis dengan modality/region/proyeksi dan temuan klinis yang diberikan.\n"
-        . "2. Gunakan Bahasa Indonesia medis baku (EYD), istilah radiologi standar, bahasa objektif, tidak melebih-lebihkan temuan, tidak berspekulasi di luar konteks yang diberikan.\n"
-        . "3. Uraikan temuan secara sistematis dari struktur normal ke temuan abnormal — sebutkan struktur normal yang relevan bila sesuai.\n"
-        . "4. \"diagnosis\" (Kesan/Impression) WAJIB konsisten dan didukung penuh oleh \"findings\". \"recommendations\" WAJIB mengikuti logis dari \"diagnosis\".\n"
-        . "5. Kalau diagnosis mengindikasikan perlunya tindakan operatif/pembedahan, \"recommendations\" WAJIB menyertakan penjelasan risiko komplikasi klinis spesifik apabila tindakan tersebut ditunda.\n"
-        . "6. \"report_text\" WAJIB memakai PERSIS 4 header huruf besar berikut, berurutan, masing-masing diikuti isi 1 paragraf: \"TECHNIQUE\", \"FINDINGS\", \"IMPRESSION\", \"RECOMMENDATION\". Tulis FINDINGS dalam bentuk paragraf naratif (bukan poin per baris), kecuali ada beberapa temuan berbeda yang perlu dipisah jadi beberapa poin.\n"
+        . "1. Jangan mengarang temuan citra yang belum tersedia. Data yang diberikan adalah indikasi/temuan klinis, bukan bukti radiologis; tulis keterbatasan ini bila citra atau hasil pemeriksaan aktual belum tersedia.\n"
+        . "2. Gunakan Bahasa Indonesia medis baku (EYD), istilah radiologi standar, bahasa objektif, dan jangan berspekulasi di luar konteks yang diberikan.\n"
+        . "3. Uraikan temuan hanya dari data pemeriksaan yang benar-benar tersedia. Jangan menyatakan fraktur, perdarahan, cedera kepala, atau temuan lain sebagai terkonfirmasi tanpa bukti.\n"
+        . "4. \"diagnosis\" (Kesan/Impression) wajib konsisten dan didukung penuh oleh \"findings\"; jika belum ada citra/hasil aktual, gunakan label dugaan atau data belum tersedia.\n"
+        . "5. Rekomendasi mengikuti temuan dan keterbatasan data; jangan mengubah indikasi klinis menjadi hasil radiologi.\n"
+        . "6. \"report_text\" wajib memakai persis 4 header huruf besar berikut, berurutan, masing-masing diikuti isi 1 paragraf: \"TECHNIQUE\", \"FINDINGS\", \"IMPRESSION\", \"RECOMMENDATION\".\n"
         . "7. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
         . "Struktur JSON WAJIB:\n"
         . "{\n"
@@ -477,11 +477,16 @@ function ems_ai_radiology_sanitize_report(array $data): array
         return $value !== '' ? [$value] : [];
     };
 
+    $findings = $toStringArray($data['findings'] ?? []);
+    $diagnosis = trim((string) ($data['diagnosis'] ?? ''));
+    $recommendations = $toStringArray($data['recommendations'] ?? []);
+    $reportText = trim((string) ($data['report_text'] ?? ''));
+
     return [
-        'findings' => $toStringArray($data['findings'] ?? []),
-        'diagnosis' => trim((string) ($data['diagnosis'] ?? '')),
-        'recommendations' => $toStringArray($data['recommendations'] ?? []),
-        'report_text' => trim((string) ($data['report_text'] ?? '')),
+        'findings' => $findings !== [] ? $findings : ['Data belum tersedia'],
+        'diagnosis' => $diagnosis !== '' ? $diagnosis : 'Data belum tersedia',
+        'recommendations' => $recommendations !== [] ? $recommendations : ['Data belum tersedia'],
+        'report_text' => $reportText !== '' ? $reportText : 'TECHNIQUE\nData belum tersedia\n\nFINDINGS\nData belum tersedia\n\nIMPRESSION\nData belum tersedia\n\nRECOMMENDATION\nData belum tersedia',
     ];
 }
 

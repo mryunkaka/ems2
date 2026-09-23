@@ -9,6 +9,12 @@ require_once __DIR__ . '/helpers.php';
 
 function ems_document_ensure_tables(PDO $pdo): void
 {
+    static $ensuredPdo = [];
+    $pdoKey = spl_object_id($pdo);
+    if (isset($ensuredPdo[$pdoKey])) {
+        return;
+    }
+
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS `document_folders` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -96,6 +102,7 @@ function ems_document_ensure_tables(PDO $pdo): void
     if ($columnType !== '' && strpos($columnType, "'manual'") === false) {
         $pdo->exec("ALTER TABLE document_files MODIFY COLUMN extraction_status ENUM('pending','done','unsupported','failed','manual') NOT NULL DEFAULT 'pending'");
     }
+    $ensuredPdo[$pdoKey] = true;
 }
 
 // ===================================================================
@@ -346,12 +353,11 @@ function ems_document_extract_text(string $fullPath, string $ext): array
 // scan/berisi gambar, tidak punya text layer sama sekali) — admin bisa
 // ketik ulang isinya secara manual lewat form upload/edit di
 // document_manage.php, supaya dokumen tsb tetap masuk index FULLTEXT.
-// Sengaja TIDAK menimpa baris yang status-nya sudah 'done' (ekstraksi asli
-// berhasil) — sama seperti ems_attachment_store_manual_description() di
-// config/attachment_extraction.php.
+// Manual content is an explicit administrator update and may replace an
+// existing extracted revision when the document itself was corrected.
 function ems_document_store_manual_content(PDO $pdo, int $docId, string $content): bool
 {
-    $content = trim($content);
+    $content = ems_document_normalize_extracted_text($content);
     if ($content === '' || $docId <= 0) {
         return false;
     }
@@ -359,7 +365,7 @@ function ems_document_store_manual_content(PDO $pdo, int $docId, string $content
     $stmt = $pdo->prepare("
         UPDATE document_files
         SET extracted_text = ?, extraction_status = 'manual', updated_at = NOW()
-        WHERE id = ? AND extraction_status != 'done'
+        WHERE id = ?
     ");
     $stmt->execute([$content, $docId]);
 
@@ -569,6 +575,7 @@ function ems_document_search_fulltext(PDO $pdo, string $unitCode, string $boolEx
             SELECT df.*, MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr IN BOOLEAN MODE) AS relevance
             FROM document_files df
             WHERE df.unit_code = :unitCode
+              AND df.extraction_status IN ('done', 'manual')
               AND MATCH(df.title, df.tags, df.extracted_text) AGAINST (:boolExpr2 IN BOOLEAN MODE)
             ORDER BY relevance DESC, df.created_at DESC
             LIMIT :limitVal
@@ -629,14 +636,17 @@ function ems_document_search(PDO $pdo, string $unitCode, string $query, int $lim
     $likeStmt = $pdo->prepare("
         SELECT df.*, 0 AS relevance
         FROM document_files df
-        WHERE df.unit_code = ? AND (df.title LIKE ? OR df.tags LIKE ?)
-        ORDER BY df.created_at DESC
+        WHERE df.unit_code = ?
+          AND df.extraction_status IN ('done', 'manual')
+          AND (df.title LIKE ? OR df.tags LIKE ? OR df.extracted_text LIKE ?)
+        ORDER BY df.updated_at DESC, df.created_at DESC
         LIMIT ?
     ");
     $likeStmt->bindValue(1, $unitCode, PDO::PARAM_STR);
     $likeStmt->bindValue(2, $likeParam, PDO::PARAM_STR);
     $likeStmt->bindValue(3, $likeParam, PDO::PARAM_STR);
-    $likeStmt->bindValue(4, $limit, PDO::PARAM_INT);
+    $likeStmt->bindValue(4, $likeParam, PDO::PARAM_STR);
+    $likeStmt->bindValue(5, $limit, PDO::PARAM_INT);
     $likeStmt->execute();
 
     foreach ($likeStmt->fetchAll(PDO::FETCH_ASSOC) as $lr) {

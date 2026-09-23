@@ -68,6 +68,8 @@ if ($regenerateOfId > 0) {
     }
 }
 
+$jenisOperasi = ems_ai_ds_effective_operation_category($jenisOperasi, $kasusTindakan);
+
 $stepCountMap = ['Mudah' => 10, 'Sedang' => 20, 'Panjang' => 30];
 $jumlahLangkah = $stepCountMap[$kompleksitas];
 

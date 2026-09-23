@@ -69,6 +69,12 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
             'jenis_anestesi_input' => (string) $surgeryRow['jenis_anestesi_input'],
             'kompleksitas' => (string) $surgeryRow['kompleksitas'],
             'kasus_tindakan' => (string) $surgeryRow['kasus_tindakan'],
+        ];
+        $surgeryText = strtolower($surgery['kasus_tindakan']);
+        if (str_contains($surgeryText, 'orif') || str_contains($surgeryText, 'open reduction internal fixation')) {
+            $surgery['jenis_operasi_kategori'] = 'Mayor';
+        }
+        $surgery += [
             'durasi' => (string) ($surgeryData['durasi'] ?? '-'),
             'farmakologi' => $surgeryData['farmakologi'] ?? null,
             'tahapan_prosedur' => is_array($surgeryData['tahapan_prosedur'] ?? null) ? $surgeryData['tahapan_prosedur'] : [],
@@ -158,9 +164,11 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
             'status' => (string) ($diagnosisResult['status'] ?? '-'),
             'diagnosis_utama' => (string) ($diagnosisResult['diagnosis_utama'] ?? '-'),
             'diagnosis_banding' => $diagnosisResult['diagnosis_banding'] ?? [],
-            'gcs' => (string) ($diagnosisResult['gcs'] ?? '-'),
+            'gcs' => (string) ($diagnosisResult['gcs'] ?? 'Data belum tersedia'),
+            'kesadaran' => (string) ($diagnosisResult['kesadaran'] ?? 'Data belum tersedia'),
+            'motorik' => (string) ($diagnosisResult['motorik'] ?? 'Data belum tersedia'),
             'ttv' => $diagnosisResult['ttv'] ?? [],
-            'kasus_tindakan' => (string) ($diagnosisResult['kasus_tindakan'] ?? '-'),
+            'kasus_tindakan' => (string) ($diagnosisResult['kasus_tindakan'] ?? 'Data belum tersedia'),
             'jenis_operasi' => (string) ($diagnosisResult['jenis_operasi'] ?? '-'),
             'jenis_anestesi' => (string) ($diagnosisResult['jenis_anestesi'] ?? '-'),
             'roleplay_note' => (string) ($diagnosisResult['roleplay_note'] ?? ''),
@@ -188,40 +196,47 @@ function ems_ai_medical_record_default_system_prompt(): string
 {
     return "Anda adalah dokter spesialis senior di Roxwood Hospital yang ditugaskan menyusun REKAM MEDIS RESMI pasien secara LENGKAP berdasarkan seluruh data klinis yang sudah tersedia (hasil AI Diagnosis, AI Surgery Planner, Radiology Center, Laboratory AI, dan Psychiatry Center bila ada). Tugas Anda adalah menulis ULANG seluruh data itu menjadi SATU dokumen rekam medis yang utuh, panjang, rinci, dan profesional — persis gaya rekam medis rumah sakit tipe A sungguhan, BUKAN ringkasan atau daftar poin data mentah.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. Tulis narasi LENGKAP dan PANJANG di setiap bagian (terutama Anamnesis, Status Lokalis, Laporan Tindakan Operasi, dan Status Pasca Operasi WAJIB berbentuk beberapa PARAGRAF naratif yang mengalir, bukan satu-dua kalimat singkat).\n"
-        . "2. \"laporan_tindakan\" (persiapan/operasi/hemostasis/penutupan) WAJIB berbentuk PARAGRAF NARASI mengalir gaya catatan operasi dokter bedah sungguhan — JANGAN membuat daftar langkah bernomor, JANGAN memakai format /me atau /do, JANGAN checklist per-langkah.\n"
-        . "3. Data yang tidak eksplisit tersedia dari konteks (misalnya rincian pemeriksaan motorik/sensorik/refleks/sirkulasi perifer, uraian E/V/M GCS) WAJIB tetap diisi dengan asumsi klinis yang REALISTIS dan KONSISTEN dengan diagnosis, GCS, dan TTV yang diberikan — JANGAN kosongkan, JANGAN tulis 'tidak tersedia' atau 'data tidak ada'.\n"
-        . "4. Kalau data AI Surgery Planner TIDAK tersedia dalam konteks, sesuaikan seluruh bagian terkait operasi (Jenis Operasi, Jenis Anestesi, Laporan Tindakan Operasi) berdasarkan kasus_tindakan/jenis_operasi dari data Diagnosis — uraikan tindakan medis/definitif yang relevan (bisa non-operatif) sebagai gantinya, tetap dalam bentuk narasi lengkap.\n"
-        . "5. Konsisten secara medis: seluruh bagian harus selaras satu sama lain (diagnosis, temuan radiologi/lab, tindakan, dan prognosis tidak boleh saling bertentangan).\n"
-        . "6. Bahasa Indonesia medis baku (EYD), objektif, tidak berlebihan, dan tidak berspekulasi di luar konteks yang diberikan.\n"
-        . "7. JANGAN PERNAH memakai kata 'simulasi', 'roleplay', atau frasa sejenis di mana pun dalam dokumen — tulis seolah ini benar-benar rekam medis resmi.\n"
-        . "8. JANGAN menyertakan bagian mengenai penanganan emergency/tindakan awal bergaya /me /do — dokumen ini hanya rekam medis formal.\n"
-        . "9. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
-        . "Struktur JSON WAJIB (SEMUA field wajib terisi lengkap, tidak boleh kosong):\n"
+        . "1. Tulis narasi rapi dan cukup rinci di setiap bagian (terutama Anamnesis, Status Lokalis, Laporan Tindakan Operasi, Hasil Operasi, dan Status Pasca Operasi) dengan mempertahankan fakta sumber tanpa menambah kejadian.\n"
+        . "2. \"laporan_tindakan\" (persiapan/operasi/hemostasis/penutupan) wajib berupa paragraf naratif gaya catatan operasi; jangan membuat daftar langkah bernomor, format /me, /do, atau checklist.\n"
+        . "3. Data yang tidak tersedia wajib ditulis \"Belum diukur\", \"Belum dinilai\", atau \"Data belum tersedia\". Jangan mengarang motorik, sensorik, refleks, sirkulasi, GCS, TTV, kesadaran, saturasi, suhu, hasil tindakan, prognosis, atau respons terapi. Semua field tetap harus ada dan tidak boleh kosong.\n"
+        . "4. Anamnesis wajib menggambarkan kondisi aktual sebelum operasi. Jika pasien sadar, tulis kesadaran dan anamnesis hanya dari fakta yang tersedia. Jika pasien pingsan atau kesadarannya menurun, jangan menulis pasien sadar penuh.\n"
+        . "5. GCS harus aritmetis: total = E + V + M. E4 V4 M6 adalah GCS 14, bukan 13. Jangan mempertahankan total yang bertentangan dengan komponen; jika komponen atau total tidak tersedia, tulis data belum tersedia.\n"
+        . "6. Jika suhu 33°C tercatat, tandai sebagai hipotermia; jangan menulis suhu normal atau menyatakan tidak hipotermia. Jika saturasi 95% tercatat, gunakan 95%; jangan menggantinya dengan 85% atau angka lain.\n"
+        . "7. Nama tindakan, anestesi, laporan tindakan, dan hasil operasi harus mengikuti data aktual sumber. Hasil operasi harus menjelaskan hasil tindakan yang benar-benar tercatat; jangan menulis pasien meninggal, janin berhasil diekstraksi, benda asing terangkat, atau hasil lain tanpa bukti. Kematian saat operasi bukan Death on Arrival; DOA hanya bila pasien sudah meninggal ketika tiba sebelum tindakan. Jika sumber bertentangan, tulis konflik data dan minta verifikasi, jangan memilih diam-diam.\n"
+        . "8. ORIF/Open Reduction Internal Fixation selalu dikategorikan sebagai operasi Mayor sesuai kebijakan kewenangan medis. Jangan menulis ORIF sebagai Minor.\n"
+        . "9. Jangan mengubah anestesi aktual menjadi anestesi yang dianggap lebih ideal. Jika anestesi lokal dilakukan oleh co-ass, catat sebagai fakta hanya bila ada di sumber; alasan kewenangan, supervisi, dan pertimbangannya harus ditulis \"tidak tercatat\" bila tidak tersedia. Jangan menyimpulkan bahwa co-ass otomatis berwenang hanya karena anestesi lokal.\n"
+        . "10. Diagnosis utama, diagnosis banding, dan hasil radiologi harus dibedakan. TBI tanpa dukungan anamnesis/pemeriksaan/hasil pencitraan tidak boleh menjadi diagnosis utama; bila hanya dugaan, letakkan sebagai diagnosis banding. Hasil CT tanpa cedera kepala tidak boleh ditulis sebagai cedera kepala terkonfirmasi.\n"
+        . "11. AI Surgery Planner adalah rencana/rekomendasi, bukan bukti tindakan benar-benar dilakukan. Jangan memakai rencana, langkah, durasi, obat, atau laporan pasca-operasi dari Planner sebagai hasil aktual kecuali sumber eksplisit menyatakan tindakan sudah dilakukan. Jika tidak ada bukti pelaksanaan, hasil operasi dan status pasca-operasi wajib Data belum tersedia.\n"
+        . "12. Konsisten secara medis: seluruh bagian harus selaras dengan data Diagnosis, Surgery Planner, Radiology, Laboratory, Psychiatry, dan dokumen resmi. Dokumen resmi adalah referensi aturan, bukan bukti kondisi pasien.\n"
+        . "13. Bahasa Indonesia medis baku (EYD), objektif, tidak berlebihan, dan tidak berspekulasi di luar konteks.\n"
+        . "14. Jangan memakai kata 'simulasi', 'roleplay', atau frasa sejenis di dokumen.\n"
+        . "15. Jangan menyertakan penanganan emergency bergaya /me /do.\n"
+        . "16. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
+        . "Struktur JSON WAJIB (SEMUA field wajib ada; isi data yang belum tersedia dengan label eksplisit, bukan kosong):\n"
         . "{\n"
-        . "  \"judul_operasi\": \"nama tindakan/operasi untuk judul REKAM MEDIS\",\n"
-        . "  \"ruang_perawatan\": \"alur ruang perawatan pasien dipisah tanda panah, mis. IGD -> Radiologi -> Ruang Operasi -> ICU -> Rawat Inap\",\n"
-        . "  \"diagnosis_list\": [\"diagnosis 1\", \"diagnosis 2\", \"diagnosis 3\"],\n"
-        . "  \"indikasi_operasi\": [\"indikasi 1\", \"indikasi 2\", \"indikasi 3\"],\n"
-        . "  \"jenis_operasi_nama\": \"nama tindakan operasi\",\n"
-        . "  \"jenis_operasi_deskripsi\": \"deskripsi 1-2 kalimat tentang tindakan tsb\",\n"
-        . "  \"jenis_anestesi_nama\": \"jenis anestesi\",\n"
-        . "  \"obat_anestesi\": [\"obat 1\", \"obat 2\", \"obat 3\"],\n"
-        . "  \"obat_intraoperatif\": [\"obat 1\", \"obat 2\", \"obat 3\"],\n"
-        . "  \"anamnesis_singkat\": \"anamnesis LENGKAP beberapa paragraf\",\n"
-        . "  \"status_lokalis_temuan\": [\"temuan 1\", \"temuan 2\", \"temuan 3\"],\n"
-        . "  \"status_neurovaskular\": {\"motorik\": \"...\", \"sensorik\": \"...\", \"refleks\": \"...\", \"sirkulasi_perifer\": \"...\"},\n"
-        . "  \"ttv_pra_operasi\": {\"tekanan_darah\": \"...\", \"nadi\": \"...\", \"respirasi\": \"...\", \"suhu\": \"...\", \"saturasi_o2\": \"...\"},\n"
-        . "  \"gcs_nilai\": \"contoh: E2 V2 M4 (8)\",\n"
-        . "  \"gcs_e\": \"deskripsi respon mata\", \"gcs_v\": \"deskripsi respon verbal\", \"gcs_m\": \"deskripsi respon motorik\",\n"
+        . "  \"judul_operasi\": \"nama tindakan/operasi faktual atau Data belum tersedia\",\n"
+        . "  \"ruang_perawatan\": \"alur ruang perawatan faktual dipisah tanda panah atau Data belum tersedia\",\n"
+        . "  \"diagnosis_list\": [\"diagnosis yang didukung data atau Data belum tersedia\"],\n"
+        . "  \"indikasi_operasi\": [\"indikasi yang didukung data atau Data belum tersedia\"],\n"
+        . "  \"jenis_operasi_nama\": \"nama tindakan operasi faktual atau Data belum tersedia\",\n"
+        . "  \"jenis_operasi_deskripsi\": \"deskripsi berdasarkan data atau Data belum tersedia\",\n"
+        . "  \"jenis_anestesi_nama\": \"jenis anestesi aktual atau Data belum tersedia\",\n"
+        . "  \"obat_anestesi\": [\"obat aktual atau Data belum tersedia\"],\n"
+        . "  \"obat_intraoperatif\": [\"obat aktual atau Data belum tersedia\"],\n"
+        . "  \"anamnesis_singkat\": \"narasi anamnesis berdasarkan fakta sumber atau Data belum tersedia\",\n"
+        . "  \"status_lokalis_temuan\": [\"temuan aktual atau Data belum tersedia\"],\n"
+        . "  \"status_neurovaskular\": {\"motorik\": \"temuan aktual atau Data belum tersedia\", \"sensorik\": \"temuan aktual atau Data belum tersedia\", \"refleks\": \"temuan aktual atau Data belum tersedia\", \"sirkulasi_perifer\": \"temuan aktual atau Data belum tersedia\"},\n"
+        . "  \"ttv_pra_operasi\": {\"tekanan_darah\": \"nilai aktual atau Data belum tersedia\", \"nadi\": \"nilai aktual atau Data belum tersedia\", \"respirasi\": \"nilai aktual atau Data belum tersedia\", \"suhu\": \"nilai aktual atau Data belum tersedia\", \"saturasi_o2\": \"nilai aktual atau Data belum tersedia\"},\n"
+        . "  \"gcs_nilai\": \"GCS aktual dengan total konsisten atau Data belum tersedia\",\n"
+        . "  \"gcs_e\": \"respon mata aktual atau Data belum tersedia\", \"gcs_v\": \"respon verbal aktual atau Data belum tersedia\", \"gcs_m\": \"respon motorik GCS aktual atau Data belum tersedia\",\n"
         . "  \"radiologi_temuan\": [\"temuan 1\", \"temuan 2\"],\n"
         . "  \"radiologi_kesan\": [\"kesan 1\", \"kesan 2\"],\n"
         . "  \"laporan_tindakan\": {\"persiapan\": \"paragraf naratif\", \"operasi\": \"beberapa paragraf naratif\", \"hemostasis\": \"paragraf naratif\", \"penutupan\": \"paragraf naratif\"},\n"
         . "  \"hasil_operasi\": [\"hasil 1\", \"hasil 2\", \"hasil 3\"],\n"
-        . "  \"status_pasca_operasi_umum\": \"Baik/Cukup/Kritis\",\n"
-        . "  \"status_pasca_operasi_narasi\": \"beberapa paragraf naratif kondisi pasca operasi\",\n"
-        . "  \"ttv_pasca_operasi\": {\"tekanan_darah\": \"...\", \"nadi\": \"...\", \"respirasi\": \"...\", \"suhu\": \"...\", \"saturasi_o2\": \"...\"},\n"
-        . "  \"prognosis_kategori\": \"Dubia ad Bonam/Dubia ad Malam/Infaust\",\n"
+        . "  \"status_pasca_operasi_umum\": \"Baik/Cukup/Kritis hanya jika didukung data, selain itu Data belum tersedia\",\n"
+        . "  \"status_pasca_operasi_narasi\": \"narasi kondisi pasca operasi hanya dari observasi aktual, atau Data belum tersedia\",\n"
+        . "  \"ttv_pasca_operasi\": {\"tekanan_darah\": \"nilai aktual atau Data belum tersedia\", \"nadi\": \"nilai aktual atau Data belum tersedia\", \"respirasi\": \"nilai aktual atau Data belum tersedia\", \"suhu\": \"nilai aktual atau Data belum tersedia\", \"saturasi_o2\": \"nilai aktual atau Data belum tersedia\"},\n"
+        . "  \"prognosis_kategori\": \"kategori hanya jika didukung data, selain itu Data belum tersedia\",\n"
         . "  \"prognosis_penjelasan\": \"1 paragraf penjelasan prognosis\"\n"
         . "}";
 }
@@ -241,6 +256,8 @@ function ems_ai_medical_record_build_user_prompt(array $agg): string
         'Diagnosis Utama: ' . $d['diagnosis_utama'],
         'Diagnosis Banding: ' . implode(', ', $d['diagnosis_banding']),
         'GCS: ' . $d['gcs'],
+        'Kesadaran aktual: ' . ($d['kesadaran'] ?? 'Data belum tersedia'),
+        'Motorik aktual: ' . ($d['motorik'] ?? 'Data belum tersedia'),
         'TTV: ' . implode(', ', array_map(static fn ($v) => ($v['label'] ?? '') . ' ' . ($v['value'] ?? '') . (!empty($v['note']) ? ' (' . $v['note'] . ')' : ''), $d['ttv'])),
         'Kasus/Tindakan yang Diperlukan: ' . $d['kasus_tindakan'],
         'Jenis Operasi (dari Diagnosis): ' . $d['jenis_operasi'],
@@ -259,9 +276,9 @@ function ems_ai_medical_record_build_user_prompt(array $agg): string
                 $lines[] = $label . ': ' . implode(', ', array_map(static fn ($m) => ($m['nama'] ?? '') . ' ' . ($m['dosis'] ?? ''), $meds));
             }
         }
-        $lines[] = 'Ringkasan Tahapan Prosedur (untuk referensi Anda menulis narasi Laporan Tindakan Operasi, JANGAN disalin sebagai daftar): ' . implode(' | ', array_map(static fn ($step) => ($step['aksi'] ?? '') . ' -> ' . ($step['hasil'] ?? ''), $s['tahapan_prosedur']));
+        $lines[] = 'Ringkasan Tahapan Prosedur (RENCANA dari Surgery Planner, bukan bukti tindakan dilakukan; jangan tulis sebagai hasil aktual): ' . implode(' | ', array_map(static fn ($step) => ($step['aksi'] ?? '') . ' -> ' . ($step['hasil'] ?? ''), $s['tahapan_prosedur']));
         $lines[] = 'Risiko & Komplikasi: ' . implode(', ', array_map(static fn ($rk) => ($rk['judul'] ?? '') . ': ' . ($rk['deskripsi'] ?? ''), $s['risiko_komplikasi']));
-        $lines[] = 'Laporan Pasca Operasi (ringkas dari Surgery Planner): ' . $s['laporan_pasca_operasi'];
+        $lines[] = 'Laporan Pasca Operasi (TEKS RENCANA dari Surgery Planner, bukan bukti tindakan dilakukan): ' . $s['laporan_pasca_operasi'];
     } else {
         $lines[] = '';
         $lines[] = '=== DATA AI SURGERY PLANNER: TIDAK TERSEDIA — gunakan data Diagnosis untuk bagian operasi/tindakan ===';
@@ -302,7 +319,118 @@ function ems_ai_medical_record_build_user_prompt(array $agg): string
     return implode("\n", $lines);
 }
 
-function ems_ai_medical_record_sanitize(array $data): array
+function ems_ai_medical_record_first_known_ttv(array $ttv, array $needles): ?string
+{
+    foreach ($ttv as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $label = mb_strtolower(trim((string) ($item['label'] ?? '')));
+        $value = trim((string) ($item['value'] ?? ''));
+        if ($label === '' || $value === '' || in_array(mb_strtolower($value), ['-', 'data belum tersedia', 'belum diukur', 'belum dinilai'], true)) {
+            continue;
+        }
+        foreach ($needles as $needle) {
+            if (str_contains($label, mb_strtolower($needle))) {
+                return $value;
+            }
+        }
+    }
+
+    return null;
+}
+
+function ems_ai_medical_record_apply_source_facts(array $data, array $agg): array
+{
+    $diagnosis = is_array($agg['diagnosis'] ?? null) ? $agg['diagnosis'] : [];
+    $sourceAnamnesis = trim((string) ($diagnosis['anamnesis_lengkap'] ?? $diagnosis['anamnesis'] ?? ''));
+    if ($sourceAnamnesis !== '') {
+        $data['anamnesis_singkat'] = $sourceAnamnesis;
+    }
+
+    $sourceDiagnosis = trim((string) ($diagnosis['diagnosis_utama'] ?? ''));
+    $sourceDifferential = is_array($diagnosis['diagnosis_banding'] ?? null) ? $diagnosis['diagnosis_banding'] : [];
+    if ($sourceDiagnosis !== '') {
+        $data['diagnosis_list'] = array_values(array_filter(array_merge([$sourceDiagnosis], array_map('strval', $sourceDifferential))));
+    }
+
+    $data['status_neurovaskular']['sensorik'] = 'Data belum tersedia';
+    $data['status_neurovaskular']['refleks'] = 'Data belum tersedia';
+    $data['status_neurovaskular']['sirkulasi_perifer'] = 'Data belum tersedia';
+
+    $sourceTtv = is_array($diagnosis['ttv'] ?? null) ? $diagnosis['ttv'] : [];
+    foreach ([
+        'tekanan_darah' => ['tekanan darah', 'blood pressure'],
+        'nadi' => ['nadi', 'heart rate', 'pulse'],
+        'respirasi' => ['respirasi', 'respiratory rate', 'frekuensi napas'],
+        'suhu' => ['suhu', 'temperature'],
+        'saturasi_o2' => ['saturasi', 'spo2', 'sao2', 'oxygen saturation'],
+    ] as $field => $needles) {
+        $value = ems_ai_medical_record_first_known_ttv($sourceTtv, $needles);
+        if ($value !== null) {
+            $data['ttv_pra_operasi'][$field] = $value;
+        }
+    }
+
+    $sourceMotorik = trim((string) ($diagnosis['motorik'] ?? ''));
+    if ($sourceMotorik === '' || in_array(mb_strtolower($sourceMotorik), ['-', 'data belum tersedia', 'belum dinilai'], true)) {
+        $data['status_neurovaskular']['motorik'] = 'Data belum tersedia';
+    } else {
+        $data['status_neurovaskular']['motorik'] = $sourceMotorik;
+    }
+
+    $sourceGcs = trim((string) ($diagnosis['gcs'] ?? ''));
+    if ($sourceGcs !== '' && !in_array(mb_strtolower($sourceGcs), ['-', 'data belum tersedia', 'belum dinilai'], true)) {
+        $data['gcs_nilai'] = $sourceGcs;
+        if (preg_match('/\bE\s*([1-4])\s*V\s*([1-5])\s*M\s*([1-6])\b/i', $sourceGcs, $gcsParts)) {
+            $data['gcs_e'] = 'E' . $gcsParts[1];
+            $data['gcs_v'] = 'V' . $gcsParts[2];
+            $data['gcs_m'] = 'M' . $gcsParts[3];
+        } else {
+            $data['gcs_e'] = 'Data belum tersedia';
+            $data['gcs_v'] = 'Data belum tersedia';
+            $data['gcs_m'] = 'Data belum tersedia';
+        }
+    } else {
+        $data['gcs_nilai'] = 'Data belum tersedia';
+        $data['gcs_e'] = 'Data belum tersedia';
+        $data['gcs_v'] = 'Data belum tersedia';
+        $data['gcs_m'] = 'Data belum tersedia';
+    }
+
+    // Diagnosis data has no observed postoperative source. Never reuse a plan
+    // or preoperative value as a postoperative fact.
+    $observedResult = trim((string) ($agg['performed_operation_result'] ?? ''));
+    if ($observedResult === '') {
+        $data['hasil_operasi'] = ['Data belum tersedia'];
+        $data['status_pasca_operasi_umum'] = 'Data belum tersedia';
+        $data['status_pasca_operasi_narasi'] = 'Data belum tersedia';
+        $data['ttv_pasca_operasi'] = array_fill_keys(['tekanan_darah', 'nadi', 'respirasi', 'suhu', 'saturasi_o2'], 'Data belum tersedia');
+        $data['prognosis_kategori'] = 'Data belum tersedia';
+        $data['prognosis_penjelasan'] = 'Data belum tersedia';
+    }
+
+    $operationText = mb_strtolower(implode(' ', [
+        (string) ($diagnosis['jenis_operasi'] ?? ''),
+        (string) ($diagnosis['kasus_tindakan'] ?? ''),
+    ]));
+    if (str_contains($operationText, 'orif') || str_contains($operationText, 'open reduction internal fixation')) {
+        $name = trim((string) ($data['jenis_operasi_nama'] ?? ''));
+        $name = preg_replace('/\bminor\b/i', 'Mayor', $name) ?? $name;
+        $data['jenis_operasi_nama'] = $name === ''
+            ? 'Mayor - Open Reduction Internal Fixation (ORIF)'
+            : (preg_match('/\bmayor\b/i', $name) ? $name : 'Mayor - ' . $name);
+    }
+
+    $sourceAnesthesia = trim((string) ($diagnosis['jenis_anestesi'] ?? ''));
+    if ($sourceAnesthesia !== '' && !in_array(mb_strtolower($sourceAnesthesia), ['-', 'data belum tersedia', 'belum dinilai'], true)) {
+        $data['jenis_anestesi_nama'] = $sourceAnesthesia;
+    }
+
+    return $data;
+}
+
+function ems_ai_medical_record_sanitize(array $data, ?array $agg = null): array
 {
     $toStringArray = static function ($value): array {
         if (is_array($value)) {
@@ -311,16 +439,16 @@ function ems_ai_medical_record_sanitize(array $data): array
         $value = trim((string) $value);
         return $value !== '' ? [$value] : [];
     };
-    $str = static fn ($v, $fallback = '-') => trim((string) ($v ?? '')) !== '' ? trim((string) $v) : $fallback;
+    $str = static fn ($v, $fallback = 'Data belum tersedia') => trim((string) ($v ?? '')) !== '' ? trim((string) $v) : $fallback;
 
     $neuro = is_array($data['status_neurovaskular'] ?? null) ? $data['status_neurovaskular'] : [];
     $ttvPra = is_array($data['ttv_pra_operasi'] ?? null) ? $data['ttv_pra_operasi'] : [];
     $ttvPasca = is_array($data['ttv_pasca_operasi'] ?? null) ? $data['ttv_pasca_operasi'] : [];
     $laporan = is_array($data['laporan_tindakan'] ?? null) ? $data['laporan_tindakan'] : [];
 
-    return [
-        'judul_operasi' => $str($data['judul_operasi'] ?? null, 'Tindakan Medis'),
-        'ruang_perawatan' => $str($data['ruang_perawatan'] ?? null, 'IGD'),
+    $sanitized = [
+        'judul_operasi' => $str($data['judul_operasi'] ?? null),
+        'ruang_perawatan' => $str($data['ruang_perawatan'] ?? null),
         'diagnosis_list' => $toStringArray($data['diagnosis_list'] ?? []),
         'indikasi_operasi' => $toStringArray($data['indikasi_operasi'] ?? []),
         'jenis_operasi_nama' => $str($data['jenis_operasi_nama'] ?? null),
@@ -356,7 +484,7 @@ function ems_ai_medical_record_sanitize(array $data): array
             'penutupan' => $str($laporan['penutupan'] ?? null),
         ],
         'hasil_operasi' => $toStringArray($data['hasil_operasi'] ?? []),
-        'status_pasca_operasi_umum' => $str($data['status_pasca_operasi_umum'] ?? null, 'Baik'),
+        'status_pasca_operasi_umum' => $str($data['status_pasca_operasi_umum'] ?? null, 'Data belum tersedia'),
         'status_pasca_operasi_narasi' => $str($data['status_pasca_operasi_narasi'] ?? null),
         'ttv_pasca_operasi' => [
             'tekanan_darah' => $str($ttvPasca['tekanan_darah'] ?? null),
@@ -365,9 +493,11 @@ function ems_ai_medical_record_sanitize(array $data): array
             'suhu' => $str($ttvPasca['suhu'] ?? null),
             'saturasi_o2' => $str($ttvPasca['saturasi_o2'] ?? null),
         ],
-        'prognosis_kategori' => $str($data['prognosis_kategori'] ?? null, 'Dubia ad Bonam'),
+        'prognosis_kategori' => $str($data['prognosis_kategori'] ?? null, 'Data belum tersedia'),
         'prognosis_penjelasan' => $str($data['prognosis_penjelasan'] ?? null),
     ];
+
+    return $agg !== null ? ems_ai_medical_record_apply_source_facts($sanitized, $agg) : $sanitized;
 }
 
 function ems_ai_medical_record_generate(PDO $pdo, array $agg, ?int $createdBy): array
@@ -380,7 +510,7 @@ function ems_ai_medical_record_generate(PDO $pdo, array $agg, ?int $createdBy): 
         return $result;
     }
 
-    return ['ok' => true, 'data' => ems_ai_medical_record_sanitize($result['data'])];
+    return ['ok' => true, 'data' => ems_ai_medical_record_sanitize($result['data'], $agg)];
 }
 
 /**

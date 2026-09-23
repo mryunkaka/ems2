@@ -64,6 +64,10 @@ try {
     $doctorId = (int)($_POST['doctor_id'] ?? 0);
     $operasiType = $_POST['operasi_type'] ?? 'minor';
     $jenisOperasi = trim((string) ($_POST['jenis_operasi'] ?? ''));
+    $operationText = mb_strtolower($jenisOperasi);
+    if (str_contains($operationText, 'orif') || str_contains($operationText, 'open reduction internal fixation')) {
+        $operasiType = 'major';
+    }
     $visibilityScope = $_POST['visibility_scope'] ?? 'standard';
     $redirectFallback = $visibilityScope === 'forensic_private'
         ? 'forensic_medical_records_list.php'

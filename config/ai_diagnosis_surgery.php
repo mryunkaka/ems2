@@ -10,6 +10,7 @@
 
 require_once __DIR__ . '/ai_settings.php';
 require_once __DIR__ . '/../actions/ai_gemini_client.php';
+require_once __DIR__ . '/ai_official_documents.php';
 
 function ems_ai_ds_ensure_tables(PDO $pdo): void
 {
@@ -313,25 +314,26 @@ function ems_ai_ds_operation_classification_reference(): string
 
 function ems_ai_ds_default_diagnosis_system_prompt(): string
 {
-    return "Anda adalah dokter senior IGD (Instalasi Gawat Darurat) Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun laporan medis untuk simulasi/roleplay EMS. Tugas Anda: mengubah SETIAP anamnesis (sepadat/sesingkat apa pun) menjadi laporan medis yang LENGKAP, definitif, dan siap pakai, bukan daftar pertanyaan.\n\n"
+    return "Anda adalah dokter senior IGD (Instalasi Gawat Darurat) Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun laporan medis untuk simulasi/roleplay EMS. Tugas Anda: menyusun laporan medis lengkap berdasarkan fakta yang tersedia, tanpa mengubah data yang belum terkonfirmasi menjadi fakta.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. JANGAN PERNAH menolak, meminta data tambahan, atau membalas dengan daftar data yang dibutuhkan. Lengkapi SENDIRI seluruh data yang tidak disebutkan (usia, berat badan, mekanisme cedera, lokasi luka, GCS, seluruh TTV, dll) dengan nilai definitif dan konkret.\n"
-        . "2. Data yang diasumsikan harus REALISTIS dan MASUK AKAL, konsisten dengan pola epidemiologi & keparahan klinis nyata, bukan angka acak/mengada-ada.\n"
-        . "3. Semua nilai tetap koheren secara internal dan sesuai standar medis internasional (ABCDE, ATLS, Primary/Secondary Survey) serta SOP Roxwood Hospital.\n"
-        . "4. HASIL AKHIR wajib pasti/definitif: TTV angka konkret, GCS skor konkret, diagnosis utama jelas. JANGAN gunakan placeholder seperti \"belum diukur\" atau array kosong.\n"
-        . "5. Sisipkan satu kalimat transparansi di akhir \"roleplay_note\" tentang data yang diasumsikan.\n"
+        . "1. Pertahankan semua fakta eksplisit dari anamnesis dan identitas pasien. JANGAN mengarang usia, berat badan, mekanisme cedera, lokasi luka, GCS, TTV, hasil pemeriksaan, respons terapi, atau kondisi pasca tindakan yang tidak diberikan.\n"
+        . "2. Data yang belum diberikan wajib ditulis \"Belum diukur\", \"Belum dinilai\", atau \"Data belum tersedia\"; jangan menggantinya dengan angka atau temuan definitif. Diagnosis utama hanya boleh ditegakkan bila didukung data; dugaan masuk diagnosis banding dan diberi label dugaan.\n"
+        . "3. Semua nilai yang memang tersedia harus koheren secara internal dan sesuai standar medis internasional (ABCDE, ATLS, Primary/Secondary Survey) serta SOP Roxwood Hospital.\n"
+        . "4. TTV, GCS, kesadaran, anamnesis, tindakan, anestesi, dan hasil tindakan wajib menggambarkan kondisi aktual yang tertulis. Suhu 33°C adalah hipotermia dan tidak boleh ditulis sebagai suhu normal atau \"tidak hipotermia\".\n"
+        . "5. Sisipkan transparansi di akhir \"roleplay_note\" tentang data yang belum tersedia dan inferensi yang dipakai; jangan menyamarkan asumsi sebagai fakta.\n"
         . "6. Field \"emergency\" hanya berisi tindakan fisik/hands-on langsung ke pasien yang punya gerakan/animasi nyata. JANGAN masukkan tindakan administratif/komunikasi (mis. \"menghubungi tim bedah\") sebagai item tersendiri.\n"
-        . "7. Setiap item \"emergency\" adalah object 5 field: \"pelaku\" (DPJP/Asisten 1/Asisten 2), \"instruksi\" (dialog DPJP ke asisten, format \"DPJP: <perintah>\" + opsional \"<Asisten>: Baik, dok.\" - wajib diisi bila pelaku Asisten, kosongkan bila DPJP sendiri), \"aksi\" (/me tanpa prefix), \"hasil\" (/do tanpa prefix, WAJIB kalimat konkret, dilarang kosong), \"animasi\" (kode /e paling sesuai secara semantik, default \"mechanic\" bila tidak ada yang cocok).\n"
+        . "7. Setiap item \"emergency\" adalah object 5 field: \"pelaku\" (DPJP/Asisten 1/Asisten 2), \"instruksi\" (dialog DPJP ke asisten, format \"DPJP: <perintah>\" + opsional \"<Asisten>: Baik, dok.\" - wajib diisi bila pelaku Asisten, kosongkan bila DPJP sendiri), \"aksi\" (/me tanpa prefix), \"hasil\" (/do tanpa prefix, hanya boleh menyatakan hasil yang benar-benar tersedia dari input; bila belum ada observasi tulis \"Data belum tersedia\"), \"animasi\" (kode /e paling sesuai secara semantik, default \"mechanic\" bila tidak ada yang cocok). Jangan menulis tindakan atau hasil sebagai sudah dilakukan bila data hanya berupa rencana.\n"
         . "8. Ikuti pembagian peran & kewenangan dari referensi di bawah - jangan biarkan Asisten mengambil keputusan definitif.\n"
         . "9. Susun MINIMAL 8-12 tindakan berurutan dan logis: penilaian awal/ABCDE -> stabilisasi -> tindakan definitif -> monitoring/penyelesaian.\n"
         . "10. Field \"emergency\" wajib memakai mantra resmi dari referensi kamus me/do (bila kategorinya cocok) sebagai basis obat dan alat.\n"
-        . "11. Tentukan \"jenis_operasi\" dan \"jenis_anestesi\" berdasarkan referensi klasifikasi operasi - sebutkan klasifikasi (Minor/Mayor) DAN nama tindakan spesifik, atau \"Tidak diperlukan operasi...\" bila tak perlu.\n"
+        . "11. Tentukan \"jenis_operasi\" dan \"jenis_anestesi\" berdasarkan referensi klasifikasi operasi - sebutkan klasifikasi (Minor/Mayor) DAN nama tindakan spesifik, atau \"Tidak diperlukan operasi...\" bila tak perlu. ORIF/Open Reduction Internal Fixation WAJIB diklasifikasikan sebagai operasi Mayor.\n"
         . "12. Isi \"kasus_tindakan\" dengan ringkasan padat 1-2 kalimat yang WAJIB menyebutkan nama tindakan/operasi spesifik, selaras dengan \"jenis_operasi\" — kalimat ini akan di-copy-paste APA ADANYA oleh dokter ke form AI Surgery Planner sebagai input \"Kasus Medis / Tindakan yang Diperlukan\", jadi harus berdiri sendiri sebagai konteks lengkap (jangan menyingkat/mengasumsikan pembaca sudah tahu anamnesis awal).\n"
         . "13. \"radiologi\" (array teks bebas untuk dibaca manusia) TETAP wajib diisi. TAMBAHAN WAJIB: \"radiologi_terstruktur\" adalah SATU object berisi rekomendasi pencitraan PALING prioritas/relevan, dan nilai \"modality\", \"category\", \"body_region\", \"projection\" WAJIB berupa STRING TUNGGAL (bukan array/list) dipilih PERSIS (karakter identik, jangan parafrase/terjemahkan) dari salah satu baris di REFERENSI KATALOG RADIOLOGI di bawah — setiap baris referensi berformat \"Modality > Category > Body Region > [opsi1, opsi2, ...]\", dan \"projection\" HARUS diisi HANYA SATU dari opsi di dalam kurung siku itu (pilih yang paling relevan secara klinis), JANGAN menyalin seluruh isi kurung siku sebagai list. JANGAN mengarang kombinasi yang tidak ada di daftar itu. Field \"clinical_finding\" pada object yang sama WAJIB dipilih persis dari REFERENSI TEMUAN KLINIS. Jika pasien sama sekali tidak butuh pencitraan, isi seluruh 4 field modality/category/body_region/projection dengan string kosong \"\" dan clinical_finding tetap diisi sewajarnya.\n"
         . "13a. \"lab\" (array teks bebas untuk dibaca manusia) TETAP wajib diisi. TAMBAHAN WAJIB: \"laboratorium_terstruktur\" adalah SATU object berisi rekomendasi pemeriksaan laboratorium PALING prioritas/relevan, dan nilai \"department\", \"category\", \"level3_option\", \"specimen_type\" WAJIB berupa STRING TUNGGAL (bukan array/list) dipilih PERSIS (karakter identik, jangan parafrase/terjemahkan) dari salah satu baris di REFERENSI KATALOG LABORATORIUM di bawah — setiap baris referensi berformat \"Department > Category > [opsi level3 kalau ada] > Spesimen: [opsi1, opsi2, ...]\". Kalau kategori itu tidak punya opsi level3 di referensi, isi \"level3_option\" dengan string kosong \"\". \"specimen_type\" HARUS diisi HANYA SATU dari daftar Spesimen pada baris yang sama. JANGAN mengarang kombinasi yang tidak ada di daftar itu. Jika pasien sama sekali tidak butuh pemeriksaan laboratorium, isi seluruh 4 field dengan string kosong \"\".\n"
         . "14. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n"
         . "15. Field JSON WAJIB PERSIS memakai nama key seperti di Struktur JSON di bawah — JANGAN salah ketik/singkat nama key (contoh kesalahan yang PERNAH terjadi dan DILARANG diulang: menulis \"rolepy_note\" alih-alih \"roleplay_note\"). Cek ulang ejaan setiap nama key sebelum membalas.\n"
-        . "16. \"anamnesis_lengkap\" WAJIB diisi: tulis ULANG anamnesis asli dari user (sepadat/setidak-lengkap apa pun) menjadi 1 paragraf narasi klinis yang UTUH dan LENGKAP — pertahankan SEMUA fakta yang eksplisit disebutkan user, lalu lengkapi bagian yang tidak disebutkan (mekanisme cedera, lokasi spesifik, kondisi saat tiba, dll) dengan asumsi definitif yang KONSISTEN dengan seluruh field lain (status/gcs/ttv/diagnosis_utama) — JANGAN kontradiksi. Kalau anamnesis asli user SUDAH lengkap, cukup rapikan bahasanya tanpa mengubah substansi.\n\n"
+        . "16. \"anamnesis_lengkap\" WAJIB diisi: tulis ulang anamnesis asli menjadi narasi klinis rapi dengan mempertahankan semua fakta eksplisit. Bagian yang tidak disebutkan tetap ditandai \"belum tersedia\"; jangan mengisi mekanisme cedera, lokasi spesifik, kondisi kesadaran, atau hasil pemeriksaan dengan asumsi definitif.\n"
+        . "17. GCS wajib aritmetis: total = E + V + M. Jangan menulis GCS 13 bersama E4 V4 M6 karena E4+V4+M6 = 14; bila total 13 dan E4 V4, M harus 5. Jangan mengubah komponen hanya untuk mengejar total tanpa bukti.\n\n"
         . "Struktur JSON WAJIB (semua field terisi lengkap, tidak ada yang kosong kecuali disebutkan sebaliknya di aturan 13):\n"
         . "{\n"
         . "  \"status\": \"ringkas kondisi pasien\",\n"
@@ -341,8 +343,10 @@ function ems_ai_ds_default_diagnosis_system_prompt(): string
         . "  \"kasus_tindakan\": \"ringkas kategori kasus & tindakan definitif, berdiri sendiri sebagai konteks lengkap\",\n"
         . "  \"diagnosis_utama\": \"diagnosis utama bahasa medis\",\n"
         . "  \"diagnosis_banding\": [\"diagnosis banding 1\", \"diagnosis banding 2\"],\n"
-        . "  \"gcs\": \"contoh: E4V5M6 (15) - Compos Mentis\",\n"
-        . "  \"ttv\": [{\"label\": \"Tekanan Darah\", \"value\": \"angka konkret\", \"note\": \"interpretasi\"}, {\"label\": \"Nadi / HR\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Suhu\", \"value\": \"...\", \"note\": \"...\"}, {\"label\": \"Respirasi / RR\", \"value\": \"...\", \"note\": \"...\"}],\n"
+        . "  \"gcs\": \"contoh: E4V5M6 (15) - Compos Mentis; jika tidak tersedia tulis Data belum tersedia\",\n"
+        . "  \"kesadaran\": \"kesadaran aktual sebelum tindakan atau Data belum tersedia\",\n"
+        . "  \"motorik\": \"status motorik aktual atau Data belum tersedia\",\n"
+        . "  \"ttv\": [{\"label\": \"Tekanan Darah\", \"value\": \"nilai aktual atau Data belum tersedia\", \"note\": \"interpretasi berbasis nilai atau Data belum tersedia\"}, {\"label\": \"Nadi / HR\", \"value\": \"nilai aktual atau Data belum tersedia\", \"note\": \"...\"}, {\"label\": \"Suhu\", \"value\": \"nilai aktual atau Data belum tersedia\", \"note\": \"33°C wajib disebut hipotermia bila tercatat\"}, {\"label\": \"Respirasi / RR\", \"value\": \"nilai aktual atau Data belum tersedia\", \"note\": \"...\"}, {\"label\": \"Saturasi O2\", \"value\": \"nilai aktual atau Data belum tersedia\", \"note\": \"...\"}],\n"
         . "  \"lab\": [\"pemeriksaan lab 1\"],\n"
         . "  \"laboratorium_terstruktur\": {\"department\": \"contoh: Hematologi\", \"category\": \"contoh: Complete Blood Count (CBC)\", \"level3_option\": \"contoh: Semua Parameter (Default) (string kosong kalau kategori tidak punya opsi level3)\", \"specimen_type\": \"contoh: Whole Blood EDTA (HANYA SATU string, bukan list semua opsi)\"},\n"
         . "  \"radiologi\": [\"rekomendasi radiologi 1 (teks bebas untuk dibaca manusia)\"],\n"
@@ -357,16 +361,16 @@ function ems_ai_ds_default_surgery_system_prompt(): string
 {
     return "Anda adalah dokter spesialis bedah senior Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun rencana operasi (operative note) untuk simulasi/roleplay EMS. Tugas Anda: dari jenis operasi, jenis anestesi, tingkat kompleksitas, dan kasus medis yang diberikan (sepadat apa pun), susun rencana operasi LENGKAP, definitif, dan siap pakai, bukan daftar pertanyaan.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. JANGAN PERNAH menolak atau meminta data tambahan. Lengkapi SENDIRI detail yang tidak disebutkan dengan asumsi klinis realistis sesuai prinsip bedah umum, ATLS, dan referensi klasifikasi operasi/kewenangan di bawah.\n"
+        . "1. Pertahankan fakta kasus dan input dokter. Jangan mengarang temuan, hasil operasi, status kesadaran, TTV, atau respons pasien yang tidak disebutkan. Detail yang belum tersedia harus ditulis sebagai data belum tersedia, bukan asumsi definitif.\n"
         . "2. \"durasi\" wajib realistis dan PROPORSIONAL dengan jumlah \"tahapan_prosedur\" dan kompleksitas kasus - makin banyak langkah/makin kompleks, makin lama durasinya. Operasi Minor umumnya 30-90 menit; Mayor 2-8 jam. Format contoh: \"4 Jam 30 Menit\".\n"
-        . "3. \"farmakologi\" wajib terisi di KEEMPAT fase (\"pra_operatif\", \"intra_operatif\", \"post_operatif\", \"pemulangan\"), masing-masing minimal 3 obat nyata (nama generik sesuai indikasi) dengan \"dosis\" konkret dan \"catatan\" singkat.\n"
+        . "3. \"farmakologi\" hanya boleh memuat obat yang didukung indikasi dan data kasus. Jika indikasi, dosis, atau rencana obat tidak tercatat, isi dengan \"Data belum tersedia\"; jangan membuat resep atau dosis konkret untuk melengkapi format.\n"
         . "3a. KESELAMATAN OBAT: untuk bedah saraf/kraniotomi, mata, atau tindakan berisiko perdarahan tinggi, JANGAN meresepkan NSAID/antiplatelet (Ketorolac, Asam Mefenamat, Ibuprofen, Aspirin) - gunakan Paracetamol dan/atau opioid sebagai gantinya. Untuk operasi lain tanpa risiko perdarahan tinggi, NSAID boleh dipakai sesuai indikasi.\n"
-        . "4. \"tahapan_prosedur\" wajib memiliki JUMLAH LANGKAH PERSIS SESUAI permintaan eksplisit user (disebutkan sebagai \"JUMLAH LANGKAH: N\" pada pesan user) - tidak boleh kurang maupun lebih. Susun N langkah logis: cuci tangan/persiapan -> pemasangan alat monitoring & anestesi -> insisi -> tindakan definitif (uraikan lebih rinci bila N besar, jangan mengulang langkah yang sama) -> penutupan/penjahitan -> reversal anestesi & membangunkan pasien. Setiap item object 5 field SAMA seperti field \"emergency\" pada modul AI Diagnosis: \"pelaku\" (DPJP/Asisten 1/Asisten 2), \"instruksi\" (dialog DPJP ke asisten, wajib diisi bila pelaku Asisten, kosongkan bila DPJP sendiri), \"aksi\" (/me tanpa prefix), \"hasil\" (/do tanpa prefix, wajib konkret, dilarang kosong), \"animasi\" (kode /e paling sesuai secara semantik - mis. memasang plate/screw pakai \"drilltool\", membersihkan/antiseptik luka pakai \"clean\", mencuci tangan sendiri pakai \"cleanhands\"; default \"mechanic\" hanya bila benar-benar tidak ada yang cocok).\n"
-        . "5. Ikuti pembagian peran & kewenangan dari referensi - DPJP sebagai operator utama melakukan tindakan definitif, Asisten 1 & 2 membantu atas instruksi - libatkan Asisten 2 terutama pada operasi Mayor.\n"
-        . "6. \"risiko_komplikasi\" wajib berisi 3-6 item {\"judul\", \"deskripsi\"} risiko pasca-operasi yang SPESIFIK & RELEVAN dengan jenis tindakan.\n"
-        . "7. \"laporan_pasca_operasi\" adalah ringkasan naratif operative note resmi 2-4 kalimat.\n"
-        . "8. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
-        . "Struktur JSON WAJIB (semua field terisi lengkap, tidak ada yang kosong):\n"
+        . "8. \"tahapan_prosedur\" wajib memiliki JUMLAH LANGKAH PERSIS SESUAI permintaan eksplisit user (disebutkan sebagai \"JUMLAH LANGKAH: N\" pada pesan user) - tidak boleh kurang maupun lebih. Susun N langkah logis berdasarkan tindakan dan data yang tersedia. Detail yang tidak diberikan ditulis \"Data belum tersedia\", bukan hasil tindakan yang sudah terjadi.\n"
+        . "9. Ikuti pembagian peran & kewenangan dari referensi - DPJP sebagai operator utama melakukan tindakan definitif, Asisten 1 & 2 membantu atas instruksi dan supervisi. Anestesi lokal oleh co-ass tidak boleh ditulis sebagai tindakan mandiri tanpa supervisi; catat operator aktual hanya bila diberikan. ORIF/Open Reduction Internal Fixation selalu Mayor.\n"
+        . "10. \"risiko_komplikasi\" hanya memuat risiko yang relevan dengan jenis tindakan; jangan menyatakannya sebagai kejadian aktual.\n"
+        . "11. \"laporan_pasca_operasi\" adalah ringkasan rencana/operative note; jangan menulis hasil aktual jika tindakan belum dinyatakan dilakukan.\n"
+        . "12. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
+        . "Struktur JSON WAJIB (field tetap ada; data yang tidak tersedia ditulis Data belum tersedia):\n"
         . "{\n"
         . "  \"durasi\": \"contoh: 4 Jam 30 Menit\",\n"
         . "  \"farmakologi\": {\"pra_operatif\": [{\"nama\": \"...\", \"dosis\": \"...\", \"catatan\": \"...\"}], \"intra_operatif\": [...], \"post_operatif\": [...], \"pemulangan\": [...]},\n"
@@ -429,22 +433,76 @@ function ems_ai_ds_recover_field(array &$data, string $exactKey, string $contain
  * SUDAH tersimpan dengan key salah ketik (mis. laporan lama sebelum aturan
  * 15 ditambahkan ke prompt) tetap tampil benar tanpa perlu di-generate ulang.
  */
+function ems_ai_ds_effective_operation_category(string $category, string $caseText): string
+{
+    $operationText = strtolower($category . ' ' . $caseText);
+    if (str_contains($operationText, 'orif') || str_contains($operationText, 'open reduction internal fixation')) {
+        return 'Mayor';
+    }
+
+    return $category;
+}
+
 function ems_ai_ds_normalize_diagnosis_result(array $data): array
 {
     ems_ai_ds_recover_field($data, 'roleplay_note', 'note');
+    $data['jenis_operasi'] = ems_ai_ds_effective_operation_category(
+        (string) ($data['jenis_operasi'] ?? ''),
+        (string) ($data['kasus_tindakan'] ?? '')
+    );
+
     ems_ai_ds_recover_field($data, 'anamnesis_lengkap', 'anamnesis');
+
+    $gcs = trim((string) ($data['gcs'] ?? ''));
+    if (preg_match('/\bE\s*([1-4])\s*V\s*([1-5])\s*M\s*([1-6])\b/i', $gcs, $match)) {
+        $total = (int) $match[1] + (int) $match[2] + (int) $match[3];
+        $statedTotal = null;
+        if (preg_match('/\(\s*(\d{1,2})\s*\)/', $gcs, $totalMatch)) {
+            $statedTotal = (int) $totalMatch[1];
+        }
+        $data['gcs'] = 'E' . $match[1] . ' V' . $match[2] . ' M' . $match[3] . ' (' . $total . ')';
+        if ($statedTotal !== null && $statedTotal !== $total) {
+            $conflict = "Konflik data GCS: total tertulis {$statedTotal}, tetapi E{$match[1]} + V{$match[2]} + M{$match[3]} = {$total}; total dinormalisasi ke {$total}, wajib diverifikasi.";
+            $note = trim((string) ($data['roleplay_note'] ?? ''));
+            $data['roleplay_note'] = $note === '' ? $conflict : $note . "\n" . $conflict;
+        }
+    }
+
+    foreach (['kesadaran', 'motorik'] as $field) {
+        if (!array_key_exists($field, $data) || trim((string) $data[$field]) === '') {
+            $data[$field] = 'Data belum tersedia';
+        }
+    }
+
+    $operationText = mb_strtolower(implode(' ', [
+        (string) ($data['jenis_operasi'] ?? ''),
+        (string) ($data['kasus_tindakan'] ?? ''),
+    ]));
+    if (str_contains($operationText, 'orif') || str_contains($operationText, 'open reduction internal fixation')) {
+        $operation = trim((string) ($data['jenis_operasi'] ?? ''));
+        $operation = preg_replace('/\bminor\b/i', 'Mayor', $operation) ?? $operation;
+        $data['jenis_operasi'] = $operation !== '' ? $operation : 'Mayor - Open Reduction Internal Fixation (ORIF)';
+    }
 
     return $data;
 }
 
-function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $defaultPrompt, bool $includeMantra = true): string
+function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $defaultPrompt, bool $includeMantra = true, ?string $unitCode = null, string $documentQuery = ''): string
 {
     $template = ems_ai_get_active_prompt_template($pdo, $featureKey);
     $base = trim((string) ($template['system_prompt'] ?? '')) !== ''
         ? (string) $template['system_prompt']
         : $defaultPrompt;
 
-    return $base . ems_ai_ds_reference_suffix($includeMantra);
+    $prompt = $base . ems_ai_ds_reference_suffix($includeMantra);
+    if ($unitCode !== null && $unitCode !== '') {
+        $documents = ems_ai_official_document_context($pdo, $unitCode, $documentQuery, $featureKey);
+        if ($documents !== '') {
+            $prompt .= "\n\n" . $documents;
+        }
+    }
+
+    return $prompt . "\n\n" . ems_ai_official_consistency_guardrail();
 }
 
 /**
@@ -475,10 +533,10 @@ function ems_ai_ds_sanitize_step_items(array $items): array
         $anim = in_array($anim, $validAnimCodes, true) ? $anim : 'mechanic';
 
         if ($aksi === '') {
-            $aksi = 'Melakukan tindakan sesuai instruksi DPJP.';
+            $aksi = 'Data belum tersedia';
         }
         if ($hasil === '') {
-            $hasil = 'Tindakan selesai dilakukan, kondisi pasien dipantau.';
+            $hasil = 'Data belum tersedia';
         }
 
         return [
@@ -496,6 +554,21 @@ function ems_ai_ds_sanitize_step_items(array $items): array
  * dalam satu content role=user, mengikuti pola yang sudah dipakai
  * actions/ai_recruitment_service.php.
  */
+function ems_ai_ds_strip_hallucination_instructions(string $prompt): string
+{
+    $patterns = [
+        '/lengkapi\s+SENDIRI\s+seluruh\s+data\s+yang\s+hilang[^.]*\./iu',
+        '/lengkapi\s+SENDIRI\s+seluruh\s+detail\s+yang\s+hilang[^.]*\./iu',
+        '/JANGAN\s+mengembalikan\s+daftar\s+data\s+yang\s+dibutuhkan[^.]*\./iu',
+        '/JANGAN\s+mengembalikan\s+pertanyaan\s+klarifikasi/iu',
+        '/lengkapi\s+setiap\s+detail[^.\n]*(?:\.|$)/iu',
+        '/asumsi\s+realistis[^.\n]*(?:\.|$)/iu',
+        '/hasilkan\s+sendiri[^.\n]*(?:\.|$)/iu',
+        '/buat\s+nilai\s+[^.\n]*konkret[^.\n]*(?:\.|$)/iu',
+    ];
+    return preg_replace($patterns, 'Jangan mengarang data yang tidak tersedia; tandai Data belum tersedia dan minta verifikasi bila diperlukan.', $prompt) ?? $prompt;
+}
+
 function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy): array
 {
     if (!$createdBy) {
@@ -518,6 +591,28 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'daily_request_limit' => 0,
     ]);
 
+    $systemPrompt = ems_ai_ds_strip_hallucination_instructions($systemPrompt);
+    $userPrompt = ems_ai_ds_strip_hallucination_instructions($userPrompt);
+
+    if (!str_contains($systemPrompt, 'DOKUMEN RESMI ROXWOOD HOSPITAL') && !str_contains($userPrompt, 'DOKUMEN RESMI ROXWOOD HOSPITAL')) {
+        $officialDocuments = ems_ai_official_document_context(
+            $pdo,
+            ems_ai_official_document_unit($pdo, $createdBy),
+            $userPrompt,
+            $featureKey
+        );
+        if ($officialDocuments !== '') {
+            $systemPrompt .= "\n\n" . $officialDocuments;
+        }
+    }
+    if (!str_contains($systemPrompt, 'VALIDATION GATE WAJIB')) {
+        $systemPrompt .= "\n\n" . ems_ai_official_consistency_guardrail();
+    }
+
+    $finalValidation = "FINAL VALIDATION GATE (mengalahkan instruksi template/user yang bertentangan):\n"
+        . ems_ai_official_consistency_guardrail()
+        . "\nKembalikan hanya data yang didukung input dan evidence. Jangan mengisi kekosongan dengan angka, diagnosis, tindakan, hasil operasi, atau kondisi pasien rekaan.";
+
     try {
         $response = ems_gemini_generate_content(
             $pdo,
@@ -528,6 +623,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
                     'parts' => [
                         ['text' => $systemPrompt],
                         ['text' => $userPrompt],
+                        ['text' => $finalValidation],
                     ],
                 ],
             ],
@@ -549,5 +645,10 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         return ['ok' => false, 'error' => 'Respons AI bukan format JSON yang valid.'];
     }
 
-    return ['ok' => true, 'data' => $parsed, 'usage' => $response['usage'] ?? []];
+    return [
+        'ok' => true,
+        'data' => $parsed,
+        'usage' => $response['usage'] ?? [],
+        'system_prompt' => $systemPrompt,
+    ];
 }

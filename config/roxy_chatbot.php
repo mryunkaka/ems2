@@ -30,7 +30,7 @@ function ems_roxy_case_value(mixed $value, int $limit = 4000): string
 
     $text = trim((string) ($value ?? ''));
     if ($text === '') {
-        return '-';
+        return 'Data belum tersedia';
     }
 
     return mb_strlen($text) > $limit ? mb_substr($text, 0, $limit) . ' ...[dipotong]' : $text;
@@ -64,6 +64,8 @@ function ems_roxy_build_case_context(PDO $pdo, string $code, string $unitCode): 
         'Diagnosis utama: ' . ems_roxy_case_value($diagnosis['diagnosis_utama'] ?? ''),
         'Diagnosis banding: ' . ems_roxy_case_value($diagnosis['diagnosis_banding'] ?? []),
         'GCS: ' . ems_roxy_case_value($diagnosis['gcs'] ?? ''),
+        'Kesadaran aktual: ' . ems_roxy_case_value($diagnosis['kesadaran'] ?? ''),
+        'Motorik aktual: ' . ems_roxy_case_value($diagnosis['motorik'] ?? ''),
         'TTV: ' . ems_roxy_case_value($diagnosis['ttv'] ?? []),
         'Kasus/tindakan: ' . ems_roxy_case_value($diagnosis['kasus_tindakan'] ?? '', 5000),
         'Jenis operasi: ' . ems_roxy_case_value($diagnosis['jenis_operasi'] ?? ''),
@@ -452,6 +454,7 @@ function ems_roxy_retrieve_context(PDO $pdo, string $unitCode, string $query): a
     if ($query === '') {
         return [];
     }
+    ems_document_ensure_tables($pdo);
 
     $caseCodes = ems_roxy_extract_case_reference_codes($query);
     $semanticQuery = str_ireplace($caseCodes, ' ', $query);
@@ -468,17 +471,19 @@ function ems_roxy_retrieve_context(PDO $pdo, string $unitCode, string $query): a
     }
 
 
-    foreach (ems_document_search($pdo, $unitCode, $retrievalQuery, 5) as $row) {
-        $text = trim((string) ($row['extracted_text'] ?? ''));
-        if ($text === '') {
-            continue;
-        }
-        $documentId = (int) ($row['id'] ?? 0);
+    $officialDocuments = ems_ai_official_document_context(
+        $pdo,
+        $unitCode,
+        $retrievalQuery,
+        'roxy_chat',
+        6
+    );
+    if ($officialDocuments !== '') {
         $context[] = [
             'source' => 'Dokumen resmi',
-            'title' => (string) $row['title'],
-            'reference' => $documentId > 0 ? '/dashboard/document_view.php?id=' . $documentId : null,
-            'snippet' => ems_roxy_extract_document_evidence($text, $query),
+            'title' => 'Dokumen resmi Roxwood Hospital terbaru',
+            'reference' => 'https://roxwoodhospitalime.my.id/dashboard/dokumen.php',
+            'snippet' => $officialDocuments,
         ];
     }
 

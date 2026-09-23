@@ -38,7 +38,7 @@ $ext = strtolower((string)$doc['file_ext']);
 $isPdf = $ext === 'pdf';
 $isImage = in_array($ext, ['jpg', 'jpeg', 'png'], true);
 $isSpreadsheet = in_array($ext, ['xlsx', 'xls'], true);
-$hasExtractedText = (string)$doc['extraction_status'] === 'done' && trim((string)$doc['extracted_text']) !== '';
+$hasExtractedText = in_array((string)$doc['extraction_status'], ['done', 'manual'], true) && trim((string)$doc['extracted_text']) !== '';
 
 // Datang dari hasil pencarian (dokumen.php) dengan ?q=... — sorot & auto-
 // scroll ke kalimat yang dicari, sama seperti mekanisme snippet-nya
