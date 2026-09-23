@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 date_default_timezone_set('Asia/Jakarta');
 
-if (PHP_SAPI !== 'cli') {
+if (PHP_SAPI !== 'cli' && !defined('EMS_MEDICAL_CENTER_WEB_PULL')) {
     http_response_code(403);
     exit("CLI only\n");
 }
@@ -22,7 +22,13 @@ if (!is_dir($lockDir)) {
 
 $lock = fopen($lockPath, 'c');
 if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-    fwrite(STDERR, "Medical Center GET pull sudah berjalan.\n");
+    $message = "Medical Center GET pull sudah berjalan.\n";
+    if (defined('EMS_MEDICAL_CENTER_WEB_PULL')) {
+        $GLOBALS['emsMedicalCenterPullExitCode'] = 1;
+        $GLOBALS['emsMedicalCenterPullOutput'] = $message;
+        return;
+    }
+    fwrite(STDERR, $message);
     exit(1);
 }
 
@@ -307,6 +313,12 @@ $output = sprintf(
     $recordsSkipped,
     $errorMessage !== null ? '; error=' . $errorMessage : ''
 );
+
+if (defined('EMS_MEDICAL_CENTER_WEB_PULL')) {
+    $GLOBALS['emsMedicalCenterPullExitCode'] = $status === 'failed' ? 1 : 0;
+    $GLOBALS['emsMedicalCenterPullOutput'] = $output;
+    return;
+}
 
 fwrite($status === 'failed' ? STDERR : STDOUT, $output);
 exit($status === 'failed' ? 1 : 0);

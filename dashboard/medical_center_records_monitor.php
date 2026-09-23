@@ -6,6 +6,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/medical_records_api.php';
@@ -17,7 +18,33 @@ if (!ems_current_user_is_programmer_roxwood() && $userDivision !== 'Executive') 
     exit('Akses monitoring ditolak.');
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'manual_pull') {
+    if (!validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
+        http_response_code(419);
+        exit('Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.');
+    }
+
+    define('EMS_MEDICAL_CENTER_WEB_PULL', true);
+    require __DIR__ . '/../cron/pull_medical_center_records.php';
+
+    $pullExitCode = (int) ($GLOBALS['emsMedicalCenterPullExitCode'] ?? 1);
+    $pullOutput = trim((string) ($GLOBALS['emsMedicalCenterPullOutput'] ?? ''));
+    if ($pullExitCode === 0) {
+        $_SESSION['flash_messages'][] = 'GET Medical Center selesai. ' . $pullOutput;
+    } else {
+        $_SESSION['flash_errors'][] = $pullOutput !== ''
+            ? 'GET Medical Center gagal. ' . $pullOutput
+            : 'GET Medical Center gagal dijalankan.';
+    }
+
+    header('Location: medical_center_records_monitor.php');
+    exit;
+}
+
 $pageTitle = 'Monitoring Rekam Medis Medical Center | Farmasi EMS';
+$messages = $_SESSION['flash_messages'] ?? [];
+$errors = $_SESSION['flash_errors'] ?? [];
+unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $latestRun = null;
 $cacheCounts = [];
 $monitorError = null;
@@ -63,8 +90,22 @@ include __DIR__ . '/../partials/sidebar.php';
                 <h1 class="page-title">Monitoring GET Medical Center</h1>
                 <p class="page-subtitle">Status cache read-only untuk hospital=roxwood.</p>
             </div>
-            <span class="remote-readonly-badge">GET only</span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <form method="POST" action="medical_center_records_monitor.php" onsubmit="return confirm('Jalankan GET Medical Center sekarang?');">
+                    <?= csrfField() ?>
+                    <input type="hidden" name="action" value="manual_pull">
+                    <button type="submit" class="btn-primary">GET Sekarang</button>
+                </form>
+                <span class="remote-readonly-badge">GET only</span>
+            </div>
         </div>
+
+        <?php foreach ($messages as $message): ?>
+            <?= ems_render_toast_script((string) $message, 'info', 'Medical Center GET') ?>
+        <?php endforeach; ?>
+        <?php foreach ($errors as $error): ?>
+            <?= ems_render_toast_script((string) $error, 'error', 'Medical Center GET', 6800) ?>
+        <?php endforeach; ?>
 
         <?php if ($monitorError !== null): ?>
             <div class="remote-status remote-status-warning"><?= monitorHtml($monitorError) ?></div>
