@@ -31,9 +31,12 @@ include __DIR__ . '/../partials/sidebar.php';
 .roxy-layout { display:grid; grid-template-columns: 280px 1fr; gap:16px; height:calc(100vh - 220px); min-height:520px; }
 @media (max-width: 900px) { .roxy-layout { grid-template-columns: 1fr; height:auto; } }
 .roxy-conv-list { overflow-y:auto; }
-.roxy-conv-item { display:block; width:100%; text-align:left; padding:10px 12px; border-radius:10px; border:1px solid transparent; background:transparent; cursor:pointer; font-size:13px; color:#334155; margin-bottom:4px; }
+.roxy-conv-row { display:flex; align-items:stretch; gap:4px; margin-bottom:4px; }
+.roxy-conv-item { display:block; width:100%; flex:1; text-align:left; padding:10px 12px; border-radius:10px; border:1px solid transparent; background:transparent; cursor:pointer; font-size:13px; color:#334155; margin-bottom:0; }
 .roxy-conv-item:hover { background:#f1f5f9; }
 .roxy-conv-item.active { background:#e0f2fe; border-color:#7dd3fc; color:#0c4a6e; font-weight:600; }
+.roxy-conv-delete { width:28px; flex:0 0 28px; border:1px solid transparent; border-radius:8px; background:transparent; color:#94a3b8; cursor:pointer; }
+.roxy-conv-delete:hover { background:#fee2e2; border-color:#fecaca; color:#b91c1c; }
 .roxy-conv-item .roxy-conv-time { display:block; font-size:11px; color:#94a3b8; margin-top:2px; }
 .roxy-chat-col { display:flex; flex-direction:column; min-height:0; }
 .roxy-avatar-bar { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #e2e8f0; }
@@ -87,7 +90,14 @@ include __DIR__ . '/../partials/sidebar.php';
             <div class="card mb-0" style="display:flex; flex-direction:column;">
                 <div class="card-header flex items-center justify-between">
                     <span>Riwayat</span>
-                    <button type="button" id="roxyNewChatBtn" class="btn-secondary btn-sm"><?= ems_icon('plus', 'h-4 w-4') ?></button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="roxyDeleteAllBtn" class="btn-secondary btn-sm" title="Hapus semua riwayat" aria-label="Hapus semua riwayat">
+                            <?= ems_icon('trash', 'h-4 w-4') ?>
+                        </button>
+                        <button type="button" id="roxyNewChatBtn" class="btn-secondary btn-sm" title="Percakapan baru" aria-label="Percakapan baru">
+                            <?= ems_icon('plus', 'h-4 w-4') ?>
+                        </button>
+                    </div>
                 </div>
                 <div id="roxyConvList" class="roxy-conv-list card-section" style="flex:1;">
                     <p class="meta-text-xs">Memuat...</p>
@@ -128,6 +138,7 @@ include __DIR__ . '/../partials/sidebar.php';
     var els = {
         convList: document.getElementById('roxyConvList'),
         newChatBtn: document.getElementById('roxyNewChatBtn'),
+        deleteAllBtn: document.getElementById('roxyDeleteAllBtn'),
         chatWindow: document.getElementById('roxyChatWindow'),
         input: document.getElementById('roxyInput'),
         sendBtn: document.getElementById('roxySendBtn'),
@@ -262,15 +273,24 @@ include __DIR__ . '/../partials/sidebar.php';
                 var html = '';
                 data.conversations.forEach(function (c) {
                     var active = (selectId && c.id == selectId) ? ' active' : '';
-                    html += '<button type="button" class="roxy-conv-item' + active + '" data-id="' + c.id + '">' +
-                        escapeHtml(c.title || 'Percakapan') +
-                        '<span class="roxy-conv-time">' + escapeHtml(c.last_message_at || '') + '</span>' +
-                        '</button>';
+                    html += '<div class="roxy-conv-row">' +
+                        '<button type="button" class="roxy-conv-item' + active + '" data-id="' + c.id + '">' +
+                            escapeHtml(c.title || 'Percakapan') +
+                            '<span class="roxy-conv-time">' + escapeHtml(c.last_message_at || '') + '</span>' +
+                        '</button>' +
+                        '<button type="button" class="roxy-conv-delete" data-id="' + c.id + '" title="Hapus percakapan" aria-label="Hapus percakapan">&times;</button>' +
+                    '</div>';
                 });
                 els.convList.innerHTML = html;
                 els.convList.querySelectorAll('.roxy-conv-item').forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         openConversation(parseInt(btn.dataset.id, 10));
+                    });
+                });
+                els.convList.querySelectorAll('.roxy-conv-delete').forEach(function (btn) {
+                    btn.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                        deleteConversation(parseInt(btn.dataset.id, 10));
                     });
                 });
             })
@@ -297,14 +317,69 @@ include __DIR__ . '/../partials/sidebar.php';
         loadConversationList(id);
     }
 
-    els.newChatBtn.addEventListener('click', function () {
+    function resetChatWindow() {
         currentConversationId = 0;
         els.chatWindow.innerHTML = '';
         appendBubble('bot', 'Halo! Aku Roxy, asisten AI internal Roxwood Hospital. Ada yang bisa aku bantu soal aplikasi ini atau SOP medis?');
         setExpression('netral');
+    }
+
+    function deleteConversation(id) {
+        if (!id || !window.confirm('Hapus percakapan ini beserta seluruh pesannya?')) return;
+
+        var body = new URLSearchParams();
+        body.set('action', 'delete');
+        body.set('conversation_id', String(id));
+        body.set('csrf_token', CSRF_TOKEN);
+
+        fetch('/ajax/roxy_conversations.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+            .then(readJsonResponse)
+            .then(function (data) {
+                if (!data.success) {
+                    window.alert(data.message || 'Riwayat gagal dihapus.');
+                    return;
+                }
+                if (currentConversationId === id) resetChatWindow();
+                loadConversationList(0);
+            })
+            .catch(function () { window.alert('Koneksi gagal. Riwayat belum dihapus.'); });
+    }
+
+    function deleteAllConversations() {
+        if (!window.confirm('Hapus semua riwayat chat Roxy beserta seluruh pesannya?')) return;
+
+        var body = new URLSearchParams();
+        body.set('action', 'delete_all');
+        body.set('csrf_token', CSRF_TOKEN);
+
+        fetch('/ajax/roxy_conversations.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+            .then(readJsonResponse)
+            .then(function (data) {
+                if (!data.success) {
+                    window.alert(data.message || 'Semua riwayat gagal dihapus.');
+                    return;
+                }
+                resetChatWindow();
+                loadConversationList(0);
+            })
+            .catch(function () { window.alert('Koneksi gagal. Riwayat belum dihapus.'); });
+    }
+
+    els.newChatBtn.addEventListener('click', function () {
+        resetChatWindow();
         loadConversationList(0);
         els.input.focus();
     });
+
+    els.deleteAllBtn.addEventListener('click', deleteAllConversations);
 
     function readJsonResponse(response) {
         return response.text().then(function (raw) {

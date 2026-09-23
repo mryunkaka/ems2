@@ -19,7 +19,75 @@ if ($userId <= 0) {
     emsJsonAbort(401, ['success' => false, 'message' => 'Sesi tidak valid.']);
 }
 
-$action = trim((string) ($_GET['action'] ?? 'list'));
+$action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? 'list'));
+
+if ($action === 'delete') {
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+        emsJsonAbort(405, ['success' => false, 'message' => 'Metode tidak diizinkan.']);
+    }
+
+    emsRequireJsonCsrf('Sesi kedaluwarsa, muat ulang halaman lalu coba lagi.');
+
+    $conversationId = (int) ($_POST['conversation_id'] ?? 0);
+    if ($conversationId <= 0) {
+        emsJsonAbort(422, ['success' => false, 'message' => 'Percakapan tidak valid.']);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? LIMIT 1');
+        $stmt->execute([$conversationId, $userId]);
+        if (!$stmt->fetchColumn()) {
+            $pdo->rollBack();
+            emsJsonAbort(404, ['success' => false, 'message' => 'Percakapan tidak ditemukan.']);
+        }
+
+        $pdo->prepare('DELETE FROM bot_messages WHERE conversation_id = ?')->execute([$conversationId]);
+        $pdo->prepare('DELETE FROM bot_conversations WHERE id = ? AND user_id = ?')->execute([$conversationId, $userId]);
+        $pdo->commit();
+
+        echo json_encode(['success' => true, 'conversation_id' => $conversationId], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+if ($action === 'delete_all') {
+    if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+        emsJsonAbort(405, ['success' => false, 'message' => 'Metode tidak diizinkan.']);
+    }
+
+    emsRequireJsonCsrf('Sesi kedaluwarsa, muat ulang halaman lalu coba lagi.');
+
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM bot_conversations WHERE user_id = ?');
+        $stmt->execute([$userId]);
+        $conversationCount = (int) $stmt->fetchColumn();
+
+        if ($conversationCount > 0) {
+            $pdo->prepare('
+                DELETE bm FROM bot_messages bm
+                INNER JOIN bot_conversations bc ON bc.id = bm.conversation_id
+                WHERE bc.user_id = ?
+            ')->execute([$userId]);
+            $pdo->prepare('DELETE FROM bot_conversations WHERE user_id = ?')->execute([$userId]);
+        }
+
+        $pdo->commit();
+        echo json_encode(['success' => true, 'deleted_conversations' => $conversationCount], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
 
 if ($action === 'list') {
     $stmt = $pdo->prepare("
