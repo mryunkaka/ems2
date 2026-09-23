@@ -78,6 +78,15 @@ $remoteAssistants = $isRemoteMedicalCenterRecord
 $remoteMedicalDetails = $isRemoteMedicalCenterRecord
     ? ems_medical_center_decode_array($record['remote_medical_details_json'] ?? [])
     : [];
+$remotePayload = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_decode_array($record['remote_payload_json'] ?? [])
+    : [];
+$remoteCreator = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_person($remotePayload['creator'] ?? ($remoteMedicalDetails['creator'] ?? null))
+    : ['name' => ''];
+$remoteFirstResponder = $isRemoteMedicalCenterRecord
+    ? ems_medical_center_person(ems_medical_center_decode_array($record['remote_medical_details_json'] ?? [])['tim']['first_responder'] ?? null)
+    : ['name' => ''];
 $remoteSupportingMedications = $isRemoteMedicalCenterRecord
     ? ems_medical_center_list_text($remoteMedicalDetails['obat_obatan'] ?? '')
     : '';
@@ -393,7 +402,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Dokter DPJP</span>
                                 <?php if ($isRemoteMedicalCenterRecord): ?>
-                                    <strong><?= htmlspecialchars((string) ($remoteDpjp['local_name'] ?? ($remoteDpjp['name'] ?? '-')), ENT_QUOTES, 'UTF-8') ?></strong>
+                                    <strong><?= htmlspecialchars((string) (($remoteDpjp['local_name'] ?? '') ?: ($remoteDpjp['name'] ?? '-')), ENT_QUOTES, 'UTF-8') ?></strong>
                                     <div class="meta-text-xs">Citizen ID: <?= htmlspecialchars((string) ($remoteDpjp['local_citizen_id'] ?? ($remoteDpjp['staff_id'] ?? '-')), ENT_QUOTES, 'UTF-8') ?></div>
                                 <?php else: ?>
                                     <strong><?= htmlspecialchars((string)($record['doctor_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
@@ -430,7 +439,8 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                             <div class="medical-side-card">
                                 <span class="medical-side-card__label">Diinput Oleh</span>
-                                <strong><?= htmlspecialchars((string)($record['created_by_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></strong>
+                                <?php $remoteCreatedByName = trim((string) ($remoteCreator['name'] ?? '')) ?: trim((string) ($remoteFirstResponder['name'] ?? '')); ?>
+                                <strong><?= htmlspecialchars((string) (($record['created_by_name'] ?? '') ?: ($remoteCreatedByName ?: '-')), ENT_QUOTES, 'UTF-8') ?></strong>
                                 <div class="meta-text-xs">Update terakhir: <?= htmlspecialchars(date('d M Y H:i', strtotime((string)$record['updated_at'])), ENT_QUOTES, 'UTF-8') ?></div>
                             </div>
                         </div>

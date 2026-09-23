@@ -382,6 +382,11 @@ include __DIR__ . '/../partials/sidebar.php';
 
                                     $isRemoteMedicalCenterRecord = trim((string) ($record['source_provider'] ?? '')) === 'medical_center';
                                     $remoteDpjp = $isRemoteMedicalCenterRecord ? ems_medical_center_decode_array($record['remote_dpjp_json'] ?? []) : [];
+                                    $remotePayload = $isRemoteMedicalCenterRecord ? ems_medical_center_decode_array($record['remote_payload_json'] ?? []) : [];
+                                    $remoteCreator = $isRemoteMedicalCenterRecord ? ems_medical_center_person($remotePayload['creator'] ?? null) : ['name' => ''];
+                                    $remoteFirstResponder = $isRemoteMedicalCenterRecord
+                                        ? ems_medical_center_person(ems_medical_center_decode_array($record['remote_medical_details_json'] ?? [])['tim']['first_responder'] ?? null)
+                                        : ['name' => ''];
                                     $remoteAssistantMap = $isRemoteMedicalCenterRecord ? ems_medical_center_decode_array($record['remote_assistants_json'] ?? []) : [];
                                     $remoteAssistantNames = [];
                                     foreach ($remoteAssistantMap as $assistantKey => $assistantValue) {
@@ -449,7 +454,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         </td>
                                         <td class="medical-cell-nowrap">
                                             <div class="text-sm">
-                                                <div class="font-medium"><?= htmlspecialchars((string) ($record['doctor_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="font-medium"><?= htmlspecialchars((string) (($record['doctor_name'] ?? '') ?: (($remoteDpjp['local_name'] ?? '') ?: ($remoteDpjp['name'] ?? '-'))), ENT_QUOTES, 'UTF-8') ?></div>
                                                 <div class="text-gray-500 text-xs"><?= htmlspecialchars((string) ($record['doctor_position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </td>
@@ -457,7 +462,8 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <?= htmlspecialchars($assistantNames !== '' ? $assistantNames : '-', ENT_QUOTES, 'UTF-8') ?>
                                         </td>
                                         <td class="medical-cell-nowrap">
-                                            <div class="font-medium"><?= htmlspecialchars((string) ($record['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
+                                            <?php $remoteCreatedByName = trim((string) ($remoteCreator['name'] ?? '')) ?: trim((string) ($remoteFirstResponder['name'] ?? '')); ?>
+                                            <div class="font-medium"><?= htmlspecialchars((string) (($record['created_by_name'] ?? '') ?: ($remoteCreatedByName ?: '-')), ENT_QUOTES, 'UTF-8') ?></div>
                                             <div class="text-xs text-gray-500">Input dokumen</div>
                                         </td>
                                         <td class="medical-cell-nowrap">
@@ -528,7 +534,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 </div>
                                                 <div class="forensic-detail-meta">
                                                     DPJP: <?= htmlspecialchars($isRemoteMedicalCenterRecord
-                                                        ? medicalRecordValue($record['doctor_name'] ?? null)
+                                                        ? medicalRecordValue(($record['doctor_name'] ?? '') ?: (($remoteDpjp['local_name'] ?? '') ?: ($remoteDpjp['name'] ?? null)))
                                                         : medicalRecordValue($record['doctor_name'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
                                                     <?php if ($isRemoteMedicalCenterRecord && $remoteAssistantNames !== []): ?>
                                                         <?php foreach ($remoteAssistantNames as $remoteAssistantLabel): ?>
@@ -540,7 +546,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                     <?php if ($hasJenisOperasi && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
                                                         Nama operasi: <?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?><br>
                                                     <?php endif; ?>
-                                                    Dibuat oleh: <?= htmlspecialchars(medicalRecordValue($record['created_by_name'] ?? null), ENT_QUOTES, 'UTF-8') ?>
+                                                    Dibuat oleh: <?= htmlspecialchars(medicalRecordValue(($record['created_by_name'] ?? '') ?: ($remoteCreatedByName ?: null)), ENT_QUOTES, 'UTF-8') ?>
                                                 </div>
                                             </div>
                                         </div>
