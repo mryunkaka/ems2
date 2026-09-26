@@ -49,7 +49,7 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
     if (!empty($diagnosisRow['result_json'])) {
         $decoded = json_decode((string) $diagnosisRow['result_json'], true);
         if (is_array($decoded)) {
-            $diagnosisResult = ems_ai_ds_normalize_diagnosis_result($decoded);
+            $diagnosisResult = ems_ai_ds_normalize_diagnosis_result($decoded, (string) ($diagnosisRow['anamnesis'] ?? ''));
         }
     }
 
@@ -156,6 +156,7 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
     }
 
     return [
+        'performed_operation_result' => '',
         'diagnosis' => [
             'id' => (int) $diagnosisRow['id'],
             'report_code' => (string) $diagnosisRow['report_code'],
@@ -201,7 +202,7 @@ function ems_ai_medical_record_default_system_prompt(): string
         . "3. Data yang tidak tersedia wajib ditulis \"Belum diukur\", \"Belum dinilai\", atau \"Data belum tersedia\". Jangan mengarang motorik, sensorik, refleks, sirkulasi, GCS, TTV, kesadaran, saturasi, suhu, hasil tindakan, prognosis, atau respons terapi. Semua field tetap harus ada dan tidak boleh kosong.\n"
         . "4. Anamnesis wajib menggambarkan kondisi aktual sebelum operasi. Jika pasien sadar, tulis kesadaran dan anamnesis hanya dari fakta yang tersedia. Jika pasien pingsan atau kesadarannya menurun, jangan menulis pasien sadar penuh.\n"
         . "5. GCS harus aritmetis: total = E + V + M. E4 V4 M6 adalah GCS 14, bukan 13. Jangan mempertahankan total yang bertentangan dengan komponen; jika komponen atau total tidak tersedia, tulis data belum tersedia.\n"
-        . "6. Jika suhu 33°C tercatat, tandai sebagai hipotermia; jangan menulis suhu normal atau menyatakan tidak hipotermia. Jika saturasi 95% tercatat, gunakan 95%; jangan menggantinya dengan 85% atau angka lain.\n"
+        . "6. Jika suhu 33°C tercatat, pertahankan nilai sumber dan tandai perlu verifikasi; jangan otomatis menulis suhu normal atau hipotermia bila status klinis sumber menyatakan lain. Jika saturasi 95% tercatat, gunakan 95%; jangan menggantinya dengan 85% atau angka lain.\n"
         . "7. Nama tindakan, anestesi, laporan tindakan, dan hasil operasi harus mengikuti data aktual sumber. Hasil operasi harus menjelaskan hasil tindakan yang benar-benar tercatat; jangan menulis pasien meninggal, janin berhasil diekstraksi, benda asing terangkat, atau hasil lain tanpa bukti. Kematian saat operasi bukan Death on Arrival; DOA hanya bila pasien sudah meninggal ketika tiba sebelum tindakan. Jika sumber bertentangan, tulis konflik data dan minta verifikasi, jangan memilih diam-diam.\n"
         . "8. ORIF/Open Reduction Internal Fixation selalu dikategorikan sebagai operasi Mayor sesuai kebijakan kewenangan medis. Jangan menulis ORIF sebagai Minor.\n"
         . "9. Jangan mengubah anestesi aktual menjadi anestesi yang dianggap lebih ideal. Jika anestesi lokal dilakukan oleh co-ass, catat sebagai fakta hanya bila ada di sumber; alasan kewenangan, supervisi, dan pertimbangannya harus ditulis \"tidak tercatat\" bila tidak tersedia. Jangan menyimpulkan bahwa co-ass otomatis berwenang hanya karena anestesi lokal.\n"

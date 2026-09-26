@@ -222,6 +222,30 @@ try {
         }
         $mirrorFind->execute(['medical_center', 'roxwood', $remoteId]);
         $mirrorId = (int) ($mirrorFind->fetchColumn() ?: 0);
+        if ($mirrorId <= 0 && $patientName !== null && $remoteEventAt !== null) {
+            // Medical Center dapat mengirim ulang operasi yang sama dengan ID
+            // berbeda. Jangan membuat dua rekam medis lokal hanya karena ID
+            // remote berubah; identitas kejadian adalah pasien + jenis operasi
+            // + waktu kejadian. ID remote tetap disimpan di tabel integrasi.
+            $duplicateStmt = $pdo->prepare(
+                'SELECT id FROM medical_records
+                 WHERE source_provider = ? AND source_hospital = ?
+                   AND patient_name = ? AND operasi_type = ?
+                   AND remote_event_at = ?
+                 ORDER BY id ASC LIMIT 1'
+            );
+            $duplicateStmt->execute([
+                'medical_center',
+                'roxwood',
+                $patientName,
+                $mapped['operasi_type'],
+                $remoteEventAt,
+            ]);
+            if ($duplicateStmt->fetchColumn()) {
+                $recordsSkipped++;
+                continue;
+            }
+        }
         if ($mirrorId > 0) {
             $mirrorUpdateValues = [];
             foreach ($mirrorUpdateColumns as $column) {

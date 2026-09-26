@@ -3,7 +3,7 @@
 /**
  * Laboratory AI: generate hasil pemeriksaan laboratorium simulasi roleplay
  * (nilai parameter, satuan, rentang rujukan, flag Normal/High/Low) +
- * interpretasi klinis, memakai API key Gemini pribadi yang sama dengan AI
+ * interpretasi klinis, memakai provider teks pribadi yang sama dengan AI
  * Diagnosis Assistant & AI Surgery Planner (lihat config/ai_diagnosis_surgery.php)
  * — text/JSON generation, BUKAN image generation, jadi tidak perlu Cloudflare.
  */

@@ -22,22 +22,25 @@ $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $userSettings = ems_ai_ds_get_user_settings($pdo, $userId) ?? [];
+$hasUserSettings = $userSettings !== [];
 $apiKeyMasked = ems_ai_mask_api_key($userSettings['gemini_api_key'] ?? '');
-$baseUrl = trim((string) ($userSettings['gemini_base_url'] ?? '')) !== ''
-    ? (string) $userSettings['gemini_base_url']
+$baseUrl = $hasUserSettings
+    ? trim((string) ($userSettings['gemini_base_url'] ?? ''))
     : 'https://generativelanguage.googleapis.com/v1beta';
-$defaultModel = trim((string) ($userSettings['default_model'] ?? '')) !== ''
-    ? (string) $userSettings['default_model']
+$defaultModel = $hasUserSettings
+    ? trim((string) ($userSettings['default_model'] ?? ''))
     : 'gemini-3.5-flash-lite';
-$modelOptions = ems_ai_model_options();
 $savedAt = $userSettings['updated_at'] ?? $userSettings['created_at'] ?? null;
 
 $groqKeyMasked = ems_groq_mask_key($userSettings['groq_api_key'] ?? '');
-$groqModel = trim((string) ($userSettings['groq_default_model'] ?? '')) !== ''
-    ? (string) $userSettings['groq_default_model']
+$groqModel = $hasUserSettings
+    ? trim((string) ($userSettings['groq_default_model'] ?? ''))
     : 'openai/gpt-oss-120b';
-$groqModelOptions = ems_groq_model_options();
 $groqSavedAt = $userSettings['updated_at'] ?? null;
+$customProvider = trim((string) ($userSettings['custom_provider'] ?? ''));
+$customApiKeyMasked = ems_ai_mask_api_key($userSettings['custom_api_key'] ?? '');
+$customBaseUrl = trim((string) ($userSettings['custom_base_url'] ?? ''));
+$customModel = trim((string) ($userSettings['custom_default_model'] ?? ''));
 
 include __DIR__ . '/../partials/header.php';
 include __DIR__ . '/../partials/sidebar.php';
@@ -47,7 +50,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
                 <h1 class="page-title">Setting AI Saya</h1>
-                <p class="page-subtitle">API key AI pribadi Anda — Gemini untuk seluruh fitur Roxwood Hospital AI (AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI, Psychiatry Center, Rekam Medis AI), dan Groq untuk chat bot internal Roxy.</p>
+                <p class="page-subtitle">Provider AI pribadi — Gemini, Groq, atau custom OpenAI-compatible seperti 9Router untuk fitur teks. Radiology Center tetap membutuhkan Gemini untuk generate citra.</p>
             </div>
             <div class="badge-info">Akses: Semua User</div>
         </div>
@@ -63,15 +66,14 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="card mb-4">
             <div class="card-header">
                 <?= ems_icon('information-circle', 'h-5 w-5') ?>
-                <span>Cara Mendapatkan API Key Gemini (Gratis, ± 2 Menit)</span>
+                <span>Cara Mendapatkan API Key Gemini (Opsional, Gratis, ± 2 Menit)</span>
             </div>
             <div class="card-body space-y-3 text-sm text-slate-700">
                 <p>
-                    Setiap medis wajib mengisi API key Gemini <strong>milik sendiri</strong> (tidak boleh
-                    pinjam/pakai bareng punya orang lain) supaya bisa memakai seluruh fitur Roxwood
-                    Hospital AI: AI Diagnosis Assistant, AI Surgery Planner, Radiology Center, Laboratory AI,
-                    Psychiatry Center, dan Rekam Medis AI. Cara membuatnya <strong>gratis</strong> dan cukup
-                    pakai akun Google (Gmail) pribadi — tidak perlu kartu kredit.
+                    Gemini bersifat opsional. Fitur teks juga dapat memakai custom provider OpenAI-compatible
+                    seperti 9Router; Radiology Center membutuhkan Gemini khusus untuk generate citra. Jika memilih
+                    Gemini, gunakan API key <strong>milik sendiri</strong> dan jangan dibagikan. Cara membuatnya
+                    <strong>gratis</strong> dan cukup pakai akun Google (Gmail) pribadi — tidak perlu kartu kredit.
                 </p>
 
                 <ol class="list-decimal ml-5 space-y-2">
@@ -96,12 +98,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     </li>
                     <li>
                         Kembali ke halaman ini, tempel (paste) kode tadi ke kolom
-                        <strong>"Gemini API Key"</strong> di bawah.
+                        <strong>"Gemini API Key"</strong> di bawah jika memilih Gemini.
                     </li>
                     <li>
-                        Klik <strong>"Simpan Setting AI Saya"</strong>, lalu klik
-                        <strong>"Test Koneksi Gemini"</strong> untuk memastikan key berhasil tersambung
-                        sebelum dipakai di fitur-fitur AI.
+                        Klik <strong>"Simpan Setting Gemini"</strong>, lalu klik
+                        <strong>"Test Koneksi Gemini"</strong> jika memilih Gemini.
                     </li>
                 </ol>
 
@@ -127,7 +128,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="card mb-0">
             <div class="card-header">
                 <?= ems_icon('cog-6-tooth', 'h-5 w-5') ?>
-                <span>Konfigurasi Gemini Pribadi</span>
+                <span>Konfigurasi Provider AI Pribadi</span>
             </div>
 
             <form method="post" action="ai_settings_personal_action.php?action=save" class="space-y-4">
@@ -157,11 +158,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="default_model">Model</label>
-                            <select id="default_model" name="default_model">
-                                <?php foreach ($modelOptions as $modelName): ?>
-                                    <option value="<?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?>" <?= $defaultModel === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8') ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                            <input id="default_model" name="default_model" type="text" value="<?= htmlspecialchars($defaultModel, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" required>
                         </div>
                     </div>
                     <div class="helper-note">Field ini hanya tampil untuk Programmer Roxwood. User lain otomatis memakai Base URL &amp; Model default (<?= htmlspecialchars($baseUrl, ENT_QUOTES, 'UTF-8') ?> / <?= htmlspecialchars($defaultModel, ENT_QUOTES, 'UTF-8') ?>).</div>
@@ -174,11 +171,15 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="flex flex-wrap gap-3 pt-2">
                     <button type="submit" class="btn-primary">
                         <?= ems_icon('check', 'h-4 w-4') ?>
-                        <span>Simpan Setting AI Saya</span>
+                        <span>Simpan Setting Gemini</span>
                     </button>
                     <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection" class="btn-success">
                         <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                         <span>Test Koneksi Gemini</span>
+                    </button>
+                    <button type="submit" formaction="ai_settings_personal_action.php?action=clear_all" formnovalidate class="btn-danger" onclick="return confirm('Kosongkan semua API key, provider, endpoint, dan model Gemini, Groq, serta custom? Semua provider AI pribadi akan dinonaktifkan.');">
+                        <?= ems_icon('trash', 'h-4 w-4') ?>
+                        <span>Hapus Semua API Key &amp; Nonaktifkan Model</span>
                     </button>
                 </div>
             </form>
@@ -254,11 +255,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 <div>
                     <label class="text-sm font-semibold text-slate-900" for="groq_model">Model</label>
-                    <select id="groq_model" name="groq_model">
-                        <?php foreach ($groqModelOptions as $modelValue => $modelLabel): ?>
-                            <option value="<?= htmlspecialchars($modelValue, ENT_QUOTES, 'UTF-8') ?>" <?= $groqModel === $modelValue ? 'selected' : '' ?>><?= htmlspecialchars($modelLabel, ENT_QUOTES, 'UTF-8') ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <input id="groq_model" name="groq_model" type="text" value="<?= htmlspecialchars($groqModel, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" required>
                 </div>
 
                 <div class="flex flex-wrap gap-3 pt-2">
@@ -273,6 +270,43 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
             </form>
         </div>
+
+        <?php if ($isProgrammer): ?>
+            <div class="card mt-4 mb-0">
+                <div class="card-header">
+                    <?= ems_icon('globe-alt', 'h-5 w-5') ?>
+                    <span>Custom Provider OpenAI-Compatible</span>
+                </div>
+                <form method="post" action="ai_settings_personal_action.php?action=save_custom" class="space-y-4">
+                    <?= csrfField(); ?>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="custom_provider">Nama Provider</label>
+                            <input id="custom_provider" name="custom_provider" type="text" value="<?= htmlspecialchars($customProvider, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="9Router">
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="custom_default_model">Model</label>
+                            <input id="custom_default_model" name="custom_default_model" type="text" value="<?= htmlspecialchars($customModel, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="cx/gpt-5.6-luna">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-slate-900" for="custom_base_url">Base URL / Endpoint Chat Completions</label>
+                        <input id="custom_base_url" name="custom_base_url" type="url" value="<?= htmlspecialchars($customBaseUrl, ENT_QUOTES, 'UTF-8') ?>" maxlength="255" placeholder="http://127.0.0.1:20128/v1">
+                        <div class="helper-note mt-1">Boleh isi Base URL seperti <code>/v1</code> atau URL lengkap yang berakhir <code>/chat/completions</code>. Sistem menambahkan path endpoint otomatis jika perlu.</div>
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-slate-900" for="custom_api_key">API Key Custom</label>
+                        <input id="custom_api_key" name="custom_api_key" type="password" placeholder="<?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan API key custom' ?>" autocomplete="new-password">
+                        <div class="helper-note mt-1">Provider custom memakai format request OpenAI Chat Completions. Key aktif: <strong><?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong>. Kosongkan key jika endpoint lokal tidak memerlukan autentikasi.</div>
+                    </div>
+                    <div class="helper-note">Jika Nama Provider, Endpoint, dan Model terisi, custom provider menjadi provider utama fitur teks. Kosongkan konfigurasi custom untuk menonaktifkannya dan kembali ke provider lain.</div>
+                    <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="btn-primary"><?= ems_icon('check', 'h-4 w-4') ?><span>Simpan Custom Provider</span></button>
+                        <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection_custom" class="btn-success"><?= ems_icon('arrow-path', 'h-4 w-4') ?><span>Test Custom Provider</span></button>
+                    </div>
+                </form>
+            </div>
+        <?php endif; ?>
     </div>
 </section>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

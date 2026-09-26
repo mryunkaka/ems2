@@ -474,6 +474,27 @@ if (!function_exists('ems_medical_center_aldrete_text')) {
     }
 }
 
+if (!function_exists('ems_medical_center_operation_type')) {
+    function ems_medical_center_operation_type(mixed $value, string $operationName = ''): string
+    {
+        $text = mb_strtolower(trim(ems_medical_center_scalar_text($value) . ' ' . $operationName));
+        if ($text === '') {
+            return 'minor';
+        }
+
+        // Jenis eksplisit dari Medical Center menjadi sumber utama. Beberapa
+        // nama tindakan juga jelas mayor walaupun field jenisnya tidak ada.
+        if (preg_match('/\b(?:operasi\s*)?(?:minor|kecil|ringan)\b/u', $text) === 1) {
+            return 'minor';
+        }
+        if (preg_match('/\b(?:operasi\s*)?(?:major|mayor|besar)\b|\borif\b|\blaparotom(?:i|y)\b|\bkraniotom(?:i|y)\b/u', $text) === 1) {
+            return 'major';
+        }
+
+        return 'minor';
+    }
+}
+
 if (!function_exists('ems_medical_center_build_result_html')) {
     function ems_medical_center_build_result_html(array $mapped): string
     {
@@ -642,9 +663,13 @@ if (!function_exists('ems_medical_center_normalize_record')) {
         };
 
         $remoteId = ems_medical_center_scalar_text($record['id'] ?? '');
-        $operationName = ems_medical_center_scalar_text($get([
-            'tindakan_operasi', 'nama_tindakan', 'operation_name', 'procedure_name', 'jenis_operasi',
+        $operationType = ems_medical_center_scalar_text($get([
+            'jenis_operasi', 'operasi_type', 'operation_type', 'operation_level',
         ]));
+        $operationName = ems_medical_center_scalar_text($get([
+            'tindakan_operasi', 'nama_tindakan', 'operation_name', 'procedure_name',
+        ]));
+        $normalizedOperationType = ems_medical_center_operation_type($operationType, $operationName);
         $steps = ems_medical_center_list_text($get([
             'langkah_tindakan', 'langkah_langkah_tindakan', 'operation_steps', 'steps',
         ]));
@@ -670,11 +695,14 @@ if (!function_exists('ems_medical_center_normalize_record')) {
             'remote_record_id' => $remoteId,
             'remote_record_url' => ems_medical_center_remote_detail_url($remoteId),
             'remote_record_number' => ems_medical_center_scalar_text($get(['no_rekam_medis', 'record_code', 'medical_record_number'])),
-            'record_code' => 'MC-RM-' . $remoteId,
+            // Pakai nomor RM dari remote jika API menyediakannya. Jika belum
+            // ada, buat kode deterministik dari tanggal kejadian + ID remote;
+            // jangan memakai auto-increment lokal sebagai nomor RM.
+            'record_code' => '',
                         'doctor_id' => $localDpjp['id'] ?? null,
                         'assistant_id' => $localAssistantIds[0] ?? null,
                         'remote_local_assistant_ids' => $localAssistantIds,
-                        'jenis_operasi' => $operationName,
+            'jenis_operasi' => $operationName,
             'patient_name' => $patientName,
             'patient_citizen_id' => ems_medical_center_scalar_text($get(['citizen_id', 'patient_citizen_id', 'ktp', 'patient.citizen_id'])),
             'patient_dob' => $dob,
@@ -720,8 +748,17 @@ if (!function_exists('ems_medical_center_normalize_record')) {
             'remote_medical_details_json' => json_encode($details, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
             'remote_payload_json' => json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
         ];
+        $remoteRecordNumber = ems_medical_center_scalar_text($get([
+            'no_rekam_medis', 'nomor_rekam_medis', 'medical_record_no',
+            'record_number', 'medical_record_number', 'record_code', 'no_rm',
+        ]));
+        $eventDate = ems_medical_center_parse_datetime($record['tanggal_waktu'] ?? null);
+        $fallbackRecordDate = $eventDate?->format('Ymd') ?? date('Ymd');
+        $mapped['record_code'] = $remoteRecordNumber !== ''
+            ? $remoteRecordNumber
+            : 'MR-' . $fallbackRecordDate . '-' . $remoteId;
         $mapped['medical_result_html'] = ems_medical_center_build_result_html($mapped);
-        $mapped['operasi_type'] = 'major';
+        $mapped['operasi_type'] = $normalizedOperationType;
 
         return $mapped;
     }

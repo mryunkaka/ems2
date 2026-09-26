@@ -100,7 +100,7 @@ function emsFindCaBundlePath(): ?string
     return null;
 }
 
-function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds): array
+function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds, string $providerLabel = 'AI'): array
 {
     $ch = curl_init($url);
     if ($ch === false) {
@@ -133,7 +133,7 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     if ($body === false) {
-        throw new RuntimeException('Request Gemini gagal: ' . $curlError);
+        throw new RuntimeException('Request ' . $providerLabel . ' gagal: ' . $curlError);
     }
 
     $decoded = json_decode($body, true);
@@ -161,6 +161,23 @@ function ems_gemini_extract_text(?array $responseJson): string
     }
 
     return trim(implode("\n", $texts));
+}
+
+function ems_ai_decode_json_text(string $text): ?array
+{
+    $text = trim($text);
+    $text = preg_replace('/^```(?:json)?\s*|\s*```$/iu', '', $text) ?? $text;
+    $decoded = json_decode(trim($text), true);
+    if (is_array($decoded)) {
+        return $decoded;
+    }
+    $start = strpos($text, '{');
+    $end = strrpos($text, '}');
+    if ($start !== false && $end !== false && $end > $start) {
+        $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
+        return is_array($decoded) ? $decoded : null;
+    }
+    return null;
 }
 
 function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null): array
@@ -206,7 +223,7 @@ function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents,
     try {
         $response = ems_ai_http_post_json($url, $payload, [
             'x-goog-api-key' => $apiKey,
-        ], $timeoutSeconds);
+        ], $timeoutSeconds, 'Gemini');
 
         $latencyMs = (int)round((microtime(true) - $startedAt) * 1000);
         $responseJson = $response['json'] ?? null;
@@ -329,7 +346,7 @@ function ems_gemini_generate_image(PDO $pdo, array $settings, array $contents, s
     try {
         $response = ems_ai_http_post_json($url, $payload, [
             'x-goog-api-key' => $apiKey,
-        ], $timeoutSeconds);
+        ], $timeoutSeconds, 'Gemini');
 
         $latencyMs = (int)round((microtime(true) - $startedAt) * 1000);
         $responseJson = $response['json'] ?? null;

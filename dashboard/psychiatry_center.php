@@ -33,7 +33,7 @@ $recentStmt = $pdo->prepare("
 $recentStmt->execute([$effectiveUnit]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$hasOwnApiKey = trim((string) (ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0))['gemini_api_key'] ?? '')) !== '';
+$hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
 $canDelete = ems_is_manager_plus_role($user['role'] ?? '');
 $totalTurns = ems_ai_psychiatry_total_turns();
 
@@ -58,7 +58,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasOwnApiKey): ?>
             <div class="alert alert-warning">
-                Anda belum mengatur API key Gemini pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum memulai asesmen.
+                Anda belum mengatur provider AI pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum memulai asesmen.
             </div>
         <?php endif; ?>
 

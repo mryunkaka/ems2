@@ -5,7 +5,7 @@
  * wawancara klinis dinamis, memperbarui clinical impressions tiap giliran)
  * yang berujung ke laporan diagnosis formal DSM-5/ICD-10 + Mental Status
  * Examination (MSE) + risk assessment + treatment plan + farmakoterapi.
- * Memakai API key Gemini pribadi yang sama dengan AI Diagnosis/Surgery/
+ * Memakai provider teks pribadi yang sama dengan AI Diagnosis/Surgery/
  * Radiology/Laboratory (lihat config/ai_diagnosis_surgery.php) — text/JSON
  * generation, bukan image generation.
  *

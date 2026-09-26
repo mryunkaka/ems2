@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
 require_once __DIR__ . '/../config/groq_settings.php';
 require_once __DIR__ . '/../actions/groq_client.php';
+require_once __DIR__ . '/../actions/ai_custom_client.php';
 
 ems_ai_ds_ensure_tables($pdo);
 
@@ -34,6 +35,18 @@ if ($userId <= 0) {
     exit;
 }
 
+if ($action === 'clear_all') {
+    try {
+        ems_ai_ds_clear_user_settings($pdo, $userId);
+        $_SESSION['flash_messages'] = ['Semua API key, provider, endpoint, dan model berhasil dikosongkan. Semua provider AI pribadi nonaktif.'];
+    } catch (Throwable $e) {
+        $_SESSION['flash_errors'] = ['Gagal mengosongkan setting AI pribadi.'];
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
 $existing = ems_ai_ds_get_user_settings($pdo, $userId);
 $isProgrammer = ems_current_user_is_programmer_roxwood();
 
@@ -54,12 +67,20 @@ if (in_array($action, ['save', 'test_connection'], true)) {
         $baseUrl = rtrim(trim((string) ($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
         $model = trim((string) ($_POST['default_model'] ?? 'gemini-3.5-flash-lite'));
     } else {
-        $baseUrl = rtrim(trim((string) ($existing['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/');
-        $model = trim((string) ($existing['default_model'] ?? 'gemini-3.5-flash-lite'));
+        $savedBaseUrl = trim((string) ($existing['gemini_base_url'] ?? ''));
+        $savedModel = trim((string) ($existing['default_model'] ?? ''));
+        $baseUrl = rtrim($savedBaseUrl !== '' ? $savedBaseUrl : 'https://generativelanguage.googleapis.com/v1beta', '/');
+        $model = $savedModel !== '' ? $savedModel : 'gemini-3.5-flash-lite';
     }
 
-    if (!in_array($model, ems_ai_model_options(), true)) {
-        $_SESSION['flash_errors'] = ['Model AI yang dipilih tidak valid.'];
+    if ($model === '' || mb_strlen($model) > 100) {
+        $_SESSION['flash_errors'] = ['Model AI wajib diisi dan maksimal 100 karakter.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+    $baseUrlParts = $baseUrl !== '' ? parse_url($baseUrl) : false;
+    if ($baseUrlParts === false || !in_array(strtolower((string) ($baseUrlParts['scheme'] ?? '')), ['http', 'https'], true) || trim((string) ($baseUrlParts['host'] ?? '')) === '') {
+        $_SESSION['flash_errors'] = ['Base URL Gemini harus URL HTTP/HTTPS yang valid.'];
         header('Location: ' . $redirectTo);
         exit;
     }
@@ -81,6 +102,80 @@ if ($action === 'save') {
         $_SESSION['flash_messages'] = ['Setting AI Saya berhasil disimpan.'];
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Gagal menyimpan setting AI: ' . $e->getMessage()];
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
+if ($action === 'save_custom' || $action === 'test_connection_custom') {
+    if (!$isProgrammer) {
+        $_SESSION['flash_errors'] = ['Custom provider hanya dapat diatur Programmer Roxwood.'];
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $customProvider = trim((string) ($_POST['custom_provider'] ?? ''));
+    $customApiKeyInput = trim((string) ($_POST['custom_api_key'] ?? ''));
+    $customApiKey = $customApiKeyInput !== '' ? $customApiKeyInput : (string) ($existing['custom_api_key'] ?? '');
+    $customBaseUrl = rtrim(trim((string) ($_POST['custom_base_url'] ?? '')), '/');
+    $customModel = trim((string) ($_POST['custom_default_model'] ?? ''));
+    $customUrlParts = $customBaseUrl !== '' ? parse_url($customBaseUrl) : false;
+
+    $customIsCleared = $customProvider === '' && $customApiKeyInput === '' && $customBaseUrl === '' && $customModel === '';
+    if (!$customIsCleared) {
+        if ($customProvider === '' || mb_strlen($customProvider) > 100 || preg_match('/[\x00-\x1F\x7F]/', $customProvider)) {
+            $_SESSION['flash_errors'] = ['Nama custom provider wajib diisi, maksimal 100 karakter, dan tidak boleh mengandung karakter kontrol.'];
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+        if ($customModel === '' || mb_strlen($customModel) > 100 || preg_match('/[\x00-\x1F\x7F]/', $customModel)) {
+            $_SESSION['flash_errors'] = ['Model custom wajib diisi, maksimal 100 karakter, dan tidak boleh mengandung karakter kontrol.'];
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+        if ($customApiKey !== '' && (mb_strlen($customApiKey) > 255 || preg_match('/[\x00-\x1F\x7F]/', $customApiKey))) {
+            $_SESSION['flash_errors'] = ['API key custom maksimal 255 karakter dan tidak boleh mengandung karakter kontrol.'];
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+        if ($customBaseUrl === '' || mb_strlen($customBaseUrl) > 255) {
+            $_SESSION['flash_errors'] = ['Endpoint custom wajib diisi dan maksimal 255 karakter.'];
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+        if (
+            $customUrlParts === false
+            || !in_array(strtolower((string) ($customUrlParts['scheme'] ?? '')), ['http', 'https'], true)
+            || trim((string) ($customUrlParts['host'] ?? '')) === ''
+            || isset($customUrlParts['user'], $customUrlParts['pass'], $customUrlParts['query'], $customUrlParts['fragment'])
+        ) {
+            $_SESSION['flash_errors'] = ['Endpoint custom harus URL HTTP/HTTPS yang valid.'];
+            header('Location: ' . $redirectTo);
+            exit;
+        }
+    } else {
+        $customProvider = '';
+        $customApiKey = '';
+        $customBaseUrl = '';
+        $customModel = '';
+    }
+
+    try {
+        if ($action === 'save_custom') {
+            ems_ai_ds_save_custom_user_settings($pdo, $userId, $customProvider, $customApiKey, $customBaseUrl, $customModel);
+            $_SESSION['flash_messages'] = [$customIsCleared ? 'Custom provider dinonaktifkan. Gemini kembali menjadi provider utama.' : 'Custom provider berhasil disimpan.'];
+        } else {
+            $result = ems_custom_test_connection($pdo, [
+                'custom_provider' => $customProvider,
+                'custom_api_key' => $customApiKey,
+                'custom_base_url' => $customBaseUrl,
+                'custom_default_model' => $customModel,
+            ], $userId);
+            $_SESSION['flash_messages'] = ['Test custom provider berhasil dengan model ' . $result['model'] . '.', 'Response: ' . trim((string) $result['content'])];
+        }
+    } catch (Throwable $e) {
+        $_SESSION['flash_errors'] = [$action === 'save_custom' ? 'Gagal menyimpan custom provider: ' . $e->getMessage() : 'Test custom provider gagal: ' . $e->getMessage()];
     }
 
     header('Location: ' . $redirectTo);
@@ -120,8 +215,8 @@ if ($action === 'save_groq' || $action === 'test_connection_groq') {
     $groqApiKey = $groqKeyInput !== '' ? $groqKeyInput : (string) ($groqExisting['groq_api_key'] ?? '');
     $groqModel = trim((string) ($_POST['groq_model'] ?? 'openai/gpt-oss-120b'));
 
-    if (!array_key_exists($groqModel, ems_groq_model_options())) {
-        $_SESSION['flash_errors'] = ['Model Groq yang dipilih tidak valid.'];
+    if ($groqModel === '' || mb_strlen($groqModel) > 100) {
+        $_SESSION['flash_errors'] = ['Model Groq wajib diisi dan maksimal 100 karakter.'];
         header('Location: ' . $redirectTo);
         exit;
     }

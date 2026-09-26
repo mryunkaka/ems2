@@ -19,7 +19,7 @@ $isManagerPlus = ems_is_manager_plus_role((string) ($user['role'] ?? ''));
 $groqSettings = ems_groq_get_user_settings($pdo, $userId);
 $aiSettings = ems_ai_ds_get_user_settings($pdo, $userId);
 $hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
-$hasGeminiKey = $aiSettings !== null && trim((string) ($aiSettings['gemini_api_key'] ?? '')) !== '';
+$hasGeminiKey = ems_ai_ds_has_text_provider($aiSettings);
 $hasAiProvider = $hasGroqKey || $hasGeminiKey;
 
 $csrfToken = generateCsrfToken();
@@ -58,6 +58,8 @@ include __DIR__ . '/../partials/sidebar.php';
 .roxy-bubble-wrap.user .roxy-rich-label,
 .roxy-bubble-wrap.user .roxy-rich-heading { color:#fff; }
 .roxy-bubble-source { font-size:10px; color:#94a3b8; margin-top:3px; }
+.roxy-bubble a { color:#0369a1; text-decoration:underline; }
+.roxy-bubble-wrap.user .roxy-bubble a { color:#e0f2fe; }
 .roxy-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid #e2e8f0; }
 .roxy-input-row textarea { flex:1; resize:none; }
 .roxy-typing { font-size:12px; color:#94a3b8; font-style:italic; padding:0 14px 6px; }
@@ -77,12 +79,12 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasAiProvider): ?>
             <div class="alert alert-warning mt-3">
-                Atur API key Gemini atau Groq di
+                Atur provider AI pribadi di
                 <a href="/dashboard/ai_settings_personal.php" class="underline font-semibold">Setting AI Saya</a> agar Roxy bisa dipakai.
             </div>
         <?php elseif (!$hasGroqKey && $hasGeminiKey): ?>
             <div class="alert alert-info mt-3">
-                Groq belum diatur. Roxy memakai Gemini pribadi sebagai jalur cadangan.
+                Groq belum diatur. Roxy memakai provider AI pribadi sebagai jalur cadangan.
             </div>
         <?php endif; ?>
 
@@ -189,6 +191,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
     function renderInlineMarkdown(value) {
         var html = escapeHtml(value);
+        html = html.replace(/@url:\s*`(https:\/\/roxwoodhospitalime\.my\.id\/dashboard\/document_view\.php\?id=\d+)`/g, '<a href="$1" target="_blank" rel="noopener">Buka dokumen</a>');
+        html = html.replace(/\[([^\]\n]+)\]\((https:\/\/roxwoodhospitalime\.my\.id\/dashboard\/document_view\.php\?id=\d+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
         html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
         html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -256,8 +260,10 @@ include __DIR__ . '/../partials/sidebar.php';
         els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
     }
 
-    function answerSourceLabel(source, usedDeepResearch) {
-        if (usedDeepResearch || source === 'gemini_personal') return 'Hasil riset mendalam (Gemini pribadi)';
+    function answerSourceLabel(source, usedDeepResearch, personalProvider) {
+        if (usedDeepResearch || source === 'gemini_personal') {
+            return 'Hasil riset mendalam (' + (personalProvider ? 'Provider personal: ' + personalProvider : 'Gemini pribadi') + ')';
+        }
         return '';
     }
 
@@ -430,9 +436,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
                 currentConversationId = data.conversation_id;
                 setExpression(data.expression || 'netral');
-                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research));
+                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.personal_provider));
                 if (data.gemini_key_missing) {
-                    appendBubble('bot', 'Catatan: pertanyaan ini sebenarnya butuh riset lebih dalam, tapi kamu belum atur API key Gemini pribadi. Atur di Setting AI Saya kalau mau jawaban yang lebih mendalam untuk pertanyaan semacam ini.');
+                    appendBubble('bot', 'Catatan: pertanyaan ini butuh provider AI pribadi untuk riset lebih dalam. Atur di Setting AI Saya.');
                 }
                 loadConversationList(currentConversationId);
             })

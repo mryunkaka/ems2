@@ -31,7 +31,7 @@ $recentStmt = $pdo->prepare("
 $recentStmt->execute([$effectiveUnit]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$hasOwnApiKey = trim((string) (ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0))['gemini_api_key'] ?? '')) !== '';
+$hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
 $canDelete = ems_is_manager_plus_role($user['role'] ?? '');
 
 include __DIR__ . '/../partials/header.php';
@@ -55,7 +55,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasOwnApiKey): ?>
             <div class="alert alert-warning">
-                Anda belum mengatur API key Gemini pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum membuat rencana operasi.
+                Anda belum mengatur provider AI pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum membuat rencana operasi.
             </div>
         <?php endif; ?>
 
@@ -106,7 +106,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <p id="aiSurgKompleksitasHint" class="page-subtitle" style="margin-top:6px;font-size:12px;">Sedang: 20 langkah prosedur, durasi & detail proporsional dengan jumlah langkah.</p>
 
                     <label class="mt-4">Kasus Medis / Tindakan yang Diperlukan</label>
-                    <textarea name="kasus_tindakan" id="aiSurgKasusTindakan" rows="6" required placeholder="Contoh: operasi bypass arteri koroner pada pasien serangan jantung, riwayat hipertensi..."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <textarea name="kasus_tindakan" id="aiSurgKasusTindakan" rows="6" required placeholder="Contoh singkat: fraktur tungkai kiri setelah kecelakaan; rencana ORIF."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Tulis konteks singkat. Model AI yang menyusun indikasi, persiapan, tahapan operasi, peran, risiko relevan, monitoring, dan rujukan SOP. Hasil tetap rencana sampai ada bukti tindakan.</p>
 
                     <div class="modal-actions mt-4">
                         <button type="submit" class="btn-primary" id="aiSurgSubmitBtn">

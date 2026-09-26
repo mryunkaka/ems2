@@ -52,7 +52,7 @@ $result = [];
 if (!empty($report['result_json'])) {
     $decoded = json_decode((string) $report['result_json'], true);
     if (is_array($decoded)) {
-        $result = ems_ai_ds_normalize_diagnosis_result($decoded);
+        $result = ems_ai_ds_normalize_diagnosis_result($decoded, (string) ($report['anamnesis'] ?? ''));
     }
 }
 

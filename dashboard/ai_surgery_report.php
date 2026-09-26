@@ -239,9 +239,21 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <div class="card mb-4">
-                <div class="card-header">Laporan Medis Pasca-Operasi</div>
+                <div class="card-header">Ringkasan Rencana Operasi (Bukan Bukti Tindakan)</div>
                 <div class="p-4 text-sm whitespace-pre-line"><?= htmlspecialchars((string) ($result['laporan_pasca_operasi'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
             </div>
+
+            <details class="card p-4 mb-4">
+                <summary class="cursor-pointer font-bold">Rujukan SOP</summary>
+                <ul class="list-disc pl-5 mt-3 text-sm space-y-1">
+                    <?php foreach ((array) ($result['sop_references'] ?? []) as $ref): ?>
+                        <li><?= htmlspecialchars((string) $ref, ENT_QUOTES, 'UTF-8') ?></li>
+                    <?php endforeach; ?>
+                    <?php if (empty($result['sop_references'])): ?>
+                        <li class="text-slate-400 list-none -ml-5">Rujukan SOP belum dikembalikan model AI.</li>
+                    <?php endif; ?>
+                </ul>
+            </details>
 
         <?php endif; ?>
     </div>

@@ -3,7 +3,7 @@
 /**
  * Radiology Center: generate citra pencitraan medis (X-Ray/CT/MRI/USG) untuk
  * simulasi/roleplay EMS, memakai model Gemini yang mendukung image generation.
- * Memakai API key Gemini pribadi yang sama dengan AI Diagnosis Assistant & AI
+ * Memakai provider teks pribadi yang sama dengan AI Diagnosis Assistant & AI
  * Surgery Planner (tabel user_ai_settings) — lihat config/ai_diagnosis_surgery.php.
  * Model image-generation TIDAK bisa dipilih user (beda kontrak response dari
  * model teks biasa), jadi di-hardcode di sini, bukan lewat default_model milik
@@ -522,8 +522,8 @@ function ems_ai_radiology_call_gemini_image(PDO $pdo, string $prompt, ?int $crea
     }
 
     $userSettings = ems_ai_ds_get_user_settings($pdo, $createdBy);
-    if ($userSettings === null || trim((string) ($userSettings['gemini_api_key'] ?? '')) === '') {
-        return ['ok' => false, 'error' => 'Anda belum mengatur API key Gemini pribadi. Atur dulu di menu Roxwood Hospital AI > Setting AI Saya.'];
+    if (!ems_ai_ds_has_gemini_provider($userSettings)) {
+        return ['ok' => false, 'error' => 'Generate citra Radiology Center tetap membutuhkan API key Gemini karena custom provider hanya mendukung completion teks.'];
     }
 
     $settings = array_merge(ems_ai_settings_defaults(), [

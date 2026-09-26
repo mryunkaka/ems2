@@ -31,7 +31,7 @@ $recentStmt = $pdo->prepare("
 $recentStmt->execute([$effectiveUnit]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-$hasOwnApiKey = trim((string) (ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0))['gemini_api_key'] ?? '')) !== '';
+$hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
 $canDelete = ems_is_manager_plus_role($user['role'] ?? '');
 
 include __DIR__ . '/../partials/header.php';
@@ -55,7 +55,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasOwnApiKey): ?>
             <div class="alert alert-warning">
-                Anda belum mengatur API key Gemini pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum membuat diagnosis.
+                Anda belum mengatur provider AI pribadi. <a href="ai_settings_personal.php" class="font-bold underline">Atur sekarang di Setting AI Saya</a> sebelum membuat diagnosis.
             </div>
         <?php endif; ?>
 
@@ -91,7 +91,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Opsional, tapi kalau diisi akan otomatis ikut ter-copy saat kode referensi laporan ini dipakai di AI Surgery Planner / Radiology Center.</p>
 
                     <label class="mt-4">Anamnesis / Temuan Medis / Kondisi Fisik</label>
-                    <textarea name="anamnesis" rows="8" required placeholder="Contoh: pasien laki-laki kecelakaan kecepatan tinggi, luka robek dan lecet..."><?= htmlspecialchars($_POST['anamnesis'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <textarea name="anamnesis" rows="8" required placeholder="Contoh singkat: tidak sadar setelah kecelakaan, kaki kiri tampak bengkok."><?= htmlspecialchars($_POST['anamnesis'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                    <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Tulis fakta singkat saja. Model AI yang melanjutkan narasi, diagnosis kerja/dugaan, prioritas ABCDE bila perlu, rekomendasi pemeriksaan, rencana tindakan, tahapan SOP, dan rujukan. Jangan memasukkan angka atau hasil pemeriksaan yang belum diukur.</p>
 
                     <div class="modal-actions mt-4">
                         <button type="submit" class="btn-primary" id="aiDiagSubmitBtn">
@@ -273,10 +274,31 @@ include __DIR__ . '/../partials/sidebar.php';
             credentials: 'same-origin',
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
         })
-            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (res) {
+                return res.text().then(function (body) {
+                    var data = null;
+                    try { data = body ? JSON.parse(body) : null; } catch (ignore) {}
+                    return { ok: res.ok, status: res.status, data: data };
+                });
+            })
             .then(function (result) {
-                if (!result.ok || !result.data.ok || !result.data.report_id) {
-                    showError((result.data && result.data.message) || 'Gagal memproses diagnosis.');
+                // Backend menyimpan laporan sebelum response dikirim. Pada
+                // beberapa konfigurasi PHP/proxy, status HTTP dapat berubah
+                // menjadi non-2xx walaupun body JSON sudah berisi sukses.
+                // Payload sukses + report_id adalah sumber kebenaran agar
+                // laporan yang sudah tersimpan tidak salah ditampilkan gagal.
+                if (!result.data || result.data.ok !== true || !result.data.report_id) {
+                    var message = result.data && result.data.message;
+                    if (!message && result.status === 502) {
+                        message = 'Server AI gagal menyelesaikan permintaan. Coba lagi setelah beberapa saat.';
+                    }
+                    if (!message && result.status >= 500) {
+                        message = 'Server mengalami gangguan saat memproses diagnosis. Coba lagi.';
+                    }
+                    if (!message && result.status === 419) {
+                        message = 'Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.';
+                    }
+                    showError(message || 'Respons server tidak valid. Coba lagi.');
                     return;
                 }
                 finishSuccess(result.data.report_id);

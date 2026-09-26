@@ -133,6 +133,7 @@ try {
         'answer_source' => $result['answer_source'],
         'used_deep_research' => $result['used_deep_research'],
         'gemini_key_missing' => $result['gemini_key_missing'],
+        'personal_provider' => $result['personal_provider'] ?? null,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     error_log(sprintf(

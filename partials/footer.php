@@ -177,7 +177,7 @@ if ($roxyWidgetEnabled) {
     $roxyWidgetSettings = ems_groq_get_user_settings($pdo, $roxyUserId);
     $roxyGeminiSettings = ems_ai_ds_get_user_settings($pdo, $roxyUserId);
     $roxyHasGroqKey = $roxyWidgetSettings !== null && trim((string) ($roxyWidgetSettings['groq_api_key'] ?? '')) !== '';
-    $roxyHasGeminiKey = $roxyGeminiSettings !== null && trim((string) ($roxyGeminiSettings['gemini_api_key'] ?? '')) !== '';
+    $roxyHasGeminiKey = ems_ai_ds_has_text_provider($roxyGeminiSettings);
 }
 $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 ?>
@@ -206,12 +206,12 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 
             <?php if (!$roxyHasAiProvider): ?>
                 <div class="roxy-widget-warning">
-                    Atur API key Gemini atau Groq di
+                    Atur provider AI pribadi di
                     <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>">Setting AI Saya</a>.
                 </div>
             <?php elseif (!$roxyHasGroqKey && $roxyHasGeminiKey): ?>
                 <div class="roxy-widget-info">
-                    Groq belum diatur. Roxy memakai Gemini pribadi.
+                    Groq belum diatur. Roxy memakai provider AI pribadi.
                 </div>
             <?php endif; ?>
 
