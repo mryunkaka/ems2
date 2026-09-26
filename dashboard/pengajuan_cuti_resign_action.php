@@ -277,6 +277,74 @@ try {
     // ACTIONS YANG MEMBUTUHKAN APPROVAL ROLE
     // =====================================================
     $approvalActions = ['approve_cuti', 'reject_cuti', 'approve_resign', 'reject_resign'];
+    $editActions = ['edit_cuti_status', 'edit_resign_status'];
+
+    // HR/manager dapat mengoreksi status historis dengan alasan yang tercatat.
+    // Perubahan juga menyelaraskan status aktif/cuti/resign pada user terkait.
+    if (in_array($action, $editActions, true)) {
+        require_once __DIR__ . '/../auth/csrf.php';
+        if (empty($csrfToken) || !validateCsrfToken($csrfToken)) {
+            sendJsonResponse(['success' => false, 'error' => 'CSRF token tidak valid'], 419);
+        }
+        if (!can_approve_cuti_resign($userRole)) {
+            sendJsonResponse(['success' => false, 'error' => 'Anda tidak berwenang mengubah status'], 403);
+        }
+
+        $requestId = (int)($_POST['request_id'] ?? 0);
+        $newStatus = trim((string)($_POST['status'] ?? ''));
+        $changeReason = trim((string)($_POST['status_change_reason'] ?? ''));
+        if ($requestId <= 0 || !in_array($newStatus, ['pending', 'approved', 'rejected'], true)) {
+            sendJsonResponse(['success' => false, 'error' => 'Request atau status tidak valid'], 400);
+        }
+        if ($changeReason === '') {
+            sendJsonResponse(['success' => false, 'error' => 'Alasan perubahan status wajib diisi'], 422);
+        }
+
+        $isCuti = $action === 'edit_cuti_status';
+        $table = $isCuti ? 'cuti_requests' : 'resign_requests';
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT r.*, u.full_name, u.position, u.is_active, u.cuti_status, u.cuti_start_date, u.cuti_end_date, u.resign_reason FROM {$table} r INNER JOIN user_rh u ON u.id = r.user_id WHERE r.id = ? FOR UPDATE");
+            $stmt->execute([$requestId]);
+            $request = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$request) {
+                throw new RuntimeException('Request tidak ditemukan');
+            }
+
+            $oldStatus = (string)($request['status'] ?? 'pending');
+            $approvedBy = $newStatus === 'approved' ? $userId : null;
+            $approvedAt = $newStatus === 'approved' ? date('Y-m-d H:i:s') : null;
+            $rejectionReason = $newStatus === 'rejected' ? $changeReason : null;
+            $update = $pdo->prepare("UPDATE {$table} SET status = ?, approved_by = ?, approved_at = ?, rejection_reason = ?, status_change_reason = ?, status_changed_by = ?, status_changed_at = NOW(), updated_at = NOW() WHERE id = ?");
+            $update->execute([$newStatus, $approvedBy, $approvedAt, $rejectionReason, $changeReason, $userId, $requestId]);
+
+            if ($isCuti) {
+                if ($newStatus === 'approved') {
+                    $userUpdate = $pdo->prepare("UPDATE user_rh SET cuti_start_date = ?, cuti_end_date = ?, cuti_days_total = ?, cuti_status = 'active', cuti_approved_by = ?, cuti_approved_at = NOW() WHERE id = ?");
+                    $userUpdate->execute([$request['start_date'], $request['end_date'], $request['days_total'], $userId, $request['user_id']]);
+                } elseif ($oldStatus === 'approved') {
+                    $userUpdate = $pdo->prepare("UPDATE user_rh SET cuti_start_date = NULL, cuti_end_date = NULL, cuti_days_total = NULL, cuti_status = 'inactive', cuti_approved_by = NULL, cuti_approved_at = NULL WHERE id = ? AND cuti_status = 'active' AND cuti_start_date = ? AND cuti_end_date = ?");
+                    $userUpdate->execute([$request['user_id'], $request['start_date'], $request['end_date']]);
+                }
+            } elseif ($newStatus === 'approved') {
+                $userUpdate = $pdo->prepare("UPDATE user_rh SET is_active = 0, resign_reason = ?, resigned_by = ?, resigned_at = NOW() WHERE id = ?");
+                $userUpdate->execute(["IC: {$request['reason_ic']}\nOOC: {$request['reason_ooc']}", $userId, $request['user_id']]);
+                $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$request['user_id']]);
+            } elseif ($oldStatus === 'approved') {
+                $expectedReason = "IC: {$request['reason_ic']}\nOOC: {$request['reason_ooc']}";
+                $userUpdate = $pdo->prepare("UPDATE user_rh SET is_active = 1, resign_reason = NULL, resigned_by = NULL, resigned_at = NULL WHERE id = ? AND is_active = 0 AND resign_reason = ?");
+                $userUpdate->execute([$request['user_id'], $expectedReason]);
+            }
+
+            $log = $pdo->prepare("INSERT INTO account_logs (user_id, full_name_after, position_after, pin_changed, created_at) VALUES (?, ?, ?, 0, NOW())");
+            $log->execute([$request['user_id'], $request['full_name'] ?? '', $request['position'] ?? '']);
+            $pdo->commit();
+            sendJsonResponse(['success' => true, 'message' => "Status {$request['request_code']} diubah dari {$oldStatus} menjadi {$newStatus}."]);
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            sendJsonResponse(['success' => false, 'error' => $e->getMessage()], 422);
+        }
+    }
 
     if (in_array($action, $approvalActions)) {
         // Cek apakah user punya akses approval

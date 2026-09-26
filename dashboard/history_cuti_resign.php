@@ -3,11 +3,15 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 ems_require_division_access(['Human Resource'], '/dashboard/index.php');
+$currentUser = $_SESSION['user_rh'] ?? [];
+$canEditStatus = can_approve_cuti_resign($currentUser['role'] ?? null);
+$csrfToken = generateCsrfToken();
 
 $pageTitle = 'History Cuti & Resign';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -265,6 +269,8 @@ include __DIR__ . '/../partials/sidebar.php';
                             <th>Approver</th>
                             <th>Tanggal Kembali Kerja</th>
                             <th>Dikonfirmasi Oleh</th>
+                            <th>Alasan Status</th>
+                            <?php if ($canEditStatus): ?><th>Aksi</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -296,6 +302,15 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <td><?= htmlspecialchars((string)($row['approved_by_name'] ?? '-')) ?></td>
                                 <td data-order="<?= (int)($row['returned_effective_date_sort'] ?? 0) ?>"><?= htmlspecialchars(!empty($row['returned_effective_date']) ? formatTanggalIndo((string)$row['returned_effective_date']) : '-') ?></td>
                                 <td><?= htmlspecialchars((string)($row['returned_by_name'] ?? '-')) ?></td>
+                                <td>
+                                    <?= nl2br(htmlspecialchars((string)($row['status_change_reason'] ?? $row['rejection_reason'] ?? '-'))) ?>
+                                    <?php if (!empty($row['status_changed_at'])): ?><div class="table-meta">Diubah <?= htmlspecialchars(formatTanggalID((string)$row['status_changed_at'])) ?></div><?php endif; ?>
+                                </td>
+                                <?php if ($canEditStatus): ?>
+                                    <td>
+                                        <button type="button" class="btn-secondary btn-sm history-edit-status" onclick="openHistoryStatusModal(this)" data-id="<?= (int)$row['id'] ?>" data-code="<?= htmlspecialchars((string)$row['request_code'], ENT_QUOTES, 'UTF-8') ?>" data-status="<?= htmlspecialchars((string)$row['status'], ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars((string)$row['full_name'], ENT_QUOTES, 'UTF-8') ?>">Edit Status</button>
+                                    </td>
+                                <?php endif; ?>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -307,6 +322,26 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
     </div>
 </section>
+
+<?php if ($canEditStatus): ?>
+<div id="historyStatusModal" class="modal-overlay hidden" style="display:none;">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="flex items-start justify-between gap-4">
+            <div><h3 class="text-lg font-bold text-slate-900">Edit Status Pengajuan</h3><p id="historyStatusTarget" class="mt-1 text-sm text-slate-500"></p></div>
+            <button type="button" id="historyStatusClose" class="btn-secondary btn-sm">Tutup</button>
+        </div>
+        <form id="historyStatusForm" class="mt-4 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="action" value="edit_cuti_status">
+            <input type="hidden" name="request_id" id="historyStatusRequestId">
+            <div><label class="block text-sm font-semibold text-slate-700">Status Baru</label><select name="status" id="historyStatusValue" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="pending">Menunggu</option><option value="approved">Disetujui</option><option value="rejected">Ditolak</option></select></div>
+            <div><label class="block text-sm font-semibold text-slate-700">Alasan Perubahan</label><textarea name="status_change_reason" id="historyStatusReason" rows="4" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Jelaskan alasan perubahan status..."></textarea></div>
+            <div id="historyStatusError" class="hidden rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
+            <button type="submit" class="btn-primary w-full">Simpan Perubahan</button>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
 
 <style>
 .page-shell {
@@ -550,7 +585,49 @@ include __DIR__ . '/../partials/sidebar.php';
 </style>
 
 <script>
+function openHistoryStatusModal(button) {
+    var modal = document.getElementById('historyStatusModal');
+    var form = document.getElementById('historyStatusForm');
+    if (!modal || !form) return false;
+    document.getElementById('historyStatusRequestId').value = button.getAttribute('data-id') || '';
+    document.getElementById('historyStatusValue').value = button.getAttribute('data-status') || 'pending';
+    document.getElementById('historyStatusReason').value = '';
+    document.getElementById('historyStatusTarget').textContent = (button.getAttribute('data-code') || '') + ' — ' + (button.getAttribute('data-name') || '');
+    document.getElementById('historyStatusError').classList.add('hidden');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.style.display = 'flex';
+    document.body.classList.add('modal-open');
+    return false;
+}
+
+document.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('.history-edit-status') : null;
+    if (button) {
+        event.preventDefault();
+        openHistoryStatusModal(button);
+    }
+});
+
 document.addEventListener('DOMContentLoaded', function() {
+    var modal = document.getElementById('historyStatusModal');
+    var form = document.getElementById('historyStatusForm');
+    if (modal && form) {
+        document.querySelectorAll('.history-edit-status').forEach(function (button) {
+            button.addEventListener('click', function () {
+                window.openHistoryStatusModal(button);
+            });
+        });
+        document.getElementById('historyStatusClose').addEventListener('click', function () { modal.classList.add('hidden'); modal.classList.remove('flex'); modal.style.display = 'none'; document.body.classList.remove('modal-open'); });
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var error = document.getElementById('historyStatusError');
+            fetch('pengajuan_cuti_resign_action.php', { method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (response) { return response.json().then(function (data) { return { ok: response.ok, data: data }; }); })
+                .then(function (result) { if (!result.ok || !result.data.success) throw new Error(result.data.error || 'Perubahan gagal disimpan.'); window.location.reload(); })
+                .catch(function (err) { error.textContent = err.message; error.classList.remove('hidden'); });
+        });
+    }
     if (!window.jQuery || !jQuery.fn.DataTable) {
         return;
     }

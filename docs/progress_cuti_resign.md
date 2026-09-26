@@ -302,3 +302,6 @@ Verification     [████████████████████] 
 **Status:** ✅ **IMPLEMENTASI SELESAI** - Semua fitur siap digunakan!
 
 **Selamat menggunakan sistem pengajuan cuti dan resign! 🎉**
+
+### Catatan perubahan 2026-09-26
+- History HR sekarang menyediakan edit status cuti (pending, approved, rejected) dengan alasan wajib, audit pelaku/waktu, dan sinkronisasi status cuti pada user_rh.
