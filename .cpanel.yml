@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - /bin/mkdir -p /home/fouf9972/public_html/roxwoodhospitalime
+    - /bin/bash -lc 'set -o pipefail; /usr/bin/git -C /home/fouf9972/public_html/rh_ems archive --format=tar HEAD | /bin/tar --exclude=.cpanel.yml --exclude=.env --exclude=".env.*" -xf - -C /home/fouf9972/public_html/roxwoodhospitalime'
