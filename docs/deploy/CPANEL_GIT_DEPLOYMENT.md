@@ -18,6 +18,8 @@ any new SQL migration separately according to the release checklist.
 
 To verify which commit the live checkout currently serves, request
 `https://roxwoodhospitalime.my.id/ajax/deployment_status.php`. The read-only
-JSON response contains the checked-out branch and full commit SHA only. Compare
-`commit` with `git ls-remote origin refs/heads/main` (or the cPanel HEAD
-commit); matching hashes confirm that the checkout has pulled that revision.
+JSON response contains the checked-out branch, full commit SHA, and SHA-256 of
+`dashboard/ai_surgery_planner_action.php`. Compare `commit` with
+`git ls-remote origin refs/heads/main` and the source hash with the local file;
+the matching source hash confirms that the planner PHP file itself is deployed,
+not only that Git HEAD moved.

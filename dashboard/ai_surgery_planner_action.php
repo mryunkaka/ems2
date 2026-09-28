@@ -195,6 +195,40 @@ for ($offset = 0; $offset < $jumlahLangkah; $offset += $batchSize) {
         $candidate = $batchResult['data'];
         $candidateSteps = ems_ai_ds_extract_surgery_steps($candidate);
         $candidateSteps = ems_ai_ds_compact_surgery_documentation_overflow($candidateSteps, $batchCount);
+
+        // Count errors do not identify a particular stage number, so the
+        // per-stage repair below cannot select anything to fix. Ask the model
+        // to reconcile the whole current batch to the exact requested count;
+        // preserve its clinical sequence and merge related preparation or
+        // documentation only when it generated too many stages.
+        for ($countRepairAttempt = 1; count($candidateSteps) !== $batchCount && $countRepairAttempt <= 1; $countRepairAttempt++) {
+            $currentCount = count($candidateSteps);
+            $countRepairPrompt = "REKONSILIASI JUMLAH TAHAP — keluarkan tepat {$batchCount} tahap untuk rentang nomor {$firstStepNumber} sampai {$lastStepNumber} (total rencana {$jumlahLangkah}). JSON masukan memiliki {$currentCount} tahap setelah normalisasi. "
+                . ($currentCount > $batchCount
+                    ? "Gabungkan hanya tahap administratif/persiapan/pemantauan yang saling terkait; jangan menghapus tindakan klinis penting, jangan mengubah urutan tindakan, fakta kasus, anatomi/sisi, alat, pelaku, atau hasil /do."
+                    : "Lengkapi kekurangan dengan tahap yang memang diperlukan dalam urutan kronologis; jangan mengulang tindakan yang sudah selesai dan jangan membuat temuan atau hasil klinis baru.")
+                . " Kembalikan tepat {$batchCount} item pada key tahapan_prosedur, tanpa field lain. Setiap item harus tetap konkret, memiliki aksi /me dan hasil /do, serta memenuhi kontrak alat. JSON batch saat ini:\n"
+                . json_encode(['tahapan_prosedur' => $candidateSteps], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                . "\nKONTEKS KASUS DAN RENTANG TAHAP:\n" . $batchPrompt;
+            $countRepair = ems_ai_ds_call_gemini(
+                $pdo,
+                $systemPrompt,
+                $countRepairPrompt,
+                'ai_surgery_planner',
+                isset($user['id']) ? (int) $user['id'] : null,
+                ems_ai_ds_surgery_response_schema(true)
+            );
+            $reconciledSteps = is_array($countRepair['data'] ?? null)
+                ? ems_ai_ds_extract_surgery_steps($countRepair['data'])
+                : [];
+            if (!$countRepair['ok'] || count($reconciledSteps) !== $batchCount) {
+                $attemptErrors[] = 'Perbaikan jumlah tahap ' . $firstStepNumber . '–' . $lastStepNumber
+                    . ' menghasilkan ' . count($reconciledSteps) . '/' . $batchCount . ' tahap.';
+                continue;
+            }
+            $candidateSteps = $reconciledSteps;
+        }
+
         $batchIssues = $validateBatch($candidateSteps, $batchCount);
 
         // Correct only invalid items in this ten-step batch. Keep every valid

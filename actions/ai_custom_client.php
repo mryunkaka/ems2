@@ -23,7 +23,8 @@ function ems_custom_chat_completion(
     ?string $model = null,
     string $featureKey = 'custom_chat',
     ?int $createdBy = null,
-    bool $jsonMode = false
+    bool $jsonMode = false,
+    ?int $maxOutputTokens = null
 ): array {
     $modelName = trim((string) ($model ?: ($settings['custom_default_model'] ?? '')));
     $url = ems_ai_custom_completion_url((string) ($settings['custom_base_url'] ?? ''));
@@ -49,6 +50,11 @@ function ems_custom_chat_completion(
     if ($jsonMode) {
         $payload['response_format'] = ['type' => 'json_object'];
     }
+    if ($maxOutputTokens !== null && $maxOutputTokens > 0) {
+        // OpenAI-compatible routers (including 9Router) otherwise may apply
+        // a small provider default and truncate long structured plans.
+        $payload['max_tokens'] = min(16384, max(256, $maxOutputTokens));
+    }
 
     $headers = [];
     if ($apiKey !== '') {
@@ -59,16 +65,20 @@ function ems_custom_chat_completion(
     $response = ems_ai_http_post_json($url, $payload, $headers, 120, (string) ($settings['custom_provider'] ?? 'Custom provider'));
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : [];
     $content = $responseJson['choices'][0]['message']['content'] ?? null;
+    $finishReason = strtolower(trim((string) ($responseJson['choices'][0]['finish_reason'] ?? '')));
     if (is_string($content)) {
         $content = ems_ai_custom_redact($content, $apiKey);
     }
     $success = $response['http_status'] >= 200
         && $response['http_status'] < 300
         && is_string($content)
-        && trim($content) !== '';
+        && trim($content) !== ''
+        && $finishReason !== 'length';
     $errorMessage = $success
         ? null
-        : (string) ($responseJson['error']['message'] ?? ('HTTP ' . $response['http_status']));
+        : ($finishReason === 'length'
+            ? 'Respons model terpotong karena batas token keluaran (finish_reason=length).'
+            : (string) ($responseJson['error']['message'] ?? ('HTTP ' . $response['http_status'])));
     if ($errorMessage !== null) {
         $errorMessage = ems_ai_custom_redact($errorMessage, $apiKey);
     }

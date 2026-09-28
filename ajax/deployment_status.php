@@ -86,4 +86,5 @@ emsDeploymentStatusRespond([
     'ok' => true,
     'branch' => $branch,
     'commit' => $commit,
+    'ai_surgery_planner_action_sha256' => hash_file('sha256', $repositoryRoot . DIRECTORY_SEPARATOR . 'dashboard' . DIRECTORY_SEPARATOR . 'ai_surgery_planner_action.php') ?: null,
 ]);
