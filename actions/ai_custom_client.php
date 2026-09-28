@@ -11,6 +11,59 @@ function ems_ai_custom_completion_url(string $baseUrl): string
     return $url;
 }
 
+/** Resolve and pin only publicly routable HTTPS destinations to prevent SSRF. */
+function ems_ai_custom_public_endpoint_resolution(string $url): array
+{
+    $parts = parse_url($url);
+    if (!is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https') {
+        throw new RuntimeException('Custom provider hanya mendukung endpoint HTTPS.');
+    }
+    $urlHost = trim((string) ($parts['host'] ?? ''));
+    $host = strtolower(rtrim($urlHost, '.'));
+    $port = (int) ($parts['port'] ?? 443);
+    if ($host === '' || $port < 1 || $port > 65535 || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+        throw new RuntimeException('Endpoint custom harus berupa URL HTTPS yang valid.');
+    }
+    if (preg_match('/(?:^|\.)(?:localhost|local|internal|test|invalid|example)$/i', $host) === 1) {
+        throw new RuntimeException('Endpoint custom harus menggunakan hostname publik.');
+    }
+
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        $addresses = [$host];
+    } else {
+        $addresses = [];
+        $records = function_exists('dns_get_record') ? @dns_get_record($host, DNS_A | DNS_AAAA) : false;
+        if (is_array($records)) {
+            foreach ($records as $record) {
+                $address = (string) ($record['ip'] ?? $record['ipv6'] ?? '');
+                if ($address !== '') $addresses[] = $address;
+            }
+        }
+        if ($addresses === []) {
+            $ipv4 = @gethostbynamel($host);
+            if (is_array($ipv4)) $addresses = $ipv4;
+        }
+    }
+
+    $addresses = array_values(array_unique($addresses));
+    if ($addresses === []) {
+        throw new RuntimeException('Hostname endpoint custom tidak dapat di-resolve.');
+    }
+    foreach ($addresses as $address) {
+        if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            throw new RuntimeException('Endpoint custom tidak boleh mengarah ke alamat jaringan privat atau khusus.');
+        }
+    }
+
+    // IP-literal URLs are already pinned by their host component and do not
+    // need CURLOPT_RESOLVE (whose host syntax is hostname-oriented).
+    if (filter_var($host, FILTER_VALIDATE_IP) !== false) return [];
+
+    $ip = $addresses[0];
+    $curlAddress = str_contains($ip, ':') ? '[' . $ip . ']' : $ip;
+    return [$urlHost . ':' . $port . ':' . $curlAddress];
+}
+
 function ems_ai_custom_redact(string $value, string $secret): string
 {
     return $secret !== '' ? str_replace($secret, '[REDACTED]', $value) : $value;
@@ -35,12 +88,13 @@ function ems_custom_chat_completion(
         $url === ''
         || $modelName === ''
         || $urlParts === false
-        || !in_array(strtolower((string) ($urlParts['scheme'] ?? '')), ['http', 'https'], true)
+        || strtolower((string) ($urlParts['scheme'] ?? '')) !== 'https'
         || trim((string) ($urlParts['host'] ?? '')) === ''
-        || isset($urlParts['user'], $urlParts['pass'], $urlParts['query'], $urlParts['fragment'])
+        || isset($urlParts['user']) || isset($urlParts['pass']) || isset($urlParts['query']) || isset($urlParts['fragment'])
     ) {
-        throw new RuntimeException('Endpoint dan model custom wajib diisi; endpoint harus URL HTTP/HTTPS yang valid.');
+        throw new RuntimeException('Endpoint dan model custom wajib diisi; endpoint harus URL HTTPS publik yang valid.');
     }
+    $curlResolve = ems_ai_custom_public_endpoint_resolution($url);
 
     $payload = [
         'model' => $modelName,
@@ -62,7 +116,7 @@ function ems_custom_chat_completion(
     }
 
     $startedAt = microtime(true);
-    $response = ems_ai_http_post_json($url, $payload, $headers, 120, (string) ($settings['custom_provider'] ?? 'Custom provider'));
+    $response = ems_ai_http_post_json($url, $payload, $headers, 120, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : [];
     $content = $responseJson['choices'][0]['message']['content'] ?? null;
     $finishReason = strtolower(trim((string) ($responseJson['choices'][0]['finish_reason'] ?? '')));

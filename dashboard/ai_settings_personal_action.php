@@ -109,12 +109,6 @@ if ($action === 'save') {
 }
 
 if ($action === 'save_custom' || $action === 'test_connection_custom') {
-    if (!$isProgrammer) {
-        $_SESSION['flash_errors'] = ['Custom provider hanya dapat diatur Programmer Roxwood.'];
-        header('Location: ' . $redirectTo);
-        exit;
-    }
-
     $customProvider = trim((string) ($_POST['custom_provider'] ?? ''));
     $customApiKeyInput = trim((string) ($_POST['custom_api_key'] ?? ''));
     $customApiKey = $customApiKeyInput !== '' ? $customApiKeyInput : (string) ($existing['custom_api_key'] ?? '');
@@ -146,11 +140,11 @@ if ($action === 'save_custom' || $action === 'test_connection_custom') {
         }
         if (
             $customUrlParts === false
-            || !in_array(strtolower((string) ($customUrlParts['scheme'] ?? '')), ['http', 'https'], true)
+            || strtolower((string) ($customUrlParts['scheme'] ?? '')) !== 'https'
             || trim((string) ($customUrlParts['host'] ?? '')) === ''
             || isset($customUrlParts['user'], $customUrlParts['pass'], $customUrlParts['query'], $customUrlParts['fragment'])
         ) {
-            $_SESSION['flash_errors'] = ['Endpoint custom harus URL HTTP/HTTPS yang valid.'];
+            $_SESSION['flash_errors'] = ['Endpoint custom harus URL HTTPS publik yang valid.'];
             header('Location: ' . $redirectTo);
             exit;
         }
@@ -164,7 +158,7 @@ if ($action === 'save_custom' || $action === 'test_connection_custom') {
     try {
         if ($action === 'save_custom') {
             ems_ai_ds_save_custom_user_settings($pdo, $userId, $customProvider, $customApiKey, $customBaseUrl, $customModel);
-            $_SESSION['flash_messages'] = [$customIsCleared ? 'Custom provider dinonaktifkan. Gemini kembali menjadi provider utama.' : 'Custom provider berhasil disimpan.'];
+            $_SESSION['flash_messages'] = [$customIsCleared ? 'Custom provider dinonaktifkan; pengaturan provider AI lainnya tidak berubah.' : 'Custom provider berhasil disimpan.'];
         } else {
             $result = ems_custom_test_connection($pdo, [
                 'custom_provider' => $customProvider,

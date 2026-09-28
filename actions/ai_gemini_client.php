@@ -100,7 +100,7 @@ function emsFindCaBundlePath(): ?string
     return null;
 }
 
-function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds, string $providerLabel = 'AI'): array
+function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds, string $providerLabel = 'AI', array $curlResolve = []): array
 {
     $ch = curl_init($url);
     if ($ch === false) {
@@ -124,6 +124,9 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
     $caBundle = emsFindCaBundlePath();
     if ($caBundle !== null) {
         $curlOptions[CURLOPT_CAINFO] = $caBundle;
+    }
+    if ($curlResolve !== []) {
+        $curlOptions[CURLOPT_RESOLVE] = $curlResolve;
     }
 
     curl_setopt_array($ch, $curlOptions);

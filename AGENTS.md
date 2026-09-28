@@ -536,6 +536,15 @@ Roxwood" superuser (documented stop-gap in
 daily request cap). AI features silently no-op/fall back if disabled —
 the recruitment pipeline works fully without AI configured.
 
+`ai_settings_personal.php` exposes the OpenAI-compatible custom provider to
+all signed-in users. Its provider, API key, endpoint, and model are stored
+under the current user's `user_ai_settings` row; the personal action must
+always take the user ID from the authenticated session. Since custom endpoints
+are called server-side, require public HTTPS destinations, reject internal or
+reserved DNS addresses, and pin the validated address for the request to
+prevent SSRF and DNS-rebinding access to private services. Global Gemini
+configuration remains Programmer Roxwood-only.
+
 ## 6. `actions/` + `ajax/` + `public/` — endpoint layer
 
 ### AI recruitment engine (the most complex subsystem in the codebase)

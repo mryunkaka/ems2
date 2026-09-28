@@ -271,42 +271,40 @@ include __DIR__ . '/../partials/sidebar.php';
             </form>
         </div>
 
-        <?php if ($isProgrammer): ?>
-            <div class="card mt-4 mb-0">
-                <div class="card-header">
-                    <?= ems_icon('globe-alt', 'h-5 w-5') ?>
-                    <span>Custom Provider OpenAI-Compatible</span>
-                </div>
-                <form method="post" action="ai_settings_personal_action.php?action=save_custom" class="space-y-4">
-                    <?= csrfField(); ?>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <div>
-                            <label class="text-sm font-semibold text-slate-900" for="custom_provider">Nama Provider</label>
-                            <input id="custom_provider" name="custom_provider" type="text" value="<?= htmlspecialchars($customProvider, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="9Router">
-                        </div>
-                        <div>
-                            <label class="text-sm font-semibold text-slate-900" for="custom_default_model">Model</label>
-                            <input id="custom_default_model" name="custom_default_model" type="text" value="<?= htmlspecialchars($customModel, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="cx/gpt-5.6-luna">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-semibold text-slate-900" for="custom_base_url">Base URL / Endpoint Chat Completions</label>
-                        <input id="custom_base_url" name="custom_base_url" type="url" value="<?= htmlspecialchars($customBaseUrl, ENT_QUOTES, 'UTF-8') ?>" maxlength="255" placeholder="http://127.0.0.1:20128/v1">
-                        <div class="helper-note mt-1">Boleh isi Base URL seperti <code>/v1</code> atau URL lengkap yang berakhir <code>/chat/completions</code>. Sistem menambahkan path endpoint otomatis jika perlu.</div>
-                    </div>
-                    <div>
-                        <label class="text-sm font-semibold text-slate-900" for="custom_api_key">API Key Custom</label>
-                        <input id="custom_api_key" name="custom_api_key" type="password" placeholder="<?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan API key custom' ?>" autocomplete="new-password">
-                        <div class="helper-note mt-1">Provider custom memakai format request OpenAI Chat Completions. Key aktif: <strong><?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong>. Kosongkan key jika endpoint lokal tidak memerlukan autentikasi.</div>
-                    </div>
-                    <div class="helper-note">Jika Nama Provider, Endpoint, dan Model terisi, custom provider menjadi provider utama fitur teks. Kosongkan konfigurasi custom untuk menonaktifkannya dan kembali ke provider lain.</div>
-                    <div class="flex flex-wrap gap-3 pt-2">
-                        <button type="submit" class="btn-primary"><?= ems_icon('check', 'h-4 w-4') ?><span>Simpan Custom Provider</span></button>
-                        <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection_custom" class="btn-success"><?= ems_icon('arrow-path', 'h-4 w-4') ?><span>Test Custom Provider</span></button>
-                    </div>
-                </form>
+        <div class="card mt-4 mb-0">
+            <div class="card-header">
+                <?= ems_icon('globe-alt', 'h-5 w-5') ?>
+                <span>Custom Provider OpenAI-Compatible</span>
             </div>
-        <?php endif; ?>
+            <form method="post" action="ai_settings_personal_action.php?action=save_custom" class="space-y-4">
+                <?= csrfField(); ?>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <div>
+                        <label class="text-sm font-semibold text-slate-900" for="custom_provider">Nama Provider</label>
+                        <input id="custom_provider" name="custom_provider" type="text" value="<?= htmlspecialchars($customProvider, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="9Router">
+                    </div>
+                    <div>
+                        <label class="text-sm font-semibold text-slate-900" for="custom_default_model">Model</label>
+                        <input id="custom_default_model" name="custom_default_model" type="text" value="<?= htmlspecialchars($customModel, ENT_QUOTES, 'UTF-8') ?>" maxlength="100" placeholder="cx/gpt-5.6-luna">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-900" for="custom_base_url">Base URL / Endpoint Chat Completions</label>
+                    <input id="custom_base_url" name="custom_base_url" type="url" value="<?= htmlspecialchars($customBaseUrl, ENT_QUOTES, 'UTF-8') ?>" maxlength="255" placeholder="https://api.example.com/v1">
+                    <div class="helper-note mt-1">Gunakan endpoint HTTPS publik seperti <code>/v1</code> atau URL lengkap yang berakhir <code>/chat/completions</code>. Sistem menambahkan path endpoint otomatis jika perlu.</div>
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-slate-900" for="custom_api_key">API Key Custom</label>
+                    <input id="custom_api_key" name="custom_api_key" type="password" placeholder="<?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan API key custom' ?>" autocomplete="new-password">
+                    <div class="helper-note mt-1">Provider custom memakai format request OpenAI Chat Completions. Key aktif: <strong><?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong>. Kosongkan key jika endpoint tidak memerlukan autentikasi.</div>
+                </div>
+                <div class="helper-note">Pengaturan ini hanya berlaku untuk akun Anda. Jika Nama Provider, Endpoint, dan Model terisi, custom provider menjadi provider utama fitur teks Anda. Gunakan endpoint HTTPS publik; alamat jaringan internal tidak diizinkan. Kosongkan konfigurasi custom untuk menonaktifkannya dan kembali ke provider lain.</div>
+                <div class="flex flex-wrap gap-3 pt-2">
+                    <button type="submit" class="btn-primary"><?= ems_icon('check', 'h-4 w-4') ?><span>Simpan Custom Provider</span></button>
+                    <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection_custom" class="btn-success"><?= ems_icon('arrow-path', 'h-4 w-4') ?><span>Test Custom Provider</span></button>
+                </div>
+            </form>
+        </div>
     </div>
 </section>
 <?php include __DIR__ . '/../partials/footer.php'; ?>
