@@ -15,3 +15,9 @@ GitHub, open **Git Version Control → Manage → Pull or Deploy**, choose **Upd
 from Remote**, then **Deploy HEAD Commit**. Confirm the deployed HEAD commit in
 cPanel before testing the site. This operation copies PHP source only; apply
 any new SQL migration separately according to the release checklist.
+
+To verify which commit the live checkout currently serves, request
+`https://roxwoodhospitalime.my.id/ajax/deployment_status.php`. The read-only
+JSON response contains the checked-out branch and full commit SHA only. Compare
+`commit` with `git ls-remote origin refs/heads/main` (or the cPanel HEAD
+commit); matching hashes confirm that the checkout has pulled that revision.
