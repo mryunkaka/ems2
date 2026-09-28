@@ -2,11 +2,11 @@
 
 date_default_timezone_set('Asia/Jakarta');
 
-$repo = '/home/fouf9972/public_html/roxwoodhospitalime';
+$repo = '/home/fouf9972/public_html/rh_ems';
 $log = '/home/fouf9972/git-deploy.log';
 $branch = 'main';
 $git = '/usr/bin/git';
-$cronCommand = "/bin/bash -lc 'cd /home/fouf9972/public_html/roxwoodhospitalime && /usr/bin/git fetch origin main && /usr/bin/git checkout -B main origin/main && /usr/bin/git reset --hard origin/main >> /home/fouf9972/git-deploy.log 2>&1'";
+$cronCommand = "/bin/bash -lc 'cd /home/fouf9972/public_html/rh_ems && /usr/bin/git fetch origin main && /usr/bin/git checkout -B main origin/main && /usr/bin/git reset --hard origin/main >> /home/fouf9972/git-deploy.log 2>&1'";
 
 function respond(string $message, string $logFile, bool $writeLog = true, int $exitCode = 0): void
 {

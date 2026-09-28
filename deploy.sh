@@ -1,6 +1,6 @@
 #!/bin/bash
 
-REPO="/home/fouf9972/public_html/roxwoodhospitalime"
+REPO="/home/fouf9972/public_html/rh_ems"
 LOG="/home/fouf9972/git-deploy.log"
 GIT="/usr/bin/git"
 BRANCH="main"
