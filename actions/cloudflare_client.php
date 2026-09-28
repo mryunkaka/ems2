@@ -47,6 +47,11 @@ function ems_cloudflare_generate_image(PDO $pdo, array $settings, string $prompt
     $timeoutSeconds = (int) ($settings['timeout_seconds'] ?? 60);
 
     $payload = ['prompt' => $prompt];
+    if ($featureKey === 'ai_radiology_center' && $modelName === '@cf/black-forest-labs/flux-1-schnell') {
+        // Cloudflare documents a maximum of 8 steps; higher steps improve
+        // prompt adherence and image quality for the radiology simulation.
+        $payload['steps'] = 8;
+    }
     $url = 'https://api.cloudflare.com/client/v4/accounts/' . rawurlencode($accountId) . '/ai/run/' . $modelName;
     $requestHash = hash('sha256', $modelName . '|' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     $startedAt = microtime(true);

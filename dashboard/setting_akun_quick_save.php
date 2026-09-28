@@ -119,6 +119,7 @@ $confirmPin = (string)($_POST['confirm_pin'] ?? '');
 $batch = $batchFromDb > 0 ? $batchFromDb : (int)($_POST['batch'] ?? 0);
 $tanggalMasuk = trim((string)($_POST['tanggal_masuk'] ?? ''));
 $tanggalLahirIc = trim((string)($_POST['tanggal_lahir_ic'] ?? ''));
+$specialistDegrees = trim((string)($_POST['specialist_degrees'] ?? ''));
 
 if ($citizenId === '') {
     quickSaveRespond(false, 'Citizen ID wajib diisi.', [], 422);
@@ -220,6 +221,9 @@ if (isset($userRhColumns['tanggal_lahir_ic'])) {
 if (isset($userRhColumns['file_kontrak_kerja'])) {
     $selectColumns[] = 'file_kontrak_kerja';
 }
+if (isset($userRhColumns['specialist_degrees'])) {
+    $selectColumns[] = 'specialist_degrees';
+}
 foreach (array_merge($extraDocFields, $issuedDateFields, $dateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $selectColumns[] = $optionalColumn;
@@ -241,6 +245,18 @@ quickSaveMark('load_user');
 
 if (empty($userDb)) {
     quickSaveRespond(false, 'User tidak ditemukan.', [], 404);
+}
+
+$isSpecialistPosition = ems_normalize_position($userDb['position'] ?? $currentPos) === 'specialist';
+if ($isSpecialistPosition) {
+    if (!isset($userRhColumns['specialist_degrees'])) {
+        quickSaveRespond(false, 'Kolom gelar spesialis belum tersedia. Jalankan migrasi 91_2026-09-28_user_specialist_degrees.sql.', [], 503);
+    }
+    $parsedSpecialistDegrees = ems_parse_specialist_degrees($specialistDegrees);
+    if ($parsedSpecialistDegrees === null) {
+        quickSaveRespond(false, 'Gelar spesialis wajib diisi, contoh: Sp. B, Sp. OG.', [], 422);
+    }
+    $specialistDegrees = implode(', ', $parsedSpecialistDegrees);
 }
 
 $isTraineePosition = ems_normalize_position($userDb['position'] ?? '') === 'trainee';
@@ -494,6 +510,11 @@ if (isset($userRhColumns['tanggal_lahir_ic'])) {
     $params[] = $tanggalLahirIc;
 }
 
+if ($isSpecialistPosition && isset($userRhColumns['specialist_degrees'])) {
+    $sql .= ', specialist_degrees = ?';
+    $params[] = $specialistDegrees;
+}
+
 if ($batchFromDb === 0) {
     $sql .= ", batch = ?";
     $params[] = $batch;
@@ -550,6 +571,9 @@ $_SESSION['user_rh']['no_hp_ic'] = $noHpIc;
 $_SESSION['user_rh']['jenis_kelamin'] = $jenisKelamin;
 if (isset($userRhColumns['tanggal_lahir_ic'])) {
     $_SESSION['user_rh']['tanggal_lahir_ic'] = $tanggalLahirIc;
+}
+if ($isSpecialistPosition) {
+    $_SESSION['user_rh']['specialist_degrees'] = $specialistDegrees;
 }
 if ($kodeNomorInduk !== null) {
     $_SESSION['user_rh']['kode_nomor_induk_rs'] = $kodeNomorInduk;

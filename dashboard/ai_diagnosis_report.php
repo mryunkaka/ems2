@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
 require_once __DIR__ . '/../config/ai_radiology.php';
+require_once __DIR__ . '/../config/ai_laboratory.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 ems_enforce_dashboard_page_access($_SESSION['user_rh']['division'] ?? '', 'ai_diagnosis_assistant.php', '/dashboard/index.php');
@@ -52,6 +53,7 @@ if (!$report) {
     header('Location: ai_diagnosis_assistant.php');
     exit;
 }
+$report['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['created_by_name'] ?? '')) ?: '-';
 $priorMedicalRecords = [];
 $lookupCitizen = trim((string) ($report['patient_citizen_id'] ?? ''));
 $lookupName = trim((string) ($report['patient_name'] ?? ''));
@@ -85,9 +87,20 @@ $result = [];
 if ($report['status'] === 'done' && $report['result_json']) {
     $decoded = json_decode((string) $report['result_json'], true);
     if (is_array($decoded)) {
-        // Laporan final ditampilkan persis seperti keluaran model yang tersimpan.
-        // Tidak ada normalizer/finalizer yang boleh mengubah isi klinis di sini.
+        // Pertahankan isi model; hanya metadata radiologi diselaraskan di bawah
+        // dengan anatomi eksplisit pada anamnesis sumber.
         $result = $decoded;
+    }
+}
+// Selaraskan hanya metadata/rekomendasi radiologi dengan lokasi cedera pada
+// anamnesis sumber. Ini menjaga laporan lama yang metadata radiologinya kosong
+// atau salah anatomi tanpa mengubah narasi/diagnosis model yang tersimpan.
+if ($report['status'] === 'done' && $result !== []) {
+    ems_ai_ds_ensure_igd_radiology($result, (string) ($report['anamnesis'] ?? ''));
+    ems_ai_ds_reconcile_radiology_projection_views($result);
+    if (is_array($result['laboratorium_terstruktur'] ?? null)) {
+        $result['laboratorium_terstruktur'] = ems_ai_laboratory_normalize_structured_recommendation($result['laboratorium_terstruktur'])
+            ?? $result['laboratorium_terstruktur'];
     }
 }
 $displayModelItem = static function (mixed $item): string {
@@ -137,9 +150,10 @@ $roleBadgeClass = static function (string $role): string {
 };
 $emergencyLine = static function (array $action): string {
     $instruksi = trim((string) ($action['instruksi'] ?? ''));
+    $animasi = trim((string) ($action['animasi'] ?? ''));
     return trim(
         ($instruksi !== '' ? $instruksi . "\n" : '')
-        . '/e ' . ($action['animasi'] ?? 'mechanic') . "\n"
+        . ($animasi !== '' ? '/e ' . $animasi . "\n" : '')
         . '/me ' . ($action['aksi'] ?? '') . "\n"
         . '/do ' . ($action['hasil'] ?? '')
     );
@@ -149,7 +163,18 @@ $mantraAllText = implode("\n\n", array_map($emergencyLine, $emergencyItems));
 $labText = mb_strtolower(implode(' ', array_map('strval', (array) ($result['lab'] ?? []))));
 $radText = mb_strtolower(implode(' ', array_map('strval', (array) ($result['radiologi'] ?? []))));
 $labMandatory = preg_match('/crossmatch|golongan darah|laktat|hemoglobin|darah lengkap|koagulasi|syok|perdarahan/iu', $labText . ' ' . (string) ($result['diagnosis_utama'] ?? '')) === 1;
-$radMandatory = preg_match('/fraktur|patah|benda asing|proyektil|tembak|dislokasi|cedera kepala|abdomen|tulang/iu', $radText . ' ' . (string) ($result['diagnosis_utama'] ?? '') . ' ' . (string) ($result['kasus_tindakan'] ?? '')) === 1;
+$radMandatory = preg_match('/fraktur|patah|benda asing|proyektil|tembak|dislokasi|cedera kepala|intrakranial|perdarahan kepala|pendarahan kepala|abdomen|tulang/iu', $radText . ' ' . (string) ($result['diagnosis_utama'] ?? '') . ' ' . (string) ($result['kasus_tindakan'] ?? '')) === 1;
+$handoffCaseText = mb_strtolower(implode(' ', [
+    $operationPlanStatus,
+    (string) ($result['diagnosis_utama'] ?? ''),
+    (string) ($result['kasus_tindakan'] ?? ''),
+    (string) ($result['handoff'] ?? ''),
+]), 'UTF-8');
+$headCitoNoWait = $radMandatory
+    && preg_match('/kepala|intrakranial|herniasi/iu', $handoffCaseText) === 1
+    && preg_match('/cito/iu', $operationPlanStatus) === 1
+    && preg_match('/tanpa\s+menunggu\s+(?:hasil\s+)?CT|herniasi\s+akut/iu', $handoffCaseText) === 1;
+$headRadiologyLabel = 'CT Scan Kepala Non-Kontras (Axial)';
 $estimateStatusLabel = function_exists('ems_ai_ds_estimate_status_label')
     ? ems_ai_ds_estimate_status_label()
     : 'Estimasi AI — wajib verifikasi';
@@ -169,34 +194,12 @@ $ttvDisplayItems = ems_ai_ds_prepare_ttv_display(
     $result['ttv'] ?? [],
     []
 );
-$bpValue = '';
-foreach ($ttvDisplayItems as $vital) {
-    if (preg_match('/tekanan\s*darah|\btd\b|\bbp\b/iu', (string) ($vital['label'] ?? ''))) {
-        $bpValue = (string) ($vital['value'] ?? '');
-        break;
-    }
-}
-$bpNumbers = [];
-if (preg_match('/(\d{2,3})\s*\/\s*(\d{2,3})/u', $bpValue, $bpMatch)) {
-    $bpNumbers = [(int) $bpMatch[1], (int) $bpMatch[2]];
-}
-$bpGuidance = 'Normal dewasa umumnya sekitar 90–120 / 60–80 mmHg.';
-if ($bpNumbers !== []) {
-    [$bpSys, $bpDia] = $bpNumbers;
-    if ($bpSys < 90 || $bpDia < 60) {
-        $bpGuidance = 'TTV rendah/hipotensi: evaluasi ulang ABCDE, perdarahan, perfusi dan kesadaran; kontrol perdarahan, pertahankan akses IV, resusitasi sesuai instruksi DPJP, lalu reassessment berkala.';
-    } elseif ($bpSys >= 140 || $bpDia >= 90) {
-        $bpGuidance = 'TTV tinggi/hipertensi: ulangi pengukuran dengan manset sesuai, nilai nyeri, kecemasan, hipoksia, dan tanda neurologis; tangani penyebab serta ikuti instruksi DPJP, bukan menurunkan tekanan secara mendadak.';
-    } else {
-        $bpGuidance = 'TTV dalam rentang skenario stabil: tetap monitor berkala dan reassessment bila nyeri, perdarahan, sesak, atau kesadaran berubah.';
-    }
-}
 $ttvGuidance = [
-    ['title' => 'Tekanan Darah', 'normal' => 'Sekitar 90–120 / 60–80 mmHg', 'action' => 'Rendah: ulangi ukur, cek perdarahan/perfusi/kesadaran, pertahankan akses IV dan lakukan resusitasi sesuai kondisi. Tinggi: ulangi ukur, cek nyeri, hipoksia, kecemasan, dan tanda neurologis; tangani penyebabnya.'],
-    ['title' => 'Nadi / HR', 'normal' => '60–100 x/menit', 'action' => 'Cepat: cari perdarahan, nyeri, demam, hipoksia, atau syok; pasang monitor dan reassessment. Lambat: cek kesadaran, perfusi, oksigenasi, obat, dan lakukan evaluasi DPJP.'],
-    ['title' => 'Respirasi / RR', 'normal' => '12–20 x/menit', 'action' => 'Cepat atau dangkal: nilai airway dan breathing, berikan oksigen, cek ekspansi/suara napas, dan siapkan bantuan airway bila memburuk. Lambat atau tidak efektif: amankan airway dan bantu ventilasi sesuai kondisi.'],
-    ['title' => 'Suhu', 'normal' => '36,0–37,5 °C', 'action' => 'Rendah: hangatkan pasien, ganti pakaian/selimut basah, monitor koagulasi dan perfusi. Tinggi: evaluasi infeksi, lingkungan, obat, hidrasi, dan lakukan pendinginan bertahap bila diperlukan.'],
-    ['title' => 'Saturasi O₂ / SpO₂', 'normal' => '95–100% pada dewasa tanpa kondisi khusus', 'action' => 'Turun: pastikan sensor dan airway benar, posisikan pasien, berikan oksigen, nilai breathing, dan eskalasi airway bila tidak membaik.'],
+    ['title' => 'Tekanan Darah', 'normal' => 'Dewasa istirahat: sekitar 90/60-120/80 mmHg.', 'low' => 'Rendah (<90 sistolik atau <60 diastolik): ulangi ukur dengan manset benar; segera nilai ABCDE, perdarahan, perfusi, nadi, dan kesadaran. Kontrol perdarahan yang terlihat, panggil bantuan DPJP, pertahankan pemantauan/akses IV; cairan atau tindakan lanjutan ditentukan klinisi sesuai penyebab.', 'high' => 'Di atas rentang: ukur ulang dengan posisi dan manset benar; nilai nyeri, cemas, hipoksia, serta gejala neurologis/nyeri dada. Pembacaan berulang >=140/90 perlu penilaian klinisi; bila >=180 sistolik atau >=120 diastolik, eskalasi segera; bila disertai gejala kerusakan organ, perlakukan sebagai kegawatan. Jangan menurunkan tekanan secara mendadak tanpa instruksi klinisi.'],
+    ['title' => 'Nadi / HR', 'normal' => '60-100 kali/menit saat istirahat pada dewasa.', 'low' => 'Lambat (<60): cek ulang nadi dan irama pada monitor, nilai kesadaran, perfusi, tekanan darah, dan gejala; eskalasi segera bila pingsan, nyeri dada, sesak, atau perfusi buruk.', 'high' => 'Cepat (>100): cek irama pada monitor; nilai perdarahan/syok, nyeri, demam, kecemasan, dan oksigenasi. Tangani penyebab yang ditemukan dan reassessment; eskalasi bila menetap atau perfusi memburuk.'],
+    ['title' => 'Suhu', 'normal' => 'Sekitar 36.5-37.3 derajat C; dapat bervariasi menurut cara ukur dan kondisi.', 'low' => 'Rendah (<36 derajat C): ukur ulang, keringkan dan selimuti pasien, cegah paparan dingin, lalu pantau suhu serta perfusi.', 'high' => 'Tinggi (>=38 derajat C): ukur ulang, nilai kondisi umum dan kemungkinan penyebab; cegah panas berlebih dan eskalasi bila kesadaran turun, sesak, atau kondisi memburuk.'],
+    ['title' => 'Respirasi / RR', 'normal' => '12-18 kali/menit saat istirahat pada dewasa.', 'low' => 'Lambat (<12), dangkal, atau tidak efektif: segera nilai patensi jalan napas, usaha napas, kesadaran, dan SpO2; panggil bantuan dan dukung ventilasi/jalan napas sesuai kondisi.', 'high' => 'Cepat (>18): nilai airway, usaha/ekspansi napas, SpO2, nyeri, demam, dan tanda syok; posisikan untuk memudahkan napas, berikan oksigen bila hipoksemia/indikasi, dan eskalasi bila memburuk.'],
+    ['title' => 'Saturasi O2 / SpO2', 'normal' => 'Umumnya 95-100% pada dewasa tanpa kondisi khusus.', 'low' => 'Rendah (<95%): periksa posisi sensor dan sinyal, nilai airway serta pola napas; posisikan pasien dan berikan oksigen bila hipoksemia/indikasi. Nilai <90% atau penurunan dengan distress perlu eskalasi segera.', 'high' => 'Nilai di atas rentang alat biasanya perlu cek ulang sensor/sinyal; SpO2 tinggi sendiri bukan alasan memberi tindakan penurun. Jangan menaikkan oksigen bila saturasi sudah sesuai target klinis.'],
 ];
 $gcsTotal = ems_ai_ds_gcs_total($gcsDisplay);
 $mantraAllText = implode("\n\n", array_map($emergencyLine, $emergencyItems));
@@ -350,8 +353,10 @@ include __DIR__ . '/../partials/sidebar.php';
                         <?php if ($pupilAssessment !== [] && trim((string) ($pupilAssessment['status'] ?? '')) !== '' && !preg_match('/data belum|belum tersedia/iu', (string) ($pupilAssessment['status'] ?? ''))): ?>
                             <div class="mt-4 w-full border-t border-slate-200 pt-3 text-left text-xs text-slate-600">
                                 <div class="font-bold text-slate-500">Disability — Pemeriksaan Pupil</div>
-                                <div>Status: <?= htmlspecialchars((string) ($pupilAssessment['status'] ?? 'Data belum tersedia'), ENT_QUOTES, 'UTF-8') ?></div>
-                                <div>Reaktivitas: <?= htmlspecialchars((string) ($pupilAssessment['reaktivitas'] ?? 'Data belum tersedia'), ENT_QUOTES, 'UTF-8') ?></div>
+                                <div>Status: <?= htmlspecialchars((string) $pupilAssessment['status'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php if (trim((string) ($pupilAssessment['reaktivitas'] ?? '')) !== ''): ?>
+                                    <div>Reaktivitas: <?= htmlspecialchars((string) $pupilAssessment['reaktivitas'], ENT_QUOTES, 'UTF-8') ?></div>
+                                <?php endif; ?>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -435,6 +440,25 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
         </div>
 
+
+            <div class="card mb-4 border border-sky-200">
+                <div class="card-header">Panduan Tindakan Saat TTV Berubah</div>
+                <div class="p-4">
+                    <p class="text-xs text-slate-600 mb-3">Acuan umum dewasa saat istirahat. Nilai dipengaruhi usia, kondisi dasar, lokasi/cara ukur, dan konteks kasus; nilai pasien serta kondisi klinis tetap menjadi acuan. Perubahan akut harus dinilai bersama ABCDE dan tren TTV.</p>
+                    <p class="text-[11px] text-slate-500 mb-3">Rujukan: <a class="underline" href="https://medlineplus.gov/ency/article/002341.htm" target="_blank" rel="noopener">MedlinePlus - vital signs</a>, <a class="underline" href="https://www.resus.org.uk/library/abcde-approach" target="_blank" rel="noopener">Resuscitation Council UK - ABCDE</a>, dan <a class="underline" href="https://www.heart.org/en/health-topics/high-blood-pressure/understanding-blood-pressure-readings/when-to-call-911-for-high-blood-pressure" target="_blank" rel="noopener">AHA - tekanan darah sangat tinggi</a>.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <?php foreach ($ttvGuidance as $guide): ?>
+                            <section class="rounded-lg border border-slate-200 bg-white p-3">
+                                <h3 class="font-semibold text-sm"><?= htmlspecialchars($guide['title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                <p class="text-xs mt-1"><strong>Rentang umum:</strong> <?= htmlspecialchars($guide['normal'], ENT_QUOTES, 'UTF-8') ?></p>
+                                <p class="text-xs mt-2 text-amber-800"><strong>Jika rendah:</strong> <?= htmlspecialchars($guide['low'], ENT_QUOTES, 'UTF-8') ?></p>
+                                <p class="text-xs mt-2 text-rose-800"><strong>Jika tinggi:</strong> <?= htmlspecialchars($guide['high'], ENT_QUOTES, 'UTF-8') ?></p>
+                            </section>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div class="card">
                     <div class="card-header">Rekomendasi Laboratorium</div>
@@ -510,7 +534,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             $instruksi = (string) ($action['instruksi'] ?? '');
                             $aksi = (string) ($action['aksi'] ?? '');
                             $hasil = (string) ($action['hasil'] ?? '');
-                            $anim = (string) ($action['animasi'] ?? 'mechanic');
+                            $anim = trim((string) ($action['animasi'] ?? ''));
                         ?>
                         <div class="rounded-lg border border-slate-200 p-4">
                             <div class="flex items-center gap-3 mb-3 flex-wrap">
@@ -522,10 +546,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <div class="mb-3 md:ml-10 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs italic text-slate-600 whitespace-pre-line"><?= htmlspecialchars($instruksi, ENT_QUOTES, 'UTF-8') ?></div>
                             <?php endif; ?>
                             <div class="space-y-2 text-sm md:ml-10">
+                                <?php if ($anim !== ''): ?>
                                 <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                     <div><span class="font-bold">/e</span> <?= htmlspecialchars($anim, ENT_QUOTES, 'UTF-8') ?></div>
                                     <button type="button" class="btn-secondary btn-sm mantra-copy-btn" data-copy="<?= htmlspecialchars('/e ' . $anim, ENT_QUOTES, 'UTF-8') ?>">Salin</button>
                                 </div>
+                                <?php endif; ?>
                                 <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                     <div><span class="font-bold">/me</span> <?= htmlspecialchars($aksi, ENT_QUOTES, 'UTF-8') ?></div>
                                     <button type="button" class="btn-secondary btn-sm mantra-copy-btn" data-copy="<?= htmlspecialchars('/me ' . $aksi, ENT_QUOTES, 'UTF-8') ?>">Salin</button>
@@ -543,8 +569,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
                         <div class="font-bold mb-1">Handoff Pemeriksaan Penunjang</div>
                         <div>Laboratorium: <strong><?= $labMandatory ? 'WAJIB — ambil sampel darah sekarang' : 'OPSIONAL — lakukan bila ada indikasi klinis atau perubahan kondisi' ?></strong>.</div>
-                        <div>Radiologi: <strong><?= $radMandatory ? 'WAJIB — lanjutkan setelah stabilisasi' : 'OPSIONAL — lanjutkan bila diperlukan oleh temuan klinis' ?></strong>.</div>
-                        <div class="mt-1">Setelah pemeriksaan yang berstatus wajib selesai, lakukan reassessment ABCDE dan serah-terima ke tahap berikutnya sesuai rencana laporan.</div>
+                        <div>Radiologi: <strong><?= $headCitoNoWait ? 'WAJIB &#8212; ' . $headRadiologyLabel . '; jangan menunda transfer operasi cito untuk menunggu pencitraan' : ($radMandatory ? 'WAJIB &#8212; lanjutkan setelah stabilisasi' : 'OPSIONAL &#8212; lanjutkan bila diperlukan oleh temuan klinis') ?></strong>.</div>
+                        <div class="mt-1"><?= $headCitoNoWait ? 'Karena laporan menetapkan tanda herniasi akut dan operasi cito, lakukan reassessment ABCDE dan serah-terima langsung ke Ruang Operasi; CT kepala dikerjakan segera bila tidak menunda tindakan definitif.' : 'Setelah pemeriksaan yang berstatus wajib selesai, lakukan reassessment ABCDE dan serah-terima ke tahap berikutnya sesuai rencana laporan.' ?></div>
                     </div>
                 </div>
             </div>

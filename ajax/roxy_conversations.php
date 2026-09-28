@@ -18,6 +18,7 @@ $userId = (int) ($user['id'] ?? 0);
 if ($userId <= 0) {
     emsJsonAbort(401, ['success' => false, 'message' => 'Sesi tidak valid.']);
 }
+$unitCode = ems_effective_unit($pdo, $user);
 
 $action = trim((string) ($_GET['action'] ?? $_POST['action'] ?? 'list'));
 
@@ -35,15 +36,15 @@ if ($action === 'delete') {
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? LIMIT 1');
-        $stmt->execute([$conversationId, $userId]);
+        $stmt = $pdo->prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? AND unit_code = ? LIMIT 1');
+        $stmt->execute([$conversationId, $userId, $unitCode]);
         if (!$stmt->fetchColumn()) {
             $pdo->rollBack();
             emsJsonAbort(404, ['success' => false, 'message' => 'Percakapan tidak ditemukan.']);
         }
 
         $pdo->prepare('DELETE FROM bot_messages WHERE conversation_id = ?')->execute([$conversationId]);
-        $pdo->prepare('DELETE FROM bot_conversations WHERE id = ? AND user_id = ?')->execute([$conversationId, $userId]);
+        $pdo->prepare('DELETE FROM bot_conversations WHERE id = ? AND user_id = ? AND unit_code = ?')->execute([$conversationId, $userId, $unitCode]);
         $pdo->commit();
 
         echo json_encode(['success' => true, 'conversation_id' => $conversationId], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -65,17 +66,17 @@ if ($action === 'delete_all') {
 
     $pdo->beginTransaction();
     try {
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM bot_conversations WHERE user_id = ?');
-        $stmt->execute([$userId]);
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM bot_conversations WHERE user_id = ? AND unit_code = ?');
+        $stmt->execute([$userId, $unitCode]);
         $conversationCount = (int) $stmt->fetchColumn();
 
         if ($conversationCount > 0) {
             $pdo->prepare('
                 DELETE bm FROM bot_messages bm
                 INNER JOIN bot_conversations bc ON bc.id = bm.conversation_id
-                WHERE bc.user_id = ?
-            ')->execute([$userId]);
-            $pdo->prepare('DELETE FROM bot_conversations WHERE user_id = ?')->execute([$userId]);
+                WHERE bc.user_id = ? AND bc.unit_code = ?
+            ')->execute([$userId, $unitCode]);
+            $pdo->prepare('DELETE FROM bot_conversations WHERE user_id = ? AND unit_code = ?')->execute([$userId, $unitCode]);
         }
 
         $pdo->commit();
@@ -93,11 +94,11 @@ if ($action === 'list') {
     $stmt = $pdo->prepare("
         SELECT id, title, last_message_at
         FROM bot_conversations
-        WHERE user_id = ? AND status = 'active'
+        WHERE user_id = ? AND unit_code = ? AND status = 'active'
         ORDER BY last_message_at DESC
         LIMIT 50
     ");
-    $stmt->execute([$userId]);
+    $stmt->execute([$userId, $unitCode]);
 
     echo json_encode(['success' => true, 'conversations' => $stmt->fetchAll(PDO::FETCH_ASSOC)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -113,11 +114,11 @@ if ($action === 'messages') {
     // Manager-plus dikecualikan dari filter user_id — mereka memang berhak
     // lihat riwayat SEMUA medis lewat halaman monitoring (§4c).
     if ($isManagerPlus) {
-        $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? LIMIT 1");
-        $stmt->execute([$conversationId]);
+        $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? AND unit_code = ? LIMIT 1");
+        $stmt->execute([$conversationId, $unitCode]);
     } else {
-        $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? LIMIT 1");
-        $stmt->execute([$conversationId, $userId]);
+        $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? AND unit_code = ? LIMIT 1");
+        $stmt->execute([$conversationId, $userId, $unitCode]);
     }
     if (!$stmt->fetchColumn()) {
         emsJsonAbort(404, ['success' => false, 'message' => 'Percakapan tidak ditemukan.']);

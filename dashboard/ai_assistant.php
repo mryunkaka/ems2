@@ -58,6 +58,9 @@ include __DIR__ . '/../partials/sidebar.php';
 .roxy-bubble-wrap.user .roxy-rich-label,
 .roxy-bubble-wrap.user .roxy-rich-heading { color:#fff; }
 .roxy-bubble-source { font-size:10px; color:#94a3b8; margin-top:3px; }
+.roxy-correction-toggle { margin-top:4px; border:0; background:none; padding:2px 0; color:#0284c7; font-size:11px; cursor:pointer; }
+.roxy-correction-form { display:flex; flex-direction:column; gap:6px; width:min(420px,80vw); margin-top:6px; }
+.roxy-correction-form textarea { min-height:90px; font-size:12px; }
 .roxy-bubble a { color:#0369a1; text-decoration:underline; }
 .roxy-bubble-wrap.user .roxy-bubble a { color:#e0f2fe; }
 .roxy-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid #e2e8f0; }
@@ -191,8 +194,8 @@ include __DIR__ . '/../partials/sidebar.php';
 
     function renderInlineMarkdown(value) {
         var html = escapeHtml(value);
-        html = html.replace(/@url:\s*`(https:\/\/roxwoodhospitalime\.my\.id\/dashboard\/document_view\.php\?id=\d+)`/g, '<a href="$1" target="_blank" rel="noopener">Buka dokumen</a>');
-        html = html.replace(/\[([^\]\n]+)\]\((https:\/\/roxwoodhospitalime\.my\.id\/dashboard\/document_view\.php\?id=\d+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        html = html.replace(/@url:\s*`(https?:\/\/[^\s`<>]+)`/g, '<a href="$1" target="_blank" rel="noopener noreferrer">Buka dokumen</a>');
+        html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)<>]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
         html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
         html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -239,7 +242,7 @@ include __DIR__ . '/../partials/sidebar.php';
         return fragment;
     }
 
-    function appendBubble(sender, text, sourceLabel) {
+    function appendBubble(sender, text, sourceLabel, messageId) {
         var wrap = document.createElement('div');
         wrap.className = 'roxy-bubble-wrap ' + (sender === 'user' ? 'user' : 'bot');
         var label = document.createElement('div');
@@ -256,15 +259,83 @@ include __DIR__ . '/../partials/sidebar.php';
             src.textContent = sourceLabel;
             wrap.appendChild(src);
         }
+        if (sender === 'bot' && Number(messageId) > 0) {
+            var correctionButton = document.createElement('button');
+            correctionButton.type = 'button';
+            correctionButton.className = 'roxy-correction-toggle';
+            correctionButton.textContent = 'Koreksi jawaban';
+            correctionButton.addEventListener('click', function () {
+                openCorrectionForm(wrap, Number(messageId));
+            });
+            wrap.appendChild(correctionButton);
+        }
         els.chatWindow.appendChild(wrap);
         els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
+        return wrap;
+    }
+
+    function openCorrectionForm(wrap, messageId) {
+        var existing = wrap.querySelector('.roxy-correction-form');
+        if (existing) { existing.remove(); return; }
+        var form = document.createElement('form');
+        form.className = 'roxy-correction-form';
+        var textarea = document.createElement('textarea');
+        textarea.required = true;
+        textarea.minLength = 10;
+        textarea.maxLength = 8000;
+        textarea.placeholder = 'Tulis jawaban yang benar dan jelas (10–8.000 karakter).';
+        var submit = document.createElement('button');
+        submit.type = 'submit';
+        submit.className = 'btn-secondary btn-sm';
+        submit.textContent = 'Kirim untuk review manager';
+        form.append(textarea, submit);
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            submit.disabled = true;
+            var body = new URLSearchParams();
+            body.set('csrf_token', CSRF_TOKEN);
+            body.set('original_message_id', String(messageId));
+            body.set('corrected_answer', textarea.value.trim());
+            fetch('/actions/roxy_correction_action.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            }).then(readJsonResponse).then(function (data) {
+                if (!data.success) {
+                    submit.disabled = false;
+                    window.alert(data.message || 'Koreksi gagal dikirim.');
+                    return;
+                }
+                form.textContent = data.message || 'Koreksi menunggu review manager.';
+            }).catch(function () {
+                submit.disabled = false;
+                window.alert('Koneksi gagal. Koreksi belum dipastikan tersimpan.');
+            });
+        });
+        wrap.appendChild(form);
+        textarea.focus();
     }
 
     function answerSourceLabel(source, usedDeepResearch, personalProvider) {
         if (usedDeepResearch || source === 'gemini_personal') {
             return 'Hasil riset mendalam (' + (personalProvider ? 'Provider personal: ' + personalProvider : 'Gemini pribadi') + ')';
         }
+        if (source === 'learned_correction') {
+            return 'Menggunakan jawaban koreksi yang telah disetujui manager';
+        }
         return '';
+    }
+
+    function appendResearchSetupNotice() {
+        var notice = document.createElement('div');
+        notice.className = 'roxy-bubble-source';
+        notice.appendChild(document.createTextNode('Untuk riset lebih dalam, atur provider AI personal: '));
+        var link = document.createElement('a');
+        link.href = '/dashboard/ai_settings_personal.php';
+        link.textContent = 'Buka Setting AI Saya';
+        notice.appendChild(link);
+        els.chatWindow.appendChild(notice);
+        els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
     }
 
     function loadConversationList(selectId) {
@@ -313,7 +384,7 @@ include __DIR__ . '/../partials/sidebar.php';
             .then(function (data) {
                 if (!data.success) return;
                 data.messages.forEach(function (m) {
-                    appendBubble(m.sender, m.content);
+                    appendBubble(m.sender, m.content, answerSourceLabel(m.answer_source, m.answer_source === 'gemini_personal', 'Gemini pribadi'), m.id);
                 });
                 var last = data.messages.length ? data.messages[data.messages.length - 1] : null;
                 if (last && last.sender === 'bot' && last.expression_tag) {
@@ -409,7 +480,7 @@ include __DIR__ . '/../partials/sidebar.php';
         var text = els.input.value.trim();
         if (!text || els.sendBtn.disabled) return;
 
-        appendBubble('user', text);
+        var pendingUserBubble = appendBubble('user', text);
         els.input.value = '';
         els.sendBtn.disabled = true;
         els.typing.classList.remove('hidden');
@@ -431,14 +502,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 els.sendBtn.disabled = false;
                 if (!data.success) {
                     setExpression('alert');
+                    pendingUserBubble.remove();
+                    els.input.value = text;
                     appendBubble('bot', data.message || 'Roxy gagal menjawab, coba lagi.');
                     return;
                 }
                 currentConversationId = data.conversation_id;
                 setExpression(data.expression || 'netral');
-                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.personal_provider));
+                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.personal_provider), data.message_id);
                 if (data.gemini_key_missing) {
-                    appendBubble('bot', 'Catatan: pertanyaan ini butuh provider AI pribadi untuk riset lebih dalam. Atur di Setting AI Saya.');
+                    appendResearchSetupNotice();
                 }
                 loadConversationList(currentConversationId);
             })
@@ -446,6 +519,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 els.typing.classList.add('hidden');
                 els.sendBtn.disabled = false;
                 setExpression('alert');
+                pendingUserBubble.remove();
+                els.input.value = text;
                 appendBubble('bot', 'Koneksi ke Roxy gagal. Coba lagi.');
             });
     }

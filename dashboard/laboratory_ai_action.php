@@ -121,6 +121,14 @@ if ($regenerateOfId > 0) {
 }
 
 $systemPrompt = ems_ai_laboratory_default_system_prompt();
+$referenceLabResults = [];
+if ($diagnosisCode !== null && $diagnosisCode !== '') {
+    $sourceDiagnosis = ems_ai_ds_find_diagnosis_report_by_code($pdo, $diagnosisCode, $effectiveUnit);
+    $sourceDiagnosisData = is_array($sourceDiagnosis) ? json_decode((string) ($sourceDiagnosis['result_json'] ?? ''), true) : null;
+    if (is_array($sourceDiagnosisData) && is_array($sourceDiagnosisData['lab'] ?? null)) {
+        $referenceLabResults = $sourceDiagnosisData['lab'];
+    }
+}
 $userPrompt = ems_ai_laboratory_build_user_prompt([
     'department' => $department,
     'category' => $category,
@@ -128,6 +136,7 @@ $userPrompt = ems_ai_laboratory_build_user_prompt([
     'custom_parameters' => $customParameters,
     'specimen_type' => $specimenType,
     'clinical_info' => $clinicalInfo,
+    'reference_results' => $referenceLabResults,
 ]);
 
 $identityLines = [];
@@ -156,6 +165,31 @@ for ($attempt = 1; $attempt <= 2; $attempt++) {
 }
 
 $customParametersStore = $customParameters !== [] ? implode(', ', $customParameters) : null;
+$data = null;
+$qualityIssue = null;
+if ($result['ok']) {
+    $data = ems_ai_laboratory_sanitize_result($result['data']);
+    $qualityIssue = ems_ai_laboratory_result_quality_issue($data, $department, $category, $level3Value, $customParameters, $referenceLabResults);
+    if ($qualityIssue !== null) {
+        $repairPrompt = $userPrompt
+            . "\n\nHASIL JSON YANG HARUS DILENGKAPI (pertahankan bagian yang valid):\n"
+            . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+            . "\n\nPERBAIKAN WAJIB: " . $qualityIssue
+            . " Berikan ulang seluruh JSON sesuai panel dan SOP. Jangan hilangkan parameter, jangan masukkan placeholder, jangan menambah pemeriksaan lain.";
+        $repairResult = ems_ai_ds_call_gemini($pdo, $systemPrompt, $repairPrompt, 'ai_laboratory', isset($user['id']) ? (int) $user['id'] : null);
+        if ($repairResult['ok']) {
+            $result = $repairResult;
+            $data = ems_ai_laboratory_sanitize_result($repairResult['data']);
+            $qualityIssue = ems_ai_laboratory_result_quality_issue($data, $department, $category, $level3Value, $customParameters, $referenceLabResults);
+        }
+        if (!$repairResult['ok'] || $qualityIssue !== null) {
+            $result = [
+                'ok' => false,
+                'error' => 'Model belum melengkapi laporan laboratorium setelah satu kali perbaikan terarah: ' . ($qualityIssue ?? (string) ($repairResult['error'] ?? 'respons perbaikan gagal.')),
+            ];
+        }
+    }
+}
 
 if (!$result['ok']) {
     $errorMessage = (string) ($result['error'] ?? 'Model AI gagal merespons. Silakan coba lagi.');
@@ -187,7 +221,7 @@ if (!$result['ok']) {
     ems_ai_lab_json_response(['ok' => false, 'message' => 'Model AI error: ' . $errorMessage . ' Harap coba lagi.'], 502);
 }
 
-$data = ems_ai_laboratory_sanitize_result($result['data']);
+$data ??= ems_ai_laboratory_sanitize_result($result['data']);
 
 $reportCode = null;
 for ($codeAttempt = 0; $codeAttempt < 5; $codeAttempt++) {

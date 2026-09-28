@@ -221,35 +221,25 @@ Artikel how-to yang ditulis manual (bukan dari dokumen upload) — basis
 | **FULLTEXT** `(title, tags, content)` | | Sama pola dengan `document_files` |
 
 ### `bot_answer_corrections`
-Rekaman tiap kali medis mengoreksi jawaban Roxy yang salah.
+Koreksi dari pengguna disimpan sebagai pending dan hanya manager-plus yang
+menyetujui atau menolak dengan alasan/rujukan SOP. Koreksi pending tidak
+pernah menjadi konteks jawaban.
 
-| Kolom | Tipe | Keterangan |
-|---|---|---|
-| `id` | INT PK AI | |
-| `original_message_id` | INT | Pesan bot yang dikoreksi |
-| `question_snapshot` | MEDIUMTEXT | Pertanyaan aslinya (arsip, jaga-jaga pesan asli berubah) |
-| `wrong_answer_snapshot` | MEDIUMTEXT | |
-| `corrected_answer` | MEDIUMTEXT | Jawaban benar menurut medis |
-| `corrected_by_user_id`, `corrected_by_name_snapshot` | | |
-| `verification_status` | ENUM('pending','verified','rejected') | Lihat alur §7.5 |
-| `verification_note` | MEDIUMTEXT NULL | Hasil riset ulang Roxy soal koreksi ini |
-| `created_at`, `verified_at` | | |
+Kolom utama: `unit_code`, `conversation_id`, `original_message_id`,
+`question_snapshot`, `wrong_answer_snapshot`, `corrected_answer`,
+`submitted_by`, `submitted_by_name`, `verification_status`,
+`verification_note`, `reviewed_by`, `reviewed_by_name`, `created_at`,
+`reviewed_at`. Satu user hanya dapat mengajukan satu koreksi per pesan bot.
 
 ### `bot_learned_answers`
-Basis pengetahuan hasil pelatihan yang **sudah terverifikasi** — ini yang
-dipakai duluan sebelum tanya model AI lagi untuk pertanyaan serupa.
+Jawaban koreksi yang disetujui manager. Penggunaan ulang dibatasi pada
+pertanyaan yang sama persis setelah normalisasi kapitalisasi dan spasi, serta
+selalu terikat ke `unit_code`; sistem tidak menggeneralisasi koreksi ke kasus
+atau pertanyaan berbeda.
 
-| Kolom | Tipe | Keterangan |
-|---|---|---|
-| `id` | INT PK AI | |
-| `unit_code` | VARCHAR(20) | |
-| `question_text` | MEDIUMTEXT | Untuk FULLTEXT matching |
-| `answer_text` | MEDIUMTEXT | |
-| `source_correction_id` | INT | FK ke `bot_answer_corrections` |
-| `times_reused` | INT DEFAULT 0 | Opsional, buat lihat efektivitas |
-| `created_at`, `updated_at` | | |
-| **FULLTEXT** `(question_text)` | | |
-
+Kolom utama: `unit_code`, `question_hash` (SHA-256), `question_text`,
+`answer_text`, `source_correction_id`, `times_reused`, `created_at`,
+`updated_at`. Rujukan SOP resmi tetap diprioritaskan jika bertentangan.
 ### Tabel yang **di-reuse**, tidak dibuat baru
 - `user_ai_settings` — API key Gemini pribadi (sudah ada). **Diperluas
   2026-08-30** dengan 2 kolom baru: `groq_api_key` (VARCHAR 255, nullable)
@@ -270,12 +260,13 @@ dipakai duluan sebelum tanya model AI lagi untuk pertanyaan serupa.
 
 ## 6. Basis Pengetahuan — Dari Mana Roxy "Tahu" Tentang Project Ini
 
-Retrieval (pencarian konteks sebelum tanya AI) menggabungkan **4 sumber**,
-semua lewat FULLTEXT (bukan embedding, lihat §0):
+Retrieval (pencarian konteks sebelum tanya AI) menggabungkan empat sumber
+pengetahuan. Jawaban koreksi memakai hash exact-match per unit; artikel dan
+dokumen memakai FULLTEXT (bukan embedding, lihat §0):
 
-1. **`bot_learned_answers`** — dicek PALING DULU. Kalau ada pertanyaan
-   yang sangat mirip dengan yang pernah dikoreksi & diverifikasi, jawaban
-   terlatih ini diprioritaskan.
+1. **`bot_learned_answers`** — dicek PALING DULU. Jawaban manager-approved
+   hanya dipakai untuk pertanyaan yang sama persis setelah normalisasi spasi
+   dan kapitalisasi; koreksi tidak digeneralisasi ke pertanyaan berbeda.
 2. **`bot_knowledge_base`** — artikel how-to manual. Ini perlu **diisi
    dulu** sebelum Roxy benar-benar berguna — usul: seed awal dari
    ringkasan section-section relevan `CLAUDE.md` yang sudah ada (ditulis
@@ -397,25 +388,30 @@ otomatis terbaca, tidak perlu ditranskrip manual lagi).
 ## 7. Alur Bisnis
 
 ### 7.1 Percakapan normal
-1. User kirim pesan → simpan sebagai `bot_messages` (sender=user).
-2. Retrieval: query `bot_learned_answers` → `bot_knowledge_base` →
-   `document_files` → **whitelist tabel Secretary/Surat yang diizinkan**
-   (7 tabel di §6.3 — hardcoded, tidak pernah termasuk Surat Rahasia atau
-   Komdis) — semua FULLTEXT, ambil beberapa hasil teratas per sumber.
+1. User mengirim pesan. Sistem memuat riwayat percakapan miliknya, lalu
+   meminta jawaban AI sebelum menyimpan pesan baru. Pasangan pesan user dan
+   jawaban bot baru disimpan setelah jawaban berhasil dibuat.
+2. Retrieval aktif: koreksi manager-approved untuk pertanyaan exact-match
+   (jika ada), konteks kasus DGN bila disebut, `bot_knowledge_base`, dokumen
+   resmi, lalu **whitelist tabel Secretary/Surat yang diizinkan** (6 tabel
+   attachment hardcoded, tidak pernah termasuk Surat Rahasia atau Komdis).
+   Artikel/lampiran memakai pencarian teks; pencocokan koreksi tidak memakai
+   FULLTEXT atau kemiripan semantik.
 3. Bangun prompt: system prompt (persona Roxy + aturan gaya bahasa +
-   guardrail §10) + potongan hasil retrieval sebagai konteks + **seluruh
-   riwayat percakapan** (conversation_id ini) + pesan baru.
-4. Panggil Groq (tingkat 1). Minta respons **terstruktur** (JSON) berisi
-   `answer`, `expression` (§8), dan `needs_deeper_research` (boolean —
-   model sendiri yang menandai kalau dia kurang yakin).
-5. Kalau `needs_deeper_research=true` DAN user sudah punya Gemini key →
-   panggil tingkat 2 (Gemini, `ems_ai_ds_call_gemini()`) dengan konteks
-   yang sama + instruksi riset lebih dalam.
-6. Kalau `needs_deeper_research=true` TAPI belum ada Gemini key → jawaban
-   tingkat 1 tetap ditampilkan (dengan disclaimer "kurang yakin"), plus
-   tombol "Atur API Key Gemini untuk riset lebih dalam".
-7. Simpan balasan sebagai `bot_messages` (sender=bot, `answer_source`
-   sesuai jalur yang dipakai, `expression_tag` dari respons model).
+   guardrail §10) + potongan hasil retrieval sebagai konteks + seluruh
+   riwayat percakapan (conversation_id ini) + pesan baru.
+4. Panggil Groq (tingkat 1). Jika Groq tidak tersedia/responsnya tidak valid,
+   gunakan provider personal bila user sudah mengaturnya; jika keduanya gagal,
+   jangan simpan pesan setengah jadi. Minta respons terstruktur (JSON) berisi
+   `answer`, `expression` (§8), dan `needs_deeper_research` (boolean).
+5. Kalau `needs_deeper_research=true` dan user sudah punya Gemini key,
+   panggil tingkat 2 (`ems_ai_ds_call_gemini()`) dengan konteks yang sama.
+6. Kalau butuh riset mendalam tetapi key Gemini tidak ada, jawaban Groq
+   tetap ditampilkan dan UI memberi catatan bahwa provider personal perlu
+   diatur untuk riset lanjutan.
+7. Setelah jawaban tersedia, simpan pesan user dan balasan bot ke
+   `bot_messages` beserta `answer_source`, `expression_tag`, dan relasi
+   `reply_to_message_id` dalam satu transaksi.
 
 ### 7.2 Follow-up / pertanyaan kurang lengkap
 Tidak perlu mekanisme baru — ini otomatis terjadi karena langkah 7.1.3
@@ -432,36 +428,23 @@ medis, jawab dengan tenang, kutip SOP/pengalaman yang relevan dari
 konteks yang diberikan, jangan defensif berlebihan, jangan mengaku salah
 kalau memang sesuai SOP."
 
-### 7.4 Eskalasi ke Gemini pribadi
-Trigger: `needs_deeper_research=true` dari model tingkat 1, ATAU user
-ketik eksplisit ("tolong cari tahu lebih dalam"/tombol "Riset Mendalam"
-di UI), ATAU proses verifikasi koreksi (§7.5). Selalu transparan ke user
-bahwa jawaban ini pakai API key pribadi mereka (badge kecil "Hasil riset
-mendalam" di bubble jawaban).
-
-### 7.5 Pelatihan / koreksi jawaban (bagian paling kompleks, ditegaskan sesuai permintaan)
-1. Medis klik "Koreksi jawaban ini" di bubble jawaban Roxy yang salah →
-   form kecil isi jawaban yang benar → simpan ke `bot_answer_corrections`
-   (`verification_status='pending'`).
-2. **Sistem TIDAK langsung percaya koreksi ini begitu saja** (sesuai
-   permintaan eksplisit: "juga harus meriset apakah memang benar
-   jawabnya salah"). Roxy menjalankan verifikasi otomatis: cek koreksi
-   ini terhadap `bot_knowledge_base`/`document_files` yang relevan
-   (FULLTEXT lagi), dan kalau perlu lempar ke Gemini (§7.4) dengan
-   prompt "berikut jawaban asal, jawaban koreksi dari user, dan konteks
-   SOP relevan — apakah koreksi ini valid?".
-3. Hasil verifikasi:
-   - **Cocok/valid** → `verification_status='verified'`, otomatis masuk
-     ke `bot_learned_answers`, langsung berlaku untuk pertanyaan serupa
-     berikutnya.
-   - **Tidak yakin/bertentangan dengan SOP** → **tidak** otomatis masuk
-     `bot_learned_answers` — masuk antrian review manager-plus (di
-     halaman kelola, §4) yang keputusan akhirnya di tangan manusia, bukan
-     AI sendiri yang memutuskan sepihak.
-4. Ini memenuhi kedua sisi permintaan: koreksi dari medis **dihargai &
-   disimpan** untuk masa depan, TAPI tetap ada lapisan verifikasi supaya
-   Roxy tidak ikut "belajar" jawaban yang sebenarnya salah juga.
-
+### 7.4 Eskalasi ke Gemini/provider personal
+Trigger: `needs_deeper_research=true` dari model tingkat 1, atau user
+meminta riset lebih dalam. Jawaban diberi label provider personal jika jalur
+tersebut digunakan. Review koreksi bukan eskalasi otomatis; manager-plus
+meninjau usulan koreksi di Monitoring Roxy.
+### 7.5 Pelatihan / koreksi jawaban
+1. Pengguna mengirim koreksi dari bubble atau halaman chat. Koreksi menyimpan
+   snapshot pertanyaan dan jawaban yang dikoreksi, lalu berstatus `pending`.
+2. Manager-plus membuka antrean di Monitoring Roxy, membandingkan pertanyaan,
+   jawaban lama, dan usulan koreksi dengan dokumen/SOP, lalu wajib mencatat
+   alasan atau rujukan sebelum menyetujui atau menolak.
+3. Koreksi yang disetujui disimpan di `bot_learned_answers` dan hanya
+   digunakan untuk pertanyaan yang sama persis dalam unit yang sama. Koreksi
+   yang ditolak maupun yang masih pending tidak pernah dipakai menjawab.
+4. Verifikasi saat ini adalah review manusia; Gemini tidak memverifikasi
+   koreksi secara otomatis. Ini sengaja mencegah model mengesahkan jawaban
+   yang bertentangan dengan SOP.
 ### 7.6 Diagnosa error dari log (khusus manager-plus, dibatasi ketat)
 Perintah khusus di chat (mis. ketik "/cek-error" atau tombol dedicated,
 **tidak muncul untuk staff biasa**) yang membaca beberapa baris terakhir
@@ -613,14 +596,34 @@ diuji langsung terhadap DB lokal nyata, bukan cuma dry-run):
   per medis sesuai §4c). Terdaftar di whitelist ACL
   `$roxwoodHospitalAiPages` + sidebar grup "Roxwood Hospital AI".
 
-**Belum dikerjakan**: widget bubble di footer (§4a — chat halaman penuh
-sudah bisa dipakai sebagai gantinya untuk sekarang), klik-uji langsung
-lewat browser (belum ada akses browser sesi ini, semua verifikasi lewat
-CLI + query langsung ke DB lokal).
+**Status implementasi dan audit 2026-09-28**:
+- Bubble di `partials/footer.php` dan halaman `dashboard/ai_assistant.php`
+  memakai endpoint yang sama, menyimpan riwayat personal, menampilkan
+  ekspresi dan sumber provider, serta menyediakan pengiriman koreksi.
+- Kegagalan provider tidak menyimpan pesan setengah jadi. Penyimpanan pesan
+  user dan jawaban bot dilakukan dalam satu transaksi; jika gagal, UI
+  mengembalikan pertanyaan ke input agar dapat dicoba ulang.
+- `dashboard/ai_assistant_monitoring.php` kini juga meninjau koreksi.
+  Persetujuan manager wajib menyertakan alasan/rujukan SOP; hanya koreksi
+  yang disetujui yang masuk ke basis jawaban, exact-match dan unit-scoped.
+- `dashboard/ai_assistant_knowledge.php` menyediakan CRUD artikel panduan
+  manager-plus per unit. Halaman ini terdaftar di ACL dan sidebar.
+- Nama staff pada header dan tanda tangan laporan AI menggunakan gelar
+  tampilan dari jabatan/profil tanpa mengubah `user_rh.full_name`.
+- Untuk pertanyaan SOP, hash SHA-256 file yang dicari dibandingkan dengan
+  `document_files.source_file_sha256`. Jika PDF/dokumen sumber berubah,
+  ekstraksi diperbarui sebelum konteks Roxy dan perbandingan versi dibentuk.
+  Nomor Pasal/Poin yang terbaca dari teks sumber ikut ditampilkan sebagai
+  lokasi topik deterministik; model tidak diminta menebak hierarki dokumen.
+- PHP lint dan pemeriksaan diff dijalankan. Pengujian browser langsung masih
+  belum dapat dilakukan pada sesi ini: browser lokal tidak tersedia di alat
+  dan akses HTTP lokal mengarahkan ke halaman login.
+- Belum ada verifikasi otomatis koreksi dengan Gemini, pembuatan seed artikel
+  knowledge base, ataupun personalisasi gaya per user. Jawaban koreksi
+  ditinjau manusia; artikel SOP tetap perlu diisi manager.
 
-**Fase 2**: alur koreksi & pelatihan penuh (`bot_answer_corrections` +
-`bot_learned_answers` + verifikasi otomatis + halaman review manager).
-
+**Fase 2**: alur koreksi dan jawaban terlatih sudah tersedia dengan review
+manager manual, bukan persetujuan otomatis AI.
 **Fase 3 (opsional)**: personalisasi gaya komunikasi per user (§9),
 kemungkinan tambah provider tingkat 1 alternatif (OpenRouter, kalau Groq
 bermasalah di kemudian hari).

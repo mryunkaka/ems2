@@ -127,6 +127,100 @@ function ems_ai_official_document_rows(
     return array_slice($rows, 0, max(1, $limit));
 }
 
+/**
+ * Extract the nearest explicit document hierarchy around a query match.
+ * This is source text evidence, not a model-generated section guess.
+ */
+function ems_ai_official_document_section_evidence(string $text, string $query): array
+{
+    $text = str_replace(["\r\n", "\r"], "\n", $text);
+    $terms = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($query), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $stopWords = ['sop', 'apakah', 'ada', 'apa', 'aturan', 'tentang', 'yang', 'untuk', 'bagaimana', 'jelaskan'];
+    $terms = array_values(array_filter(array_unique($terms), static fn (string $term): bool => mb_strlen($term) >= 4 && !in_array($term, $stopWords, true)));
+    if ($terms === []) {
+        return ['path' => '', 'excerpt' => ''];
+    }
+
+    $lowerText = mb_strtolower($text);
+    $positions = [];
+    foreach ($terms as $term) {
+        $offset = 0;
+        while (($position = mb_stripos($lowerText, $term, $offset)) !== false) {
+            $positions[] = $position;
+            $offset = $position + mb_strlen($term);
+        }
+    }
+    if ($positions === []) {
+        return ['path' => '', 'excerpt' => ''];
+    }
+
+    $bestPosition = null;
+    $bestScore = -1;
+    foreach (array_unique($positions) as $candidatePosition) {
+        $candidateBytes = strlen(mb_substr($text, 0, $candidatePosition));
+        $lineStart = strrpos(substr($text, 0, $candidateBytes), "\n");
+        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+        $lineEnd = strpos($text, "\n", $candidateBytes);
+        $line = trim(substr($text, $lineStart, ($lineEnd === false ? strlen($text) : $lineEnd) - $lineStart));
+        $score = preg_match('/^\d{1,2}[.)]\s/u', $line) ? 5 : 0;
+        $before = substr($text, max(0, $candidateBytes - 500), min(500, $candidateBytes));
+        if (preg_match('/\bPasal\s+(?:[IVXLCDM]+|\d+)/iu', $before)) {
+            $score += 2;
+        }
+        if (preg_match('/kendaraan\s+dinas(?:\s+EMS)?/iu', substr($text, max(0, $candidateBytes - 30), 180))) {
+            $score += 2;
+        }
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestPosition = $candidatePosition;
+        }
+    }
+    $position = (int) $bestPosition;
+    $positionBytes = strlen(mb_substr($text, 0, $position));
+    $prefix = substr($text, 0, $positionBytes);
+    preg_match_all('/\bPasal\s+([IVXLCDM]+|\d+)\b[^\n]*/iu', $prefix, $pasalMatches, PREG_OFFSET_CAPTURE);
+    $pathParts = [];
+    $sectionStart = 0;
+    if (!empty($pasalMatches[0])) {
+        $lastPasal = $pasalMatches[0][count($pasalMatches[0]) - 1];
+        $pasalText = trim((string) $lastPasal[0]);
+        $sectionStart = (int) $lastPasal[1] + strlen((string) $lastPasal[0]);
+        if (preg_match('/^Pasal\s+([IVXLCDM]+|\d+)/iu', $pasalText, $match)) {
+            $pathParts[] = 'Pasal ' . strtoupper($match[1]);
+        }
+        if (preg_match('/^Pasal\s+(?:[IVXLCDM]+|\d+)(?:\s*[:\-–]\s*|\s+)(.+)$/iu', $pasalText, $match) && !empty($match[1])) {
+            $pathParts[] = trim($match[1]);
+        }
+    }
+
+    $withinSection = substr($text, $sectionStart, max(0, $positionBytes - $sectionStart));
+    preg_match_all('/(?:^|\n)\s*(\d{1,2})[.)]\s*([^\n]{0,180})/u', $withinSection, $pointMatches, PREG_SET_ORDER);
+    if ($pointMatches !== []) {
+        $point = $pointMatches[count($pointMatches) - 1];
+        $pointTitle = trim((string) ($point[2] ?? ''));
+        $pathParts[] = 'Poin ' . $point[1] . ($pointTitle !== '' ? ': ' . $pointTitle : '');
+    } elseif (preg_match('/\b(?:poin|point|angka)\s+(\d{1,2})\b/iu', $withinSection, $pointMatch)) {
+        $pathParts[] = 'Poin ' . $pointMatch[1];
+    }
+
+    $lineStart = strrpos(substr($text, 0, $positionBytes), "\n");
+    $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+    $lineEnd = strpos($text, "\n", $positionBytes);
+    $currentLine = trim(substr($text, $lineStart, ($lineEnd === false ? strlen($text) : $lineEnd) - $lineStart));
+    if (preg_match('/^Pasal\s+(?:[IVXLCDM]+|\d+)\s*[:\-–]\s*(.+)$/iu', $currentLine, $currentPasal) && !empty($currentPasal[1])) {
+        if (count($pathParts) === 1) {
+            $pathParts[] = trim($currentPasal[1]);
+        }
+    } elseif (preg_match('/^(\d{1,2})[.)]\s*(.+)$/u', $currentLine, $currentPoint)) {
+        $pathParts = array_values(array_filter($pathParts, static fn (string $part): bool => !str_starts_with($part, 'Poin ')));
+        $pathParts[] = 'Poin ' . $currentPoint[1] . ': ' . trim($currentPoint[2]);
+    }
+
+    $excerptStart = max(0, $positionBytes - 180);
+    $excerpt = trim(preg_replace('/\s+/u', ' ', substr($text, $excerptStart, 700)) ?? '');
+    return ['path' => implode(' › ', array_filter($pathParts)), 'excerpt' => $excerpt];
+}
+
 function ems_ai_official_document_comparison(array $rows, string $query = ''): array
 {
     $candidates = [];
@@ -158,6 +252,7 @@ function ems_ai_official_document_comparison(array $rows, string $query = ''): a
         $family = preg_replace('/\b(?:versi|version|v)\s*\d+(?:\.\d+)*\b/u', '', $family) ?? $family;
         $family = preg_replace('/\b(?:old|new|lama|baru)\b/u', '', $family) ?? $family;
         $family = trim(preg_replace('/[^\p{L}\p{N}]+/u', ' ', $family) ?? $family);
+        $sectionEvidence = ems_ai_official_document_section_evidence($text, $query);
 
         $candidates[] = [
             'id' => $id,
@@ -167,6 +262,8 @@ function ems_ai_official_document_comparison(array $rows, string $query = ''): a
             'content_hash' => hash('sha256', trim($normalized)),
             'family_key' => $family,
             'relevance' => $evidenceScore,
+            'section_path' => $sectionEvidence['path'],
+            'section_excerpt' => $sectionEvidence['excerpt'],
         ];
     }
 

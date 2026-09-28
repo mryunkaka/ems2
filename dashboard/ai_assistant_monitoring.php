@@ -3,6 +3,7 @@ date_default_timezone_set('Asia/Jakarta');
 session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/roxy_chatbot.php';
@@ -36,6 +37,17 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$unitCode]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$pendingStmt = $pdo->prepare("
+    SELECT ac.*, c.title AS conversation_title
+    FROM bot_answer_corrections ac
+    LEFT JOIN bot_conversations c ON c.id = ac.conversation_id
+    WHERE ac.unit_code = ? AND ac.verification_status = 'pending'
+    ORDER BY ac.created_at ASC
+    LIMIT 100
+");
+$pendingStmt->execute([$unitCode]);
+$pendingCorrections = $pendingStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $grouped = [];
 foreach ($rows as $row) {
@@ -87,6 +99,38 @@ include __DIR__ . '/../partials/sidebar.php';
                             </div>
                         <?php endforeach; ?>
                     </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">Koreksi Jawaban Menunggu Review (<?= count($pendingCorrections) ?>)</div>
+            <?php if ($pendingCorrections === []): ?>
+                <p class="meta-text">Belum ada koreksi yang menunggu review.</p>
+            <?php else: ?>
+                <?php foreach ($pendingCorrections as $correction): ?>
+                    <article class="card-section" style="border-bottom:1px solid #e2e8f0;">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <strong><?= htmlspecialchars((string) $correction['submitted_by_name'], ENT_QUOTES, 'UTF-8') ?></strong>
+                            <span class="meta-text-xs"><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $correction['created_at'])), ENT_QUOTES, 'UTF-8') ?> · <?= htmlspecialchars((string) ($correction['conversation_title'] ?: 'Percakapan'), ENT_QUOTES, 'UTF-8') ?></span>
+                        </div>
+                        <p><strong>Pertanyaan:</strong> <?= nl2br(htmlspecialchars((string) $correction['question_snapshot'], ENT_QUOTES, 'UTF-8')) ?></p>
+                        <details class="mt-2">
+                            <summary class="cursor-pointer font-semibold">Bandingkan jawaban lama dan koreksi</summary>
+                            <div class="mt-2"><strong>Jawaban Roxy:</strong><div class="whitespace-pre-wrap"><?= htmlspecialchars((string) $correction['wrong_answer_snapshot'], ENT_QUOTES, 'UTF-8') ?></div></div>
+                            <div class="mt-2"><strong>Usulan koreksi:</strong><div class="whitespace-pre-wrap"><?= htmlspecialchars((string) $correction['corrected_answer'], ENT_QUOTES, 'UTF-8') ?></div></div>
+                        </details>
+                        <form method="POST" action="/actions/roxy_correction_review_action.php" class="mt-3">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="correction_id" value="<?= (int) $correction['id'] ?>">
+                            <label>Alasan review / rujukan SOP (wajib)</label>
+                            <textarea name="verification_note" rows="2" minlength="5" maxlength="2000" required placeholder="Contoh: sesuai SOP dokumen ... bagian ..."></textarea>
+                            <div class="flex gap-2 mt-2">
+                                <button type="submit" name="decision" value="verify" class="btn-primary btn-sm">Setujui &amp; Ajarkan ke Roxy</button>
+                                <button type="submit" name="decision" value="reject" class="btn-danger btn-sm">Tolak Koreksi</button>
+                            </div>
+                        </form>
+                    </article>
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>

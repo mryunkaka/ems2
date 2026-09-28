@@ -13,6 +13,7 @@ function forceReloadUserSession(PDO $pdo, int $userId): void
         return;
     }
 
+    $specialistDegreesColumn = ems_column_exists($pdo, 'user_rh', 'specialist_degrees') ? ', specialist_degrees' : '';
     $stmt = $pdo->prepare("
         SELECT
             id,
@@ -24,7 +25,7 @@ function forceReloadUserSession(PDO $pdo, int $userId): void
             citizen_id,
             no_hp_ic,
             jenis_kelamin,
-            kode_nomor_induk_rs
+            kode_nomor_induk_rs{$specialistDegreesColumn}
         FROM user_rh
         WHERE id = ?
         LIMIT 1
@@ -48,6 +49,7 @@ function forceReloadUserSession(PDO $pdo, int $userId): void
         'citizen_id'          => $user['citizen_id'],
         'no_hp_ic'            => $user['no_hp_ic'],
         'jenis_kelamin'       => $user['jenis_kelamin'],
-        'kode_nomor_induk_rs' => $user['kode_nomor_induk_rs']
+        'kode_nomor_induk_rs' => $user['kode_nomor_induk_rs'],
+        'specialist_degrees' => $user['specialist_degrees'] ?? null,
     ];
 }

@@ -114,6 +114,7 @@ menghindari fitur SQL eksotis.
 | `file_ext` | VARCHAR(10) | |
 | `mime_type` | VARCHAR(100) | |
 | `file_size_bytes` | INT | |
+| `source_file_sha256` | CHAR(64) NULL | Hash file sumber yang menjadi dasar `extracted_text`; Roxy memeriksa perubahan file sebelum menjawab pertanyaan dokumen |
 | `tags` | VARCHAR(255) NULL | Tag manual pemisah koma, ikut kena index pencarian |
 | `extracted_text` | LONGTEXT NULL | Hasil ekstraksi isi dokumen — inti dari pencarian cepat |
 | `extraction_status` | ENUM('pending','done','unsupported','failed') DEFAULT 'pending' | `unsupported` = tipe file tanpa extractor (mis. scan gambar tanpa teks) |

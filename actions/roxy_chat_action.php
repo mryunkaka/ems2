@@ -65,20 +65,21 @@ try {
     ems_roxy_ensure_tables($pdo);
     $unitCode = ems_effective_unit($pdo, $user);
 
-    $conversationId = ems_roxy_get_or_create_conversation(
-        $pdo,
-        $userId,
-        $unitCode,
-        $conversationIdInput > 0 ? $conversationIdInput : null,
-        $message
-    );
+    $conversationId = 0;
+    if ($conversationIdInput > 0) {
+        $ownerStmt = $pdo->prepare('SELECT id FROM bot_conversations WHERE id = ? AND user_id = ? AND unit_code = ? LIMIT 1');
+        $ownerStmt->execute([$conversationIdInput, $userId, $unitCode]);
+        if ($ownerStmt->fetchColumn()) {
+            $conversationId = $conversationIdInput;
+        }
+    }
 
     // Riwayat SEBELUM pesan baru ini disimpan — ems_roxy_ask() yang
     // menambahkan pesan user saat ini ke daftar messages yang dikirim ke
     // Groq, supaya tidak dobel.
-    $historyBefore = ems_roxy_get_conversation_messages($pdo, $conversationId);
-
-    $userMessageId = ems_roxy_save_message($pdo, $conversationId, $userId, 'user', $message);
+    $historyBefore = $conversationId > 0
+        ? ems_roxy_get_conversation_messages($pdo, $conversationId)
+        : [];
 
     $result = ems_roxy_ask($pdo, $user, $unitCode, $historyBefore, $message);
 
@@ -95,7 +96,16 @@ try {
     // the bot answer, otherwise PDO may reuse a closed MariaDB connection.
     ems_reconnect_database_if_needed($pdo);
 
+    $pdo->beginTransaction();
     try {
+        $conversationId = ems_roxy_get_or_create_conversation(
+            $pdo,
+            $userId,
+            $unitCode,
+            $conversationId > 0 ? $conversationId : null,
+            $message
+        );
+        $userMessageId = ems_roxy_save_message($pdo, $conversationId, $userId, 'user', $message);
         $botMessageId = ems_roxy_save_message(
             $pdo,
             $conversationId,
@@ -106,22 +116,12 @@ try {
             $result['expression'],
             $userMessageId
         );
+        $pdo->commit();
     } catch (Throwable $saveError) {
-        if (!preg_match('/(?:SQLSTATE\[HY000\].*2006|server has gone away|mysql server has gone away)/i', $saveError->getMessage())) {
-            throw $saveError;
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
         }
-
-        ems_reconnect_database_if_needed($pdo);
-        $botMessageId = ems_roxy_save_message(
-            $pdo,
-            $conversationId,
-            $userId,
-            'bot',
-            $result['answer'],
-            $result['answer_source'],
-            $result['expression'],
-            $userMessageId
-        );
+        throw $saveError;
     }
 
     echo json_encode([

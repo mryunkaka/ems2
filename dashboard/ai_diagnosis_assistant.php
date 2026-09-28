@@ -15,20 +15,21 @@ ems_ai_ds_ensure_tables($pdo);
 $pageTitle = 'AI Diagnosis Assistant | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $effectiveUnit = ems_effective_unit($pdo, $user);
+$canViewAllAiHistory = ems_current_user_is_programmer_roxwood();
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT r.id, r.anamnesis, r.status, r.created_at, u.full_name AS created_by_name
+    SELECT r.id, r.user_id, r.anamnesis, r.status, r.created_at, u.full_name AS created_by_name
     FROM ai_diagnosis_reports r
     LEFT JOIN user_rh u ON u.id = r.user_id
-    WHERE r.unit_code = ?
+    WHERE (? = 1 OR r.unit_code = ?) AND (? = 1 OR r.user_id = ?)
     ORDER BY r.id DESC
     LIMIT 15
 ");
-$recentStmt->execute([$effectiveUnit]);
+$recentStmt->execute([$canViewAllAiHistory ? 1 : 0, $effectiveUnit, $canViewAllAiHistory ? 1 : 0, (int) ($user['id'] ?? 0)]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
@@ -85,7 +86,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <input type="date" name="patient_dob" value="<?= htmlspecialchars($_POST['patient_dob'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div>
-                            <input type="text" name="patient_citizen_id" placeholder="Citizen ID (RWX-...)" value="<?= htmlspecialchars($_POST['patient_citizen_id'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="text" name="patient_citizen_id" placeholder="Citizen ID (RWX-...)" value="<?= htmlspecialchars(mb_strtoupper(trim((string) ($_POST['patient_citizen_id'] ?? '')), 'UTF-8'), ENT_QUOTES, 'UTF-8') ?>" autocapitalize="characters" style="text-transform:uppercase">
                         </div>
                     </div>
                     <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Opsional, tapi kalau diisi akan otomatis ikut ter-copy saat kode referensi laporan ini dipakai di AI Surgery Planner / Radiology Center.</p>
@@ -133,7 +134,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
-                                            <?php if ($canDelete): ?>
+                                            <?php if ($canDelete && (int) $row['user_id'] === (int) ($user['id'] ?? 0)): ?>
                                                 <form method="POST" action="ai_diagnosis_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus laporan diagnosis #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="delete">
@@ -185,6 +186,15 @@ include __DIR__ . '/../partials/sidebar.php';
     var errorBox = document.getElementById('aiDiagLoadingErrorBox');
     var retryBtn = document.getElementById('aiDiagLoadingRetryBtn');
     var submitBtn = document.getElementById('aiDiagSubmitBtn');
+    var citizenIdInput = form.querySelector('[name="patient_citizen_id"]');
+    if (citizenIdInput) {
+        citizenIdInput.addEventListener('input', function () {
+            var start = this.selectionStart;
+            var end = this.selectionEnd;
+            this.value = this.value.toLocaleUpperCase('id-ID');
+            if (start !== null && end !== null) this.setSelectionRange(start, end);
+        });
+    }
 
     var target = 0, shown = 0, creepTimer = null, stageTimers = [];
 
@@ -194,9 +204,9 @@ include __DIR__ . '/../partials/sidebar.php';
         { at: 5000, pct: 35, text: 'Mengirim anamnesis ke model AI...' },
         { at: 15000, pct: 55, text: 'Model AI melakukan reasoning & analisis klinis...' },
         { at: 40000, pct: 75, text: 'Masih menganalisis, mohon tunggu...' },
-        { at: 80000, pct: 88, text: 'Menyusun laporan medis...' },
-        { at: 120000, pct: 93, text: 'Respons sebelumnya kurang sesuai, mencoba ulang otomatis...' },
-        { at: 180000, pct: 96, text: 'Percobaan ulang sedang diproses...' },
+        { at: 80000, pct: 88, text: 'Menyusun laporan final dari hasil analisis...' },
+        { at: 120000, pct: 93, text: 'Memeriksa kelengkapan dan konsistensi laporan...' },
+        { at: 180000, pct: 96, text: 'Menyelesaikan koreksi jika ada bagian yang belum lengkap...' },
     ];
 
     function renderProgress() {

@@ -10,7 +10,11 @@ if (isset($pdo) && function_exists('ems_effective_unit')) {
 $realtimeChatConfig = require __DIR__ . '/../config/realtime_chat.php';
 $realtimeChatViewer = [
     'userId' => (string)($_SESSION['user_rh']['id'] ?? ''),
-    'name' => (string)(($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? '')),
+    'name' => ems_format_medical_display_name(
+        (string) ($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? ''),
+        (string) ($_SESSION['user_rh']['position'] ?? ''),
+        (string) ($_SESSION['user_rh']['specialist_degrees'] ?? '')
+    ),
     'role' => (string)($_SESSION['user_rh']['role'] ?? ''),
     'unit' => (string)($_SESSION['user_rh']['unit_code'] ?? ''),
     'pageTitle' => (string)($pageTitle ?? ''),
@@ -195,6 +199,12 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
                     </div>
                 </div>
                 <div class="roxy-widget-head-actions">
+                    <button type="button" id="roxyWidgetDeleteChat" class="roxy-widget-iconbtn" title="Hapus obrolan permanen" aria-label="Hapus obrolan permanen" disabled>
+                        <?= ems_icon('trash', 'h-4 w-4') ?>
+                    </button>
+                    <button type="button" id="roxyWidgetNewChat" class="roxy-widget-iconbtn" title="Obrolan baru" aria-label="Mulai obrolan baru">
+                        <?= ems_icon('plus', 'h-4 w-4') ?>
+                    </button>
                     <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_assistant.php'), ENT_QUOTES, 'UTF-8') ?>" class="roxy-widget-iconbtn" title="Buka halaman penuh">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H19.5m0 0v6m0-6-7.5 7.5" /><path stroke-linecap="round" stroke-linejoin="round" d="M6 7.5H5.25A2.25 2.25 0 0 0 3 9.75v9A2.25 2.25 0 0 0 5.25 21h9a2.25 2.25 0 0 0 2.25-2.25V18" /></svg>
                     </a>
@@ -260,6 +270,8 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
         .roxy-widget-bubble-wrap.bot { align-self: flex-start; align-items: flex-start; }
         .roxy-widget-bubble { padding: 10px 13px; border-radius: 13px; font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
         .roxy-widget-bubble strong, .roxy-widget-bubble b { font-weight: 800; }
+        .roxy-widget-bubble a { color: #0369a1; text-decoration: underline; text-underline-offset: 2px; }
+        .roxy-widget-bubble-wrap.user .roxy-widget-bubble a { color: #e0f2fe; }
         .roxy-widget-rich-line { min-height: 1.3em; }
         .roxy-widget-rich-heading { margin: 5px 0 3px; font-weight: 800; color: #0f172a; }
         .roxy-widget-rich-list { display: flex; gap: 6px; margin: 2px 0; }
@@ -271,7 +283,12 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
         .roxy-widget-bubble-wrap.user .roxy-widget-bubble code { background: rgba(255,255,255,.2); }
         .roxy-widget-bubble-wrap.user .roxy-widget-bubble { background: #0ea5e9; color: #fff; border-bottom-right-radius: 3px; }
         .roxy-widget-bubble-wrap.bot .roxy-widget-bubble { background: #fff; color: #1e293b; border: 1px solid #e2e8f0; border-bottom-left-radius: 3px; }
+.roxy-widget-correction-toggle { margin-top: 3px; border: 0; background: none; padding: 2px 0; color: #0284c7; font-size: 10px; cursor: pointer; }
+.roxy-widget-correction-form { display: flex; flex-direction: column; gap: 5px; width: min(300px, 78vw); margin-top: 5px; }
+.roxy-widget-correction-form textarea { min-height: 72px; font-size: 11px; }
         .roxy-widget-typing { font-size: 11px; color: #94a3b8; font-style: italic; padding: 0 12px 6px; background: #f8fafc; }
+        .roxy-widget-provider-note { align-self: flex-start; max-width: 85%; padding: 8px 10px; color: #075985; background: #e0f2fe; border-radius: 8px; font-size: 10px; }
+        .roxy-widget-provider-note a { font-weight: 700; text-decoration: underline; }
         .roxy-widget-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #e2e8f0; }
         .roxy-widget-form textarea { flex: 1; resize: none; font-size: 12.5px; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; max-height: 80px; }
         .roxy-widget-send { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px; border: none; background: #0ea5e9; color: #fff; cursor: pointer; flex-shrink: 0; }
@@ -293,6 +310,8 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
         var toggle = document.getElementById('roxyWidgetToggle');
         var panel = document.getElementById('roxyWidgetPanel');
         var closeBtn = document.getElementById('roxyWidgetClose');
+        var deleteChatBtn = document.getElementById('roxyWidgetDeleteChat');
+        var newChatBtn = document.getElementById('roxyWidgetNewChat');
         var messagesEl = document.getElementById('roxyWidgetMessages');
         var typingEl = document.getElementById('roxyWidgetTyping');
         var form = document.getElementById('roxyWidgetForm');
@@ -317,6 +336,10 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
             statusEl.textContent = s.label;
         }
 
+        function syncDeleteButton() {
+            deleteChatBtn.disabled = !conversationId || sendBtn.disabled;
+        }
+
         function escapeHtml(str) {
             var div = document.createElement('div');
             div.textContent = str;
@@ -325,6 +348,8 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 
         function renderInlineMarkdown(value) {
             var html = escapeHtml(value);
+            html = html.replace(/@url:\s*`(https?:\/\/[^\s`<>]+)`/g, '<a href="$1" target="_blank" rel="noopener noreferrer">Buka dokumen</a>');
+            html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)<>]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
             html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
             html = html.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -367,19 +392,95 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
             return fragment;
         }
 
-        function appendBubble(sender, text) {
+        function appendBubble(sender, text, messageId, answerSource) {
             var wrap = document.createElement('div');
             wrap.className = 'roxy-widget-bubble-wrap ' + (sender === 'user' ? 'user' : 'bot');
             var bubble = document.createElement('div');
             bubble.className = 'roxy-widget-bubble';
             bubble.appendChild(renderBubbleText(text));
             wrap.appendChild(bubble);
+            if (sender === 'bot' && Number(messageId) > 0) {
+                var correctionButton = document.createElement('button');
+                correctionButton.type = 'button';
+                correctionButton.className = 'roxy-widget-correction-toggle';
+                correctionButton.textContent = 'Koreksi jawaban';
+                correctionButton.addEventListener('click', function () {
+                    openCorrectionForm(wrap, Number(messageId));
+                });
+                wrap.appendChild(correctionButton);
+            }
+            if (sender === 'bot' && answerSource === 'gemini_personal') {
+                var source = document.createElement('small');
+                source.className = 'roxy-widget-typing';
+                source.textContent = 'Jawaban memakai provider AI personal.';
+                wrap.appendChild(source);
+            } else if (sender === 'bot' && answerSource === 'learned_correction') {
+                var source = document.createElement('small');
+                source.className = 'roxy-widget-typing';
+                source.textContent = 'Memakai jawaban koreksi yang telah disetujui manager.';
+                wrap.appendChild(source);
+            }
             messagesEl.appendChild(wrap);
             messagesEl.scrollTop = messagesEl.scrollHeight;
+            return wrap;
+        }
+
+        function openCorrectionForm(wrap, messageId) {
+            var existing = wrap.querySelector('.roxy-widget-correction-form');
+            if (existing) { existing.remove(); return; }
+            var formEl = document.createElement('form');
+            formEl.className = 'roxy-widget-correction-form';
+            var textarea = document.createElement('textarea');
+            textarea.required = true;
+            textarea.minLength = 10;
+            textarea.maxLength = 8000;
+            textarea.placeholder = 'Tulis jawaban yang benar (10–8.000 karakter).';
+            var submit = document.createElement('button');
+            submit.type = 'submit';
+            submit.className = 'btn-secondary btn-sm';
+            submit.textContent = 'Kirim untuk review';
+            formEl.append(textarea, submit);
+            formEl.addEventListener('submit', function (event) {
+                event.preventDefault();
+                submit.disabled = true;
+                var body = new URLSearchParams();
+                body.set('csrf_token', CSRF_TOKEN);
+                body.set('original_message_id', String(messageId));
+                body.set('corrected_answer', textarea.value.trim());
+                fetch('<?= htmlspecialchars(ems_url('/actions/roxy_correction_action.php'), ENT_QUOTES, 'UTF-8') ?>', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body.toString(),
+                }).then(readJsonResponse).then(function (data) {
+                    if (!data.success) {
+                        submit.disabled = false;
+                        window.alert(data.message || 'Koreksi gagal dikirim.');
+                        return;
+                    }
+                    formEl.textContent = data.message || 'Koreksi menunggu review manager.';
+                }).catch(function () {
+                    submit.disabled = false;
+                    window.alert('Koneksi gagal. Koreksi belum dipastikan tersimpan.');
+                });
+            });
+            wrap.appendChild(formEl);
+            textarea.focus();
         }
 
         function greet() {
             appendBubble('bot', 'Halo! Aku Roxy. Ada yang bisa aku bantu soal aplikasi ini atau SOP medis?');
+        }
+
+        function appendResearchSetupNotice() {
+            var notice = document.createElement('div');
+            notice.className = 'roxy-widget-provider-note';
+            notice.appendChild(document.createTextNode('Untuk riset lebih dalam, atur provider AI personal: '));
+            var link = document.createElement('a');
+            link.href = '<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>';
+            link.textContent = 'Setting AI Saya';
+            notice.appendChild(link);
+            messagesEl.appendChild(notice);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
         }
 
         function loadLatestConversation() {
@@ -388,9 +489,11 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
                 .then(function (data) {
                     if (!data.success || !data.conversations.length) {
                         greet();
+                        syncDeleteButton();
                         return;
                     }
                     conversationId = data.conversations[0].id;
+                    syncDeleteButton();
                     return fetch('<?= htmlspecialchars(ems_url('/ajax/roxy_conversations.php'), ENT_QUOTES, 'UTF-8') ?>?action=messages&conversation_id=' + conversationId)
                         .then(function (r) { return r.json(); })
                         .then(function (msgData) {
@@ -398,7 +501,7 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
                                 greet();
                                 return;
                             }
-                            msgData.messages.forEach(function (m) { appendBubble(m.sender, m.content); });
+                            msgData.messages.forEach(function (m) { appendBubble(m.sender, m.content, m.id, m.answer_source); });
                             var last = msgData.messages[msgData.messages.length - 1];
                             if (last.sender === 'bot' && last.expression_tag) setExpression(last.expression_tag);
                         });
@@ -419,6 +522,46 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
         closeBtn.addEventListener('click', function () {
             panel.classList.add('hidden');
             toggle.classList.remove('hidden');
+        });
+
+        newChatBtn.addEventListener('click', function () {
+            conversationId = 0;
+            syncDeleteButton();
+            messagesEl.replaceChildren();
+            setExpression('netral');
+            greet();
+            if (HAS_AI_PROVIDER) input.focus();
+        });
+
+        deleteChatBtn.addEventListener('click', function () {
+            if (!conversationId || sendBtn.disabled) return;
+            if (!window.confirm('Hapus permanen percakapan Roxy ini beserta seluruh pesannya?')) return;
+
+            var deletedConversationId = conversationId;
+            deleteChatBtn.disabled = true;
+            var body = new URLSearchParams();
+            body.set('action', 'delete');
+            body.set('csrf_token', CSRF_TOKEN);
+            body.set('conversation_id', String(deletedConversationId));
+
+            fetch('<?= htmlspecialchars(ems_url('/ajax/roxy_conversations.php'), ENT_QUOTES, 'UTF-8') ?>', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                body: body.toString(),
+            }).then(readJsonResponse).then(function (data) {
+                if (!data.success) throw new Error(data.message || 'Percakapan gagal dihapus.');
+                if (conversationId === deletedConversationId) {
+                    conversationId = 0;
+                    messagesEl.replaceChildren();
+                    setExpression('netral');
+                    greet();
+                }
+                syncDeleteButton();
+            }).catch(function (error) {
+                syncDeleteButton();
+                window.alert(error.message || 'Penghapusan gagal. Percakapan masih tersimpan.');
+            });
         });
 
         function readJsonResponse(response) {
@@ -443,9 +586,10 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
             var text = input.value.trim();
             if (!text || sendBtn.disabled) return;
 
-            appendBubble('user', text);
+            var pendingUserBubble = appendBubble('user', text);
             input.value = '';
             sendBtn.disabled = true;
+            syncDeleteButton();
             typingEl.classList.remove('hidden');
             setExpression('thinking');
 
@@ -464,18 +608,26 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
                     typingEl.classList.add('hidden');
                     sendBtn.disabled = false;
                     if (!data.success) {
+                        syncDeleteButton();
                         setExpression('alert');
+                        pendingUserBubble.remove();
+                        input.value = text;
                         appendBubble('bot', data.message || 'Roxy gagal menjawab, coba lagi.');
                         return;
                     }
                     conversationId = data.conversation_id;
+                    syncDeleteButton();
                     setExpression(data.expression || 'netral');
-                    appendBubble('bot', data.answer);
+                    appendBubble('bot', data.answer, data.message_id, data.answer_source);
+                    if (data.gemini_key_missing) appendResearchSetupNotice();
                 })
                 .catch(function () {
                     typingEl.classList.add('hidden');
                     sendBtn.disabled = false;
+                    syncDeleteButton();
                     setExpression('alert');
+                    pendingUserBubble.remove();
+                    input.value = text;
                     appendBubble('bot', 'Koneksi ke Roxy gagal. Coba lagi.');
                 });
         }

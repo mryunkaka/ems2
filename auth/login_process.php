@@ -256,6 +256,7 @@ $_SESSION['user_rh'] = [
     'unit_code' => $userLoginUnit,
     'can_view_all_units' => isset($user['can_view_all_units']) && (int)$user['can_view_all_units'] === 1 ? 1 : 0,
     'tanggal_lahir_ic' => $user['tanggal_lahir_ic'] ?? null,
+    'specialist_degrees' => $user['specialist_degrees'] ?? null,
 ];
 $_SESSION['ems_active_unit'] = $userLoginUnit;
 
@@ -282,6 +283,12 @@ setcookie(
 // REDIRECT BERDASARKAN POSITION
 // =====================================================
 $position = ems_normalize_position($user['position'] ?? '');
+
+if ($position === 'specialist' && !ems_specialist_degrees_are_valid((string) ($user['specialist_degrees'] ?? ''))) {
+    $_SESSION['flash_errors'][] = 'Dokter spesialis wajib mengisi gelar spesialis di Setting Akun sebelum membuka halaman dashboard.';
+    header('Location: /dashboard/setting_akun.php');
+    exit;
+}
 
 // trainee → dashboard
 if ($position === 'trainee') {

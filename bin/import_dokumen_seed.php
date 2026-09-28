@@ -132,8 +132,8 @@ function importFile(PDO $pdo, string $unitCode, int $folderId, string $division,
     $stmt = $pdo->prepare("
         INSERT INTO document_files (
             unit_code, folder_id, division, title, original_filename, file_path, file_ext, mime_type,
-            file_size_bytes, extracted_text, extraction_status, uploaded_by, uploaded_by_name_snapshot, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            file_size_bytes, source_file_sha256, extracted_text, extraction_status, uploaded_by, uploaded_by_name_snapshot, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     ");
     $stmt->execute([
         $unitCode,
@@ -145,6 +145,7 @@ function importFile(PDO $pdo, string $unitCode, int $folderId, string $division,
         $ext,
         $saved['mime'],
         $saved['size'],
+        ems_document_source_sha256($saved['full_path']),
         $extraction['text'] !== '' ? $extraction['text'] : null,
         $extraction['status'],
         $actor['id'] ?: null,

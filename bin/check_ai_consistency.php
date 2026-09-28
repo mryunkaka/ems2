@@ -45,6 +45,17 @@ $normalizedEmpty = ems_ai_ds_normalize_diagnosis_result([]);
 assert($normalizedEmpty['kesadaran'] === 'Data belum tersedia');
 assert($normalizedEmpty['motorik'] === 'Data belum tersedia');
 
+// A missing model-authored GCS must remain missing in compatibility paths;
+// never manufacture E/V/M values from injury keywords or severity heuristics.
+$noGcsCompleted = ems_ai_ds_complete_roleplay_fields([], 'Pasien mengalami trauma akut.');
+assert(!isset($noGcsCompleted['gcs_estimasi_ai']));
+$noGcsFinalized = ems_ai_ds_finalize_playable_report(['gcs' => ''], 'Pasien mengalami trauma akut.');
+assert($noGcsFinalized['gcs'] === '');
+
+$modelGcs = ems_ai_ds_normalize_diagnosis_result(['gcs' => 'E1 V1 M1 (3)']);
+assert($modelGcs['gcs'] === 'E1 V1 M1 (3)');
+assert(ems_ai_ds_gcs_total($modelGcs['gcs']) === 3);
+
 $estimatedAssessment = ems_ai_ds_normalize_diagnosis_result([
     'gcs' => 'Data belum tersedia',
     'gcs_estimasi_ai' => [

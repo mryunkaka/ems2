@@ -180,7 +180,7 @@ function ems_ai_decode_json_text(string $text): ?array
     return null;
 }
 
-function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null): array
+function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
 {
     $apiKey = trim((string)($settings['gemini_api_key'] ?? ''));
     if ($apiKey === '') {
@@ -215,6 +215,9 @@ function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents,
             'responseMimeType' => 'application/json',
         ],
     ];
+    if ($responseSchema !== null) {
+        $payload['generationConfig']['responseSchema'] = $responseSchema;
+    }
 
     $url = $baseUrl . '/models/' . rawurlencode($modelName) . ':generateContent';
     $requestHash = hash('sha256', $modelName . '|' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));

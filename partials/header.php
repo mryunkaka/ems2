@@ -29,12 +29,17 @@ if ($resolvedPdo instanceof PDO) {
     $activeAnnouncement = ems_announcement_resolve_for_display($resolvedPdo, $user, $currentUnit);
 }
 
-$medicName    = $user['name'] ?? 'User';
+$medicRawName = (string) ($user['full_name'] ?? $user['name'] ?? 'User');
+$medicName = ems_format_medical_display_name(
+    $medicRawName,
+    (string) ($user['position'] ?? ''),
+    (string) ($user['specialist_degrees'] ?? '')
+);
 $medicJabatan = ems_position_label($user['position'] ?? '-');
 $medicRole    = $user['role'] ?? null;
 $csrfToken = function_exists('generateCsrfToken') ? generateCsrfToken() : '';
 
-$avatarInitials = initialsFromName($medicName);
+$avatarInitials = initialsFromName($medicRawName);
 $avatarColor    = avatarColorFromName($medicName);
 
 // ======================================================

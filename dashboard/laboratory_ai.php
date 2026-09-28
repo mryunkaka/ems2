@@ -17,20 +17,21 @@ ems_ai_ds_ensure_tables($pdo);
 $pageTitle = 'Laboratory AI | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $effectiveUnit = ems_effective_unit($pdo, $user);
+$canViewAllAiHistory = ems_current_user_is_programmer_roxwood();
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT l.id, l.report_code, l.patient_name, l.department, l.category, l.status, l.created_at, l.source_report_code, u.full_name AS created_by_name
+    SELECT l.id, l.user_id, l.report_code, l.patient_name, l.department, l.category, l.status, l.created_at, l.source_report_code, u.full_name AS created_by_name
     FROM ai_laboratory_results l
     LEFT JOIN user_rh u ON u.id = l.user_id
-    WHERE l.unit_code = ?
+    WHERE (? = 1 OR l.unit_code = ?) AND (? = 1 OR l.user_id = ?)
     ORDER BY l.id DESC
     LIMIT 15
 ");
-$recentStmt->execute([$effectiveUnit]);
+$recentStmt->execute([$canViewAllAiHistory ? 1 : 0, $effectiveUnit, $canViewAllAiHistory ? 1 : 0, (int) ($user['id'] ?? 0)]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
@@ -178,13 +179,13 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
-                                            <?php if (!empty($row['source_report_code'])): ?>
+                                            <?php if ((int) $row['user_id'] === (int) ($user['id'] ?? 0) && !empty($row['source_report_code'])): ?>
                                                 <button type="button" class="btn-secondary btn-sm lab-regenerate-btn" data-id="<?= (int) $row['id'] ?>" title="Generate ulang pakai kode referensi &amp; input yang sama">
                                                     <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                                                     <span>Generate Ulang</span>
                                                 </button>
                                             <?php endif; ?>
-                                            <?php if ($canDelete): ?>
+                                            <?php if ($canDelete && (int) $row['user_id'] === (int) ($user['id'] ?? 0)): ?>
                                                 <form method="POST" action="laboratory_ai_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus hasil laboratorium #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="delete">

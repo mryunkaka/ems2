@@ -308,7 +308,9 @@ include __DIR__ . '/../partials/sidebar.php';
                                 </td>
                                 <?php if ($canEditStatus): ?>
                                     <td>
-                                        <button type="button" class="btn-secondary btn-sm history-edit-status" onclick="openHistoryStatusModal(this)" data-id="<?= (int)$row['id'] ?>" data-code="<?= htmlspecialchars((string)$row['request_code'], ENT_QUOTES, 'UTF-8') ?>" data-status="<?= htmlspecialchars((string)$row['status'], ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars((string)$row['full_name'], ENT_QUOTES, 'UTF-8') ?>">Edit Status</button>
+                                        <button type="button" class="btn-secondary btn-sm action-icon-btn history-edit-status" data-id="<?= (int)$row['id'] ?>" data-code="<?= htmlspecialchars((string)$row['request_code'], ENT_QUOTES, 'UTF-8') ?>" data-status="<?= htmlspecialchars((string)$row['status'], ENT_QUOTES, 'UTF-8') ?>" data-name="<?= htmlspecialchars((string)$row['full_name'], ENT_QUOTES, 'UTF-8') ?>" title="Edit status" aria-label="Edit status pengajuan">
+                                            <?= ems_icon('pencil-square', 'h-4 w-4') ?>
+                                        </button>
                                     </td>
                                 <?php endif; ?>
                             </tr>
@@ -324,20 +326,42 @@ include __DIR__ . '/../partials/sidebar.php';
 </section>
 
 <?php if ($canEditStatus): ?>
-<div id="historyStatusModal" class="modal-overlay hidden" style="display:none;">
-    <div class="modal-box modal-shell modal-frame-md">
-        <div class="flex items-start justify-between gap-4">
-            <div><h3 class="text-lg font-bold text-slate-900">Edit Status Pengajuan</h3><p id="historyStatusTarget" class="mt-1 text-sm text-slate-500"></p></div>
-            <button type="button" id="historyStatusClose" class="btn-secondary btn-sm">Tutup</button>
+<div id="historyStatusModal" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-box modal-shell modal-frame-md" role="dialog" aria-modal="true" aria-labelledby="historyStatusTitle">
+        <div class="modal-head">
+            <div>
+                <div id="historyStatusTitle" class="modal-title">Edit Status Pengajuan</div>
+                <p id="historyStatusTarget" class="mt-1 text-sm text-slate-500"></p>
+            </div>
+            <button type="button" id="historyStatusClose" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
         </div>
-        <form id="historyStatusForm" class="mt-4 space-y-4">
+        <form id="historyStatusForm" class="form modal-form">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="action" value="edit_cuti_status">
             <input type="hidden" name="request_id" id="historyStatusRequestId">
-            <div><label class="block text-sm font-semibold text-slate-700">Status Baru</label><select name="status" id="historyStatusValue" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="pending">Menunggu</option><option value="approved">Disetujui</option><option value="rejected">Ditolak</option></select></div>
-            <div><label class="block text-sm font-semibold text-slate-700">Alasan Perubahan</label><textarea name="status_change_reason" id="historyStatusReason" rows="4" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Jelaskan alasan perubahan status..."></textarea></div>
-            <div id="historyStatusError" class="hidden rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700"></div>
-            <button type="submit" class="btn-primary w-full">Simpan Perubahan</button>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label for="historyStatusValue">Status Baru</label>
+                    <select name="status" id="historyStatusValue" required>
+                        <option value="pending">Menunggu</option>
+                        <option value="approved">Disetujui</option>
+                        <option value="rejected">Ditolak</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="historyStatusReason">Alasan Perubahan</label>
+                    <textarea name="status_change_reason" id="historyStatusReason" rows="4" required placeholder="Jelaskan alasan perubahan status..."></textarea>
+                </div>
+                <div id="historyStatusError" class="hidden rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert"></div>
+            </div>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel history-status-cancel">Batal</button>
+                    <button type="submit" class="btn-primary">Simpan Perubahan</button>
+                </div>
+            </div>
         </form>
     </div>
 </div>
@@ -353,6 +377,15 @@ include __DIR__ . '/../partials/sidebar.php';
     box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
     overflow: hidden;
     background: rgba(255, 255, 255, 0.97);
+}
+
+#hrCutiHistoryTable .history-edit-status {
+    display: inline-flex;
+    width: 2.5rem;
+    height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
 }
 
 .tracking-hero {
@@ -597,8 +630,20 @@ function openHistoryStatusModal(button) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
+    document.getElementById('historyStatusValue').focus();
     return false;
+}
+
+function closeHistoryStatusModal() {
+    var modal = document.getElementById('historyStatusModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
 }
 
 document.addEventListener('click', function (event) {
@@ -613,12 +658,16 @@ document.addEventListener('DOMContentLoaded', function() {
     var modal = document.getElementById('historyStatusModal');
     var form = document.getElementById('historyStatusForm');
     if (modal && form) {
-        document.querySelectorAll('.history-edit-status').forEach(function (button) {
-            button.addEventListener('click', function () {
-                window.openHistoryStatusModal(button);
-            });
+        document.getElementById('historyStatusClose').addEventListener('click', closeHistoryStatusModal);
+        document.querySelectorAll('.history-status-cancel').forEach(function (button) {
+            button.addEventListener('click', closeHistoryStatusModal);
         });
-        document.getElementById('historyStatusClose').addEventListener('click', function () { modal.classList.add('hidden'); modal.classList.remove('flex'); modal.style.display = 'none'; document.body.classList.remove('modal-open'); });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeHistoryStatusModal();
+        });
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeHistoryStatusModal();
+        });
         form.addEventListener('submit', function (event) {
             event.preventDefault();
             var error = document.getElementById('historyStatusError');

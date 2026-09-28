@@ -51,6 +51,7 @@ if (!$plan) {
     header('Location: ai_surgery_planner.php');
     exit;
 }
+$plan['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($plan['created_by_name'] ?? '')) ?: '-';
 
 $result = [];
 if ($plan['status'] === 'done' && $plan['result_json']) {
@@ -156,6 +157,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <div class="card-header">Protokol Farmakologi (Obat-Obatan)</div>
                 <div class="p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                     <?php foreach ($pharmaSections as $key => $label): ?>
+                        <?php if (empty($farmakologi[$key])) continue; ?>
                         <div class="rounded-lg border border-slate-200">
                             <div class="px-3 py-2 border-b border-slate-200 bg-slate-50">
                                 <h4 class="text-xs font-bold tracking-wide"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></h4>
@@ -239,7 +241,7 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <div class="card mb-4">
-                <div class="card-header">Ringkasan Rencana Operasi (Bukan Bukti Tindakan)</div>
+                <div class="card-header">Ringkasan Skenario Operasi (Roleplay)</div>
                 <div class="p-4 text-sm whitespace-pre-line"><?= htmlspecialchars((string) ($result['laporan_pasca_operasi'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></div>
             </div>
 

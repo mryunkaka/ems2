@@ -43,6 +43,7 @@ function ems_ai_radiology_ensure_tables(PDO $pdo): void
                 `clinical_finding` VARCHAR(100) NOT NULL,
                 `prompt_used` TEXT NULL,
                 `image_path` VARCHAR(255) NULL,
+                `image_source_label` VARCHAR(120) NULL,
                 `status` ENUM('done','error') NOT NULL DEFAULT 'done',
                 `error_message` TEXT NULL,
                 `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -71,6 +72,10 @@ function ems_ai_radiology_ensure_tables(PDO $pdo): void
     // Guard "1 kode referensi hanya boleh dipakai 1x per halaman", migration 66.
     if (!ems_column_exists($pdo, 'ai_radiology_images', 'source_report_code')) {
         $pdo->exec("ALTER TABLE `ai_radiology_images` ADD COLUMN `source_report_code` VARCHAR(40) NULL AFTER `anamnesis`");
+    }
+    if (!ems_column_exists($pdo, 'ai_radiology_images', 'image_source_label')) {
+        $pdo->exec("ALTER TABLE `ai_radiology_images` ADD COLUMN `image_source_label` VARCHAR(120) NULL AFTER `image_path`");
+        $pdo->exec("UPDATE `ai_radiology_images` SET `image_source_label` = 'Ilustrasi AI generatif lama (simulasi; bukan radiograf tervalidasi)' WHERE `image_source_label` IS NULL AND `image_path` IS NOT NULL");
     }
 }
 
@@ -128,18 +133,18 @@ function ems_ai_radiology_catalog(): array
             ],
             'Upper Extremity' => [
                 'Shoulder' => ['AP', 'Axillary', 'Y-View (Scapular)'],
-                'Humerus' => ['AP', 'Lateral'],
-                'Elbow' => ['AP', 'Lateral', 'Oblique'],
-                'Forearm' => ['AP', 'Lateral'],
-                'Wrist' => ['PA', 'Lateral', 'Oblique'],
-                'Hand' => ['PA', 'Oblique', 'Lateral'],
+                'Humerus' => ['AP', 'Lateral', 'AP & Lateral'],
+                'Elbow' => ['AP', 'Lateral', 'Oblique', 'AP & Lateral'],
+                'Forearm' => ['AP', 'Lateral', 'AP & Lateral'],
+                'Wrist' => ['PA', 'Lateral', 'Oblique', 'PA & Lateral'],
+                'Hand' => ['PA', 'Oblique', 'Lateral', 'PA, Oblique & Lateral'],
             ],
             'Lower Extremity' => [
-                'Femur' => ['AP', 'Lateral'],
-                'Knee' => ['AP', 'Lateral', 'Sunrise / Merchant View'],
-                'Tibia-Fibula' => ['AP', 'Lateral'],
-                'Ankle' => ['AP', 'Lateral', 'Mortise'],
-                'Foot' => ['AP', 'Oblique', 'Lateral'],
+                'Femur' => ['AP', 'Lateral', 'AP & Lateral'],
+                'Knee' => ['AP', 'Lateral', 'Sunrise / Merchant View', 'AP & Lateral'],
+                'Tibia-Fibula' => ['AP', 'Lateral', 'AP & Lateral'],
+                'Ankle' => ['AP', 'Lateral', 'Mortise', 'AP & Lateral'],
+                'Foot' => ['AP', 'Oblique', 'Lateral', 'AP, Oblique & Lateral'],
             ],
         ],
         'CT Scan' => [
@@ -317,6 +322,41 @@ function ems_ai_radiology_is_valid_selection(string $modality, string $category,
     return $projections !== [] && in_array($projection, $projections, true);
 }
 
+/**
+ * Pilih gambar rujukan dataset hanya untuk kasus fraktur tungkai bawah dengan
+ * proyeksi AP. Dataset FracAtlas menandai `leg`, `fractured`, dan `frontal`,
+ * tetapi tidak menyimpan tulang/laterality atau AP-vs-PA secara andal. Karena
+ * itu gambar ini selalu menjadi kartu referensi terpisah, tidak pernah
+ * menggantikan citra simulasi kasus atau dianggap sebagai gambar pasien.
+ */
+function ems_ai_radiology_reference_match(array $record): ?array
+{
+    $projection = strtoupper(trim((string) ($record['projection'] ?? '')));
+    $finding = mb_strtolower(trim((string) ($record['clinical_finding'] ?? '')), 'UTF-8');
+    if (
+        ($record['modality'] ?? '') !== 'X-Ray'
+        || ($record['category'] ?? '') !== 'Lower Extremity'
+        || ($record['body_region'] ?? '') !== 'Tibia-Fibula'
+        || $projection !== 'AP'
+        || !in_array($finding, ['fraktur / patah tulang', 'fraktur', 'patah tulang'], true)
+    ) {
+        return null;
+    }
+
+    $relativePath = 'assets/radiology/references/fracatlas-leg-fracture-frontal-img0002320.jpg';
+    if (!is_file(dirname(__DIR__) . '/' . $relativePath)) {
+        return null;
+    }
+
+    return [
+        'path' => '../' . $relativePath,
+        'title' => 'Contoh Fraktur Tungkai Bawah — FracAtlas IMG0002320',
+        'match' => 'Label dataset: tungkai bawah, fraktur, proyeksi frontal; satu citra.',
+        'limitations' => 'Gambar rujukan dari kasus lain, bukan pasien ini. Metadata FracAtlas tidak memastikan tulang, sisi, lokasi fraktur, kelompok usia, atau apakah frontal ini AP/PA. Gunakan hanya sebagai contoh visual; jangan menyalin temuan ke laporan kasus.',
+        'attribution' => 'FracAtlas, IMG0002320.jpg — DOI: 10.6084/m9.figshare.22363012, CC BY 4.0.',
+    ];
+}
+
 function ems_ai_radiology_clinical_findings(): array
 {
     return [
@@ -377,41 +417,137 @@ function ems_ai_radiology_build_prompt(array $input): string
     $finding = trim((string) ($input['clinical_finding'] ?? ''));
     $anamnesis = trim((string) ($input['anamnesis'] ?? ''));
 
-    $prompt = "Generate one single highly realistic {$modality} diagnostic medical scan image, "
-        . "for a hospital roleplay/training simulation tool (not a real patient).\n"
-        . "Examination category: {$category}.\n"
-        . "Body region / specific study: {$region}.\n"
-        . "Projection / sequence / acoustic mode: {$projection}.\n"
-        . "Clinical finding to visually depict in the image: {$finding}.\n";
+    $prompt = "Create ONE restrained, realistic {$modality} radiograph for a fictional roleplay case. Output exactly the requested study and projection: {$category} > {$region} > {$projection}. Do not add a second view, another limb, or unrelated anatomy.\n"
+        . "Finding to depict: {$finding}.\n";
 
     if ($anamnesis !== '') {
-        $anamnesisPrefix = 'Additional clinical context (anamnesis) to inform the depicted finding: ';
-        $anamnesisSuffix = ".\n";
-        $styleLength = 1010; // panjang aktual blok STYLE REQUIREMENTS di bawah (~991 char) + sedikit margin
-        $budget = EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH - strlen($prompt) - strlen($anamnesisPrefix) - strlen($anamnesisSuffix) - $styleLength;
-        if ($budget > 50 && strlen($anamnesis) > $budget) {
-            $anamnesis = rtrim(mb_strimwidth($anamnesis, 0, max(50, $budget - 3), '')) . '...';
-        } elseif ($budget <= 50) {
-            $anamnesis = ''; // budget habis (region/finding dsb sudah panjang) — lewati anamnesis sepenuhnya daripada gagal total
-        }
-        if ($anamnesis !== '') {
-            $prompt .= $anamnesisPrefix . $anamnesis . $anamnesisSuffix;
-        }
+        // Keep a concise anatomic detail in the provider's 2048-byte limit.
+        $prompt .= 'Clinical context: ' . mb_strimwidth($anamnesis, 0, 360, '...') . ".\n";
     }
 
-    $prompt .= "STYLE REQUIREMENTS (must follow strictly):\n"
-        . "- Authentic diagnostic imaging look matching real {$modality} output: correct grayscale contrast, "
-        . "noise texture, and rendering style specific to this modality (e.g. radiograph look for X-Ray, "
-        . "tomographic slice look for CT Scan, soft-tissue contrast look for MRI, acoustic/grayscale sonogram "
-        . "look for Ultrasound, subtraction-angiogram look for Angiography, fusion colormap for PET Scan, "
-        . "compressed-breast tissue look for Mammography, real-time contrast-fluoroscopy look for Fluoroscopy, "
-        . "low-dose bone-density scan look for DEXA Scan).\n"
-        . "- Anatomically plausible and medically coherent with the specified body region and clinical finding.\n"
-        . "- No visible patient face, no real-world identifying information, no on-image text, label, watermark, or UI overlay.\n"
-        . "- Single clean centered image on a plain black background, like a PACS/DICOM viewer capture, no borders or chrome.\n"
-        . "- This image is fictional, generated purely for a roleplay medical training simulation.";
+    $prompt .= "Use a clean, centered, anatomically plausible grayscale radiograph with natural contrast and subtle film grain on a plain black background. Keep the image uncluttered: no decorative effects, glow, colored anatomy, extra findings, watermark, interface, or text.";
+
+    if ($modality === 'X-Ray' && preg_match('/fraktur|patah tulang/iu', $finding . ' ' . $anamnesis) === 1) {
+        $prompt .= " Depict only the fracture details stated in the case. Preserve the selected body region and projection. Do not imply a fracture level, side, or morphology that the case does not specify.";
+    }
+
+    if (strlen($prompt) > EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH) {
+        $prompt = rtrim(mb_strcut($prompt, 0, EMS_AI_RADIOLOGY_PROMPT_MAX_LENGTH - 3, 'UTF-8')) . '...';
+    }
 
     return $prompt;
+}
+
+/**
+ * Buat skema tulang tungkai bawah dengan lokasi fraktur yang diturunkan
+ * langsung dari input eksplisit. Ini ilustrasi terarah untuk roleplay, bukan
+ * radiograf atau interpretasi diagnostik. Bila sisi/lokasi/tulang tidak jelas,
+ * fungsi mengembalikan null agar tidak mengarang lokasi.
+ */
+function ems_ai_radiology_build_tibfib_schematic(array $input): ?array
+{
+    if (
+        ($input['modality'] ?? '') !== 'X-Ray'
+        || ($input['body_region'] ?? '') !== 'Tibia-Fibula'
+        || strtoupper(trim((string) ($input['projection'] ?? ''))) !== 'AP'
+        || !extension_loaded('gd')
+    ) {
+        return null;
+    }
+
+    $context = trim((string) ($input['clinical_finding'] ?? '') . ' ' . (string) ($input['anamnesis'] ?? ''));
+    if (preg_match('/fraktur|patah tulang/iu', $context) !== 1) {
+        return null;
+    }
+
+    $siteMatches = [
+        'proximal' => preg_match('/(?:1\s*\/\s*3\s*(?:proksimal|atas)|sepertiga\s+(?:proksimal|atas)|proximal\s+third|proximal\s+shaft)/iu', $context) === 1,
+        'middle' => preg_match('/(?:1\s*\/\s*3\s*tengah|sepertiga\s+tengah|middle\s*third|midshaft|shaft\s+tengah)/iu', $context) === 1,
+        'distal' => preg_match('/(?:1\s*\/\s*3\s*(?:distal|bawah)|sepertiga\s+(?:distal|bawah)|distal\s+third|distal\s+shaft)/iu', $context) === 1,
+    ];
+    $selectedSites = array_keys(array_filter($siteMatches));
+    $hasRight = preg_match('/\b(?:dextra|kanan|right)\b/iu', $context) === 1;
+    $hasLeft = preg_match('/\b(?:sinistra|kiri|left)\b/iu', $context) === 1;
+    if (count($selectedSites) !== 1 || $hasRight === $hasLeft) {
+        return null;
+    }
+    $site = $selectedSites[0];
+    $side = $hasRight ? 'right' : 'left';
+
+    $tibia = preg_match('/\btibia\w*\b/iu', $context) === 1;
+    $fibula = preg_match('/\bfibula\w*\b/iu', $context) === 1;
+    if (preg_match('/(?:tibia[^.;,\n]{0,32}(?:utuh|tidak\s+(?:patah|fraktur))|(?:utuh|tidak\s+(?:patah|fraktur))[^.;,\n]{0,32}tibia)/iu', $context) === 1) {
+        $tibia = false;
+    }
+    if (preg_match('/(?:fibula[^.;,\n]{0,32}(?:utuh|tidak\s+(?:patah|fraktur))|(?:utuh|tidak\s+(?:patah|fraktur))[^.;,\n]{0,32}fibula)/iu', $context) === 1) {
+        $fibula = false;
+    }
+    if (!$tibia && !$fibula) {
+        return null;
+    }
+
+    $width = 900;
+    $height = 1200;
+    $im = imagecreatetruecolor($width, $height);
+    if (!$im) {
+        return null;
+    }
+    $black = imagecolorallocate($im, 5, 8, 13);
+    $bone = imagecolorallocate($im, 206, 216, 220);
+    $boneEdge = imagecolorallocate($im, 235, 240, 238);
+    $marrow = imagecolorallocate($im, 74, 87, 92);
+    $fracture = imagecolorallocate($im, 5, 8, 13);
+    $label = imagecolorallocate($im, 226, 234, 236);
+    imagefilledrectangle($im, 0, 0, $width, $height, $black);
+
+    // Simplified AP outline, intentionally schematic rather than photo-like.
+    $drawBone = static function (int $cx, int $shaftWidth, int $jointWidth, string $name) use ($im, $bone, $boneEdge, $marrow, $fracture, $label, $site): void {
+        $top = [
+            $cx - $jointWidth, 185, $cx - (int) ($jointWidth * .72), 235,
+            $cx - (int) ($shaftWidth * .65), 330, $cx - (int) ($shaftWidth * .52), 930,
+            $cx - (int) ($jointWidth * .72), 1005, $cx - $jointWidth, 1060,
+            $cx + $jointWidth, 1060, $cx + (int) ($jointWidth * .72), 1005,
+            $cx + (int) ($shaftWidth * .52), 930, $cx + (int) ($shaftWidth * .65), 330,
+            $cx + (int) ($jointWidth * .72), 235, $cx + $jointWidth, 185,
+        ];
+        imagefilledpolygon($im, $top, $bone);
+        imagesetthickness($im, 5);
+        imagepolygon($im, $top, $boneEdge);
+        imagesetthickness($im, 1);
+        imagefilledrectangle($im, $cx - 5, 305, $cx + 5, 945, $marrow);
+
+        $fractureY = match ($site) { 'proximal' => 390, 'middle' => 600, default => 820 };
+        // A neutral transverse break is schematic only; it does not claim a
+        // fracture morphology absent from the source case.
+        $half = max(10, (int) ($shaftWidth * .55));
+        imagesetthickness($im, 12);
+        imageline($im, $cx - $half, $fractureY + 17, $cx + $half, $fractureY - 17, $fracture);
+        imagesetthickness($im, 4);
+        imageline($im, $cx - $half, $fractureY + 17, $cx + $half, $fractureY - 17, $boneEdge);
+        imagesetthickness($im, 1);
+        imagestring($im, 5, $cx - 36, 1090, $name, $label);
+    };
+
+    if ($tibia) {
+        $drawBone(405, 68, 102, 'TIBIA');
+    }
+    if ($fibula) {
+        $drawBone(590, 34, 52, 'FIBULA');
+    }
+
+    $title = $side === 'right' ? 'TUNGKAI KANAN' : 'TUNGKAI KIRI';
+    imagestring($im, 5, 24, 24, $title . ' - SKEMA AP', $label);
+    imagestring($im, 3, 24, 56, 'Ilustrasi lokasi; bukan citra pemeriksaan', $label);
+
+    ob_start();
+    $saved = imagepng($im);
+    $bytes = ob_get_clean();
+    imagedestroy($im);
+    if (!$saved || !is_string($bytes) || $bytes === '') {
+        return null;
+    }
+
+    return ['data' => base64_encode($bytes), 'mime_type' => 'image/png'];
 }
 
 /**
@@ -421,13 +557,13 @@ function ems_ai_radiology_build_prompt(array $input): string
  */
 function ems_ai_radiology_default_report_system_prompt(): string
 {
-    return "Anda adalah Dokter Spesialis Radiologi (Sp.Rad) senior di Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menuliskan bacaan/ekspertise radiologi formal untuk melengkapi citra pencitraan yang sudah dihasilkan. Tugas Anda: dari konfigurasi pemeriksaan dan konteks klinis pasien (sepadat apa pun), susun bacaan radiologi LENGKAP, definitif, sistematis, dan siap masuk rekam medis.\n\n"
+    return "Anda adalah Dokter Spesialis Radiologi (Sp.Rad) untuk laporan pencitraan final dalam skenario FiveM roleplay Roxwood Hospital. Teks laporan disusun dari konfigurasi pemeriksaan, temuan klinis terpilih, dan konteks kasus; gambar yang tampil adalah ilustrasi roleplay dan tidak dikirim kepada Anda untuk dibaca. Susun laporan akhir yang lengkap, koheren, dan siap dipakai dalam skenario.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. Jangan mengarang temuan citra yang belum tersedia. Data yang diberikan adalah indikasi/temuan klinis, bukan bukti radiologis; tulis keterbatasan ini bila citra atau hasil pemeriksaan aktual belum tersedia.\n"
-        . "2. Gunakan Bahasa Indonesia medis baku (EYD), istilah radiologi standar, bahasa objektif, dan jangan berspekulasi di luar konteks yang diberikan.\n"
-        . "3. Uraikan temuan hanya dari data pemeriksaan yang benar-benar tersedia. Jangan menyatakan fraktur, perdarahan, cedera kepala, atau temuan lain sebagai terkonfirmasi tanpa bukti.\n"
-        . "4. \"diagnosis\" (Kesan/Impression) wajib konsisten dan didukung penuh oleh \"findings\"; jika belum ada citra/hasil aktual, gunakan label dugaan atau data belum tersedia.\n"
-        . "5. Rekomendasi mengikuti temuan dan keterbatasan data; jangan mengubah indikasi klinis menjadi hasil radiologi.\n"
+        . "1. Tulis sebagai hasil final skenario roleplay; jangan gunakan \"citra tidak tersedia\", \"belum dapat dinilai\", \"belum terkonfirmasi\", \"wajib diverifikasi\", \"unggah citra\", atau placeholder sejenis.\n"
+        . "2. Gunakan Bahasa Indonesia medis baku, istilah radiologi standar, dan pastikan teknik, temuan, kesan, serta rekomendasi konsisten dengan modalitas, regio, dan proyeksi yang diminta.\n"
+        . "3. Wujudkan temuan klinis terpilih menjadi temuan skenario pencitraan konkret yang koheren. Untuk radiograf polos, nilai tulang, alignment, jaringan lunak, dan benda radiopak yang relevan; jangan klaim radiograf mengonfirmasi robekan vaskular atau syok. Bila kasus menyebut perdarahan jaringan lunak, gambarkan pembengkakan jaringan lunak tanpa menyangkal temuan klinis.\n"
+        . "4. \"diagnosis\" (Kesan/Impression) wajib menyimpulkan temuan final yang sama dengan \"findings\" dan konteks klinis; jangan memberi daftar kemungkinan yang membingungkan atau meminta pemain menentukan hasil sendiri.\n"
+        . "5. Rekomendasi berupa langkah final yang sesuai dengan temuan skenario dan alur kasus; jangan menyatakan pemeriksaan belum dilakukan atau meminta verifikasi/unggah hasil.\n"
         . "6. \"report_text\" wajib memakai persis 4 header huruf besar berikut, berurutan, masing-masing diikuti isi 1 paragraf: \"TECHNIQUE\", \"FINDINGS\", \"IMPRESSION\", \"RECOMMENDATION\".\n"
         . "7. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
         . "Struktur JSON WAJIB:\n"
@@ -483,11 +619,33 @@ function ems_ai_radiology_sanitize_report(array $data): array
     $reportText = trim((string) ($data['report_text'] ?? ''));
 
     return [
-        'findings' => $findings !== [] ? $findings : ['Data belum tersedia'],
-        'diagnosis' => $diagnosis !== '' ? $diagnosis : 'Data belum tersedia',
-        'recommendations' => $recommendations !== [] ? $recommendations : ['Data belum tersedia'],
-        'report_text' => $reportText !== '' ? $reportText : 'TECHNIQUE\nData belum tersedia\n\nFINDINGS\nData belum tersedia\n\nIMPRESSION\nData belum tersedia\n\nRECOMMENDATION\nData belum tersedia',
+        'findings' => $findings,
+        'diagnosis' => $diagnosis,
+        'recommendations' => $recommendations,
+        'report_text' => $reportText,
     ];
+}
+
+function ems_ai_radiology_report_quality_issue(array $data): ?string
+{
+    foreach (['findings', 'recommendations'] as $field) {
+        if (!is_array($data[$field] ?? null) || count(array_filter($data[$field], static fn ($line): bool => is_string($line) && trim($line) !== '')) === 0) {
+            return 'Bagian ' . $field . ' wajib berisi temuan skenario final.';
+        }
+    }
+    if (!is_string($data['diagnosis'] ?? null) || trim($data['diagnosis']) === '' || !is_string($data['report_text'] ?? null) || trim($data['report_text']) === '') {
+        return 'Kesan dan laporan lengkap wajib terisi.';
+    }
+    $allText = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+    if (preg_match('/data\s+belum\s+tersedia|belum\s+(?:dapat\s+dinilai|terkonfirmasi|dilakukan|tersedia)|wajib\s+diverifikasi|perlu\s+diverifikasi|unggah\s+(?:citra|gambar)|citra\s+aktual\s+tidak\s+tersedia|hasil\s+pemeriksaan\s+aktual\s+belum/iu', $allText) === 1) {
+        return 'Laporan masih memuat frasa hasil belum final atau instruksi verifikasi.';
+    }
+    $headers = [];
+    preg_match_all('/^(TECHNIQUE|FINDINGS|IMPRESSION|RECOMMENDATION)$/m', (string) $data['report_text'], $headers);
+    if (($headers[1] ?? []) !== ['TECHNIQUE', 'FINDINGS', 'IMPRESSION', 'RECOMMENDATION']) {
+        return 'Laporan lengkap harus memiliki empat header standar secara berurutan.';
+    }
+    return null;
 }
 
 /**
@@ -502,12 +660,21 @@ function ems_ai_radiology_generate_report(PDO $pdo, array $input, ?int $createdB
     $systemPrompt = ems_ai_radiology_default_report_system_prompt();
     $userPrompt = ems_ai_radiology_build_report_user_prompt($input);
 
-    $result = ems_ai_ds_call_gemini($pdo, $systemPrompt, $userPrompt, 'ai_radiology_report', $createdBy);
-    if (!$result['ok']) {
-        return $result;
+    for ($attempt = 0; $attempt < 3; $attempt++) {
+        $result = ems_ai_ds_call_gemini($pdo, $systemPrompt, $userPrompt, 'ai_radiology_report', $createdBy);
+        if (!$result['ok']) {
+            return $result;
+        }
+        $data = ems_ai_radiology_sanitize_report($result['data']);
+        $issue = ems_ai_radiology_report_quality_issue($data);
+        if ($issue === null) {
+            return ['ok' => true, 'data' => $data];
+        }
+        $userPrompt .= "\n\nPERBAIKI JSON LAPORAN ROLEPLAY INI. " . $issue
+            . " Hapus semua bahasa belum tersedia/tidak dapat dinilai/verifikasi; pertahankan anatomi, modalitas, regio, proyeksi, dan temuan klinis yang benar. Isi laporan skenario final tanpa klaim bahwa ilustrasi adalah citra pasien. JSON saat ini: "
+            . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-
-    return ['ok' => true, 'data' => ems_ai_radiology_sanitize_report($result['data'])];
+    return ['ok' => false, 'error' => 'Model tidak melengkapi bacaan radiologi final setelah perbaikan terarah: ' . ($issue ?? 'respons belum lengkap.')];
 }
 
 /**

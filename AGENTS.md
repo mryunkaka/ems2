@@ -348,6 +348,116 @@ one). `identity_test.php` — production KTP-OCR + versioned identity store
 reachable only by direct URL, and has its own hardcoded copy of the OCR API
 key.
 
+### Radiology Center / AI imaging (added 2026-09-27)
+`dashboard/radiology_center.php` + `_action.php` + `radiology_report.php`
+create roleplay imaging and a separately generated text report. Generated
+images are simulations, never radiographs from the current patient. For an
+X-Ray `Tibia-Fibula` fracture, `config/ai_radiology.php` draws a deterministic
+AP schematic only when the input explicitly identifies side, bone(s), and
+proximal/middle/distal third. The schematic shows a generic fracture line at
+that location; it does not infer displacement or fracture morphology. Cases
+without those explicit fields continue to use generated AI illustration and
+must display the `image_source_label` notice. The text report is generated
+from clinical input, not interpreted from the generated picture. Migration
+`docs/sql/88_2026-09-27_ai_radiology_image_source_label.sql` records this
+distinction for new and historical rows.
+
+The report page may additionally show a separately labeled FracAtlas example
+for explicitly selected X-Ray `Tibia-Fibula` fractures requested in AP. The
+curated source image is `assets/radiology/references/fracatlas-leg-fracture-frontal-img0002320.jpg`;
+its provenance and CC BY 4.0 attribution are in that directory's README. It is
+not the roleplay patient's image and is never used to generate report findings.
+FracAtlas metadata is broad (`leg`, `fractured`, `frontal`) and cannot establish
+bone, side, fracture level, age, or exact AP/PA. Keep the reference card
+separate from the case image, preserve its disclaimer, and do not use this
+single curated image for other body regions, projections, or normal cases.
+
+Diagnosis-to-Radiology Center lookup normalizes legacy multi-view strings to
+one exact catalog projection option before building the cascade selection.
+When the catalog has a composite orthogonal-view option (for example,
+`AP, Lateral` becomes `AP & Lateral` for a forearm fracture), preserve the
+complete view set rather than silently dropping a view. It also checks the selected anatomy class
+against explicit regions in the original anamnesis; a LOC phrase alone must
+not override a documented extremity injury with CT head. Keep the cascade
+atomic: validate the complete modality/category/region/projection path before
+changing any dropdown, and clear prior case selections before applying a new
+report.
+
+Explicit head wound/bleeding phrases (including `pendarahan di bagian kepala`)
+must map to the CT head catalog path, never the generic Chest default; its
+clinical-finding label must reflect documented bleeding. Keep the report's
+free-text radiology recommendation aligned with the structured selection. If
+acute herniation triggers surgery cito without waiting for CT, the handoff must
+mark CT head as required while stating that imaging must not delay transfer to
+the operating room; do not claim an unperformed CT result.
+
+Extremity fracture recommendations follow the radiology handbook's two-view
+rule: long-bone X-rays use a composite AP & Lateral catalog option (wrist PA &
+Lateral; hand/foot use the catalog's three-view option). Keep the selected
+composite path identical in the diagnosis narrative, lookup cascade, saved
+radiology record, and report; the generator may create one roleplay image for
+that combined selection.
+
+### Laboratory AI (updated 2026-09-28)
+
+`dashboard/laboratory_ai.php` consumes the structured recommendation from a
+Diagnosis report. `ems_ai_laboratory_normalize_structured_recommendation()`
+maps legacy aliases (`level3`/`spesimen`) to the current catalog schema
+(`level3_option`/`specimen_type`) and validates the entire department,
+category, option, and specimen path before applying the cascade. Keep this
+compatibility in both diagnosis report display and lookup JSON.
+
+Laboratory AI follows the latest SOP documents in `dokumen.php`: CBC uses
+Whole Blood EDTA and the model must return the complete selected panel. A
+quality gate checks every row and mandatory CBC parameters; one targeted AI
+repair is allowed when fields or panel items are missing. Never fill results
+with static PHP values. The flag normalizer must recognize `Normal`,
+`High`, and `Low` before enforcing the quality gate.
+When a source Diagnosis report contains scenario lab values, pass those as
+reference results to Laboratory AI and require exact matching parameter
+values/units for any overlapping tests; other required CBC parameters remain
+model-generated. This prevents two reports for the same RP patient from
+contradicting each other.
+
+Radiology and laboratory print templates use compact A4 layouts. Keep
+provenance notices on the interactive radiology page; the formal print sheet
+contains the selected exam and generated report text without the
+`SIMULASI ROLEPLAY` banner, invented specialist credentials, or decorative
+padding. Verify that report contents fit the intended single-page output.
+
+### Roxy Internal Assistant (updated 2026-09-28)
+
+`dashboard/ai_assistant.php` and the footer bubble share
+`actions/roxy_chat_action.php`, `ajax/roxy_conversations.php`, and
+`config/roxy_chatbot.php`. Conversation history, lookup, and deletion are
+user- and active-unit-scoped. Chat answers are generated before message
+persistence; the user/bot pair is then written in one transaction so provider
+failures do not leave incomplete turns. Corrections from chat go to
+`actions/roxy_correction_action.php`; pending corrections are reviewed in
+`dashboard/ai_assistant_monitoring.php` by manager-plus. Only approved answers
+are reused, and only for the exact same normalized question within that unit.
+Manager-plus maintains unit-scoped SOP/how-to articles in
+`dashboard/ai_assistant_knowledge.php`; that page is added to both the
+dashboard whitelist in `config/helpers.php` and the Roxwood Hospital AI
+sidebar group. Migration `docs/sql/89_2026-09-28_roxy_answer_corrections.sql`
+adds correction and learned-answer storage. Pending or rejected corrections
+must never be sent back to the model as trusted knowledge.
+For policy/SOP questions, Roxy compares `document_files.source_file_sha256`
+with the stored source; if the file changed, it refreshes extraction before
+retrieval/comparison. Section paths (Pasal/Poin) are extracted from source
+text and included as evidence; do not let the model invent section numbers.
+Migration `docs/sql/90_2026-09-28_document_source_integrity_hash.sql` adds
+the source hash used by this check.
+
+Medical name suffixes/prefixes are display-only: use
+`ems_format_medical_display_name()` and never modify `user_rh.full_name`
+(login and identity matching depend on the raw name). Trainees have no title;
+paramedics show `A. Md Kep`, co-assistants `S. Ked`, general practitioners
+`dr.`, and specialists `dr.` plus the comma-separated `specialist_degrees`.
+Specialist degree entry is required in Setting Akun and enforced by
+`auth/auth_guard.php` for dashboard access. Migration
+`docs/sql/91_2026-09-28_user_specialist_degrees.sql` adds the field.
+
 ### Specialist Medical Authority
 `specialist_authorizations.php`, `specialist_medical_authority_action.php`,
 `specialist_medics.php`+`_export.php`, `specialist_operation_recap.php`+
@@ -817,3 +927,14 @@ defensive way.
 - When adding a dashboard page: register it in both
   `config/helpers.php::ems_division_allowed_dashboard_pages()` (if
   division-restricted) and `partials/sidebar.php` (menu entry) — see §3.
+
+### IGD Emergency action contract (updated 2026-09-27)
+Diagnosis Assistant keeps emergency action text model-authored; PHP only sanitizes/removes disallowed entries and moves an already-generated GCS assessment and TTV measurement to positions 1 and 2. The completion gate checks that their `/do` components and numeric results match the final GCS and all five TTV values (equivalent phrasing/units are accepted), and rejects communication-only `/me` steps. Verbal clinical summary belongs in the separate `handoff` field; emergency ends with physical preparation/transfer to the operating room. Do not add static fallback action rows or image assets to these cards.
+
+The Diagnosis Report renders the adult resting-reference TTV action guide as a separate card immediately below the five-value TTV card. Keep those cards separate, retain the age/clinical-context caveat, and avoid prescriptive drug or fluid orders in the general guide. Normal ranges and emergency response wording link to MedlinePlus, Resuscitation Council UK, and AHA sources in the UI.
+
+Diagnosis Assistant generation uses a core-only system prompt and completion contract for Stage 1, then the full SOP/catalog-backed report contract for Stage 2. Transient provider/network failures receive at most one automatic retry per AI call; persistent quality-gate failures may invoke Stage 3 and one final targeted Stage 4 repair. These repairs remain model-generated, are bounded, and must pass the same final completeness validator; they must never insert static clinical actions or fabricate missing facts in PHP.
+
+All generated physical `/me` actions in the IGD and Surgery Planner roleplay must name the actual instrument/device/material used; assistants must receive a DPJP instruction naming the item they fetch or hand over. IGD quality checks reject missing tools and instrument/anatomy mismatches, then may request a targeted model-only repair while pinning the action count, order, and results. Surgery Planner receives the completed IGD emergency actions as canonical context and must continue from the existing dressing, bleeding control, IV/transfusion, airway, and injury location; for blood pooling, name the surgical suction machine and sterile suction catheter (never oral suction). Medical Record narratives preserve instrument names present in source records without inventing unrecorded equipment.
+
+Gemini may name emergency fields `/me` and `/do` as `aksi_me`/`aksi_do`, `action_me`/`action_do`, or equivalent schema keys. Normalize those aliases before sanitization so valid model results are not discarded. GCS action validation accepts equivalent total notation only when the same E/V/M components and their arithmetic total match the final score. Radiology projection lists must be normalized to one exact catalog option before validating the structured path; do not append generic `hasil belum tersedia` radiology rows after the model response.

@@ -51,6 +51,8 @@ if (!$report) {
     header('Location: laboratory_ai.php');
     exit;
 }
+$report['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['created_by_name'] ?? '')) ?: '-';
+$report['doctor_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
 
 $result = [];
 if ($report['status'] === 'done' && $report['result_json']) {
@@ -225,13 +227,13 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <?php if ($report['status'] === 'done'): ?>
 <div id="aiLabPrintTemplate" class="hidden">
-    <div style="font-family: 'Times New Roman', serif; color:#1f2937; padding:32px; max-width:800px; margin:0 auto;">
-        <div style="text-align:center; border-bottom:3px solid #0ea5e9; padding-bottom:12px; margin-bottom:20px;">
-            <div style="font-size:20px; font-weight:bold; letter-spacing:1px;">ROXWOOD HOSPITAL LABORATORY</div>
-            <div style="font-size:12px; color:#6b7280;">Laporan Hasil Pemeriksaan Laboratorium</div>
+    <div class="print-sheet" style="font-family:Arial,sans-serif; color:#1f2937; padding:0; max-width:100%; margin:0 auto; font-size:8px; line-height:1.2;">
+        <div style="text-align:center; border-bottom:2px solid #0ea5e9; padding-bottom:5px; margin-bottom:8px;">
+            <div style="font-size:14px; font-weight:bold;">ROXWOOD HOSPITAL</div>
+            <div style="font-size:9px; color:#475569;">LAPORAN HASIL PEMERIKSAAN LABORATORIUM</div>
         </div>
 
-        <table style="width:100%; font-size:12px; margin-bottom:16px; border-collapse:collapse;">
+        <table style="width:100%; font-size:8px; margin-bottom:8px; border-collapse:collapse;">
             <tr>
                 <td style="padding:3px 0; width:20%;"><strong>Nama Pasien</strong></td>
                 <td style="padding:3px 0; width:30%;">: <?= htmlspecialchars((string) ($report['patient_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></td>
@@ -250,34 +252,34 @@ include __DIR__ . '/../partials/sidebar.php';
             </tr>
         </table>
 
-        <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:16px;">
+        <table style="width:100%; border-collapse:collapse; font-size:8px; margin-bottom:8px;">
             <thead>
                 <tr style="background:#f1f5f9;">
-                    <th style="border:1px solid #cbd5e1; padding:6px; text-align:left;">Parameter</th>
-                    <th style="border:1px solid #cbd5e1; padding:6px; text-align:left;">Hasil</th>
-                    <th style="border:1px solid #cbd5e1; padding:6px; text-align:left;">Satuan</th>
-                    <th style="border:1px solid #cbd5e1; padding:6px; text-align:left;">Rentang Rujukan</th>
-                    <th style="border:1px solid #cbd5e1; padding:6px; text-align:center;">Flag</th>
+                    <th style="border:1px solid #cbd5e1; padding:2px 3px; text-align:left;">Parameter</th>
+                    <th style="border:1px solid #cbd5e1; padding:2px 3px; text-align:left;">Hasil</th>
+                    <th style="border:1px solid #cbd5e1; padding:2px 3px; text-align:left;">Satuan</th>
+                    <th style="border:1px solid #cbd5e1; padding:2px 3px; text-align:left;">Rentang Rujukan</th>
+                    <th style="border:1px solid #cbd5e1; padding:2px 3px; text-align:center;">Flag</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($labResults as $item): ?>
                     <?php $flag = (string) ($item['flag'] ?? 'Normal'); ?>
                     <tr>
-                        <td style="border:1px solid #cbd5e1; padding:6px;"><?= htmlspecialchars((string) ($item['parameter'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td style="border:1px solid #cbd5e1; padding:6px; font-weight:<?= $flag !== 'Normal' ? 'bold' : 'normal' ?>; color:<?= $flag === 'High' ? '#dc2626' : ($flag === 'Low' ? '#d97706' : '#111827') ?>;"><?= htmlspecialchars((string) ($item['result'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td style="border:1px solid #cbd5e1; padding:6px;"><?= htmlspecialchars((string) ($item['unit'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td style="border:1px solid #cbd5e1; padding:6px;"><?= htmlspecialchars((string) ($item['reference_range'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
-                        <td style="border:1px solid #cbd5e1; padding:6px; text-align:center;"><?= htmlspecialchars($flag, ENT_QUOTES, 'UTF-8') ?></td>
+                        <td style="border:1px solid #cbd5e1; padding:2px 3px;"><?= htmlspecialchars((string) ($item['parameter'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td style="border:1px solid #cbd5e1; padding:2px 3px; font-weight:<?= $flag !== 'Normal' ? 'bold' : 'normal' ?>; color:<?= $flag === 'High' ? '#dc2626' : ($flag === 'Low' ? '#d97706' : '#111827') ?>;"><?= htmlspecialchars((string) ($item['result'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td style="border:1px solid #cbd5e1; padding:2px 3px;"><?= htmlspecialchars((string) ($item['unit'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td style="border:1px solid #cbd5e1; padding:2px 3px;"><?= htmlspecialchars((string) ($item['reference_range'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td style="border:1px solid #cbd5e1; padding:2px 3px; text-align:center;"><?= htmlspecialchars($flag, ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
 
-        <div style="font-size:12px; margin-bottom:12px;"><strong>Interpretasi:</strong><br><?= nl2br(htmlspecialchars((string) ($result['interpretation'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
-        <div style="font-size:12px; margin-bottom:12px;"><strong>Korelasi Klinis:</strong><br><?= nl2br(htmlspecialchars((string) ($result['clinical_correlation'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
-        <div style="font-size:12px; margin-bottom:12px;"><strong>Kesan:</strong><br><?= nl2br(htmlspecialchars((string) ($result['diagnosis'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
-        <div style="font-size:12px; margin-bottom:20px;">
+        <div style="font-size:8px; margin-bottom:5px;"><strong>Interpretasi:</strong> <?= nl2br(htmlspecialchars((string) ($result['interpretation'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+        <div style="font-size:8px; margin-bottom:5px;"><strong>Korelasi Klinis:</strong> <?= nl2br(htmlspecialchars((string) ($result['clinical_correlation'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+        <div style="font-size:8px; margin-bottom:5px;"><strong>Kesan:</strong> <?= nl2br(htmlspecialchars((string) ($result['diagnosis'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></div>
+        <div style="font-size:8px; margin-bottom:7px;">
             <strong>Rekomendasi:</strong>
             <ul style="margin:4px 0 0 18px; padding:0;">
                 <?php foreach ((array) ($result['recommendations'] ?? []) as $rec): ?>
@@ -289,13 +291,13 @@ include __DIR__ . '/../partials/sidebar.php';
         <div style="display:flex; justify-content:flex-end; margin-top:40px;">
             <div style="text-align:center; font-size:12px;">
                 <div>Roxwood, <?= htmlspecialchars(date('d/m/Y', strtotime((string) $report['created_at'])), ENT_QUOTES, 'UTF-8') ?></div>
-                <div style="height:60px;"></div>
+                <div style="height:22px;"></div>
                 <div style="border-top:1px solid #1f2937; padding-top:4px; font-weight:bold;"><?= htmlspecialchars((string) ($report['doctor_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
                 <div style="font-size:10px; color:#6b7280;">Dokter Pemeriksa</div>
             </div>
         </div>
 
-        <div style="text-align:center; margin-top:24px; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:8px;">
+        <div style="text-align:center; margin-top:8px; font-size:7px; color:#64748b; border-top:1px solid #e5e7eb; padding-top:4px;">
             Dokumen ini dihasilkan otomatis oleh Laboratory AI — Roxwood Hospital Medical Center. Kode Referensi: <?= htmlspecialchars((string) ($report['report_code'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
         </div>
     </div>
@@ -333,7 +335,7 @@ if (printBtn) {
         var content = document.getElementById('aiLabPrintTemplate').innerHTML;
         var win = window.open('', '_blank');
         win.document.open();
-        win.document.write('<!doctype html><html><head><title>Hasil Laboratorium</title><meta charset="utf-8"></head><body>' + content + '</body></html>');
+        win.document.write('<!doctype html><html><head><title>Laporan Laboratorium</title><meta charset="utf-8"><style>@page{size:A4;margin:7mm}html,body{margin:0;padding:0}body{font-family:Arial,sans-serif}.print-sheet{font-size:7.5px!important;line-height:1.15!important}.print-sheet *{box-sizing:border-box}.print-sheet tr,.print-sheet div{break-inside:avoid}</style></head><body>' + content + '</body></html>');
         win.document.close();
         win.focus();
         setTimeout(function () { win.print(); }, 300);

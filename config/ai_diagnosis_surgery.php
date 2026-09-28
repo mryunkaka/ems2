@@ -393,6 +393,55 @@ function ems_ai_ds_igd_authority_reference(): string
         . "Tindakan terakhir emergency adalah pernyataan rencana bahwa pasien SIAP dipindahkan ke tahap berikutnya yang sesuai: Laboratorium, Radiologi, atau Ruang Operasi. Hasil tindakan yang belum diverifikasi tetap Data belum tersedia.";
 }
 
+/** Shared roleplay contract: every physical action names the actual tool/material used. */
+function ems_ai_ds_instrument_action_contract(): string
+{
+    return "\n\nKONTRAK ALAT DAN KESINAMBUNGAN TINDAKAN ROXWOOD (WAJIB untuk setiap item /me di IGD dan Surgery Planner): setiap aksi harus menyebut nama alat/instrumen/bahan yang benar-benar dipakai secara spesifik; jangan menulis tindakan telanjang seperti 'menghisap darah', 'membalut luka', 'membersihkan luka', 'menjahit', 'memeriksa', atau 'memindahkan' tanpa alat yang digunakan. Contoh: 'menghubungkan mesin suction bedah ke kateter suction steril lalu menyedot genangan darah dari luka lengan bawah kanan' (bukan menghisap dengan mulut); 'menekan luka memakai kasa steril tebal lalu memasang balut tekan dengan perban elastis'; 'mengirigasi luka memakai spuit irigasi 50 mL berisi NaCl 0,9%'; 'menjahit kulit memakai needle holder, pinset jaringan, dan benang nylon 3-0'; 'memindahkan pasien dengan brankar sambil mempertahankan monitor transport'. Setiap instrumen harus relevan dengan langkahnya, bukan daftar alat yang ditempel tanpa dipakai: jangan memakai senter pupil untuk memeriksa pengisian kapiler/perfusi atau memposisikan anggota gerak; gunakan pemeriksaan palpasi, stopwatch, atau Doppler vaskular genggam sesuai langkah. Bila Asisten membantu, isi instruksi sebagai perintah DPJP yang menyebut alat spesifik ('DPJP: Asisten 1, ambilkan kateter suction steril dan sambungkan ke mesin suction'), balasan asisten singkat, lalu aksi menjelaskan penyerahan/penggunaan alat. Untuk tindakan DPJP, asisten boleh menyiapkan alat pada langkah sebelumnya; jangan menggambarkan asisten mengambil keputusan/tindakan definitif mandiri.\nKONTINUITAS IGD → RUANG OPERASI: perlakukan seluruh tindakan emergency sumber sebagai sudah selesai di dalam skenario sebelum pasien tiba di OK. Baca alat/balutan terakhir yang dipakai pada luka dan lanjutkan secara berurutan: di OK, buka balutan IGD yang benar-benar disebut sambil mempertahankan tekanan dengan kasa steril baru; sebut gunting perban bila memotong balutan, pinset bila mengangkat kasa, dan mesin suction + kateter suction steril bila membersihkan genangan darah. Jangan menyebut material generik jika laporan IGD menyebut material spesifik; jangan menyatakan luka baru dibalut di OK sebelum balutan IGD dibuka. Pertahankan sisi, anatomi, status perdarahan, akses IV, transfusi, airway/ETT, dan hasil penunjang dari laporan DGN tanpa mengulang tindakan yang sudah selesai kecuali tindakan itu secara logis perlu diulang.";
+}
+
+/** Return a quality issue when a roleplay /me step performs an instrumented task without naming its tool. */
+function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, string $caseText = ''): array
+{
+    $issues = [];
+    $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|set\s+infus|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|pinset(?:\s+(?:jaringan|anatomi|chirurgis))?|forsep|skalpel|bisturi|retraktor|duk\s+steril|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+operasi|lembar\s+instruksi|formulir(?:\s+consent)?|informed\s+consent\s+form|clipboard|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril)\b/iu';
+    foreach ($items as $index => $item) {
+        if (!is_array($item)) continue;
+        $action = trim((string) ($item['aksi'] ?? ''));
+        if ($action !== '' && preg_match($toolPattern, $action) !== 1) {
+            $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' belum menyebut nama alat/instrumen/bahan di dalam aksi /me';
+        }
+        if ($action !== '' && preg_match('/\b(?:perfusi|pengisian\s+kapiler|capillary\s+refill|nadi\s+perifer)\b/iu', $action) === 1
+            && preg_match('/\b(?:senter\s+pupil|penlight)\b/iu', $action) === 1) {
+            $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' memakai alat pupil yang tidak sesuai untuk perfusi; ganti dengan palpasi, stopwatch, atau Doppler vaskular';
+        }
+        if ($action !== '' && preg_match('/\b(?:GCS|Glasgow|komponen\s+E\/V\/M|respons\s+mata|skor\s+mata)\b/iu', $action) === 1
+            && preg_match('/\bstetoskop\b/iu', $action) === 1) {
+            $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' memakai stetoskop untuk menilai GCS; gunakan metode respons GCS dan lembar skor yang tepat';
+        }
+        $caseLower = mb_strtolower($caseText, 'UTF-8');
+        $actionLower = mb_strtolower($action, 'UTF-8');
+        $headInjurySupported = preg_match('/\b(?:trauma\s+kepala|cedera\s+kepala|luka\s+kepala|intrakranial|intracranial|TBI|cranial|GCS)\b/iu', $caseText) === 1;
+        if (!$headInjurySupported
+            && preg_match('/\b(?:pupil|penlight|senter\s+pupil)\b/iu', $action) === 1) {
+            $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' menambahkan pemeriksaan pupil/senter tanpa cedera kepala atau indikasi neurologis pada kasus sumber';
+        }
+        if (preg_match('/\blengan\s+bawah\s+kanan\b/u', $caseLower) === 1
+            && preg_match('/\b(?:luka|perdarahan|balut|kasa|suction|laserasi)\b/u', $actionLower) === 1
+            && preg_match('/\btangan\s+kanan\b/u', $actionLower) === 1
+            && preg_match('/\blengan\s+bawah\s+kanan\b/u', $actionLower) !== 1) {
+            $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' memindahkan cedera lengan bawah kanan menjadi luka tangan kanan';
+        }
+        $actor = mb_strtolower(trim((string) ($item['pelaku'] ?? '')), 'UTF-8');
+        if (str_contains($actor, 'asisten')) {
+            $instruction = trim((string) ($item['instruksi'] ?? ''));
+            if (preg_match('/\bDPJP\s*:/iu', $instruction) !== 1 || preg_match($toolPattern, $instruction) !== 1) {
+                $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' menugaskan asisten tanpa instruksi DPJP yang menyebut alat spesifik';
+            }
+        }
+    }
+    return $issues;
+}
+
 function ems_ai_ds_operation_classification_reference(): string
 {
     return "OPERASI MINOR (risiko rendah, durasi singkat, umumnya anestesi lokal, tidak perlu ICU): luka memar ringan-sedang, luka robek superfisial/sedang tanpa kena tendon/saraf/pembuluh besar/organ vital, patah tulang tertutup sederhana tanpa pergeseran berat, luka tembak superfisial tidak tembus rongga tubuh, luka bakar derajat 1-2 luas kecil, cedera kepala ringan (GCS 15, tanpa muntah/kejang/defisit neurologis), insisi & drainase abses kecil, eksisi kista kecil, ekstraksi benda asing superfisial, debridement luka ringan.\n"
@@ -476,16 +525,17 @@ function ems_ai_ds_default_surgery_system_prompt(): string
 {
     return "Anda adalah dokter spesialis bedah senior Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun rencana operasi (operative note) untuk simulasi/roleplay EMS. Tugas Anda: dari jenis operasi, jenis anestesi, tingkat kompleksitas, dan kasus medis yang diberikan (sepadat apa pun), susun rencana operasi LENGKAP, definitif, dan siap pakai, bukan daftar pertanyaan.\n\n"
         . "ATURAN WAJIB:\n"
-        . "1. Pertahankan fakta kasus dan input dokter. Jangan mengarang temuan, hasil operasi, status kesadaran, TTV, atau respons pasien yang tidak disebutkan. Rangkai rencana operasi, tahapan, risiko, dan narasi roleplay secara lengkap dan berbeda sesuai kasus; detail ukur/hasil aktual yang belum tersedia tetap diberi label belum diukur/belum dilakukan.\n"
+        . "1. Ini skenario operasi FiveM roleplay, bukan rekam klinis nyata. Pertahankan identitas, mekanisme, anatomi, dan TTV/GCS dari laporan Diagnosis IGD. Lengkapi skenario operasi secara final dan spesifik terhadap kasus; hasil /do adalah hasil final di dalam skenario RP, bukan klaim tindakan dunia nyata. Jangan mengeluarkan placeholder atau bahasa verifikasi.\n"
         . "2. \"durasi\" wajib realistis dan PROPORSIONAL dengan jumlah \"tahapan_prosedur\" dan kompleksitas kasus - makin banyak langkah/makin kompleks, makin lama durasinya. Operasi Minor umumnya 30-90 menit; Mayor 2-8 jam. Format contoh: \"4 Jam 30 Menit\".\n"
-        . "3. \"farmakologi\" hanya boleh memuat obat yang didukung indikasi dan data kasus. Jika indikasi, dosis, atau rencana obat tidak tercatat, isi dengan \"Data belum tersedia\"; jangan membuat resep atau dosis konkret untuk melengkapi format.\n"
+        . "3. \"farmakologi\" harus berupa rencana roleplay yang lengkap, relevan dengan kasus dan jenis anestesi. Jangan isi dosis dengan placeholder; isi nama dan dosis skenario yang konsisten, atau kosongkan array untuk kategori obat yang memang tidak dipakai dalam skenario.\n"
         . "3a. KESELAMATAN OBAT: untuk bedah saraf/kraniotomi, mata, atau tindakan berisiko perdarahan tinggi, JANGAN meresepkan NSAID/antiplatelet (Ketorolac, Asam Mefenamat, Ibuprofen, Aspirin) - gunakan Paracetamol dan/atau opioid sebagai gantinya. Untuk operasi lain tanpa risiko perdarahan tinggi, NSAID boleh dipakai sesuai indikasi.\n"
-        . "4. \"tahapan_prosedur\" wajib memiliki JUMLAH LANGKAH PERSIS SESUAI permintaan eksplisit user (disebutkan sebagai \"JUMLAH LANGKAH: N\" pada pesan user) - tidak boleh kurang maupun lebih. Susun N langkah logis yang spesifik terhadap tindakan, kasus, dan SOP; jangan menyalin template langkah yang sama. Detail pelaksanaan yang belum terjadi ditulis sebagai rencana/roleplay, bukan hasil aktual.\n"
+        . "4. \"tahapan_prosedur\" wajib memiliki JUMLAH LANGKAH PERSIS SESUAI permintaan eksplisit user. Susun langkah spesifik pada anatomi dan kasus. Tiap item wajib berisi satu pelaku yang jelas (DPJP, Asisten 1, atau Asisten 2), aksi langsung dengan /me, hasil skenario final dengan /do dalam bentuk lampau, dan animasi /e. Jangan menulis 'Data belum tersedia', 'petugas belum tersedia', 'wajib diverifikasi', 'belum dilakukan', 'belum diketahui', 'belum tercatat', 'sedang diproses', atau kalimat yang meminta pemain memeriksa sendiri hasilnya. Tulis hasil yang konkret, misalnya jahitan tertutup rapat dan tepi luka rapi setelah penutupan.\n"
+        . "4a. Temuan operasi harus menjadi satu skenario yang koheren dengan diagnosis dan lokasi luka pada laporan sumber. Tentukan hasil akhir roleplay yang masuk akal, lalu gunakan hasil itu konsisten pada tahap eksplorasi, hemostasis, pengambilan proyektil, penutupan, dan laporan akhir. Jangan mencantumkan beberapa pilihan teknik dengan kata 'atau'. Setiap langkah harus dapat langsung dimainkan. Setiap aksi menyebut alat/instrumen/bahan tepat yang dipakai; bila Asisten menyiapkannya, tulis instruksi DPJP dengan nama alat dan aksi Asisten mengambil/menyerahkannya.\n"
         . "9. Ikuti pembagian peran & kewenangan dari referensi - DPJP sebagai operator utama melakukan tindakan definitif, Asisten 1 & 2 membantu atas instruksi dan supervisi. Anestesi lokal oleh co-ass tidak boleh ditulis sebagai tindakan mandiri tanpa supervisi; catat operator aktual hanya bila diberikan. ORIF/Open Reduction Internal Fixation selalu Mayor.\n"
         . "10. \"risiko_komplikasi\" hanya memuat risiko yang relevan dengan jenis tindakan; jangan menyatakannya sebagai kejadian aktual.\n"
-        . "11. \"laporan_pasca_operasi\" adalah ringkasan rencana/operative note yang dirangkai model sesuai kasus; labeli sebagai RENCANA/ROLEPLAY bila tindakan belum dinyatakan dilakukan dan jangan menulis hasil aktual.\n"
+        . "11. \"laporan_pasca_operasi\" adalah ringkasan akhir skenario roleplay; harus konsisten dengan hasil /do semua tahap. Jangan menambahkan placeholder, disclaimer verifikasi, atau hasil yang bertentangan dengan tahapan.\n"
         . "12. Bahasa Indonesia medis baku. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
-        . "Struktur JSON WAJIB (field tetap ada; model wajib mengisi narasi/rencana secara lengkap, sedangkan nilai ukur dan hasil aktual yang tidak tersedia memakai label verifikasi):\n"
+        . "Struktur JSON WAJIB. Semua string yang ditampilkan kepada pemain harus konkret dan bebas placeholder. Array obat boleh kosong jika kategori tersebut tidak dipakai; field lain harus lengkap.\n"
         . "{\n"
         . "  \"durasi\": \"contoh: 4 Jam 30 Menit\",\n"
         . "  \"farmakologi\": {\"pra_operatif\": [{\"nama\": \"...\", \"dosis\": \"...\", \"catatan\": \"...\"}], \"intra_operatif\": [...], \"post_operatif\": [...], \"pemulangan\": [...]},\n"
@@ -494,6 +544,33 @@ function ems_ai_ds_default_surgery_system_prompt(): string
         . "  \"laporan_pasca_operasi\": \"ringkasan rencana operative note 2-4 kalimat\",\n"
         . "  \"sop_references\": [\"rujukan SOP yang dipakai untuk rencana ini\"]\n"
         . "}";
+}
+
+/**
+ * Recommend a planner length from the documented diagnosis context. This is
+ * only a default; a user-selected 10/20/30-step length remains authoritative.
+ */
+function ems_ai_ds_recommend_surgery_complexity(string $context): string
+{
+    $text = mb_strtolower(trim($context), 'UTF-8');
+    if ($text === '') {
+        return 'Sedang';
+    }
+
+    $longPattern = '/\b(?:laparotom|torakotom|craniotom|kraniotom|perforasi|peritonitis|perdarahan\s+(?:intra|internal|masif)|cedera\s+organ|proyektil|peluru|tembak|tembus|penetrasi|cedera\s+vaskular|pembuluh\s+darah|multi(?:ple)?\s+cedera|eviserasi|prosedur\s+multiorgan)\b/iu';
+    $majorPattern = '/\b(?:mayor|orif|fiksasi\s+internal|fraktur\s+terbuka|rekonstruksi|eksplorasi)\b/iu';
+    $minorPattern = '/\b(?:minor|luka\s+robek\s+(?:superfisial|ringan)|laserasi\s+superfisial|jahit(?:an)?\s+luka\s+kulit|ekstraksi\s+benda\s+asing\s+superfisial)\b/iu';
+
+    if (preg_match($longPattern, $text) === 1) {
+        return 'Panjang';
+    }
+    if (preg_match($minorPattern, $text) === 1) {
+        return 'Mudah';
+    }
+    if (preg_match($majorPattern, $text) === 1) {
+        return 'Sedang';
+    }
+    return 'Sedang';
 }
 
 function ems_ai_ds_reference_suffix(bool $includeMantra = true, bool $igdOnly = false): string
@@ -774,12 +851,30 @@ function ems_ai_ds_normalize_ttv_actual(mixed $items): array
             $slotKeys = array_keys($slots);
             $key = $slotKeys[$position] ?? '';
         }
+        $rawLabel = trim((string) ($item['label'] ?? ''));
+        $rawValue = trim((string) ($item['value'] ?? ''));
+        // Models sometimes return the numeric observation inside `label` and
+        // put its clinical interpretation in `value`. Promote the observed
+        // measurement to the canonical value slot so the report and action
+        // consistency checks still receive real numeric vital signs.
+        $interpretation = '';
+        if ($key !== '' && preg_match('/\d/u', $rawValue) !== 1) {
+            $numericLabel = preg_replace('/^.*?:\s*/u', '', $rawLabel) ?? $rawLabel;
+            if (preg_match('/\d/u', $numericLabel) === 1) {
+                $interpretation = $rawValue;
+                $rawValue = $numericLabel;
+            }
+        }
         $normalized = [
             'label' => $key !== '' ? $slots[$key] : trim((string) ($item['label'] ?? '')),
-            'value' => ems_ai_ds_ttv_clean_value(trim((string) ($item['value'] ?? ''))) ?: 'Data belum tersedia',
+            'value' => ems_ai_ds_ttv_clean_value($rawValue) ?: 'Data belum tersedia',
             'note' => '',
         ];
-        $normalized['note'] = ems_ai_ds_ttv_clinical_note($normalized['label'], $normalized['value'], (string) ($item['note'] ?? ''));
+        $providedNote = trim((string) ($item['note'] ?? ''));
+        if ($interpretation !== '') {
+            $providedNote = trim($providedNote . ($providedNote !== '' ? '; ' : '') . $interpretation);
+        }
+        $normalized['note'] = ems_ai_ds_ttv_clinical_note($normalized['label'], $normalized['value'], $providedNote);
         if ($key !== '' && !isset($known[$key])) {
             $known[$key] = $normalized;
         } elseif ($key === '' && $normalized['label'] !== '') {
@@ -1242,59 +1337,143 @@ function ems_ai_ds_text_indicates_evisceration(string $text): bool
 
 function ems_ai_ds_default_radiology_selection(string $caseText): array
 {
-    $finding = preg_match('/\b(?:perdarahan|hematoma|syok|eviserasi|peritonitis)\b/iu', $caseText) === 1
-        ? 'Perdarahan / Hematoma'
-        : (preg_match('/\b(?:fraktur|patah|dislokasi)\b/iu', $caseText) === 1 ? 'Fraktur / Patah Tulang' : 'Normal / Sehat');
+    $hasFracture = preg_match('/\b(?:fraktur|patah\s+tulang|dislokasi)\b/iu', $caseText) === 1;
+    $finding = $hasFracture
+        ? 'Fraktur / Patah Tulang'
+        : (preg_match('/\b(?:(?:per|pen)darahan|hematoma|syok|eviserasi|peritonitis)\b/iu', $caseText) === 1 ? 'Perdarahan / Hematoma' : 'Normal / Sehat');
 
-    if (preg_match('/\b(?:kepala|otak|gcs|tidak sadar|kejang|pupil)\b/iu', $caseText) === 1) {
+    // GCS dicantumkan pada setiap laporan IGD dan tidak dengan sendirinya
+    // menjadi indikasi CT kepala. Hindari pemetaan salah ke CT kepala hanya
+    // karena token "GCS" muncul dalam laporan.
+    $headFindingTerms = '(?:trauma\s+kepala|cedera\s+kepala|benturan\s+kepala|fraktur\s+cranium|(?:per|pen)darahan(?:\s+aktif)?(?:\s+di)?(?:\s+bagian)?\s+kepala|(?:per|pen)darahan\s+intrakranial|hematoma\s+intrakranial|luka\s+(?:robek\s+)?(?:di\s+)?(?:bagian\s+)?kepala)';
+    $headFindingPattern = '/' . $headFindingTerms . '/iu';
+    $headInjuryPattern = '/\b(?:trauma|cedera|bentur(?:an)?|terbentur|luka|fraktur|patah|memar|benjol|(?:per|pen)darahan|hematoma)[^.!?;\n]{0,60}\b(?:kepala|kranium|tengkorak|otak)\b|\b(?:kepala|kranium|tengkorak|otak)\b[^.!?;\n]{0,60}\b(?:trauma|cedera|terbentur|luka|fraktur|patah|memar|benjol|(?:per|pen)darahan|hematoma)\b/iu';
+    $headDenied = preg_match('/\b(?:tidak\s+ada|tanpa|menyangkal|disangkal|tidak\s+ditemukan|tidak\s+terdapat)\b.{0,160}(?:' . $headFindingTerms . ')/isu', $caseText) === 1;
+    $hasPositiveHeadFinding = (preg_match($headFindingPattern, $caseText) === 1 || preg_match($headInjuryPattern, $caseText) === 1) && !$headDenied;
+    if ($hasPositiveHeadFinding) {
         return ['CT Scan', 'Kepala & Otak', 'CT Kepala Non-Kontras', 'Axial', $finding];
+    }
+    if (preg_match('/\b(?:tibia|fibula|tibiofibula|tungkai bawah|betis)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Lower Extremity', 'Tibia-Fibula', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:femur|paha)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Lower Extremity', 'Femur', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:ankle|pergelangan kaki|malleolus)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Lower Extremity', 'Ankle', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:knee|lutut|patella)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Lower Extremity', 'Knee', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:kaki|tungkai)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Lower Extremity', 'Tibia-Fibula', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:forearm|antebrach|radius|ulna|lengan\s+bawah)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Forearm', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:humerus|lengan\s+atas|upper\s+arm|bahu|shoulder)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Humerus', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:siku|elbow)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Elbow', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:pergelangan\s+tangan|wrist)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Wrist', 'PA', $finding];
+    }
+    if (preg_match('/\b(?:lengan|arm)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Forearm', 'AP', $finding];
+    }
+    if (preg_match('/\b(?:jari\s+tangan|metakarp|phalanges|phalanx|manus|telapak\s+tangan|hand|tangan)\b/iu', $caseText) === 1) {
+        return ['X-Ray', 'Upper Extremity', 'Hand', 'PA', $finding];
     }
     if (preg_match('/\b(?:abdomen|perut|eviserasi|usus|peritonitis)\b/iu', $caseText) === 1) {
         return ['Ultrasound', 'Abdomen', 'USG Whole Abdomen', 'B-Mode (Grayscale)', $finding];
     }
-    if (preg_match('/\b(?:tangan|lengan|bahu|siku|pergelangan)\b/iu', $caseText) === 1) {
-        return ['X-Ray', 'Upper Extremity', 'Hand', 'PA', $finding];
-    }
-    if (preg_match('/\b(?:kaki|tungkai|lutut|ankle|pergelangan kaki)\b/iu', $caseText) === 1) {
-        return ['X-Ray', 'Lower Extremity', 'Knee', 'AP', $finding];
+    if (preg_match('/\b(?:kejang|penurunan\s+kesadaran|tidak\s+sadar|anisokor|pupil\s+(?:dilatasi|tidak\s+reaktif))\b/iu', $caseText) === 1) {
+        return ['CT Scan', 'Kepala & Otak', 'CT Kepala Non-Kontras', 'Axial', $finding];
     }
 
     return ['X-Ray', 'Thorax', 'Chest', 'AP Supine (Portable)', $finding];
+}
+
+function ems_ai_ds_radiology_anatomy_class(string $modality, string $category, string $bodyRegion): string
+{
+    $categoryText = mb_strtolower($category . ' ' . $bodyRegion, 'UTF-8');
+    if (preg_match('/kepala|otak|head|skull|brain|cranium/iu', $categoryText) === 1) {
+        return 'head';
+    }
+    if (preg_match('/upper extremity|ekstremitas atas/iu', $categoryText) === 1) {
+        return 'upper';
+    }
+    if (preg_match('/lower extremity|ekstremitas bawah/iu', $categoryText) === 1) {
+        return 'lower';
+    }
+    if (preg_match('/thorax|chest|dada|ribs|sternum/iu', $categoryText) === 1) {
+        return 'thorax';
+    }
+    if (preg_match('/abdomen|pelvis|panggul/iu', $categoryText) === 1) {
+        return 'abdomen';
+    }
+    if (preg_match('/spine|vertebra|sacrum|cervical|thoracic|lumbar/iu', $categoryText) === 1) {
+        return 'spine';
+    }
+    return '';
+}
+
+/** Return injury regions explicitly present in the user's original case text. */
+function ems_ai_ds_source_anatomy_classes(string $sourceText): array
+{
+    $source = mb_strtolower(trim($sourceText), 'UTF-8');
+    if ($source === '') {
+        return [];
+    }
+
+    $classes = [];
+    $headPattern = '/(?:trauma|cedera|bentur(?:an)?|terbentur|luka|fraktur|patah|memar|benjol)[^.!?;\n]{0,45}(?:kepala|kranium|tengkorak|otak)|(?:kepala|kranium|tengkorak|otak)[^.!?;\n]{0,45}(?:trauma|cedera|terbentur|luka|fraktur|patah|memar|benjol)/iu';
+    $headDenied = preg_match('/\b(?:tidak\s+ada|tanpa|menyangkal|disangkal|tidak\s+ditemukan|tidak\s+terdapat)\b.{0,100}\b(?:trauma|cedera|benturan|luka|fraktur)\s+kepala\b/iu', $source) === 1;
+    $headBleedingPattern = '/(?:per|pen)darahan[^.!?;\n]{0,60}\b(?:kepala|kranium|tengkorak|otak)\b|\b(?:kepala|kranium|tengkorak|otak)\b[^.!?;\n]{0,60}(?:per|pen)darahan/iu';
+    if (!$headDenied && (preg_match($headPattern, $source) === 1 || preg_match($headBleedingPattern, $source) === 1)) {
+        $classes[] = 'head';
+    }
+    if (preg_match('/\b(?:lengan|arm|forearm|antebrach|radius|ulna|humerus|tangan|hand|jari\s+tangan|bahu|shoulder|siku|elbow|wrist|metakarp|phalanges)\b/iu', $source) === 1) {
+        $classes[] = 'upper';
+    }
+    if (preg_match('/\b(?:tungkai|kaki|leg|foot|ankle|pergelangan\s+kaki|tibia|fibula|betis|paha|femur|lutut|knee|patella)\b/iu', $source) === 1) {
+        $classes[] = 'lower';
+    }
+    if (preg_match('/\b(?:dada|thorax|chest|iga|ribs|sternum)\b/iu', $source) === 1) {
+        $classes[] = 'thorax';
+    }
+    if (preg_match('/\b(?:abdomen|perut|pelvis|panggul|eviserasi|usus|peritonitis)\b/iu', $source) === 1) {
+        $classes[] = 'abdomen';
+    }
+    if (preg_match('/\b(?:tulang\s+belakang|spine|vertebra|sacrum|cervical|thoracic|lumbar)\b/iu', $source) === 1) {
+        $classes[] = 'spine';
+    }
+
+    return array_values(array_unique($classes));
 }
 
 function ems_ai_ds_ensure_igd_radiology(array &$data, string $sourceText = ''): void
 {
     $caseText = mb_strtolower(trim($sourceText . ' ' . ems_ai_ds_case_text($data)));
     $rads = array_values(array_filter((array) ($data['radiologi'] ?? []), static fn ($item): bool => trim((string) $item) !== ''));
-    $abdomenEmergency = preg_match('/(?:abdomen|perut).*(?:syok|perdarahan|peritonitis|luka tusuk|penetrasi)|(?:syok|perdarahan|peritonitis|luka tusuk|penetrasi).*(?:abdomen|perut)/iu', $caseText) === 1;
-    $needsBedside = $abdomenEmergency || str_contains($caseText, 'ct scan dilewati') || str_contains($caseText, 'ct scan ditunda');
-
-    if ($needsBedside) {
-        $hasFast = preg_match('/\bfast\b|ultrasound\s+bedside|usg\s+bedside/iu', implode(' ', $rads)) === 1;
-        $hasPortable = preg_match('/x[- ]?ray.*portable|rontgen.*portable/iu', implode(' ', $rads)) === 1;
-        if (!$hasFast) {
-            $rads[] = 'FAST (Ultrasound bedside) direkomendasikan pada tahap IGD; hasil belum tersedia dan wajib diverifikasi.';
-        }
-        if (!$hasPortable) {
-            $rads[] = 'X-ray portable abdomen/thorax dipertimbangkan pada tahap IGD sesuai kondisi; hasil belum tersedia dan wajib diverifikasi.';
-        }
-        $ctText = implode(' ', $rads);
-        if (preg_match('/ct\s+scan[^.]*\b(?:dilewati|dihilangkan|tidak\s+direkomendasikan)\b/iu', $ctText) === 1) {
-            $rads = array_map(static function ($item): string {
-                return preg_replace('/CT\s+scan[^.]*\b(?:dilewati|dihilangkan|tidak\s+direkomendasikan)\b[^.]*\.?/iu', 'CT scan: DITUNDA — dijadwalkan di tahap Radiologi/pasca stabilisasi; hasil belum tersedia.', (string) $item) ?? (string) $item;
-            }, $rads);
-        }
-        if (preg_match('/\bct\s+scan\b/iu', implode(' ', $rads)) !== 1) {
-            $rads[] = 'CT scan: DITUNDA — dijadwalkan di tahap Radiologi/pasca stabilisasi; hasil belum tersedia.';
-        }
-    }
-    $defaultRadiology = ems_ai_ds_default_radiology_selection($caseText);
+    // Gunakan keterangan kasus sumber untuk menentukan anatomi fallback.
+    // Narasi hasil AI dapat memuat red flag seperti "curigai cedera kepala";
+    // frasa kewaspadaan itu tidak boleh mengalahkan lokasi cedera yang user
+    // laporkan. Bila sumber kosong, barulah pakai seluruh konteks final.
+    $defaultRadiology = ems_ai_ds_default_radiology_selection(
+        trim($sourceText) !== '' ? $sourceText : $caseText
+    );
     if ($rads === []) {
-        $rads[] = $defaultRadiology[0] . ' ' . $defaultRadiology[2] . ' ' . $defaultRadiology[3] . ' direkomendasikan; hasil belum tersedia dan wajib diverifikasi.';
+        $rads[] = $defaultRadiology[0] . ' ' . $defaultRadiology[2] . ' ' . $defaultRadiology[3] . ' direkomendasikan untuk lokasi cedera yang dicatat.';
     }
     $data['radiologi'] = $rads;
 
-    $structured = is_array($data['radiologi_terstruktur'] ?? null) ? $data['radiologi_terstruktur'] : [];
+    $structured = ems_ai_ds_normalize_structured_radiology_legacy($data['radiologi_terstruktur'] ?? null);
+    if (!is_array($structured)) {
+        $structured = [];
+    }
     if (function_exists('ems_ai_radiology_is_valid_selection')) {
         $valid = trim((string) ($structured['modality'] ?? '')) !== ''
             && ems_ai_radiology_is_valid_selection(
@@ -1304,17 +1483,68 @@ function ems_ai_ds_ensure_igd_radiology(array &$data, string $sourceText = ''): 
                 (string) ($structured['projection'] ?? '')
             )
             && in_array((string) ($structured['clinical_finding'] ?? ''), ems_ai_radiology_clinical_findings(), true);
-        if (!$valid) {
+        $structuredClass = ems_ai_ds_radiology_anatomy_class(
+            (string) ($structured['modality'] ?? ''),
+            (string) ($structured['category'] ?? ''),
+            (string) ($structured['body_region'] ?? '')
+        );
+        $sourceClasses = ems_ai_ds_source_anatomy_classes($sourceText);
+        $anatomyConflicts = $sourceClasses !== [] && $structuredClass !== '' && !in_array($structuredClass, $sourceClasses, true);
+        $sourceLower = mb_strtolower($sourceText, 'UTF-8');
+        $sourceFinding = preg_match('/\b(?:fraktur|patah\s+tulang|dislokasi)\b/iu', $sourceLower) === 1
+            ? 'Fraktur / Patah Tulang'
+            : (preg_match('/\b(?:(?:per|pen)darahan|hematoma|luka\s+robek)\b/iu', $sourceLower) === 1 ? 'Perdarahan / Hematoma' : null);
+        $findingConflict = $sourceFinding !== null
+            && (string) ($structured['clinical_finding'] ?? '') === 'Normal / Sehat';
+        if (!$valid || $anatomyConflicts) {
             [$modality, $category, $bodyRegion, $projection, $clinicalFinding] = $defaultRadiology;
             $structured = compact('modality', 'category', 'bodyRegion', 'projection', 'clinicalFinding');
             $structured['body_region'] = $structured['bodyRegion'];
             $structured['clinical_finding'] = $structured['clinicalFinding'];
             unset($structured['bodyRegion'], $structured['clinicalFinding']);
+        } elseif ($findingConflict) {
+            $structured['clinical_finding'] = $sourceFinding;
         }
     } else {
         $structured = [];
     }
     $data['radiologi_terstruktur'] = $structured;
+
+    // Teks untuk pemain dan pilihan cascade harus menunjuk pemeriksaan yang
+    // sama. Hilangkan ringkasan kosong/salah anatomi yang membuat CT kepala
+    // berubah menjadi X-Ray Chest saat laporan diambil.
+    if (trim((string) ($structured['modality'] ?? '')) !== '') {
+        $targetClass = ems_ai_ds_radiology_anatomy_class(
+            (string) ($structured['modality'] ?? ''),
+            (string) ($structured['category'] ?? ''),
+            (string) ($structured['body_region'] ?? '')
+        );
+        $kept = [];
+        foreach ((array) ($data['radiologi'] ?? []) as $item) {
+            $text = trim((string) $item);
+            if ($text === '' || preg_match('/^(?:diindikasikan|perlu\s+pemeriksaan(?:\s+radiologi)?|radiologi\s+diperlukan)[.! ]*$/iu', $text) === 1) {
+                continue;
+            }
+            $itemClasses = ems_ai_ds_source_anatomy_classes($text);
+            if ($targetClass !== '' && $itemClasses !== [] && !in_array($targetClass, $itemClasses, true)) {
+                continue;
+            }
+            $kept[] = $text;
+        }
+        if ($kept === []) {
+            $status = mb_strtolower((string) ($data['status_rencana_operasi'] ?? ''), 'UTF-8');
+            $urgentHead = $targetClass === 'head' && preg_match('/cito|herniasi/iu', $status) === 1;
+            $kept[] = trim(implode(' ', [
+                (string) $structured['modality'],
+                (string) $structured['category'],
+                (string) $structured['body_region'],
+                '(' . (string) $structured['projection'] . ')',
+            ])) . ($urgentHead
+                ? ' wajib untuk evaluasi cedera kepala; jangan menunda transfer cito ke Ruang Operasi untuk menunggu pencitraan.'
+                : ' direkomendasikan berdasarkan lokasi cedera yang tercatat.');
+        }
+        $data['radiologi'] = array_values(array_unique($kept));
+    }
 }
 
 function ems_ai_ds_normalize_ttv_estimates(array $data): array
@@ -1338,7 +1568,7 @@ function ems_ai_ds_normalize_ttv_estimates(array $data): array
     return $ordered;
 }
 
-function ems_ai_ds_sanitize_igd_emergency_items(array $items, ?int $gcsTotal = null, string $caseText = ''): array
+function ems_ai_ds_sanitize_igd_emergency_items(array $items, ?int $gcsTotal = null, string $caseText = '', string $gcsText = '', array $ttv = []): array
 {
     $items = ems_ai_ds_sanitize_step_items($items);
     $blocked = '/(?:insisi|eksplorasi|evakuasi|penjahitan|\bjahit\b|reseksi|anastomosis|repair\s+(?:perforasi|usus|organ)|rongga\s+abdomen\s+terbuka|lapangan\s+operasi|operasi\s+selesai|tindakan\s+selesai|transfer\s+(?:ke\s+)?(?:icu|rawat\s+inap)|\bicu\b|rawat\s+inap\s+pasca\s+operasi|menelaah\s+hasil\s+(?:laboratorium|lab)\s+dan\s+radiologi)/iu';
@@ -1359,11 +1589,30 @@ function ems_ai_ds_sanitize_igd_emergency_items(array $items, ?int $gcsTotal = n
         if (preg_match($blocked, $text) === 1 || ($hasEvisceration && preg_match($dryGauze, $text) === 1)) {
             continue;
         }
+        // Komunikasi lisan dicatat pada kartu handoff tersendiri. Daftar ini
+        // hanya memuat tindakan fisik yang dapat dimainkan.
+        if (preg_match('/^\s*(?:menyampaikan|memberitahukan|melaporkan|mengomunikasikan|memberi\s+tahu|menghubungi|melakukan\s+serah\s+terima)\b/iu', (string) ($item['aksi'] ?? '')) === 1) {
+            continue;
+        }
         $filtered[] = $item;
     }
 
-    // Model owns the complete action sequence; PHP only removes forbidden
-    // operation steps and cleans RP syntax. No static emergency sequence.
+    // PHP tidak membuat langkah klinis. Ia hanya menempatkan dua pemeriksaan
+    // yang sudah ditulis model di urutan awal agar sesuai alur kartu.
+    $isGcs = static fn (array $item): bool => preg_match('/\b(?:GCS|Glasgow|respons\s+(?:mata|verbal|motorik)|skor\s+E\s*\d)/iu', implode(' ', [(string) ($item['aksi'] ?? ''), (string) ($item['hasil'] ?? '')])) === 1;
+    $isTtv = static fn (array $item): bool => preg_match('/\b(?:TTV|tekanan\s+darah|tensimeter|manset|saturasi\s*O?2|suhu\s+tubuh|frekuensi\s+napas)\b/iu', implode(' ', [(string) ($item['aksi'] ?? ''), (string) ($item['hasil'] ?? '')])) === 1;
+    $ordered = [];
+    foreach ([ $isGcs, $isTtv ] as $matcher) {
+        foreach ($filtered as $index => $item) {
+            if ($matcher($item)) {
+                $ordered[] = $item;
+                unset($filtered[$index]);
+                break;
+            }
+        }
+    }
+    $filtered = array_values($filtered);
+    $filtered = array_merge($ordered, $filtered);
     return $filtered;
 
     $wetGauze = '/(?=.*(?:kassa|kasa|gauze))(?=.*steril)(?=.*(?:basah|lembab))(?=.*(?:nacl|natrium\\s+klorida))/iu';
@@ -1607,12 +1856,9 @@ function ems_ai_ds_complete_roleplay_fields(array $data, string $sourceText): ar
         $data['diagnosis_banding'] = $banding;
     }
 
-    $gcs = trim((string) ($data['gcs'] ?? ''));
-    $hasGcs = preg_match('/\bE\s*[1-4]\s*V\s*[1-5]\s*M\s*[1-6]\b/i', $gcs) === 1;
-    if (!$hasGcs && !ems_ai_ds_normalize_estimated_gcs($data['gcs_estimasi_ai'] ?? null)) {
-        $score = $unconscious ? 'E2 V2 M4 (8)' : ($hasBleeding ? 'E4 V4 M6 (14)' : 'E4 V5 M6 (15)');
-        $data['gcs_estimasi_ai'] = ['score' => $score, 'interpretation' => 'Estimasi roleplay berdasarkan mekanisme dan tingkat respons pada anamnesis.', 'basis' => 'Skenario awal IGD; nilai aktual wajib dikonfirmasi dengan pemeriksaan langsung.', 'status' => ems_ai_ds_estimate_status_label()];
-    }
+    // GCS harus berasal dari keluaran model dan/atau temuan respons yang
+    // disebutkan eksplisit. Jangan membuat skor default dari kata "tidak
+    // sadar", perdarahan, atau mekanisme cedera.
 
     $estimate = ems_ai_ds_normalize_ttv_estimates($data);
     if (count($estimate) < 5) {
@@ -1690,14 +1936,10 @@ function ems_ai_ds_finalize_playable_report(array $data, string $sourceText): ar
             . " Primary survey ABCDE dilakukan secara sistematis. Airway dinilai, pola napas dan ekspansi dada diperiksa, sirkulasi dievaluasi melalui nadi, tekanan darah, perfusi perifer, serta sumber perdarahan. Status neurologis dinilai menggunakan GCS dan pemeriksaan motorik. Exposure dilakukan untuk menilai luka masuk/keluar, deformitas, pembengkakan, perdarahan aktif, serta cedera penyerta. Temuan klinis, GCS, TTV, hasil laboratorium, dan radiologi digunakan untuk menentukan stabilisasi dan tindak lanjut definitif.";
     }
 
-    $estimateGcs = ems_ai_ds_normalize_estimated_gcs($data['gcs_estimasi_ai'] ?? null);
-    if ($estimateGcs !== null) {
-        $data['gcs'] = (string) $estimateGcs['score'];
-        $data['gcs_estimasi_ai'] = null;
-    }
-    $gcsTotal = ems_ai_ds_gcs_total($data['gcs'] ?? null) ?? ($severe ? 8 : 15);
-    $data['kesadaran'] = $gcsTotal <= 8 ? 'Penurunan kesadaran berat; respons terbatas terhadap rangsang nyeri' : ($gcsTotal < 15 ? 'Kesadaran menurun ringan-sedang; respons verbal/motorik masih ditemukan' : 'Compos mentis; sadar penuh dan kooperatif');
-    $data['motorik'] = ems_ai_ds_gcs_motor_definition(ems_ai_ds_gcs_motor_score($data['gcs'] ?? null)) ?: 'Respons motorik sesuai komponen GCS yang tercatat';
+    // Jangan mengubah estimasi menjadi skor faktual atau melengkapi kesadaran
+    // dari tabel heuristik. Laporan baru wajib membawa GCS yang ditulis model;
+    // parser hanya membaca total untuk validasi/aturan lanjutan.
+    $gcsTotal = ems_ai_ds_gcs_total($data['gcs'] ?? null);
 
     $displayVitals = ems_ai_ds_prepare_ttv_display($data['ttv'] ?? [], $data['ttv_estimasi_ai'] ?? []);
     $data['ttv'] = array_map(static function (array $vital): array {
@@ -1708,12 +1950,6 @@ function ems_ai_ds_finalize_playable_report(array $data, string $sourceText): ar
         ];
     }, $displayVitals);
     $data['ttv_estimasi_ai'] = [];
-
-    if (!isset($modelFields['pemeriksaan_pupil'])) {
-        $data['pemeriksaan_pupil'] = $hasHead
-            ? ['status' => $gcsTotal <= 8 ? 'anisokor ringan' : 'isokor', 'reaktivitas' => $gcsTotal <= 8 ? 'reaktivitas melambat pada sisi cedera' : 'reaktif bilateral', 'catatan' => 'Pemeriksaan pupil dilakukan sebagai bagian Disability pada trauma kepala.']
-            : ['status' => 'isokor', 'reaktivitas' => 'reaktif bilateral', 'catatan' => 'Tidak ditemukan tanda defisit neurologis fokal pada evaluasi awal.'];
-    }
 
     if ($hasPregnancy && $hasAbdomen) {
         $data['diagnosis_utama'] = 'Trauma tumpul abdomen pada kehamilan dengan dugaan abrupsio plasenta, perdarahan intraabdomen, dan gawat janin.';
@@ -1868,7 +2104,86 @@ function ems_ai_ds_normalize_structured_radiology_legacy(mixed $input): array
         'clinical_finding' => $scalar($input['clinical_finding'] ?? ($input['clinicalFinding'] ?? '')),
     ];
 
+    // Resolve legacy multi-view phrases to one exact catalog option. Keep a
+    // complete AP/lateral study intact when the catalog offers it; otherwise
+    // retain the legacy single-view mapping for old reports.
+    if (
+        function_exists('ems_ai_radiology_projections_for')
+        && $normalized['modality'] !== ''
+        && $normalized['category'] !== ''
+        && $normalized['body_region'] !== ''
+    ) {
+        $validProjections = ems_ai_radiology_projections_for(
+            $normalized['modality'],
+            $normalized['category'],
+            $normalized['body_region']
+        );
+        if ($validProjections !== [] && !in_array($normalized['projection'], $validProjections, true)) {
+            $viewTokens = static function (string $value): array {
+                $value = mb_strtolower(str_replace(['dan', 'and'], ' ', $value), 'UTF-8');
+                $tokens = preg_split('/[^\pL\pN]+/u', $value) ?: [];
+                $tokens = array_values(array_unique(array_filter($tokens, static fn (string $token): bool => $token !== '' && !in_array($token, ['view', 'proyeksi'], true))));
+                sort($tokens);
+                return $tokens;
+            };
+            $requestedViews = $viewTokens($normalized['projection']);
+            if (count($requestedViews) > 1) {
+                foreach ($validProjections as $validProjection) {
+                    if ($viewTokens((string) $validProjection) === $requestedViews) {
+                        $normalized['projection'] = (string) $validProjection;
+                        break;
+                    }
+                }
+            }
+            if (in_array($normalized['projection'], $validProjections, true)) {
+                return $normalized;
+            }
+            $requestedViews = preg_split('/\s*(?:,|;|\/|\+|\band\b|\bdan\b)\s*/iu', $normalized['projection']) ?: [];
+            foreach ($requestedViews as $requestedView) {
+                foreach ($validProjections as $validProjection) {
+                    if (mb_strtolower(trim($requestedView), 'UTF-8') === mb_strtolower($validProjection, 'UTF-8')) {
+                        $normalized['projection'] = $validProjection;
+                        break 2;
+                    }
+                }
+            }
+        }
+    }
+
     return array_filter($normalized, static fn (string $value): bool => $value !== '') !== [] ? $normalized : [];
+}
+
+/**
+ * Preserve complete views already written in the human-readable diagnosis
+ * recommendation when an older structured field recorded only its first view.
+ */
+function ems_ai_ds_reconcile_radiology_projection_views(array &$data): void
+{
+    $selection = is_array($data['radiologi_terstruktur'] ?? null) ? $data['radiologi_terstruktur'] : [];
+    if (($selection['modality'] ?? '') !== 'X-Ray') {
+        return;
+    }
+    $region = (string) ($selection['body_region'] ?? '');
+    $required = match ($region) {
+        'Humerus', 'Elbow', 'Forearm', 'Femur', 'Knee', 'Tibia-Fibula', 'Ankle' => ['AP', 'Lateral', 'AP & Lateral'],
+        'Wrist' => ['PA', 'Lateral', 'PA & Lateral'],
+        'Hand', 'Foot' => ['AP', 'Oblique', 'Lateral', 'AP, Oblique & Lateral'],
+        default => [],
+    };
+    if ($required === []) {
+        return;
+    }
+    $recommendations = is_array($data['radiologi'] ?? null) ? $data['radiologi'] : [(string) ($data['radiologi'] ?? '')];
+    $text = mb_strtolower(implode(' ', array_map(static fn ($item): string => is_scalar($item) ? (string) $item : '', $recommendations)), 'UTF-8');
+    $selectedViews = (string) ($selection['projection'] ?? '');
+    $allViewsNamed = true;
+    foreach (array_slice($required, 0, -1) as $view) {
+        $allViewsNamed = $allViewsNamed && preg_match('/\b' . preg_quote(mb_strtolower($view, 'UTF-8'), '/') . '\b/iu', $text) === 1;
+    }
+    if ($allViewsNamed && in_array($selectedViews, array_slice($required, 0, -1), true)) {
+        $selection['projection'] = $required[count($required) - 1];
+        $data['radiologi_terstruktur'] = $selection;
+    }
 }
 
 /**
@@ -1893,29 +2208,112 @@ function ems_ai_ds_require_complete_model_report(mixed $value): array
             throw new InvalidArgumentException("Field {$key} kosong atau bukan teks final.");
         }
     }
-
-    if (!is_array($value['diagnosis_banding'] ?? null) || count($value['diagnosis_banding']) < 1) {
-        throw new InvalidArgumentException('Diagnosis banding wajib berisi diagnosis konkret.');
+    $finalClinicalCards = json_encode([
+        'anamnesis_lengkap' => $value['anamnesis_lengkap'] ?? '',
+        'ttv' => $value['ttv'] ?? [],
+        'lab' => $value['lab'] ?? [],
+        'radiologi' => $value['radiologi'] ?? [],
+        'emergency' => $value['emergency'] ?? [],
+        'handoff' => $value['handoff'] ?? '',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (preg_match('/estimasi\s*AI|wajib\s+verifikasi|data\s+belum\s+tersedia|belum\s+tersedia|\b(?:in\s+progress|pending|sedang\s+berlangsung|masih\s+berlangsung|belum\s+selesai)\b|menunggu\s+(?:(?:hasil|pemeriksaan|penunjang|pra[- ]?operasi)\s+){0,4}(?:laboratorium|lab|radiologi|rontgen|x[- ]?ray|ct|pencitraan|crossmatch)/iu', (string) $finalClinicalCards) === 1) {
+        throw new InvalidArgumentException('Kartu klinis final masih berisi estimasi, data kosong, atau menunggu pemeriksaan; lengkapi sebagai fakta final skenario roleplay.');
     }
-    if (!is_array($value['ttv'] ?? null) || count($value['ttv']) < 4) {
-        throw new InvalidArgumentException('TTV final belum lengkap.');
+    $statusText = mb_strtolower((string) $value['status_rencana_operasi'], 'UTF-8');
+    $handoffText = mb_strtolower(is_scalar($value['handoff'] ?? null) ? (string) $value['handoff'] : json_encode($value['handoff'] ?? [], JSON_UNESCAPED_UNICODE), 'UTF-8');
+    if (preg_match('/\b(?:setelah|sesudah|seusai|menunggu)\b[^.!?]{0,70}\b(?:laboratorium|lab|radiologi|rontgen|x[- ]?ray|ct|pencitraan)\b/iu', $statusText) === 1) {
+        throw new InvalidArgumentException('Status operasi tidak boleh mensyaratkan pemeriksaan atau evaluasi penunjang sebelum transfer; nyatakan pasien menuju Ruang Operasi setelah stabilisasi awal.');
+    }
+    if (preg_match('/ruang\s+operasi|kamar\s+operasi|\boperasi\b|\bbedah\b/iu', $statusText) !== 1) {
+        throw new InvalidArgumentException('Status rencana operasi harus menyebut transfer/tindakan di Ruang Operasi setelah stabilisasi awal.');
+    }
+    if (preg_match('/\bmenunggu\s+(?:(?:hasil|pemeriksaan|penunjang|pra[- ]?operasi)\s+){0,4}(?:laboratorium|lab|radiologi|rontgen|x[- ]?ray|ct|pencitraan)\b/iu', $statusText) === 1) {
+        throw new InvalidArgumentException('Status operasi tidak boleh menahan transfer pra-operasi sambil menunggu hasil penunjang.');
+    }
+    if (preg_match('/cito/iu', $statusText) === 1
+        && preg_match('/tanpa\s+menunggu\s+(?:hasil\s+)?CT/iu', $statusText) === 1
+        && preg_match('/(?:hasil\s+)?CT(?:\s+scan)?[^.!?]{0,80}(?:menunjukkan|terlihat|didapatkan|ditemukan)\b|(?:menunjukkan|terlihat|didapatkan|ditemukan)[^.!?]{0,80}(?:hasil\s+)?CT(?:\s+scan)?/iu', $handoffText) === 1) {
+        throw new InvalidArgumentException('Handoff menyebut hasil CT sudah diketahui, padahal rencana operasi menyatakan tidak menunggu CT. Hapus hasil yang belum diperiksa dan selaraskan urutan handoff.');
+    }
+    if (preg_match('/\b(?:fraktur|fractura)\b/iu', $value['diagnosis_utama']) === 1
+        && preg_match('/\b(?:terbuka|aperta)\b/iu', $value['diagnosis_utama']) === 1
+        && preg_match('/\b(?:tertutup|clausa)\b/iu', $value['diagnosis_utama']) === 1) {
+        throw new InvalidArgumentException('Diagnosis utama kontradiktif: fraktur terbuka dan tertutup muncul bersamaan; sesuaikan dengan temuan tulang yang tampak.');
+    }
+
+    $gcsText = trim((string) $value['gcs']);
+    if (preg_match('/\bE\s*([1-4])\s*V\s*([1-5])\s*M\s*([1-6])\s*\(\s*(\d{1,2})\s*\)/iu', $gcsText, $gcsMatch) !== 1) {
+        throw new InvalidArgumentException('GCS wajib mencantumkan komponen E/V/M dan total.');
+    }
+    if ((int) $gcsMatch[1] + (int) $gcsMatch[2] + (int) $gcsMatch[3] !== (int) $gcsMatch[4]) {
+        throw new InvalidArgumentException('Total GCS tidak sama dengan jumlah komponen E/V/M.');
+    }
+
+    if (!is_array($value['diagnosis_banding'] ?? null) || count(array_filter($value['diagnosis_banding'], static fn ($item): bool => is_string($item) && trim($item) !== '')) < 3) {
+        throw new InvalidArgumentException('Diagnosis banding wajib berisi minimal tiga diagnosis konkret.');
+    }
+    if (!is_array($value['ttv'] ?? null) || count($value['ttv']) !== 5) {
+        throw new InvalidArgumentException('TTV final wajib berisi tepat lima parameter.');
     }
     if (!is_array($value['lab'] ?? null) || count($value['lab']) < 1) {
         throw new InvalidArgumentException('Rencana laboratorium final belum diisi.');
     }
+    foreach ($value['lab'] as $labItem) {
+        if (!is_array($labItem) && !is_scalar($labItem)) {
+            continue;
+        }
+        $labItemText = mb_strtolower(is_array($labItem) ? implode(' ', array_map('strval', $labItem)) : (string) $labItem, 'UTF-8');
+        if (preg_match('/crossmatch|uji\s+silang/iu', $labItemText) === 1
+            && preg_match('/kompatibel|compatible|cocok|selesai|tidak\s+ada\s+reaksi/iu', $labItemText) !== 1) {
+            throw new InvalidArgumentException('Hasil crossmatch yang dicantumkan wajib final dan kompatibel; jangan menulis sampel dikirim, sedang berlangsung, atau status menunggu.');
+        }
+    }
     if (!is_array($value['radiologi'] ?? null) || count($value['radiologi']) < 1) {
         throw new InvalidArgumentException('Rencana radiologi final belum diisi.');
     }
-    if (!is_array($value['emergency'] ?? null) || count($value['emergency']) < 8) {
-        throw new InvalidArgumentException('Penanganan ABCDE final belum lengkap.');
+    if (!is_array($value['emergency'] ?? null) || count($value['emergency']) < 8 || count($value['emergency']) > 14) {
+        throw new InvalidArgumentException('Penanganan ABCDE final wajib berisi 8–14 tindakan yang playable.');
     }
+    if (preg_match('/\b(?:atau|\bor\b|sesuai evaluasi|sesuai pertimbangan|pilihan)\b/iu', (string) $value['jenis_anestesi']) === 1) {
+        throw new InvalidArgumentException('Jenis anestesi harus satu keputusan konkret tanpa pilihan bercabang.');
+    }
+    $expectedVitalLabels = ['tekanan darah', 'nadi', 'suhu', 'respirasi', 'saturasi o2'];
+    $actualVitalLabels = [];
     foreach ($value['ttv'] as $vital) {
         if (!is_array($vital) || trim((string) ($vital['value'] ?? '')) === '' || preg_match('/data\s+belum|belum\s+(?:diukur|dinilai|tersedia)/iu', json_encode($vital, JSON_UNESCAPED_UNICODE)) === 1) {
             throw new InvalidArgumentException('Nilai TTV final masih kosong atau placeholder.');
         }
+        $actualVitalLabels[] = mb_strtolower(trim((string) ($vital['label'] ?? '')));
+    }
+    foreach ($expectedVitalLabels as $expectedLabel) {
+        $matched = false;
+        foreach ($actualVitalLabels as $actualLabel) {
+            $aliases = match ($expectedLabel) {
+                'tekanan darah' => ['tekanan', 'blood pressure', 'sistol', 'diastol', 'td', 'bp'],
+                'nadi' => ['nadi', 'denyut', 'heart rate', 'hr'],
+                'suhu' => ['suhu', 'temperatur', 'temperature', 'temp'],
+                'respirasi' => ['respirasi', 'pernapasan', 'napas', 'respiratory', 'rr'],
+                'saturasi o2' => ['saturasi', 'spo', 'oxygen saturation', 'oksigen', 'oxygen', 'spo2'],
+                default => [$expectedLabel],
+            };
+            $matched = false;
+            foreach ($aliases as $alias) {
+                if (str_contains($actualLabel, $alias)) {
+                    $matched = true;
+                    break;
+                }
+            }
+            if ($matched) {
+                $matched = true;
+                break;
+            }
+        }
+        if (!$matched) {
+            throw new InvalidArgumentException('Label TTV wajib memuat tekanan darah, nadi, suhu, respirasi, dan saturasi O2.');
+        }
     }
 
-    $forbidden = '/\b(?:array|belum tersedia|belum dinilai|akan dinilai|hasil belum|hasil aktual|input awal|dirangkum ulang|disalin verbatim|trigger fakta)\b/iu';
+    $forbidden = '/\b(?:array|belum tersedia|belum dinilai|akan dinilai|hasil belum|hasil aktual|dalam batas skenario final|input awal|dirangkum ulang|disalin verbatim|trigger fakta)\b/iu';
     $walk = static function (mixed $item) use (&$walk, $forbidden): void {
         if (is_array($item)) {
             foreach ($item as $child) {
@@ -1933,16 +2331,91 @@ function ems_ai_ds_require_complete_model_report(mixed $value): array
         if (!is_array($item)) {
             throw new InvalidArgumentException('Item emergency #' . ($index + 1) . ' tidak valid.');
         }
-        foreach (['pelaku', 'aksi', 'hasil', 'animasi'] as $key) {
+        foreach (['pelaku', 'aksi', 'hasil'] as $key) {
             if (!isset($item[$key]) || !is_string($item[$key]) || trim($item[$key]) === '') {
                 throw new InvalidArgumentException('Item emergency #' . ($index + 1) . " tidak memiliki {$key} final.");
             }
         }
+        if (isset($item['animasi']) && !is_string($item['animasi'])) {
+            throw new InvalidArgumentException('Animasi item emergency #' . ($index + 1) . ' tidak valid.');
+        }
         if (preg_match('/^\s*\/me\b|^\s*\/do\b/iu', $item['aksi'] . ' ' . $item['hasil']) === 1) {
             throw new InvalidArgumentException('Field emergency berisi label roleplay ganda.');
         }
-        if (preg_match('/\b(?:sesuai protokol|sesuai instruksi|sesuai arahan)\b/iu', $item['aksi'] . ' ' . $item['hasil']) === 1) {
-            throw new InvalidArgumentException('Tindakan emergency harus konkret dan tidak bercabang.');
+        // The action must be directly playable. The result may naturally say
+        // the patient complied "sesuai instruksi" (for example, moving fingers
+        // on command); that describes an observed outcome, not an instruction
+        // for the player, so only reject these phrases in the action itself.
+        if (preg_match('/\b(?:sesuai protokol|sesuai instruksi|sesuai arahan)\b/iu', $item['aksi']) === 1) {
+            throw new InvalidArgumentException('Tindakan emergency #' . ($index + 1) . ' memakai frasa sesuai protokol/instruksi/arahan; tulis satu aksi fisik langsung dan hasil konkretnya.');
+        }
+    }
+
+    $actionCaseText = 'GCS ' . (string) ($value['gcs'] ?? '') . ' ' . implode(' ', array_map(static fn ($key): string => is_scalar($value[$key] ?? null) ? (string) $value[$key] : '', ['anamnesis_lengkap', 'diagnosis_utama', 'kasus_tindakan']));
+    $instrumentIssues = ems_ai_ds_instrument_action_issues($value['emergency'], 'Emergency IGD', $actionCaseText);
+    if ($instrumentIssues !== []) {
+        throw new InvalidArgumentException(implode('; ', $instrumentIssues) . '. Sebut alat yang digunakan di aksi, lalu perbaiki instruksi asisten agar DPJP memerintah mengambil alat yang sama.');
+    }
+
+    $emergency = array_values($value['emergency']);
+    $gcsExpected = 'E' . $gcsMatch[1] . ' V' . $gcsMatch[2] . ' M' . $gcsMatch[3] . ' (' . $gcsMatch[4] . ')';
+    $gcsItemText = is_array($emergency[0] ?? null) ? implode(' ', array_map('strval', [$emergency[0]['aksi'] ?? '', $emergency[0]['hasil'] ?? ''])) : '';
+    // Accept compact roleplay notation (E4V5M6) as well as spaced notation.
+    $componentMatches = preg_match(
+        '/(?<![A-Z0-9])E\s*' . $gcsMatch[1] . '\s*V\s*' . $gcsMatch[2] . '\s*M\s*' . $gcsMatch[3] . '(?!\d)/iu',
+        $gcsItemText
+    ) === 1;
+    $hasExactGcsNotation = preg_match('/E\s*' . $gcsMatch[1] . '\s*V\s*' . $gcsMatch[2] . '\s*M\s*' . $gcsMatch[3] . '\s*\(\s*' . $gcsMatch[4] . '\s*\)/iu', $gcsItemText) === 1;
+    // Accept common natural Indonesian renderings such as "total skor 8" as
+    // well as the compact "GCS total: 8"; the E/V/M sum is still checked above.
+    $hasEquivalentGcsTotal = preg_match('/\b(?:total(?:\s+(?:GCS|skor|nilai))*|GCS\s+(?:total|final|skor\s+total)|skor\s+total)\s*(?::|=|adalah|-)?\s*' . $gcsMatch[4] . '\b/iu', $gcsItemText) === 1;
+    if (preg_match('/\b(?:GCS|Glasgow|respons\s+(?:mata|verbal|motorik))\b/iu', $gcsItemText) !== 1
+        || !$componentMatches
+        || (!$hasExactGcsNotation && !$hasEquivalentGcsTotal)) {
+        throw new InvalidArgumentException('Tindakan pertama wajib memeriksa GCS dan /do harus memuat komponen serta total yang sama dengan skor final ' . $gcsExpected . '.');
+    }
+    $ttvItemText = is_array($emergency[1] ?? null) ? implode(' ', array_map('strval', [$emergency[1]['aksi'] ?? '', $emergency[1]['hasil'] ?? ''])) : '';
+    if (preg_match('/\b(?:TTV|tekanan\s+darah|tensimeter|manset)\b/iu', $ttvItemText) !== 1) {
+        throw new InvalidArgumentException('Tindakan kedua wajib mengukur TTV dengan alat yang disebutkan dan hasil tekanan darah final.');
+    }
+    foreach ($value['ttv'] as $vital) {
+        $vitalValue = trim((string) ($vital['value'] ?? ''));
+        preg_match_all('/\d+(?:[.,]\d+)?/u', $vitalValue, $vitalNumbers);
+        if ($vitalValue === '' || empty($vitalNumbers[0])) {
+            throw new InvalidArgumentException('Nilai final TTV ' . (string) ($vital['label'] ?? '') . ' harus numerik agar dapat dicocokkan dengan hasil tindakan.');
+        }
+        foreach ($vitalNumbers[0] as $vitalNumber) {
+            if (preg_match('/(?<!\d)' . preg_quote($vitalNumber, '/') . '(?!\d)/u', $ttvItemText) !== 1) {
+                throw new InvalidArgumentException('Hasil tindakan TTV kedua harus memuat angka final ' . (string) ($vital['label'] ?? 'TTV') . ' (' . $vitalNumber . ').');
+            }
+        }
+    }
+    foreach ($emergency as $index => $item) {
+        if (preg_match('/^\s*(?:menyampaikan|memberitahukan|melaporkan|mengomunikasikan|memberi\s+tahu|menghubungi|melakukan\s+serah\s+terima)\b/iu', (string) ($item['aksi'] ?? '')) === 1) {
+            throw new InvalidArgumentException('Tindakan emergency #' . ($index + 1) . ' hanya berupa komunikasi; ganti dengan tindakan fisik dan letakkan ringkasan pada field handoff.');
+        }
+    }
+
+    $lastEmergency = $emergency[count($emergency) - 1] ?? [];
+    $lastActionText = mb_strtolower((string) ($lastEmergency['aksi'] ?? '') . ' ' . (string) ($lastEmergency['hasil'] ?? ''), 'UTF-8');
+    if (
+        preg_match('/\b(?:memindahkan|mengantar|mendorong|membawa|mentransfer)\b/iu', (string) ($lastEmergency['aksi'] ?? '')) !== 1
+        || preg_match('/ruang\s+operasi|kamar\s+operasi|\bOK\b/iu', $lastActionText) !== 1
+    ) {
+        throw new InvalidArgumentException('Tindakan terakhir wajib memindahkan pasien secara fisik ke Ruang Operasi; menyiapkan transfer saja belum cukup.');
+    }
+
+    $structuredRad = is_array($value['radiologi_terstruktur'] ?? null) ? $value['radiologi_terstruktur'] : [];
+    if (preg_match('/\b(?:fraktur|fractura)\b/iu', (string) $value['diagnosis_utama']) === 1
+        && (string) ($structuredRad['modality'] ?? '') === 'X-Ray') {
+        $requiredProjection = match ((string) ($structuredRad['body_region'] ?? '')) {
+            'Humerus', 'Elbow', 'Forearm', 'Femur', 'Knee', 'Tibia-Fibula', 'Ankle' => 'AP & Lateral',
+            'Wrist' => 'PA & Lateral',
+            'Hand', 'Foot' => 'AP, Oblique & Lateral',
+            default => null,
+        };
+        if ($requiredProjection !== null && (string) ($structuredRad['projection'] ?? '') !== $requiredProjection) {
+            throw new InvalidArgumentException('Fraktur ekstremitas wajib memakai proyeksi radiografi ortogonal lengkap (' . $requiredProjection . ') sesuai pedoman radiologi.');
         }
     }
 
@@ -2053,7 +2526,7 @@ function ems_ai_ds_normalize_diagnosis_result(array $data, string $sourceText = 
         || preg_match('/\b(?:trauma|syok|perdarahan|sesak|tidak sadar|luka tusuk|darurat|gawat)\b/iu', $caseText) === 1;
     $needsEmergency = $hasEmergencySignal;
     if ($needsEmergency) {
-        $data['emergency'] = ems_ai_ds_sanitize_igd_emergency_items($emergencyItems, $gcsTotal, $caseText);
+        $data['emergency'] = ems_ai_ds_sanitize_igd_emergency_items($emergencyItems, $gcsTotal, $caseText, (string) ($data['gcs'] ?? ''), is_array($data['ttv'] ?? null) ? $data['ttv'] : []);
     }
     ems_ai_ds_ensure_supporting_exam_references($data, $sourceText);
     $data = ems_ai_ds_complete_roleplay_fields($data, $sourceText);
@@ -2079,6 +2552,13 @@ function ems_ai_ds_normalize_diagnosis_result(array $data, string $sourceText = 
 
 function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $defaultPrompt, bool $includeMantra = true, ?string $unitCode = null, string $documentQuery = ''): string
 {
+    // Tahap inti hanya menyusun fakta/keputusan inti. Memberinya prompt laporan
+    // penuh membuat instruksi JSON ringkas bertentangan dengan tuntutan 8-14
+    // tindakan, lab, radiologi, dan handoff yang baru dikerjakan tahap final.
+    if ($featureKey === 'ai_diagnosis_assistant_stage_1') {
+        return "Anda menyusun JSON inti untuk simulasi roleplay IGD Roxwood. Gunakan hanya data kasus dan identitas yang diberikan; jangan menambah cedera atau hasil pemeriksaan yang tidak masuk akal. Isi anamnesis final yang dirapikan, diagnosis utama dan banding, GCS E/V/M beserta total yang aritmetis, tepat lima TTV, pemeriksaan pupil, riwayat operasi, dan konteks kasus/tindakan. Jangan mengeluarkan kartu emergency, laboratorium, radiologi, handoff, atau laporan lengkap pada tahap ini. Jawab satu objek JSON tanpa markdown.\n\n"
+            . ems_ai_ds_model_completion_contract($featureKey);
+    }
     // Tahap 1/2/retry tetap bagian dari Diagnosis Assistant. Jangan sampai
     // pergantian label log mengaktifkan prompt DB lama atau SOP fitur lain.
     $igdOnly = $featureKey === 'ai_diagnosis_assistant'
@@ -2096,11 +2576,13 @@ function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $def
     }
     if ($igdOnly) {
         $base .= "\n\nATURAN TAMBAHAN WAJIB AI DIAGNOSIS IGD:\n"
+            . "Ini simulasi roleplay FiveM. Bangun skenario klinis final yang lengkap dan konsisten sebagai fakta di dalam skenario; jangan memakai label 'Estimasi AI — wajib verifikasi', 'data belum tersedia', menunggu hasil, atau placeholder. Pemeriksaan dan hasil yang dibuat adalah bagian dari skenario roleplay, bukan klaim layanan klinis nyata. Setelah stabilisasi awal IGD, status operasi harus menyatakan pasien diteruskan/dipindahkan ke Ruang Operasi; hasil pemeriksaan tidak boleh menjadi syarat menahan transfer.\n"
             . "Motor GCS harus dipisahkan: M3 = fleksi abnormal/dekortikasi; M4 = withdrawal/menarik diri normal. Pilih satu sesuai respons; jangan menulis fleksi abnormal/withdrawal sebagai sinonim.\n"
             . "Pada trauma kepala dengan kecurigaan peningkatan tekanan intrakranial, Disability wajib memuat pemeriksaan pupil (isokor/anisokor/dilatasi; reaktif/non reaktif). Anisokor/dilatasi dengan tanda herniasi akut membolehkan rencana operasi definitif cito tanpa menunggu CT; tanpa tanda herniasi akut jelas, tulis rencana tentatif — menunggu hasil CT scan.\n"
             . "Hipotensi permisif/permissive hypotension hanya istilah strategi resusitasi cairan, bukan temuan TTV mentah; TTV memakai deskripsi tanda awal syok hemoragik ringan-sedang bila sesuai.\n"
             . "Cek kesesuaian fisiologis antara mekanisme, volume, lokasi cedera, derajat syok, dan penurunan kesadaran. Jika tidak proporsional, jangan mengatribusikan semuanya ke cedera tunggal; tulis RED FLAG dengan frasa wajib, minta secondary survey menyeluruh dan pencitraan tambahan, serta evaluasi hipoksia, hipotensi, intoksikasi, kejang, atau penyebab non-traumatik sesuai data.\n"
-            . "Semua pemeriksaan yang disebut di bagian mana pun laporan, termasuk Section 4 Status Rencana Operasi, wajib tercantum di Section 6 Rekomendasi Pemeriksaan Penunjang. Jangan menulis menunggu hasil CT scan jika CT scan tidak ada di rekomendasi radiologi. Tungkai berarti ekstremitas bawah/kaki; tangan dan jari memakai ekstremitas atas, tangan, atau jari tangan.\n";
+            . "Semua pemeriksaan yang disebut di bagian mana pun laporan, termasuk Section 4 Status Rencana Operasi, wajib tercantum di Section 6 Rekomendasi Pemeriksaan Penunjang. Jangan menulis menunggu hasil CT scan jika CT scan tidak ada di rekomendasi radiologi. Tungkai berarti ekstremitas bawah/kaki; tangan dan jari memakai ekstremitas atas, tangan, atau jari tangan.\n"
+            . "PEMETAAN RADIOLOGI: pilih satu Body Region yang cocok dengan lokasi cedera yang benar-benar disebut pada anamnesis, bukan dari tanda umum seperti tidak sadar/GCS rendah saja. Penurunan kesadaran tanpa bukti/dugaan cedera kepala eksplisit tidak otomatis berarti CT kepala bila cedera ekstremitas/toraks/abdomen jelas; pilih pemeriksaan untuk lokasi cedera yang terdokumentasi. Untuk X-Ray tulang panjang/ekstremitas ikuti pedoman radiologi dua proyeksi ortogonal: pilih satu opsi gabungan persis dari katalog jika tersedia (contoh lengan bawah/radius-ulna: X-Ray > Upper Extremity > Forearm > AP & Lateral; wrist: PA & Lateral; hand/foot: tiga proyeksi sesuai katalog). Opsi gabungan adalah satu pilihan metadata dan harus sama dengan teks rekomendasi; jangan memilih AP saja untuk studi fraktur ekstremitas bila opsi gabungan tersedia. Bila ada beberapa area cedera, pilih area cedera paling prioritas sebagai satu rekomendasi terstruktur.\n";
     }
 
     $prompt = $base . ems_ai_ds_reference_suffix($includeMantra, $igdOnly);
@@ -2111,7 +2593,7 @@ function ems_ai_ds_build_system_prompt(PDO $pdo, string $featureKey, string $def
         }
     }
 
-    return $prompt . "\n\n" . ems_ai_official_consistency_guardrail();
+    return $prompt . "\n\n" . ($igdOnly ? ems_ai_ds_model_completion_contract($featureKey) : ems_ai_official_consistency_guardrail());
 }
 
 /**
@@ -2140,8 +2622,11 @@ function ems_ai_ds_sanitize_step_items(array $items): array
             continue;
         }
 
-        $pelaku = trim((string) ($item['pelaku'] ?? 'DPJP'));
-        $pelaku = in_array($pelaku, $validRoles, true) ? $pelaku : 'DPJP';
+        $pelaku = trim((string) ($item['pelaku'] ?? ''));
+        $pelakuParts = array_map('trim', explode('+', $pelaku));
+        $pelaku = $pelakuParts !== [] && count(array_filter($pelakuParts, static fn ($role) => in_array($role, $validRoles, true))) === count($pelakuParts)
+            ? implode(' + ', $pelakuParts)
+            : '';
         $instruksi = trim((string) ($item['instruksi'] ?? ''));
         $aksi = $strip((string) ($item['aksi'] ?? ''), 'me');
         $hasil = $strip((string) ($item['hasil'] ?? ''), 'do');
@@ -2172,27 +2657,228 @@ function ems_ai_ds_sanitize_step_items(array $items): array
     return $sanitized;
 }
 
+/** Reject incomplete or placeholder-filled roleplay surgery reports. */
+function ems_ai_ds_surgery_quality_errors(array $data, int $expectedSteps): array
+{
+    $errors = [];
+    $serialized = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+    if (preg_match('/\\b(?:data\\s+belum\\s+tersedia|petugas\\s+belum\\s+tersedia|wajib\\s+diverifikasi|belum\\s+tersedia|belum\\s+diketahui|belum\\s+dilakukan|belum\\s+tercatat|sedang\\s+diproses|menunggu\\s+hasil)\\b/iu', $serialized)) {
+        $errors[] = 'laporan masih mengandung placeholder atau status menunggu';
+    }
+    $steps = is_array($data['tahapan_prosedur'] ?? null) ? $data['tahapan_prosedur'] : [];
+    if (count($steps) !== $expectedSteps) $errors[] = 'jumlah tahapan harus tepat ' . $expectedSteps . ', yang lolos validasi ' . count($steps);
+    foreach ($steps as $index => $step) {
+        $role = trim((string) ($step['pelaku'] ?? ''));
+        $roles = array_map('trim', explode('+', $role));
+        if ($role === '' || count(array_filter($roles, static fn ($r) => in_array($r, ['DPJP', 'Asisten 1', 'Asisten 2'], true))) !== count($roles)) $errors[] = 'pelaku tahap ' . ($index + 1) . ' kosong atau tidak dikenali';
+        foreach (['aksi', 'hasil'] as $field) if (trim((string) ($step[$field] ?? '')) === '') $errors[] = $field . ' tahap ' . ($index + 1) . ' kosong';
+        if (preg_match('/\\b(?:atau|or)\\b/iu', (string) ($step['aksi'] ?? ''))) $errors[] = 'aksi tahap ' . ($index + 1) . ' masih memberi pilihan bercabang';
+    }
+    $errors = array_merge($errors, ems_ai_ds_instrument_action_issues($steps, 'Tahapan operasi'));
+    foreach (['durasi', 'laporan_pasca_operasi'] as $field) if (trim((string) ($data[$field] ?? '')) === '') $errors[] = 'field ' . $field . ' kosong';
+    foreach (['farmakologi', 'risiko_komplikasi', 'sop_references'] as $field) if (!is_array($data[$field] ?? null)) $errors[] = 'field ' . $field . ' bukan JSON object/list';
+    return array_values(array_unique($errors));
+}
+
+/**
+ * Preserve a model-authored plan while reconciling a small stage-count overflow.
+ * Only combine steps that are part of the same workflow phase (pre-op checks,
+ * equipment setup, monitoring, or documentation); never remove a clinical
+ * action or create a new one. The model remains responsible for the clinical
+ * content and its sequence.
+ */
+function ems_ai_ds_compact_surgery_documentation_overflow(array $items, int $expectedCount): array
+{
+    if ($expectedCount < 1 || count($items) <= $expectedCount || count($items) > $expectedCount + 6) {
+        return $items;
+    }
+    $texts = static function (array $steps): array {
+        $result = [];
+        foreach ($steps as $index => $step) {
+            $result[$index] = mb_strtolower(implode(' ', array_map('strval', [
+                $step['aksi'] ?? '', $step['hasil'] ?? '', $step['instruksi'] ?? '',
+            ])), 'UTF-8');
+        }
+        return $result;
+    };
+    $mergePair = static function (array &$steps, int $keepIndex, int $removeIndex): void {
+        if ($keepIndex === $removeIndex || !isset($steps[$keepIndex], $steps[$removeIndex])) return;
+        $kept = $steps[$keepIndex];
+        $removed = $steps[$removeIndex];
+        foreach (['aksi', 'hasil', 'instruksi'] as $field) {
+            $left = trim((string) ($kept[$field] ?? ''));
+            $right = trim((string) ($removed[$field] ?? ''));
+            if ($right !== '' && $right !== $left) {
+                $kept[$field] = rtrim($left, " .;\t\n\r\0\x0B") . ($left === '' ? '' : '; ') . $right;
+            }
+        }
+        $actors = array_values(array_unique(array_filter([
+            trim((string) ($kept['pelaku'] ?? '')),
+            trim((string) ($removed['pelaku'] ?? '')),
+        ])));
+        if ($actors !== []) {
+            $kept['pelaku'] = implode(' + ', $actors);
+        }
+        $steps[$keepIndex] = $kept;
+        unset($steps[$removeIndex]);
+        $steps = array_values($steps);
+    };
+    $mergeMatching = static function (array &$steps, callable $firstPattern, callable $secondPattern) use ($texts, $mergePair): bool {
+        $currentTexts = $texts($steps);
+        foreach ($currentTexts as $firstIndex => $firstText) {
+            foreach ($currentTexts as $secondIndex => $secondText) {
+                if ($firstIndex === $secondIndex) continue;
+                if (($firstPattern($firstText) && $secondPattern($secondText))
+                    || ($firstPattern($secondText) && $secondPattern($firstText))) {
+                    $mergePair($steps, min($firstIndex, $secondIndex), max($firstIndex, $secondIndex));
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    $documentationMerged = false;
+    while (count($items) > $expectedCount) {
+        // A documentation closeout may be absorbed into an existing recordkeeping step.
+        $merged = false;
+        if (!$documentationMerged) {
+            $merged = $mergeMatching(
+                $items,
+                static fn (string $text): bool => preg_match('/(?:operative\\s+note|catatan\\s+operasi|mendokumentasikan|dokumentasi\\s+(?:operasi|tindakan)|laporan\\s+operasi|rekam\\s+operasi)/iu', $text) === 1,
+                static fn (string $text): bool => preg_match('/(?:mencatat|catatan\\s+operasi|laporan\\s+operasi|perubahan\\s+monitor)/iu', $text) === 1
+            );
+            $documentationMerged = $merged;
+        }
+        // Consolidate setup actions that belong to the same pre-op preparation block.
+        if (!$merged) $merged = $mergeMatching(
+            $items,
+            static fn (string $text): bool => preg_match('/(?:menyiapkan\\s+set|menyiapkan\\s+instrumen)/iu', $text) === 1,
+            static fn (string $text): bool => preg_match('/(?:menyiapkan\\s+(?:suction|cairan|jalur|alat))/iu', $text) === 1
+        );
+        // Identity verification and its checklist/consent are one pre-op check.
+        if (!$merged) $merged = $mergeMatching(
+            $items,
+            static fn (string $text): bool => preg_match('/(?:memverifikasi\\s+identitas|verifikasi\\s+identitas)/iu', $text) === 1,
+            static fn (string $text): bool => preg_match('/(?:formulir\\s+identifikasi|consent|checklist\\s+operasi)/iu', $text) === 1
+        );
+        // Monitor placement and continuous monitoring are one monitoring phase.
+        if (!$merged) $merged = $mergeMatching(
+            $items,
+            static fn (string $text): bool => preg_match('/(?:memasang|menyiapkan)\\s+monitor/iu', $text) === 1,
+            static fn (string $text): bool => preg_match('/memantau\\s+(?:ekg|tekanan|saturasi|ventilasi|tanda)/iu', $text) === 1
+        );
+        if (!$merged) break;
+    }
+
+    return array_values($items);
+}
+
+/** Map model-authored /me and /do field variants without inventing content. */
+function ems_ai_ds_normalize_emergency_item_aliases(array $item): array
+{
+    $firstText = static function (array $keys) use ($item): string {
+        foreach ($keys as $key) {
+            $value = $item[$key] ?? null;
+            if (is_string($value) || is_numeric($value)) {
+                $value = trim((string) $value);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+        return '';
+    };
+    $item['pelaku'] = $firstText(['pelaku', 'actor', 'role']) ?: 'DPJP';
+    $item['instruksi'] = $firstText(['instruksi', 'instruction']);
+    $item['aksi'] = $firstText(['aksi', 'action', 'me', 'aksi_me', 'aksiME', 'action_me', 'me_action']);
+    $item['hasil'] = $firstText(['hasil', 'result', 'do', 'aksi_do', 'hasil_do', 'aksiDO', 'action_do', 'do_action']);
+    $item['animasi'] = $firstText(['animasi', 'animation', 'emote']) ?: 'mechanic';
+    $item['aksi'] = trim((string) preg_replace('/^\s*\/me\s*/iu', '', $item['aksi']));
+    $item['hasil'] = trim((string) preg_replace('/^\s*\/do\s*/iu', '', $item['hasil']));
+    return $item;
+}
+
+/** Targeted model repair for missing tools; preserves every /do and action order. */
+function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $userId): array
+{
+    $current = is_array($report['emergency'] ?? null) ? array_values($report['emergency']) : [];
+    $caseText = 'GCS ' . (string) ($report['gcs'] ?? '') . ' ' . implode(' ', array_map(static fn ($key): string => is_scalar($report[$key] ?? null) ? (string) $report[$key] : '', ['anamnesis_lengkap', 'diagnosis_utama', 'kasus_tindakan']));
+    $issues = ems_ai_ds_instrument_action_issues($current, 'Emergency IGD', $caseText);
+    if ($issues === []) return ['ok' => true, 'data' => $report, 'changed' => false];
+    $original = $current;
+    for ($attempt = 1; $attempt <= 2 && $issues !== []; $attempt++) {
+        $payload = [];
+        foreach ($current as $item) {
+            if (!is_array($item)) continue;
+            $payload[] = [
+                'pelaku' => (string) ($item['pelaku'] ?? ''), 'instruksi' => (string) ($item['instruksi'] ?? ''),
+                'aksi' => (string) ($item['aksi'] ?? ''), 'hasil' => (string) ($item['hasil'] ?? ''),
+                'animasi' => (string) ($item['animasi'] ?? ''),
+            ];
+        }
+        $repairPrompt = "Perbaiki HANYA kekurangan berikut pada aksi dan instruksi: " . implode('; ', $issues)
+            . ". Kembalikan JSON sesuai schema emergency dengan jumlah item yang sama. Pertahankan urutan, pelaku, /do hasil, dan animasi persis; jangan ubah fakta/angka/temuan/tindakan klinis. Gunakan anatomi yang tertulis pada anamnesis final; jangan sebut luka tangan jika lokasi sumber adalah lengan bawah kanan. Jangan memakai stetoskop untuk GCS; gunakan respons suara/perintah/rangsang yang tercatat dan lembar skor GCS. Jangan memasukkan penlight/pemeriksaan pupil pada kasus tanpa cedera kepala atau indikasi neurologis. Setiap aksi harus menyebut alat/bahan spesifik yang digunakan. Setiap pelaku Asisten wajib memiliki instruksi diawali 'DPJP:' dengan perintah eksplisit mengambil/memasang alat yang sama, lalu balasan 'Asisten N: Baik, dok.' Aksi asisten menyebut alat tersebut diserahkan/dipasang. Gunakan alat yang relevan, bukan daftar alat. Darah menggenang ditangani mesin suction bedah + kateter suction steril, tidak dengan mulut. Tindakan IGD tetap pra-operasi.\nKARTU SAAT INI:\n" . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $result = ems_ai_ds_call_gemini(
+            $pdo,
+            ems_ai_diagnosis_assistant_system_prompt() . ems_ai_ds_instrument_action_contract(),
+            $repairPrompt,
+            'ai_diagnosis_assistant_action_repair',
+            $userId
+        );
+        $updated = $result['data']['emergency'] ?? null;
+        if (empty($result['ok']) || !is_array($updated) || count($updated) !== count($current)) {
+            return ['ok' => false, 'error' => (string) ($result['error'] ?? 'Model tidak mengembalikan jumlah kartu emergency yang sama.')];
+        }
+        foreach ($updated as $index => $item) {
+            if (!is_array($item)) {
+                return ['ok' => false, 'error' => 'Perbaikan instrumen mengubah struktur tahap ' . ($index + 1) . '.'];
+            }
+            $oldResult = trim((string) ($original[$index]['hasil'] ?? ''));
+            $newResult = trim((string) ($item['hasil'] ?? ''));
+            $normalizeAnatomy = static fn (string $text): string => mb_strtolower(str_ireplace(['lengan bawah kanan', 'tangan kanan'], '{LENGAN_BAWAH_KANAN}', $text), 'UTF-8');
+            if ($newResult !== $oldResult && $normalizeAnatomy($newResult) !== $normalizeAnatomy($oldResult)) {
+                return ['ok' => false, 'error' => 'Perbaikan instrumen mengubah atau mengurutkan ulang hasil /do pada tahap ' . ($index + 1) . '.'];
+            }
+            // This repair is allowed to edit only actor wording fields, and the
+            // source action order/result is pinned to prevent accidental drift.
+            $updated[$index]['pelaku'] = (string) ($original[$index]['pelaku'] ?? '');
+            $updated[$index]['hasil'] = $newResult;
+            $updated[$index]['animasi'] = (string) ($original[$index]['animasi'] ?? '');
+        }
+        $current = $updated;
+        $issues = ems_ai_ds_instrument_action_issues($current, 'Emergency IGD', $caseText);
+    }
+    if ($issues !== []) return ['ok' => false, 'error' => implode('; ', $issues)];
+    $report['emergency'] = $current;
+    return ['ok' => true, 'data' => $report, 'changed' => true];
+}
+
 function ems_ai_ds_model_completion_contract(string $featureKey): string
 {
+    if ($featureKey === 'ai_diagnosis_assistant_action_repair') {
+        return 'KONTRAK PERBAIKAN ALAT IGD: keluarkan hanya satu objek JSON dengan array emergency berisi jumlah item yang sama seperti masukan. Ubah hanya aksi dan instruksi alat; pelaku, hasil /do, urutan, jumlah item, dan animasi harus identik. Setiap aksi menyebut instrumen/bahan yang benar-benar digunakan. Instruksi pelaku Asisten harus berupa perintah DPJP dengan nama alat tersebut diikuti jawaban asisten. Jangan menambah tindakan atau hasil klinis.' . ems_ai_ds_instrument_action_contract();
+    }
+    if ($featureKey === 'ai_diagnosis_assistant_stage_1') {
+        return 'KONTRAK JSON INTI TAHAP 1: keluarkan hanya key anamnesis_lengkap, diagnosis_utama, diagnosis_banding, gcs, ttv, pemeriksaan_pupil, riwayat_operasi, kasus_tindakan, jenis_operasi, jenis_anestesi, status_rencana_operasi. Diagnosis banding harus relevan dengan mekanisme dan tidak mengada-ada. GCS memuat E, V, M, total, serta respons yang sesuai komponennya. TTV berisi tepat Tekanan Darah, Nadi / HR, Suhu, Respirasi / RR, Saturasi O2; setiap nilai numerik dan satuannya masuk akal serta konsisten. Jangan memakai placeholder, array kosong, atau menulis field laporan final tahap 2.';
+    }
     if ($featureKey === 'ai_diagnosis_assistant' || str_starts_with($featureKey, 'ai_diagnosis_assistant_')) {
-        return 'KONTRAK OUTPUT AI DIAGNOSIS ASSISTANT: input boleh singkat, tetapi MODEL wajib menghasilkan laporan roleplay IGD lengkap dan spesifik terhadap kasus. Tulis anamnesis_lengkap yang diperluas, diagnosis utama, minimal 3 diagnosis banding, GCS/TTV konkret yang konsisten, hasil laboratorium/radiologi skenario, emergency 8-14 langkah unik dengan pelaku/instruksi/aksi/hasil/animasi, roleplay_note yang berbeda tiap kasus, sop_references dari konteks Modul Dokumen, dan laboratorium_terstruktur yang valid. Emergency harus dirancang ulang dari mekanisme kasus ini, bukan memakai urutan template umum. /me hanya satu tindakan fisik yang sedang dilakukan, tanpa "sesuai protokol", "sesuai instruksi", pilihan dengan kata "atau", atau penjelasan administratif. /do langsung menyebut hasil/temuan yang terlihat setelah tindakan, misalnya "Cairan NaCl 0,9% berhasil membilas luka dan perdarahan ringan terkontrol". Jangan mengulang input mentah. Jangan mengeluarkan "Estimasi AI", "wajib verifikasi", "Data belum tersedia", "menunggu hasil", atau "tidak tersedia" karena ini adalah roleplay dan semua hasil dianggap sudah tersedia. Variasikan nilai fisiologis, organ terdampak, tindakan, komunikasi, dan catatan. Jika ada kehamilan, janin, plasenta, persalinan, atau seksio sesarea, identitas pasien wajib Perempuan dan semua diagnosis/TTV/tindakan harus konsisten. Wajib membaca dan memasukkan riwayat operasi sebelumnya bila disebutkan, termasuk lokasi luka, waktu operasi, kondisi jahitan, komplikasi, dan alasan tindakan ulang; jangan mengulang tindakan pada sisi yang sama kecuali ada indikasi yang dijelaskan. Emergency berhenti pada stabilisasi IGD dan handoff ke Laboratorium, Radiologi, atau Ruang Operasi; jangan menulis langkah teknis operasi.';
+        return 'KONTRAK MODEL KHUSUS SIMULASI IGD ROXWOOD: keluarkan laporan skenario roleplay final, lengkap, dan spesifik; semua pemeriksaan dan hasil dalam laporan adalah fakta skenario simulasi, bukan klaim pemeriksaan dunia nyata. Jangan menulis placeholder, data menunggu, estimasi AI/verifikasi, atau fakta meta. Lengkapi narasi anamnesis final, diagnosis utama dan minimal 3 diagnosis banding yang relevan pada mekanisme sama, GCS E/V/M aritmetis, tepat lima TTV, hasil pemeriksaan laboratorium/radiologi yang relevan, 8–14 langkah stabilisasi pra-operasi, handoff ke Ruang Operasi, serta rujukan SOP Roxwood dari konteks dokumen. Buat temuan konsisten dengan trigger: luka superfisial tidak boleh dinaikkan menjadi cedera tendon/fraktur tanpa tanda atau mekanisme pendukung; temuan baru hanya boleh ditambahkan jika merupakan detail skenario yang wajar dan tidak bertentangan dengan input. Untuk fraktur terbuka, jangan menetapkan grade Gustilo IIIB/IIIC tanpa bukti kehilangan jaringan lunak luas, periosteal stripping, atau cedera arteri yang terkonfirmasi; tulang terlihat saja tidak cukup. Jangan mendiagnosis sindrom kompartemen hanya dari nyeri, CRT memanjang, atau nadi lemah; harus ada tanda khas seperti kompartemen tegang dan nyeri saat peregangan pasif. Nadi distal lemah/akral dingin berarti ancaman perfusi yang perlu disebut sebagai temuan dan ditangani, bukan bukti otomatis robekan arteri atau sindrom kompartemen. Jangan menaikkan derajat cedera di luar temuan trigger dan hasil penunjang skenario. Jangan pernah menulis diagnosis utama yang sekaligus menyebut fraktur terbuka dan fraktur tertutup; pada tulang tampak di luka, diagnosis utama harus konsisten sebagai fraktur terbuka. Kasus Minor maupun Mayor hanya menjalani stabilisasi, pemeriksaan, pemantauan, kontrol perdarahan, irigasi/pembersihan awal, balut steril, analgesia dan handoff di IGD; semua tindakan definitif dilakukan di Ruang Operasi. Isi emergency sebagai satu tindakan fisik konkret per aksi dan hasil langsung per /do. DILARANG menulis pilihan bercabang atau frasa "sesuai protokol", "sesuai instruksi", "sesuai arahan", "sesuai kewenangan DPJP", "akan dilakukan", atau pernyataan administratif; tuliskan tindakan yang langsung dilakukan pemain. Jangan melakukan tindakan kepala/TIK pada kasus ekstremitas tanpa indikasi. Gunakan identitas pasien eksplisit secara konsisten, termasuk jenis kelamin dan kehamilan. Cantumkan pemeriksaan lab/radiologi hanya yang masuk akal untuk keputusan kasus dan sertakan hasil skenario final.' . ems_ai_ds_instrument_action_contract();
     }
-
     if ($featureKey === 'ai_surgery_planner') {
-        return 'KONTRAK PELENGKAPAN MODEL AI: KASUS MEDIS / TINDAKAN yang diberikan user boleh singkat. MODEL AI, bukan PHP dan bukan user, wajib merangkainya menjadi rencana operasi yang spesifik terhadap kasus: alasan/indikasi berbasis input, persiapan, tahapan prosedur, pembagian peran, risiko relevan, monitoring, dan rujukan SOP. Jangan mengembalikan Data belum tersedia untuk langkah rencana, rekomendasi, risiko, atau alur yang dapat disusun dari kasus. Data belum tersedia hanya untuk fakta pasien, angka pengukuran, hasil pemeriksaan, kejadian pelaksanaan, dan hasil operasi yang memang tidak diberikan. Semua isi tetap rencana, bukan bukti operasi sudah dilakukan.';
+        return 'KONTRAK OUTPUT ROLEPLAY: Ini simulasi FiveM, bukan dokumen klinis nyata. Susun skenario operasi yang siap dimainkan dan final di dalam dunia roleplay. Setiap tahap berisi satu petugas dari DPJP/Asisten 1/Asisten 2, aksi /me spesifik, dan hasil /do konkret dalam bentuk lampau; dilarang memakai placeholder, status menunggu, verifikasi, atau meminta pemain menentukan sendiri. Untuk fakta anatomi intraoperatif yang tidak dirinci input, tetapkan satu hasil skenario yang masuk akal dan gunakan konsisten dari eksplorasi sampai penutupan. Jangan memberi pilihan bercabang pada aksi. Isi ringkasan, risiko relevan, farmakologi roleplay, dan SOP secara konkret; array obat boleh kosong bila kategori memang tidak digunakan. Pertahankan identitas dan lokasi cedera dari laporan sumber. Output adalah skenario roleplay final, bukan klaim tindakan dunia nyata.' . ems_ai_ds_instrument_action_contract();
     }
-
+    if ($featureKey === 'ai_laboratory') {
+        return 'KONTRAK HASIL LAB ROLEPLAY: semua nilai, interpretasi, korelasi, kesan, dan rekomendasi adalah hasil final skenario FiveM. Lengkapi semua parameter panel yang dipilih dengan nilai, satuan, rentang rujukan, dan flag Normal/High/Low yang konsisten; pertahankan nilai sumber diagnosis untuk parameter yang sama. Jangan menulis data tidak tersedia, belum diperiksa, menunggu hasil, wajib verifikasi, dugaan yang belum selesai, atau menyarankan pemain menunggu pemeriksaan. Jangan menambah parameter di luar panel. Kembalikan JSON lengkap sesuai schema.';
+    }
+    if ($featureKey === 'ai_radiology_report') {
+        return 'KONTRAK LAPORAN RADIOLOGI ROLEPLAY: hasil adalah bacaan final dalam skenario FiveM berdasarkan modality, regio, proyeksi, temuan klinis, dan anamnesis yang diberikan. Citra pada fitur ini adalah ilustrasi roleplay dan tidak dikirim ke model untuk dibaca; karena itu jangan mengatakan citra tidak tersedia, tidak dapat dinilai, belum dikonfirmasi, perlu diunggah, atau wajib diverifikasi. Tetapkan temuan skenario yang konkret dan koheren dengan temuan klinis serta anatomi yang diperiksa; jangan menyimpulkan cedera vaskular dari radiograf polos. Tulis TECHNIQUE, FINDINGS, IMPRESSION, dan RECOMMENDATION dengan isi final, tanpa disclaimer proses atau placeholder. Kembalikan JSON lengkap sesuai schema.';
+    }
     if ($featureKey === 'rekam_medis_ai') {
         return 'KONTRAK PELENGKAPAN MODEL AI: DATA SUMBER boleh ringkas atau tersebar. MODEL AI wajib menyusunnya menjadi narasi rekam medis yang koheren, terstruktur, dan spesifik terhadap kasus, termasuk hubungan diagnosis, indikasi, alur perawatan, serta rencana bila bagian itu diminta oleh schema. Jangan mengubah rencana menjadi tindakan atau hasil aktual. Data belum tersedia hanya untuk fakta pasien, angka pengukuran, hasil pemeriksaan, kejadian pelaksanaan, dan hasil operasi yang memang tidak ada di sumber.';
     }
-
-    if ($featureKey === 'ai_diagnosis_assistant') {
-        return 'KONTRAK PELENGKAPAN MODEL AI: ANAMNESIS / TEMUAN MEDIS / KONDISI FISIK dari user boleh singkat. MODEL AI, bukan PHP dan bukan user, wajib menentukan mekanisme cedera internal yang paling masuk akal dan memastikan seluruh bagian laporan (narasi klinis, diagnosis kerja, diagnosis banding, GCS, TTV, rekomendasi pemeriksaan, rencana tindakan, tahapan SOP, penanganan emergency) koheren tanpa kontradiksi. ATURAN WAJIB KLINIS: (1) GCS dihitung harfiah: M3 = fleksi abnormal/dekortikasi; M4 = withdrawal/menarik diri normal; pilih satu sesuai respons pasien dan jangan menulis fleksi abnormal/withdrawal sebagai sinonim; (2) Nilai belum diukur wajib berstatus "Estimasi AI — wajib verifikasi" pada field estimasi terpisah, field faktual tetap Data belum tersedia; (3) Airway definitif (intubasi endotrakeal / ETT) WAJIB disertakan pada emergency jika estimasi GCS ≤ 8; (4) Osmoterapi (Manitol 20% / NaCl 3% hipertonik) WAJIB disertakan jika ada kecurigaan peningkatan TTIK / trauma kepala berat; (5) Pada trauma kepala dengan kecurigaan peningkatan tekanan intrakranial, Disability wajib memuat pemeriksaan pupil (isokor/anisokor/dilatasi; reaktif/non reaktif); anisokor/dilatasi dengan tanda herniasi akut membolehkan rencana operasi definitif cito tanpa menunggu CT, selain itu tulis persis rencana tentatif — menunggu hasil CT scan; (6) Urutan logis: CT scan / penunjang penentu dievaluasi sebelum operasi definitif kecuali ada tanda cito akut; (7) Istilah hipotensi permisif/permissive hypotension hanya untuk strategi resusitasi cairan, bukan temuan TTV mentah; gunakan deskripsi tanda awal syok hemoragik ringan-sedang pada TTV; (8) Wajib sertakan informed consent wali (karena pasien tidak sadar) & persiapan darah (golongan darah + crossmatch/PRC) sebelum operasi berisiko perdarahan; (7) Diagnosis utama & diagnosis banding HARUS dalam ranah mekanisme cedera yang sama — jangan mencampur trauma tumpul dengan tajam/penetrasi, DDx hanya variasi organ/keparahan pada mekanisme yang sama; (8) Untuk trauma abdomen dengan tanda kegawatan absolut (eviserasi/prolaps organ, perdarahan masif, peritonitis pasien tidak stabil): prioritaskan laparotomi cito setelah stabilisasi; radiologi bedside tetap wajib berupa FAST dan/atau X-ray portable. CT scan ditulis sebagai DITUNDA — dijadwalkan di tahap Radiologi/pasca stabilisasi hanya bila relevan; (9) Kasus bervariasi unik (tingkat keparahan, organ terlibat, nilai fisiologis realistis) walau input mirip. Cek ulang konsistensi internal sebelum final.';
-    }
-
     return 'Jangan mengarang fakta, angka, hasil pemeriksaan, tindakan selesai, atau kondisi pasien yang tidak didukung input/evidence; tandai data yang memang belum tersedia dan minta verifikasi bila diperlukan.';
 }
-
 /**
  * Panggil Gemini dengan system prompt + user prompt sebagai dua "parts" terpisah
  * dalam satu content role=user, mengikuti pola yang sudah dipakai
@@ -2216,10 +2902,68 @@ function ems_ai_ds_strip_hallucination_instructions(string $prompt, string $feat
     return preg_replace($patterns, $completionInstruction, $prompt) ?? $prompt;
 }
 
+/** Gemini JSON schema that keeps emergency cards machine-readable. */
+function ems_ai_ds_diagnosis_response_schema(string $featureKey): array
+{
+    $string = ['type' => 'STRING'];
+    $stringList = ['type' => 'ARRAY', 'items' => $string];
+    $baseProperties = [
+        'anamnesis_lengkap' => $string,
+        'diagnosis_utama' => $string,
+        'diagnosis_banding' => $stringList,
+        'gcs' => $string,
+        'ttv' => ['type' => 'ARRAY', 'items' => ['type' => 'OBJECT', 'properties' => [
+            'label' => $string, 'value' => $string, 'note' => $string,
+        ], 'required' => ['label', 'value', 'note']]],
+        'pemeriksaan_pupil' => $string,
+        'riwayat_operasi' => $string,
+        'kasus_tindakan' => $string,
+        'jenis_operasi' => $string,
+        'jenis_anestesi' => $string,
+        'status_rencana_operasi' => $string,
+    ];
+    $baseRequired = array_keys($baseProperties);
+    if ($featureKey === 'ai_diagnosis_assistant_action_repair') {
+        return [
+            'type' => 'OBJECT',
+            'properties' => ['emergency' => ['type' => 'ARRAY', 'items' => ['type' => 'OBJECT', 'properties' => [
+                'pelaku' => $string, 'instruksi' => $string, 'aksi' => $string, 'hasil' => $string, 'animasi' => $string,
+            ], 'required' => ['pelaku', 'instruksi', 'aksi', 'hasil', 'animasi']]]],
+            'required' => ['emergency'],
+        ];
+    }
+    if ($featureKey === 'ai_diagnosis_assistant_stage_1') {
+        return ['type' => 'OBJECT', 'properties' => $baseProperties, 'required' => $baseRequired];
+    }
+
+    $properties = $baseProperties + [
+        'lab' => $stringList,
+        'radiologi' => $stringList,
+        'emergency' => ['type' => 'ARRAY', 'items' => ['type' => 'OBJECT', 'properties' => [
+            'pelaku' => $string, 'instruksi' => $string, 'aksi' => $string, 'hasil' => $string, 'animasi' => $string,
+        ], 'required' => ['pelaku', 'instruksi', 'aksi', 'hasil', 'animasi']]],
+        'handoff' => $string,
+        'sop_references' => $stringList,
+        'roleplay_note' => $string,
+        'laboratorium_terstruktur' => ['type' => 'OBJECT', 'properties' => [
+            'department' => $string, 'category' => $string, 'level3_option' => $string, 'specimen_type' => $string,
+        ], 'required' => ['department', 'category', 'level3_option', 'specimen_type']],
+        'radiologi_terstruktur' => ['type' => 'OBJECT', 'properties' => [
+            'modality' => $string, 'category' => $string, 'body_region' => $string, 'projection' => $string, 'clinical_finding' => $string,
+        ], 'required' => ['modality', 'category', 'body_region', 'projection', 'clinical_finding']],
+        'identitas_pasien' => ['type' => 'OBJECT', 'properties' => [
+            'nama' => $string, 'jenis_kelamin' => $string, 'usia' => $string, 'tanggal_lahir' => $string,
+        ], 'required' => ['nama', 'jenis_kelamin', 'usia', 'tanggal_lahir']],
+        'gcs_detail' => ['type' => 'OBJECT', 'properties' => ['e' => $string, 'v' => $string, 'm' => $string], 'required' => ['e', 'v', 'm']],
+    ];
+    return ['type' => 'OBJECT', 'properties' => $properties, 'required' => array_keys($properties)];
+}
+
 function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy): array
 {
     $isDiagnosisAssistant = $featureKey === 'ai_diagnosis_assistant'
         || str_starts_with($featureKey, 'ai_diagnosis_assistant_');
+    $isRoleplayFinalFeature = $isDiagnosisAssistant || in_array($featureKey, ['ai_surgery_planner', 'ai_laboratory', 'ai_radiology_report'], true);
     if (!$createdBy) {
         return ['ok' => false, 'error' => 'Sesi pengguna tidak valid. Silakan login ulang.'];
     }
@@ -2255,21 +2999,22 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
             ems_ai_official_document_unit($pdo, $createdBy),
             $userPrompt,
             $featureKey,
-            $isDiagnosisAssistant ? 3 : 6
+            $isRoleplayFinalFeature ? 3 : 6
         );
         if ($officialDocuments !== '') {
             $systemPrompt .= "\n\n" . $officialDocuments;
         }
     }
-    if (!str_contains($systemPrompt, 'VALIDATION GATE WAJIB')) {
+    if (!$isRoleplayFinalFeature && !str_contains($systemPrompt, 'VALIDATION GATE WAJIB')) {
         $systemPrompt .= "\n\n" . ems_ai_official_consistency_guardrail();
     }
 
     $completionContract = ems_ai_ds_model_completion_contract($featureKey);
-    $systemPrompt .= "\n\n" . $completionContract;
+    $crossFeatureActionContract = "KONTRAK LINTAS FITUR ROXWOOD HOSPITAL AI: hanya bila schema fitur ini meminta tindakan fisik atau mantra roleplay, setiap aksi wajib menyebut alat/instrumen/bahan yang dipakai (contoh suction: mesin suction bedah + kateter suction steril; balut: kasa steril + perban; jahit: needle holder + pinset + benang spesifik). Bila ada field pelaku/asisten, perintah supervisor menyebut nama alat yang harus diambil/dipasang. Jangan menambah kartu tindakan fisik ke fitur yang tidak memintanya dan jangan menempelkan alat yang tidak relevan.";
+    $systemPrompt .= "\n\n" . $completionContract . "\n\n" . $crossFeatureActionContract;
     $finalValidation = "FINAL VALIDATION GATE (mengalahkan instruksi template/user yang bertentangan):\n"
-        . ems_ai_official_consistency_guardrail()
-        . "\n" . $completionContract;
+        . ($isRoleplayFinalFeature ? $completionContract : ems_ai_official_consistency_guardrail() . "\n" . $completionContract)
+        . "\n" . $crossFeatureActionContract;
 
     if ($useCustomProvider) {
         try {
@@ -2316,23 +3061,33 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
     ]);
 
     try {
-        $response = ems_gemini_generate_content(
-            $pdo,
-            $settings,
-            [
-                [
-                    'role' => 'user',
-                    'parts' => [
-                        ['text' => $systemPrompt],
-                        ['text' => $userPrompt],
-                        ['text' => $finalValidation],
-                    ],
-                ],
+        $contents = [[
+            'role' => 'user',
+            'parts' => [
+                ['text' => $systemPrompt],
+                ['text' => $userPrompt],
+                ['text' => $finalValidation],
             ],
-            (string) ($settings['default_model'] ?? 'gemini-3.5-flash-lite'),
-            $featureKey,
-            $createdBy
-        );
+        ]];
+        $responseSchema = $isDiagnosisAssistant ? ems_ai_ds_diagnosis_response_schema($featureKey) : null;
+        try {
+            $response = ems_gemini_generate_content(
+                $pdo, $settings, $contents,
+                (string) ($settings['default_model'] ?? 'gemini-3.5-flash-lite'),
+                $featureKey, $createdBy, $responseSchema
+            );
+        } catch (Throwable $schemaError) {
+            // Compatibility path for Gemini-compatible endpoints/models that do
+            // not implement responseSchema; parser + repair gate remain active.
+            if ($responseSchema === null || preg_match('/schema|400|not supported|unsupported|invalid argument/iu', $schemaError->getMessage()) !== 1) {
+                throw $schemaError;
+            }
+            $response = ems_gemini_generate_content(
+                $pdo, $settings, $contents,
+                (string) ($settings['default_model'] ?? 'gemini-3.5-flash-lite'),
+                $featureKey, $createdBy, null
+            );
+        }
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => $e->getMessage()];
     }

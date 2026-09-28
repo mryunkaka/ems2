@@ -15,20 +15,21 @@ ems_ai_ds_ensure_tables($pdo);
 $pageTitle = 'AI Surgery Planner | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $effectiveUnit = ems_effective_unit($pdo, $user);
+$canViewAllAiHistory = ems_current_user_is_programmer_roxwood();
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT p.id, p.jenis_operasi_kategori, p.kasus_tindakan, p.kompleksitas, p.status, p.created_at, p.source_report_code, u.full_name AS created_by_name
+    SELECT p.id, p.user_id, p.jenis_operasi_kategori, p.kasus_tindakan, p.kompleksitas, p.status, p.created_at, p.source_report_code, u.full_name AS created_by_name
     FROM ai_surgery_plans p
     LEFT JOIN user_rh u ON u.id = p.user_id
-    WHERE p.unit_code = ?
+    WHERE (? = 1 OR p.unit_code = ?) AND (? = 1 OR p.user_id = ?)
     ORDER BY p.id DESC
     LIMIT 15
 ");
-$recentStmt->execute([$effectiveUnit]);
+$recentStmt->execute([$canViewAllAiHistory ? 1 : 0, $effectiveUnit, $canViewAllAiHistory ? 1 : 0, (int) ($user['id'] ?? 0)]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
@@ -99,11 +100,12 @@ include __DIR__ . '/../partials/sidebar.php';
 
                     <label class="mt-4">Tingkat Kompleksitas (Jumlah Tahapan Prosedur)</label>
                     <select name="kompleksitas" id="aiSurgKompleksitas">
+                        <option value="Auto" selected>Otomatis dari tingkat kesulitan kasus</option>
                         <option value="Mudah">Mudah - 10 tahapan</option>
-                        <option value="Sedang" selected>Sedang - 20 tahapan</option>
+                        <option value="Sedang">Sedang - 20 tahapan</option>
                         <option value="Panjang">Panjang - 30 tahapan</option>
                     </select>
-                    <p id="aiSurgKompleksitasHint" class="page-subtitle" style="margin-top:6px;font-size:12px;">Sedang: 20 langkah prosedur, durasi & detail proporsional dengan jumlah langkah.</p>
+                    <p id="aiSurgKompleksitasHint" class="page-subtitle" style="margin-top:6px;font-size:12px;">Otomatis: sistem merekomendasikan 10, 20, atau 30 langkah berdasarkan diagnosis dan kompleksitas kasus. Anda tetap dapat memilih jumlah tahapan sendiri.</p>
 
                     <label class="mt-4">Kasus Medis / Tindakan yang Diperlukan</label>
                     <textarea name="kasus_tindakan" id="aiSurgKasusTindakan" rows="6" required placeholder="Contoh singkat: fraktur tungkai kiri setelah kecelakaan; rencana ORIF."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
@@ -150,13 +152,13 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
-                                            <?php if (!empty($row['source_report_code'])): ?>
+                                            <?php if ((int) $row['user_id'] === (int) ($user['id'] ?? 0) && !empty($row['source_report_code'])): ?>
                                                 <button type="button" class="btn-secondary btn-sm ai-surg-regenerate-btn" data-id="<?= (int) $row['id'] ?>" title="Generate ulang pakai kode referensi &amp; input yang sama">
                                                     <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                                                     <span>Generate Ulang</span>
                                                 </button>
                                             <?php endif; ?>
-                                            <?php if ($canDelete): ?>
+                                            <?php if ($canDelete && (int) $row['user_id'] === (int) ($user['id'] ?? 0)): ?>
                                                 <form method="POST" action="ai_surgery_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus rencana operasi #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="delete">
@@ -284,6 +286,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     jenisAnestesiSelect.value = anestesiMatch;
                 }
 
+                var recommendedComplexity = ['Mudah', 'Sedang', 'Panjang'].indexOf(data.kompleksitas_rekomendasi) !== -1
+                    ? data.kompleksitas_rekomendasi : 'Sedang';
+                kompleksitasSelect.value = recommendedComplexity;
+                kompleksitasHint.textContent = 'Rekomendasi otomatis untuk kasus ini: ' + recommendedComplexity + ' (' + ({ Mudah: 10, Sedang: 20, Panjang: 30 }[recommendedComplexity]) + ' tahapan). Anda masih dapat mengubahnya.';
+
                 diagCodeHidden.value = data.report_code || '';
 
                 var usedWarning = formatUsedOnTargetWarning(data);
@@ -305,6 +312,7 @@ include __DIR__ . '/../partials/sidebar.php';
     var kompleksitasSelect = document.getElementById('aiSurgKompleksitas');
     var kompleksitasHint = document.getElementById('aiSurgKompleksitasHint');
     var KOMPLEKSITAS_HINTS = {
+        Auto: 'Otomatis: sistem memilih 10, 20, atau 30 langkah berdasarkan diagnosis dan tingkat kesulitan kasus.',
         Mudah: 'Mudah: 10 langkah prosedur, durasi & detail lebih ringkas.',
         Sedang: 'Sedang: 20 langkah prosedur, durasi & detail proporsional dengan jumlah langkah.',
         Panjang: 'Panjang: 30 langkah prosedur, durasi lebih lama & detail paling rinci.'

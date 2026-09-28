@@ -254,6 +254,25 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute($params);
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$staffNamesToFormat = [];
+foreach ($records as $recordForTitle) {
+    foreach (['doctor_name', 'assistant_name', 'created_by_name'] as $nameField) {
+        $staffName = trim((string) ($recordForTitle[$nameField] ?? ''));
+        if ($staffName !== '') {
+            $staffNamesToFormat[] = $staffName;
+        }
+    }
+}
+$formattedStaffNames = ems_medical_display_names_for_users($pdo, $staffNamesToFormat);
+foreach ($records as &$recordForTitle) {
+    foreach (['doctor_name', 'assistant_name', 'created_by_name'] as $nameField) {
+        $rawStaffName = trim((string) ($recordForTitle[$nameField] ?? ''));
+        if ($rawStaffName !== '' && isset($formattedStaffNames[$rawStaffName])) {
+            $recordForTitle[$nameField] = $formattedStaffNames[$rawStaffName];
+        }
+    }
+}
+unset($recordForTitle);
 $assistantNamesMap = medicalRecordAssistantNamesMap($pdo, array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $records));
 $detailTemplates = [];
 $historyTemplates = [];

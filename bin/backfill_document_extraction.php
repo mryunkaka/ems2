@@ -66,10 +66,11 @@ foreach ($rows as $row) {
 
     $result = ems_document_extract_text($fullPath, $ext);
 
-    $update = $pdo->prepare("UPDATE document_files SET extracted_text = ?, extraction_status = ?, updated_at = NOW() WHERE id = ?");
+    $update = $pdo->prepare("UPDATE document_files SET extracted_text = ?, extraction_status = ?, source_file_sha256 = ? WHERE id = ?");
     $update->execute([
         $result['text'] !== '' ? $result['text'] : null,
         $result['status'],
+        ems_document_source_sha256($fullPath),
         $id,
     ]);
 

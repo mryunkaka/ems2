@@ -46,6 +46,7 @@ function ems_document_ensure_tables(PDO $pdo): void
             `file_ext` varchar(10) DEFAULT NULL,
             `mime_type` varchar(100) DEFAULT NULL,
             `file_size_bytes` int(11) NOT NULL DEFAULT 0,
+            `source_file_sha256` char(64) DEFAULT NULL,
             `tags` varchar(255) DEFAULT NULL,
             `extracted_text` longtext DEFAULT NULL,
             `extraction_status` enum('pending','done','unsupported','failed') NOT NULL DEFAULT 'pending',
@@ -59,6 +60,10 @@ function ems_document_ensure_tables(PDO $pdo): void
             FULLTEXT KEY `ftx_document_files_search` (`title`, `tags`, `extracted_text`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
     ");
+
+    if (!ems_column_exists($pdo, 'document_files', 'source_file_sha256')) {
+        $pdo->exec("ALTER TABLE document_files ADD COLUMN source_file_sha256 char(64) DEFAULT NULL AFTER file_size_bytes");
+    }
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS `document_activity_logs` (
@@ -103,6 +108,15 @@ function ems_document_ensure_tables(PDO $pdo): void
         $pdo->exec("ALTER TABLE document_files MODIFY COLUMN extraction_status ENUM('pending','done','unsupported','failed','manual') NOT NULL DEFAULT 'pending'");
     }
     $ensuredPdo[$pdoKey] = true;
+}
+
+function ems_document_source_sha256(string $fullPath): ?string
+{
+    if (!is_file($fullPath) || !is_readable($fullPath)) {
+        return null;
+    }
+    $hash = @hash_file('sha256', $fullPath);
+    return is_string($hash) && $hash !== '' ? $hash : null;
 }
 
 // ===================================================================

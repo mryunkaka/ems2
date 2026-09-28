@@ -89,8 +89,8 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO document_files (
                 unit_code, folder_id, division, title, original_filename, file_path, file_ext, mime_type,
-                file_size_bytes, tags, extracted_text, extraction_status, uploaded_by, uploaded_by_name_snapshot, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                file_size_bytes, source_file_sha256, tags, extracted_text, extraction_status, uploaded_by, uploaded_by_name_snapshot, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
         $stmt->execute([
             $unitCode,
@@ -102,6 +102,7 @@ try {
             $saved['ext'],
             $saved['mime'],
             $saved['size'],
+            ems_document_source_sha256($saved['full_path']),
             $tags !== '' ? $tags : null,
             $extraction['text'] !== '' ? $extraction['text'] : null,
             $extraction['status'],
@@ -162,7 +163,7 @@ try {
             $stmt = $pdo->prepare("
                 UPDATE document_files
                 SET title = ?, tags = ?, original_filename = ?, file_path = ?, file_ext = ?, mime_type = ?,
-                    file_size_bytes = ?, extracted_text = ?, extraction_status = ?, updated_at = NOW()
+                    file_size_bytes = ?, source_file_sha256 = ?, extracted_text = ?, extraction_status = ?, updated_at = NOW()
                 WHERE id = ?
             ");
             $stmt->execute([
@@ -173,6 +174,7 @@ try {
                 $saved['ext'],
                 $saved['mime'],
                 $saved['size'],
+                ems_document_source_sha256($saved['full_path']),
                 $extraction['text'] !== '' ? $extraction['text'] : null,
                 $extraction['status'],
                 $docId,

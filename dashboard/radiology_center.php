@@ -16,20 +16,21 @@ ems_ai_radiology_ensure_tables($pdo);
 $pageTitle = 'Radiology Center | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
 $effectiveUnit = ems_effective_unit($pdo, $user);
+$canViewAllAiHistory = ems_current_user_is_programmer_roxwood();
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $recentStmt = $pdo->prepare("
-    SELECT r.id, r.patient_name, r.modality, r.body_region, r.clinical_finding, r.image_path, r.status, r.created_at, r.source_report_code, u.full_name AS created_by_name
+    SELECT r.id, r.user_id, r.patient_name, r.modality, r.body_region, r.clinical_finding, r.image_path, r.status, r.created_at, r.source_report_code, u.full_name AS created_by_name
     FROM ai_radiology_images r
     LEFT JOIN user_rh u ON u.id = r.user_id
-    WHERE r.unit_code = ?
+    WHERE (? = 1 OR r.unit_code = ?) AND (? = 1 OR r.user_id = ?)
     ORDER BY r.id DESC
     LIMIT 15
 ");
-$recentStmt->execute([$effectiveUnit]);
+$recentStmt->execute([$canViewAllAiHistory ? 1 : 0, $effectiveUnit, $canViewAllAiHistory ? 1 : 0, (int) ($user['id'] ?? 0)]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
 $hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
@@ -195,13 +196,13 @@ include __DIR__ . '/../partials/sidebar.php';
                                                 <?= ems_icon('eye', 'h-4 w-4') ?>
                                                 <span>Lihat</span>
                                             </a>
-                                            <?php if (!empty($row['source_report_code'])): ?>
+                                            <?php if ((int) $row['user_id'] === (int) ($user['id'] ?? 0) && !empty($row['source_report_code'])): ?>
                                                 <button type="button" class="btn-secondary btn-sm rad-regenerate-btn" data-id="<?= (int) $row['id'] ?>" title="Generate ulang pakai kode referensi &amp; input yang sama">
                                                     <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                                                     <span>Generate Ulang</span>
                                                 </button>
                                             <?php endif; ?>
-                                            <?php if ($canDelete): ?>
+                                            <?php if ($canDelete && (int) $row['user_id'] === (int) ($user['id'] ?? 0)): ?>
                                                 <form method="POST" action="radiology_report.php?id=<?= (int) $row['id'] ?>" onsubmit="return confirm('Hapus citra radiologi #<?= (int) $row['id'] ?> secara permanen? Tindakan ini tidak bisa dibatalkan.');">
                                                     <?= csrfField(); ?>
                                                     <input type="hidden" name="action" value="delete">
@@ -304,21 +305,23 @@ include __DIR__ . '/../partials/sidebar.php';
     // user memilih manual satu-satu, supaya options di tiap level ikut terisi benar.
     function applyCascadeSelection(modality, category, bodyRegion, projection) {
         if (!modality || !(modality in CATALOG)) { return false; }
-        modalitySelect.value = modality;
-
         var categories = Object.keys(CATALOG[modality] || {});
-        fillSelect(categorySelect, categories, '-- Pilih Category --');
         if (!category || categories.indexOf(category) === -1) { return false; }
-        categorySelect.value = category;
 
         var regions = Object.keys((CATALOG[modality] || {})[category] || {});
-        fillSelect(bodyRegionSelect, regions, '-- Pilih Body Region --');
         if (!bodyRegion || regions.indexOf(bodyRegion) === -1) { return false; }
-        bodyRegionSelect.value = bodyRegion;
 
         var projections = ((CATALOG[modality] || {})[category] || {})[bodyRegion] || [];
-        fillSelect(projectionSelect, projections, '-- Pilih Projection --');
         if (!projection || projections.indexOf(projection) === -1) { return false; }
+
+        // Baru ubah UI setelah seluruh jalur lolos validasi; data invalid tidak
+        // boleh meninggalkan pilihan setengah jadi dari laporan sebelumnya.
+        modalitySelect.value = modality;
+        fillSelect(categorySelect, categories, '-- Pilih Category --');
+        categorySelect.value = category;
+        fillSelect(bodyRegionSelect, regions, '-- Pilih Body Region --');
+        bodyRegionSelect.value = bodyRegion;
+        fillSelect(projectionSelect, projections, '-- Pilih Projection --');
         projectionSelect.value = projection;
 
         return true;
@@ -376,7 +379,11 @@ include __DIR__ . '/../partials/sidebar.php';
 
                 var data = result.data;
                 if (data.anamnesis) {
-                    anamnesisTextarea.value = data.anamnesis;
+                    var caseContext = data.anamnesis;
+                    if (data.diagnosis_utama && caseContext.toLowerCase().indexOf(data.diagnosis_utama.toLowerCase()) === -1) {
+                        caseContext = 'Diagnosis utama: ' + data.diagnosis_utama + '\n' + caseContext;
+                    }
+                    anamnesisTextarea.value = caseContext;
                 }
                 if (data.patient_name) {
                     patientNameInput.value = data.patient_name;
@@ -389,6 +396,14 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
 
                 diagCodeHidden.value = data.report_code || '';
+
+                // Form ini mewakili satu pasien/kode laporan. Hapus pilihan
+                // radiologi dari fetch sebelumnya sebelum menerapkan hasil baru.
+                modalitySelect.value = '';
+                fillSelect(categorySelect, [], '-- Pilih Modality dulu --');
+                fillSelect(bodyRegionSelect, [], '-- Pilih Category dulu --');
+                fillSelect(projectionSelect, [], '-- Pilih Body Region dulu --');
+                clinicalFindingSelect.value = '';
 
                 var rad = data.radiologi_terstruktur;
                 var applied = false;

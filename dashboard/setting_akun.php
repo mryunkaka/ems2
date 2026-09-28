@@ -13,6 +13,16 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
+try {
+    $specialistDegreeColumn = $pdo->query("SHOW COLUMNS FROM user_rh LIKE 'specialist_degrees'")->fetch(PDO::FETCH_ASSOC);
+    if (!$specialistDegreeColumn) {
+        $pdo->exec('ALTER TABLE user_rh ADD COLUMN specialist_degrees VARCHAR(255) NULL AFTER position');
+    }
+} catch (Throwable $e) {
+    error_log('[Setting Akun] Tidak dapat menyiapkan kolom gelar spesialis: ' . $e->getMessage());
+    $_SESSION['flash_errors'][] = 'Kolom gelar spesialis belum tersedia. Jalankan migrasi 91_2026-09-28_user_specialist_degrees.sql.';
+}
+
 /*
 |--------------------------------------------------------------------------
 | DATA USER SESSION (SISTEM LAMA)
@@ -61,6 +71,7 @@ $optionalSettingAkunColumns = [
     'tanggal_naik_co_asst',
     'tanggal_naik_dokter',
     'tanggal_naik_dokter_spesialis',
+    'specialist_degrees',
     'tanggal_join_manager',
 ];
 
@@ -183,6 +194,7 @@ $noHpIc = $userDb['no_hp_ic'] ?? '';
 $medicName  = $userDb['full_name'] ?? '';
 $medicPos   = $userDb['position'] ?? '';
 $medicPosNormalized = ems_normalize_position($medicPos);
+$specialistDegrees = trim((string) ($userDb['specialist_degrees'] ?? ''));
 $currentRoleNormalized = ems_normalize_role($currentRole);
 $medicBatch = $userDb['batch'] ?? '';
 $nomorInduk = $userDb['kode_nomor_induk_rs'] ?? '';
@@ -342,6 +354,29 @@ if (ems_is_manager_plus_role($currentRoleNormalized) && isset($userRhColumns['ta
                     required
                     placeholder="Masukkan nama lengkap Anda"
                     value="<?= htmlspecialchars($medicName) ?>">
+
+                <?php if ($medicPosNormalized === 'specialist'): ?>
+                    <div class="row-form-1" style="margin-top:14px">
+                        <label>Gelar Spesialis <span class="required">*</span></label>
+                        <input type="text"
+                            name="specialist_degrees"
+                            maxlength="255"
+                            required
+                            placeholder="Sp. B, Sp. OG"
+                            value="<?= htmlspecialchars($specialistDegrees, ENT_QUOTES, 'UTF-8') ?>">
+                        <small class="hint-warning">Wajib diisi agar akses dashboard terbuka. Tulis setiap gelar dengan awalan “Sp.” dan pisahkan beberapa gelar dengan koma. Contoh: Sp. B, Sp. OG.</small>
+                    </div>
+                <?php else: ?>
+                    <small class="hint-info" style="display:block;margin-top:6px">
+                        Gelar tampilan otomatis mengikuti jabatan: <?= htmlspecialchars(match ($medicPosNormalized) {
+                            'trainee' => 'Trainee (tanpa gelar)',
+                            'paramedic' => 'A. Md Kep',
+                            'co_asst' => 'S. Ked',
+                            'general_practitioner' => 'dr.',
+                            default => 'tidak ada',
+                        }, ENT_QUOTES, 'UTF-8') ?>.
+                    </small>
+                <?php endif; ?>
 
                 <!-- BARIS 1 -->
                 <div class="row-form-2">

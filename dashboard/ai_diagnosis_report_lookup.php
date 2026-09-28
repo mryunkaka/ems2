@@ -7,6 +7,8 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/ai_radiology.php';
+require_once __DIR__ . '/../config/ai_laboratory.php';
 
 function ems_ai_diag_lookup_response(array $payload, int $httpCode = 200): void
 {
@@ -55,6 +57,10 @@ if (!empty($report['result_json'])) {
         $result = ems_ai_ds_normalize_diagnosis_result($decoded, (string) ($report['anamnesis'] ?? ''));
     }
 }
+if ($result !== []) {
+    ems_ai_ds_ensure_igd_radiology($result, (string) ($report['anamnesis'] ?? ''));
+    ems_ai_ds_reconcile_radiology_projection_views($result);
+}
 
 $structuredRadiology = is_array($result['radiologi_terstruktur'] ?? null) ? $result['radiologi_terstruktur'] : null;
 if ($structuredRadiology !== null && trim((string) ($structuredRadiology['modality'] ?? '')) === '') {
@@ -62,11 +68,18 @@ if ($structuredRadiology !== null && trim((string) ($structuredRadiology['modali
 }
 
 $structuredLaboratory = is_array($result['laboratorium_terstruktur'] ?? null) ? $result['laboratorium_terstruktur'] : null;
-if ($structuredLaboratory !== null && trim((string) ($structuredLaboratory['department'] ?? '')) === '') {
-    $structuredLaboratory = null;
-}
+$structuredLaboratory = $structuredLaboratory !== null
+    ? ems_ai_laboratory_normalize_structured_recommendation($structuredLaboratory)
+    : null;
 
 $anamnesisLengkap = trim((string) ($result['anamnesis_lengkap'] ?? ''));
+$complexityContext = implode("\n", array_filter([
+    (string) ($report['anamnesis'] ?? ''),
+    (string) ($result['anamnesis_lengkap'] ?? ''),
+    (string) ($result['diagnosis_utama'] ?? ''),
+    (string) ($result['kasus_tindakan'] ?? ''),
+    (string) ($result['jenis_operasi'] ?? ''),
+], static fn (string $value): bool => trim($value) !== ''));
 
 ems_ai_diag_lookup_response([
     'ok' => true,
@@ -77,8 +90,10 @@ ems_ai_diag_lookup_response([
     'kasus_tindakan' => (string) ($result['kasus_tindakan'] ?? ''),
     'jenis_operasi' => (string) ($result['jenis_operasi'] ?? ''),
     'jenis_anestesi' => (string) ($result['jenis_anestesi'] ?? ''),
+    'kompleksitas_rekomendasi' => ems_ai_ds_recommend_surgery_complexity($complexityContext),
     'radiologi_terstruktur' => $structuredRadiology,
     'laboratorium_terstruktur' => $structuredLaboratory,
+    'laboratory_scenario_results' => is_array($result['lab'] ?? null) ? $result['lab'] : [],
     'patient_name' => (string) ($report['patient_name'] ?? ''),
     'patient_gender' => (string) ($report['patient_gender'] ?? ''),
     'patient_dob' => (string) ($report['patient_dob'] ?? ''),

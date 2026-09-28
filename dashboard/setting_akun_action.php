@@ -339,6 +339,9 @@ if (isset($userRhColumns['tanggal_lahir_ic'])) {
 if (isset($userRhColumns['file_kontrak_kerja'])) {
     $settingAkunSelectColumns[] = 'file_kontrak_kerja';
 }
+if (isset($userRhColumns['specialist_degrees'])) {
+    $settingAkunSelectColumns[] = 'specialist_degrees';
+}
 foreach (array_merge($settingAkunExtraDocFields, $settingAkunIssuedDateFields, $settingAkunDateFields) as $optionalColumn) {
     if (isset($userRhColumns[strtolower($optionalColumn)])) {
         $settingAkunSelectColumns[] = $optionalColumn;
@@ -354,6 +357,23 @@ $stmt = $pdo->prepare("
 $stmt->execute([$userId]);
 $userDb = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 settingAkunPerfMark('load_user_files');
+
+$specialistDegrees = trim((string) ($_POST['specialist_degrees'] ?? ''));
+$isSpecialistPosition = ems_normalize_position($userDb['position'] ?? $position) === 'specialist';
+if ($isSpecialistPosition) {
+    if (!isset($userRhColumns['specialist_degrees'])) {
+        $_SESSION['flash_errors'][] = 'Kolom gelar spesialis belum tersedia. Jalankan migrasi 91_2026-09-28_user_specialist_degrees.sql.';
+        header('Location: setting_akun.php');
+        exit;
+    }
+    $parsedSpecialistDegrees = ems_parse_specialist_degrees($specialistDegrees);
+    if ($parsedSpecialistDegrees === null) {
+        $_SESSION['flash_errors'][] = 'Gelar spesialis wajib diisi dengan format “Sp. B, Sp. OG” (pisahkan setiap gelar dengan koma).';
+        header('Location: setting_akun.php');
+        exit;
+    }
+    $specialistDegrees = implode(', ', $parsedSpecialistDegrees);
+}
 
 if (isset($userRhColumns['tanggal_lahir_ic'])) {
     if ($tanggalLahirIc === '') {
@@ -836,6 +856,11 @@ $params = [
 if (isset($userRhColumns['tanggal_lahir_ic'])) {
     $sql .= ", tanggal_lahir_ic = ?";
     $params[] = $tanggalLahirIc;
+}
+
+if ($isSpecialistPosition && isset($userRhColumns['specialist_degrees'])) {
+    $sql .= ", specialist_degrees = ?";
+    $params[] = $specialistDegrees;
 }
 
 // File lainnya (JSON)

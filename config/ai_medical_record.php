@@ -165,6 +165,12 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
             'status' => (string) ($diagnosisResult['status'] ?? '-'),
             'diagnosis_utama' => (string) ($diagnosisResult['diagnosis_utama'] ?? '-'),
             'diagnosis_banding' => $diagnosisResult['diagnosis_banding'] ?? [],
+            'laboratory_scenario_results' => is_array($diagnosisResult['lab'] ?? null) ? $diagnosisResult['lab'] : [],
+            'radiology_scenario_results' => is_array($diagnosisResult['radiologi'] ?? null) ? $diagnosisResult['radiologi'] : [],
+            'radiology_recommendation' => is_array($diagnosisResult['radiologi_terstruktur'] ?? null) ? $diagnosisResult['radiologi_terstruktur'] : [],
+            'laboratory_recommendation' => is_array($diagnosisResult['laboratorium_terstruktur'] ?? null) ? $diagnosisResult['laboratorium_terstruktur'] : [],
+            'emergency_actions' => is_array($diagnosisResult['emergency'] ?? null) ? $diagnosisResult['emergency'] : [],
+            'handoff' => $diagnosisResult['handoff'] ?? '',
             'gcs' => (string) ($diagnosisResult['gcs'] ?? 'Data belum tersedia'),
             'kesadaran' => (string) ($diagnosisResult['kesadaran'] ?? 'Data belum tersedia'),
             'motorik' => (string) ($diagnosisResult['motorik'] ?? 'Data belum tersedia'),
@@ -212,12 +218,14 @@ function ems_ai_medical_record_default_system_prompt(): string
         . "13. Bahasa Indonesia medis baku (EYD), objektif, tidak berlebihan, dan tidak berspekulasi di luar konteks.\n"
         . "14. Jangan memakai kata 'simulasi', 'roleplay', atau frasa sejenis di dokumen.\n"
         . "15. Jangan menyertakan penanganan emergency bergaya /me /do.\n"
-        . "16. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
+        . "16. Jika narasi sumber memuat tindakan fisik, pertahankan nama alat, instrumen, dan bahan spesifik yang benar-benar tercantum; tulis 'mesin suction bedah dengan kateter suction steril' bila itulah alat sumbernya, bukan 'menghisap darah' saja. Hubungkan balutan IGD dengan langkah operasi: catat pembukaan balutan yang memang tercatat, alat yang dipakai, lalu tindakan operasi berikutnya. Jangan menambah instrumen sebagai fakta bila tidak ada pada sumber.\n"
+        . "17. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
         . "Struktur JSON WAJIB (SEMUA field wajib ada; isi data yang belum tersedia dengan label eksplisit, bukan kosong):\n"
         . "{\n"
         . "  \"judul_operasi\": \"nama tindakan/operasi faktual atau Data belum tersedia\",\n"
         . "  \"ruang_perawatan\": \"alur ruang perawatan faktual dipisah tanda panah atau Data belum tersedia\",\n"
-        . "  \"diagnosis_list\": [\"diagnosis yang didukung data atau Data belum tersedia\"],\n"
+        . "  \"diagnosis_list\": [\"diagnosis utama yang didukung sumber\"],\n"
+        . "  \"diagnosis_banding_list\": [\"diagnosis banding dari sumber, jangan nyatakan sebagai diagnosis terkonfirmasi\"],\n"
         . "  \"indikasi_operasi\": [\"indikasi yang didukung data atau Data belum tersedia\"],\n"
         . "  \"jenis_operasi_nama\": \"nama tindakan operasi faktual atau Data belum tersedia\",\n"
         . "  \"jenis_operasi_deskripsi\": \"deskripsi berdasarkan data atau Data belum tersedia\",\n"
@@ -254,6 +262,7 @@ function ems_ai_medical_record_build_user_prompt(array $agg): string
         '=== DATA AI DIAGNOSIS ASSISTANT (WAJIB ADA) ===',
         'Status/Kondisi Ringkas: ' . $d['status'],
         'Anamnesis Lengkap: ' . ($d['anamnesis_lengkap'] ?: $d['anamnesis']),
+        'Jangan menyimpulkan jumlah proyektil dari jumlah luka masuk; sebut jumlah hanya jika sumber menyebutkannya eksplisit.',
         'Diagnosis Utama: ' . $d['diagnosis_utama'],
         'Diagnosis Banding: ' . implode(', ', $d['diagnosis_banding']),
         'GCS: ' . $d['gcs'],
@@ -264,6 +273,37 @@ function ems_ai_medical_record_build_user_prompt(array $agg): string
         'Jenis Operasi (dari Diagnosis): ' . $d['jenis_operasi'],
         'Jenis Anestesi (dari Diagnosis): ' . $d['jenis_anestesi'],
     ];
+
+    if (!empty($d['laboratory_scenario_results'])) {
+        $lines[] = '';
+        $lines[] = '=== HASIL LABORATORIUM SKENARIO DARI AI DIAGNOSIS (nilai yang tercatat pada sumber) ===';
+        foreach ($d['laboratory_scenario_results'] as $item) {
+            if (is_array($item)) {
+                $lines[] = trim(implode(' | ', array_filter([
+                    (string) ($item['parameter'] ?? ''),
+                    (string) ($item['nilai'] ?? $item['value'] ?? ''),
+                    !empty($item['rentang']) ? 'Rentang: ' . (string) $item['rentang'] : '',
+                    (string) ($item['interpretasi'] ?? $item['note'] ?? ''),
+                ])));
+            } elseif (is_scalar($item)) {
+                $lines[] = (string) $item;
+            }
+        }
+    }
+    if (!empty($d['radiology_scenario_results'])) {
+        $lines[] = '';
+        $lines[] = '=== TEMUAN RADIOLOGI SKENARIO DARI AI DIAGNOSIS ===';
+        foreach ($d['radiology_scenario_results'] as $item) {
+            if (is_array($item)) {
+                $lines[] = trim(implode(' | ', array_filter(array_map('strval', $item))));
+            } elseif (is_scalar($item)) {
+                $lines[] = (string) $item;
+            }
+        }
+    }
+    if (trim((string) ($d['handoff'] ?? '')) !== '') {
+        $lines[] = 'Handoff praoperasi dari Diagnosis: ' . (string) $d['handoff'];
+    }
 
     if ($s) {
         $farm = $s['farmakologi'] ?? [];
@@ -349,10 +389,46 @@ function ems_ai_medical_record_apply_source_facts(array $data, array $agg): arra
         $data['anamnesis_singkat'] = $sourceAnamnesis;
     }
 
+    $sourceHandoff = is_scalar($diagnosis['handoff'] ?? null) ? trim((string) $diagnosis['handoff']) : '';
+    $emergencyActions = is_array($diagnosis['emergency_actions'] ?? null) ? $diagnosis['emergency_actions'] : [];
+    $lastEmergency = $emergencyActions !== [] ? $emergencyActions[array_key_last($emergencyActions)] : [];
+    $lastEmergencyText = is_array($lastEmergency)
+        ? implode(' ', array_map('strval', [$lastEmergency['aksi'] ?? '', $lastEmergency['hasil'] ?? '']))
+        : '';
+    $handoffConfirmsTransfer = $sourceHandoff !== ''
+        && preg_match('/pasien\s+(?:telah\s+)?(?:dipindahkan|diantar|dibawa|diserahterimakan)[^.!?]{0,120}(?:ruang\s+operasi|kamar\s+operasi)/iu', $sourceHandoff) === 1;
+    $lastActionConfirmsTransfer = preg_match('/\b(?:memindahkan|mengantar|mendorong|membawa|mentransfer)\b/iu', $lastEmergencyText) === 1
+        && preg_match('/ruang\s+operasi|kamar\s+operasi/iu', $lastEmergencyText) === 1
+        && preg_match('/\btiba\b|\bsampai\b|memasuki\s+ruang/iu', $lastEmergencyText) === 1;
+    if ($handoffConfirmsTransfer || $lastActionConfirmsTransfer) {
+        // Preserve the actual destination recorded by the diagnosis handoff;
+        // the AI must not downgrade a completed transfer to a planned one.
+        $data['ruang_perawatan'] = 'IGD Roxwood Hospital → Ruang Operasi (pasien diantar sampai area penerimaan tim bedah)';
+    }
+
     $sourceDiagnosis = trim((string) ($diagnosis['diagnosis_utama'] ?? ''));
     $sourceDifferential = is_array($diagnosis['diagnosis_banding'] ?? null) ? $diagnosis['diagnosis_banding'] : [];
     if ($sourceDiagnosis !== '') {
-        $data['diagnosis_list'] = array_values(array_filter(array_merge([$sourceDiagnosis], array_map('strval', $sourceDifferential))));
+        $data['diagnosis_list'] = [$sourceDiagnosis];
+        $data['diagnosis_banding_list'] = array_values(array_filter(array_map('strval', $sourceDifferential)));
+    }
+
+    // Diagnosis Assistant already records the completed RP-scene findings.
+    // Preserve them when the optional dedicated Lab/Radiology module has not
+    // been run; a linked module report takes precedence when it exists.
+    if (empty($agg['radiology']) && !empty($diagnosis['radiology_scenario_results'])) {
+        $scenarioFindings = [];
+        foreach ($diagnosis['radiology_scenario_results'] as $finding) {
+            if (is_array($finding)) {
+                $finding = implode(' — ', array_filter(array_map('strval', $finding)));
+            }
+            if (is_scalar($finding) && trim((string) $finding) !== '') {
+                $scenarioFindings[] = trim((string) $finding);
+            }
+        }
+        if ($scenarioFindings !== []) {
+            $data['radiologi_temuan'] = $scenarioFindings;
+        }
     }
 
     $data['status_neurovaskular']['sensorik'] = 'Data belum tersedia';
@@ -428,6 +504,24 @@ function ems_ai_medical_record_apply_source_facts(array $data, array $agg): arra
         $data['jenis_anestesi_nama'] = $sourceAnesthesia;
     }
 
+    $sourceFacts = mb_strtolower((string) ($diagnosis['anamnesis_lengkap'] ?? '') . ' ' . (string) ($diagnosis['anamnesis'] ?? ''));
+    if (str_contains($sourceFacts, 'proyektil masih bersarang') && preg_match('/\b(?:dua|2)\s+proyektil\b/iu', json_encode($data, JSON_UNESCAPED_UNICODE) ?: '') === 1) {
+        $rewriteProjectileCount = static function (&$value) use (&$rewriteProjectileCount): void {
+            if (is_string($value)) {
+                $value = preg_replace('/\b(?:dua|2)\s+proyektil(?:-proyektil)?\b/iu', 'proyektil', $value) ?? $value;
+            } elseif (is_array($value)) {
+                foreach ($value as &$child) $rewriteProjectileCount($child);
+                unset($child);
+            }
+        };
+        $rewriteProjectileCount($data);
+    }
+
+    if ($observedResult === '') {
+        $sourceOperation = trim((string) ($diagnosis['jenis_operasi'] ?? ''));
+        $data['judul_operasi'] = 'Catatan Pra-Operasi IGD' . ($sourceOperation !== '' ? ' — ' . $sourceOperation : '');
+    }
+
     return $data;
 }
 
@@ -451,6 +545,7 @@ function ems_ai_medical_record_sanitize(array $data, ?array $agg = null): array
         'judul_operasi' => $str($data['judul_operasi'] ?? null),
         'ruang_perawatan' => $str($data['ruang_perawatan'] ?? null),
         'diagnosis_list' => $toStringArray($data['diagnosis_list'] ?? []),
+        'diagnosis_banding_list' => $toStringArray($data['diagnosis_banding_list'] ?? []),
         'indikasi_operasi' => $toStringArray($data['indikasi_operasi'] ?? []),
         'jenis_operasi_nama' => $str($data['jenis_operasi_nama'] ?? null),
         'jenis_operasi_deskripsi' => $str($data['jenis_operasi_deskripsi'] ?? null),
@@ -505,6 +600,9 @@ function ems_ai_medical_record_generate(PDO $pdo, array $agg, ?int $createdBy): 
 {
     $systemPrompt = ems_ai_medical_record_default_system_prompt();
     $userPrompt = ems_ai_medical_record_build_user_prompt($agg);
+    if (trim((string) ($agg['performed_operation_result'] ?? '')) === '') {
+        $systemPrompt .= "\n\nMODE CATATAN PRA-OPERASI: sumber ini tidak mencatat hasil tindakan bedah. Hasil yang diminta adalah catatan akhir episode IGD/pra-operasi berdasarkan data faktual yang tersedia. Pisahkan diagnosis utama dari diagnosis banding. Gunakan TTV, GCS, hasil skenario laboratorium/radiologi, tindakan stabilisasi IGD, handoff, dan rencana operasi yang ada di sumber. Jangan menyatakan cedera organ yang baru dicurigai sebagai diagnosis terkonfirmasi. Jangan menyimpulkan jumlah proyektil dari jumlah luka; sebut jumlah hanya jika dinyatakan eksplisit. Jangan mengarang hasil laboratorium/radiologi, temuan operasi, transfusi, obat, atau status pasca-operasi. Jangan memenuhi narasi dengan frasa 'Data belum tersedia'; bagian yang tidak relevan dengan catatan pra-operasi harus dibiarkan kosong. Narasi persiapan/operasi/hemostasis/penutupan dari Surgery Planner adalah rencana, bukan tindakan aktual.\n";
+    }
 
     $result = ems_ai_ds_call_gemini($pdo, $systemPrompt, $userPrompt, 'rekam_medis_ai', $createdBy);
     if (!$result['ok']) {
@@ -523,6 +621,18 @@ function ems_ai_medical_record_generate(PDO $pdo, array $agg, ?int $createdBy): 
 function ems_ai_medical_record_build_html(array $n, array $agg): string
 {
     $e = static fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+    $hasPerformedOperation = trim((string) ($agg['performed_operation_result'] ?? '')) !== '';
+    $knownValue = static function ($value): bool {
+        $value = mb_strtolower(trim((string) $value));
+        return $value !== '' && !in_array($value, ['-'], true)
+            && preg_match('/(?:data\s+)?(?:belum\s+(?:tersedia|diukur|dinilai|tercatat|terverifikasi|dilakukan)|tidak\s+tercatat|sedang\s+diproses|menunggu\s+hasil|tidak\s+membuktikan)/iu', $value) !== 1;
+    };
+    $knownList = static fn (array $items): array => array_values(array_filter($items, $knownValue));
+    $cleanNarrative = static function ($value): string {
+        $sentences = preg_split('/(?<=[.!?])\s+/u', trim((string) $value), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $sentences = array_values(array_filter($sentences, static fn (string $sentence): bool => preg_match('/(?:data\s+)?(?:belum\s+(?:tersedia|diukur|dinilai|tercatat|terverifikasi|dilakukan)|tidak\s+tercatat|sedang\s+diproses|menunggu\s+hasil|tidak\s+membuktikan)/iu', $sentence) !== 1));
+        return trim(implode(' ', $sentences));
+    };
     $ul = static function (array $items, string $emptyText) use ($e): string {
         if (!$items) {
             return '<p>' . $e($emptyText) . '</p>';
@@ -531,60 +641,66 @@ function ems_ai_medical_record_build_html(array $n, array $agg): string
     };
     $nl2br = static fn ($v) => nl2br($e($v), false);
 
-    $html = '<h1 style="text-align:center;"><strong>REKAM MEDIS : ' . $e($n['judul_operasi']) . '</strong></h1>';
+    $recordTitle = $hasPerformedOperation ? 'REKAM MEDIS : ' : 'REKAM MEDIS IGD PRA-OPERASI : ';
+    $html = '<h1 style="text-align:center;"><strong>' . $e($recordTitle . $cleanNarrative($n['judul_operasi'])) . '</strong></h1>';
 
     $html .= '<h2><strong>INFORMASI WAKTU</strong></h2>';
-    $html .= '<p><strong>RUANG PERAWATAN:</strong> ' . $e($n['ruang_perawatan']) . '</p>';
+    $html .= '<p><strong>RUANG PERAWATAN:</strong> ' . $e($cleanNarrative($n['ruang_perawatan'])) . '</p>';
 
     $html .= '<h2><strong>DIAGNOSIS</strong></h2>';
-    $html .= $ul($n['diagnosis_list'], '-');
+    $html .= $ul($knownList($n['diagnosis_list']), '-');
+    if (!$hasPerformedOperation && !empty($n['diagnosis_banding_list'])) {
+        $differentials = $knownList($n['diagnosis_banding_list']);
+        if ($differentials !== []) $html .= '<h2><strong>DIAGNOSIS BANDING / KECURIGAAN KLINIS</strong></h2>' . $ul($differentials, '-');
+    }
 
     $html .= '<h2><strong>INDIKASI OPERASI</strong></h2>';
-    $html .= $ul($n['indikasi_operasi'], '-');
+    $html .= $ul($knownList($n['indikasi_operasi']), '-');
 
-    $html .= '<h2><strong>JENIS OPERASI</strong></h2>';
-    $html .= '<p><strong>' . $e($n['jenis_operasi_nama']) . '</strong></p>';
-    $html .= '<p>(' . $e($n['jenis_operasi_deskripsi']) . ')</p>';
+    $html .= $hasPerformedOperation ? '<h2><strong>JENIS OPERASI</strong></h2>' : '<h2><strong>RENCANA OPERASI</strong></h2>';
+    if ($knownValue($n['jenis_operasi_nama'])) $html .= '<p><strong>' . $e($cleanNarrative($n['jenis_operasi_nama'])) . '</strong></p>';
+    if ($knownValue($n['jenis_operasi_deskripsi'])) $html .= '<p>(' . $e($cleanNarrative($n['jenis_operasi_deskripsi'])) . ')</p>';
 
-    $html .= '<h2><strong>JENIS ANESTESI</strong></h2>';
-    $html .= '<p>' . $e($n['jenis_anestesi_nama']) . '</p>';
-    if ($n['obat_anestesi']) {
-        $html .= '<p><strong>Obat Anestesi:</strong></p>' . $ul($n['obat_anestesi'], '-');
+    $html .= $hasPerformedOperation ? '<h2><strong>JENIS ANESTESI</strong></h2>' : '<h2><strong>RENCANA ANESTESI</strong></h2>';
+    if ($knownValue($n['jenis_anestesi_nama'])) $html .= '<p>' . $e($cleanNarrative($n['jenis_anestesi_nama'])) . '</p>';
+    $anestheticDrugs = $knownList($n['obat_anestesi']);
+    $intraOpDrugs = $knownList($n['obat_intraoperatif']);
+    if ($anestheticDrugs !== []) {
+        $html .= '<p><strong>Obat Anestesi:</strong></p>' . $ul($anestheticDrugs, '-');
     }
-    if ($n['obat_intraoperatif']) {
-        $html .= '<p><strong>Obat Intraoperatif:</strong></p>' . $ul($n['obat_intraoperatif'], '-');
+    if ($intraOpDrugs !== []) {
+        $html .= '<p><strong>Obat Intraoperatif:</strong></p>' . $ul($intraOpDrugs, '-');
     }
 
     $html .= '<h2><strong>ANAMNESIS SINGKAT</strong></h2>';
-    $html .= '<p>' . $nl2br($n['anamnesis_singkat']) . '</p>';
+    $html .= '<p>' . $nl2br($cleanNarrative($n['anamnesis_singkat'])) . '</p>';
 
     $html .= '<h2><strong>STATUS LOKALIS PRA OPERASI</strong></h2>';
-    $html .= $ul($n['status_lokalis_temuan'], '-');
-    $html .= '<p><strong>Status Neurovaskular / Neurologis:</strong></p>';
-    $html .= '<ul>'
-        . '<li><strong>Motorik:</strong> ' . $e($n['status_neurovaskular']['motorik']) . '</li>'
-        . '<li><strong>Sensorik:</strong> ' . $e($n['status_neurovaskular']['sensorik']) . '</li>'
-        . '<li><strong>Refleks:</strong> ' . $e($n['status_neurovaskular']['refleks']) . '</li>'
-        . '<li><strong>Sirkulasi Perifer:</strong> ' . $e($n['status_neurovaskular']['sirkulasi_perifer']) . '</li>'
-        . '</ul>';
+    $html .= $ul($knownList($n['status_lokalis_temuan']), '-');
+    $neuroItems = [];
+    foreach (['motorik' => 'Motorik', 'sensorik' => 'Sensorik', 'refleks' => 'Refleks', 'sirkulasi_perifer' => 'Sirkulasi Perifer'] as $key => $label) {
+        if ($knownValue($n['status_neurovaskular'][$key] ?? '')) $neuroItems[] = '<li><strong>' . $e($label) . ':</strong> ' . $e($n['status_neurovaskular'][$key]) . '</li>';
+    }
+    if ($neuroItems !== []) $html .= '<p><strong>Status Neurovaskular / Neurologis:</strong></p><ul>' . implode('', $neuroItems) . '</ul>';
 
     $html .= '<h2><strong>TANDA TANDA VITAL (TTV) PRA OPERASI</strong></h2>';
-    $html .= '<p><strong>Tekanan Darah:</strong> ' . $e($n['ttv_pra_operasi']['tekanan_darah']) . '</p>';
-    $html .= '<p><strong>Nadi:</strong> ' . $e($n['ttv_pra_operasi']['nadi']) . '</p>';
-    $html .= '<p><strong>Respirasi:</strong> ' . $e($n['ttv_pra_operasi']['respirasi']) . '</p>';
-    $html .= '<p><strong>Suhu Tubuh:</strong> ' . $e($n['ttv_pra_operasi']['suhu']) . '</p>';
-    $html .= '<p><strong>Saturasi O₂:</strong> ' . $e($n['ttv_pra_operasi']['saturasi_o2']) . '</p>';
+    foreach (['tekanan_darah' => 'Tekanan Darah', 'nadi' => 'Nadi', 'respirasi' => 'Respirasi', 'suhu' => 'Suhu Tubuh', 'saturasi_o2' => 'Saturasi O2'] as $key => $label) {
+        if ($knownValue($n['ttv_pra_operasi'][$key] ?? '')) $html .= '<p><strong>' . $e($label) . ':</strong> ' . $e($n['ttv_pra_operasi'][$key]) . '</p>';
+    }
 
-    $html .= '<h2><strong>STATUS NEUROLOGIS</strong></h2>';
-    $html .= '<p><strong>GCS (Glasgow Coma Scale):</strong> ' . $e($n['gcs_nilai']) . '</p>';
-    $html .= '<ul>'
-        . '<li><strong>E:</strong> ' . $e($n['gcs_e']) . '</li>'
-        . '<li><strong>V:</strong> ' . $e($n['gcs_v']) . '</li>'
-        . '<li><strong>M:</strong> ' . $e($n['gcs_m']) . '</li>'
-        . '</ul>';
+    if ($knownValue($n['gcs_nilai'])) {
+        $html .= '<h2><strong>STATUS NEUROLOGIS</strong></h2>';
+        $html .= '<p><strong>GCS (Glasgow Coma Scale):</strong> ' . $e($n['gcs_nilai']) . '</p>';
+        $gcsItems = [];
+        foreach (['gcs_e' => 'E', 'gcs_v' => 'V', 'gcs_m' => 'M'] as $key => $label) if ($knownValue($n[$key] ?? '')) $gcsItems[] = '<li><strong>' . $label . ':</strong> ' . $e($n[$key]) . '</li>';
+        if ($gcsItems !== []) $html .= '<ul>' . implode('', $gcsItems) . '</ul>';
+    }
 
     if ($n['radiologi_temuan'] || $n['radiologi_kesan']) {
-        $html .= '<h2><strong>HASIL PEMERIKSAAN RADIOLOGI</strong></h2>';
+        $radiologySourceLabel = !empty($agg['radiology'])
+            ? 'HASIL RADIOLOGY CENTER'
+            : 'TEMUAN RADIOLOGI PADA LAPORAN DIAGNOSIS';
+        $html .= '<h2><strong>' . $e($radiologySourceLabel) . '</strong></h2>';
         if ($n['radiologi_temuan']) {
             $html .= '<p><strong>Temuan</strong></p>' . $ul($n['radiologi_temuan'], '-');
         }
@@ -593,25 +709,65 @@ function ems_ai_medical_record_build_html(array $n, array $agg): string
         }
     }
 
-    $html .= '<h2><strong>LAPORAN TINDAKAN OPERASI</strong></h2>';
-    $html .= '<p><strong>A. Tahap Persiapan</strong></p><p>' . $nl2br($n['laporan_tindakan']['persiapan']) . '</p>';
-    $html .= '<p><strong>B. Tahap Operasi</strong></p><p>' . $nl2br($n['laporan_tindakan']['operasi']) . '</p>';
-    $html .= '<p><strong>C. Hemostasis</strong></p><p>' . $nl2br($n['laporan_tindakan']['hemostasis']) . '</p>';
-    $html .= '<p><strong>D. Penutupan Operasi</strong></p><p>' . $nl2br($n['laporan_tindakan']['penutupan']) . '</p>';
+    if (empty($agg['laboratory']) && !empty($agg['diagnosis']['laboratory_scenario_results'])) {
+        $html .= '<h2><strong>HASIL LABORATORIUM PADA LAPORAN DIAGNOSIS</strong></h2><ul>';
+        foreach ($agg['diagnosis']['laboratory_scenario_results'] as $labItem) {
+            if (is_array($labItem)) {
+                $label = trim((string) ($labItem['parameter'] ?? 'Pemeriksaan'));
+                $value = trim((string) ($labItem['nilai'] ?? $labItem['value'] ?? ''));
+                $range = trim((string) ($labItem['rentang'] ?? ''));
+                $interpretation = trim((string) ($labItem['interpretasi'] ?? ''));
+                $line = $label . ($value !== '' ? ': ' . $value : '');
+                if ($range !== '') $line .= ' (rentang ' . $range . ')';
+                if ($interpretation !== '') $line .= ' — ' . $interpretation;
+                $html .= '<li>' . $e($line) . '</li>';
+            } elseif (is_scalar($labItem) && trim((string) $labItem) !== '') {
+                $html .= '<li>' . $e($labItem) . '</li>';
+            }
+        }
+        $html .= '</ul>';
+    }
 
-    $html .= '<h2><strong>HASIL OPERASI</strong></h2>';
-    $html .= $ul($n['hasil_operasi'], '-');
-
-    $html .= '<h2><strong>STATUS PASCA OPERASI (IMMEDIATE POST OP)</strong></h2>';
-    $html .= '<p><strong>Status Umum:</strong> ' . $e($n['status_pasca_operasi_umum']) . '</p>';
-    $html .= '<p>' . $nl2br($n['status_pasca_operasi_narasi']) . '</p>';
-
-    $html .= '<h2><strong>TANDA TANDA VITAL PASCA OPERASI</strong></h2>';
-    $html .= '<p><strong>Tekanan Darah:</strong> ' . $e($n['ttv_pasca_operasi']['tekanan_darah']) . '</p>';
-    $html .= '<p><strong>Nadi:</strong> ' . $e($n['ttv_pasca_operasi']['nadi']) . '</p>';
-    $html .= '<p><strong>Respirasi:</strong> ' . $e($n['ttv_pasca_operasi']['respirasi']) . '</p>';
-    $html .= '<p><strong>Suhu Tubuh:</strong> ' . $e($n['ttv_pasca_operasi']['suhu']) . '</p>';
-    $html .= '<p><strong>Saturasi O₂:</strong> ' . $e($n['ttv_pasca_operasi']['saturasi_o2']) . '</p>';
+    if ($hasPerformedOperation) {
+        $html .= '<h2><strong>LAPORAN TINDAKAN OPERASI</strong></h2>';
+        foreach (['persiapan' => 'A. Tahap Persiapan', 'operasi' => 'B. Tahap Operasi', 'hemostasis' => 'C. Hemostasis', 'penutupan' => 'D. Penutupan Operasi'] as $key => $label) {
+            if ($knownValue($n['laporan_tindakan'][$key] ?? '')) $html .= '<p><strong>' . $e($label) . '</strong></p><p>' . $nl2br($n['laporan_tindakan'][$key]) . '</p>';
+        }
+        $html .= '<h2><strong>HASIL OPERASI</strong></h2>' . $ul($knownList($n['hasil_operasi']), '-');
+        $html .= '<h2><strong>STATUS PASCA OPERASI (IMMEDIATE POST OP)</strong></h2>';
+        if ($knownValue($n['status_pasca_operasi_umum'])) $html .= '<p><strong>Status Umum:</strong> ' . $e($n['status_pasca_operasi_umum']) . '</p>';
+        if ($knownValue($n['status_pasca_operasi_narasi'])) $html .= '<p>' . $nl2br($n['status_pasca_operasi_narasi']) . '</p>';
+        $postOpVitals = [];
+        foreach (['tekanan_darah' => 'Tekanan Darah', 'nadi' => 'Nadi', 'respirasi' => 'Respirasi', 'suhu' => 'Suhu Tubuh', 'saturasi_o2' => 'Saturasi O2'] as $key => $label) {
+            if ($knownValue($n['ttv_pasca_operasi'][$key] ?? '')) $postOpVitals[] = '<li><strong>' . $e($label) . ':</strong> ' . $e($n['ttv_pasca_operasi'][$key]) . '</li>';
+        }
+        if ($postOpVitals !== []) $html .= '<h2><strong>TANDA TANDA VITAL PASCA OPERASI</strong></h2><ul>' . implode('', $postOpVitals) . '</ul>';
+    } else {
+        $actions = $agg['diagnosis']['emergency_actions'] ?? [];
+        if (is_array($actions) && $actions !== []) {
+            $html .= '<h2><strong>STABILISASI IGD DAN HANDOFF PRA-OPERASI</strong></h2><ol>';
+            foreach ($actions as $action) {
+                if (!is_array($action)) continue;
+                $line = trim((string) ($action['aksi'] ?? ''));
+                $outcome = trim((string) ($action['hasil'] ?? ''));
+                $text = $cleanNarrative(trim($line . ($outcome !== '' ? ' — ' . $outcome : '')));
+                if ($knownValue($text)) $html .= '<li>' . $e($text) . '</li>';
+            }
+            $html .= '</ol>';
+        }
+        $handoffText = $cleanNarrative($agg['diagnosis']['handoff'] ?? '');
+        if ($knownValue($handoffText)) $html .= '<p><strong>Handoff:</strong> ' . $e($handoffText) . '</p>';
+        $plannedSteps = $agg['surgery']['tahapan_prosedur'] ?? [];
+        if (is_array($plannedSteps) && $plannedSteps !== []) {
+            $html .= '<h2><strong>RENCANA TAHAPAN BEDAH</strong></h2><ol>';
+            foreach ($plannedSteps as $step) {
+                if (!is_array($step)) continue;
+                $text = $cleanNarrative($step['aksi'] ?? '');
+                if ($knownValue($text)) $html .= '<li>' . $e($text) . '</li>';
+            }
+            $html .= '</ol>';
+        }
+    }
 
     if (!empty($agg['laboratory']) || !empty($agg['psychiatry'])) {
         $html .= '<h2><strong>PEMERIKSAAN PENUNJANG TAMBAHAN</strong></h2>';
@@ -626,9 +782,11 @@ function ems_ai_medical_record_build_html(array $n, array $agg): string
         }
     }
 
-    $html .= '<h2><strong>PROGNOSIS</strong></h2>';
-    $html .= '<p><strong>' . $e($n['prognosis_kategori']) . '</strong></p>';
-    $html .= '<p>' . $nl2br($n['prognosis_penjelasan']) . '</p>';
+    if ($hasPerformedOperation && $knownValue($n['prognosis_kategori'])) {
+        $html .= '<h2><strong>PROGNOSIS</strong></h2>';
+        $html .= '<p><strong>' . $e($n['prognosis_kategori']) . '</strong></p>';
+        if ($knownValue($n['prognosis_penjelasan'])) $html .= '<p>' . $nl2br($n['prognosis_penjelasan']) . '</p>';
+    }
 
     return $html;
 }

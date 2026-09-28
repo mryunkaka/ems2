@@ -576,6 +576,119 @@ function ems_position_label(?string $position): string
     };
 }
 
+function ems_parse_specialist_degrees(?string $value): ?array
+{
+    $value = trim((string) $value);
+    if ($value === '' || mb_strlen($value) > 255) {
+        return null;
+    }
+
+    $items = preg_split('/\s*,\s*/u', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    if ($items === [] || count($items) > 12) {
+        return null;
+    }
+
+    $degrees = [];
+    foreach ($items as $item) {
+        $item = trim(preg_replace('/\s+/u', ' ', $item) ?? $item);
+        if (!preg_match('/^Sp\.\s*([\p{L}][\p{L}.-]{0,19})$/iu', $item, $match)) {
+            return null;
+        }
+        $degreeCode = strtoupper(str_replace(' ', '', $match[1]));
+        $degree = 'Sp. ' . $degreeCode;
+        $key = mb_strtolower($degree, 'UTF-8');
+        if (!isset($degrees[$key])) {
+            $degrees[$key] = $degree;
+        }
+    }
+
+    return array_values($degrees);
+}
+
+function ems_specialist_degrees_are_valid(?string $value): bool
+{
+    return ems_parse_specialist_degrees($value) !== null;
+}
+
+function ems_format_medical_display_name(string $name, ?string $position, ?string $specialistDegrees = null): string
+{
+    $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+    if ($name === '') {
+        return '';
+    }
+
+    $normalizedPosition = ems_normalize_position($position);
+    $alreadyDoctorPrefix = preg_match('/^dr\.\s*/iu', $name) === 1;
+    $baseName = $alreadyDoctorPrefix ? preg_replace('/^dr\.\s*/iu', '', $name) : $name;
+    $baseName = trim((string) $baseName);
+
+    return match ($normalizedPosition) {
+        'trainee' => $name,
+        'paramedic' => preg_match('/,?\s*A\.\s*Md\s*Kep\.?$/iu', $name) ? $name : $name . ', A. Md Kep',
+        'co_asst' => preg_match('/,?\s*S\.\s*Ked\.?$/iu', $name) ? $name : $name . ', S. Ked',
+        'general_practitioner' => ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
+        'specialist' => (ems_parse_specialist_degrees($specialistDegrees) !== null)
+            ? 'dr. ' . $baseName . ' ' . implode(', ', ems_parse_specialist_degrees($specialistDegrees))
+            : ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
+        default => $name,
+    };
+}
+
+function ems_medical_display_name_for_user(PDO $pdo, ?string $name): string
+{
+    $name = trim((string) $name);
+    if ($name === '') {
+        return '';
+    }
+
+    try {
+        $hasDegrees = ems_column_exists($pdo, 'user_rh', 'specialist_degrees');
+        $degreeSelect = $hasDegrees ? ', specialist_degrees' : '';
+        $stmt = $pdo->prepare("SELECT full_name, position{$degreeSelect} FROM user_rh WHERE full_name = ? LIMIT 1");
+        $stmt->execute([$name]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($user)) {
+            return ems_format_medical_display_name(
+                (string) ($user['full_name'] ?? $name),
+                (string) ($user['position'] ?? ''),
+                (string) ($user['specialist_degrees'] ?? '')
+            );
+        }
+    } catch (Throwable $e) {
+        // Report rendering can continue with the saved name if title lookup fails.
+    }
+
+    return $name;
+}
+
+function ems_medical_display_names_for_users(PDO $pdo, array $names): array
+{
+    $names = array_values(array_unique(array_filter(array_map(static fn ($name): string => trim((string) $name), $names), static fn (string $name): bool => $name !== '')));
+    if ($names === []) {
+        return [];
+    }
+
+    try {
+        $hasDegrees = ems_column_exists($pdo, 'user_rh', 'specialist_degrees');
+        $degreeSelect = $hasDegrees ? ', specialist_degrees' : '';
+        $placeholders = implode(',', array_fill(0, count($names), '?'));
+        $stmt = $pdo->prepare("SELECT full_name, position{$degreeSelect} FROM user_rh WHERE full_name IN ({$placeholders})");
+        $stmt->execute($names);
+        $formatted = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $user) {
+            $rawName = (string) ($user['full_name'] ?? '');
+            $formatted[$rawName] = ems_format_medical_display_name(
+                $rawName,
+                (string) ($user['position'] ?? ''),
+                (string) ($user['specialist_degrees'] ?? '')
+            );
+        }
+        return $formatted;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 function ems_position_options(): array
 {
     return [
@@ -1393,6 +1506,7 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         'psychiatry_report.php',
         'ai_assistant.php',
         'ai_assistant_monitoring.php',
+        'ai_assistant_knowledge.php',
     ];
     if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
         return;

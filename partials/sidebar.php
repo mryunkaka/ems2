@@ -312,11 +312,14 @@ if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
             break;
         }
     }
-    $monitoringItem = sidebarItem('/dashboard/ai_assistant_monitoring.php', 'ai_assistant_monitoring.php', 'Monitoring Roxy', 'users');
+    $managerRoxyItems = [
+        sidebarItem('/dashboard/ai_assistant_monitoring.php', 'ai_assistant_monitoring.php', 'Monitoring Roxy', 'users'),
+        sidebarItem('/dashboard/ai_assistant_knowledge.php', 'ai_assistant_knowledge.php', 'Basis Pengetahuan Roxy', 'document'),
+    ];
     if ($chatRoxyIndex !== null) {
-        array_splice($groupedNav['Roxwood Hospital AI'], $chatRoxyIndex + 1, 0, [$monitoringItem]);
+        array_splice($groupedNav['Roxwood Hospital AI'], $chatRoxyIndex + 1, 0, $managerRoxyItems);
     } else {
-        $groupedNav['Roxwood Hospital AI'][] = $monitoringItem;
+        array_push($groupedNav['Roxwood Hospital AI'], ...$managerRoxyItems);
     }
 }
 

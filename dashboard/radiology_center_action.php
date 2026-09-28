@@ -112,9 +112,9 @@ function ems_ai_radiology_insert_row(PDO $pdo, array $values): int
     $insert = $pdo->prepare("
         INSERT INTO ai_radiology_images
             (user_id, unit_code, division_snapshot, patient_name, patient_dob, patient_citizen_id, doctor_name,
-             anamnesis, source_report_code, modality, category, body_region, projection, clinical_finding, prompt_used, image_path, status, error_message,
+             anamnesis, source_report_code, modality, category, body_region, projection, clinical_finding, prompt_used, image_path, image_source_label, status, error_message,
              report_findings, report_diagnosis, report_recommendations, report_text, report_status, report_error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $insert->execute($values);
     return (int) $pdo->lastInsertId();
@@ -163,12 +163,19 @@ if ($reportResult['ok']) {
     $reportValues = [null, null, null, null, 'error', (string) ($reportResult['error'] ?? 'Model AI gagal merespons.')];
 }
 
-$imageResult = ['ok' => false, 'error' => 'Model AI belum merespons.'];
-for ($attempt = 1; $attempt <= 2; $attempt++) {
-    $imageResult = ems_ai_radiology_generate_image($pdo, $prompt, $userId ?: null);
-    if ($imageResult['ok']) {
-        break;
+$schematicImage = ems_ai_radiology_build_tibfib_schematic($promptInput);
+if ($schematicImage !== null) {
+    $imageResult = ['ok' => true, 'image' => $schematicImage];
+    $imageSourceLabel = 'Skema anatomi terarah (simulasi; bukan radiograf)';
+} else {
+    $imageResult = ['ok' => false, 'error' => 'Model AI belum merespons.'];
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        $imageResult = ems_ai_radiology_generate_image($pdo, $prompt, $userId ?: null);
+        if ($imageResult['ok']) {
+            break;
+        }
     }
+    $imageSourceLabel = 'Ilustrasi AI generatif (simulasi; bukan radiograf tervalidasi)';
 }
 
 // Citra dan laporan teks independen — kalau citra gagal tapi laporan teks
@@ -178,7 +185,7 @@ for ($attempt = 1; $attempt <= 2; $attempt++) {
 // masing-masing (status citra vs report_status) kalau salah satunya gagal.
 if (!$imageResult['ok']) {
     $errorMessage = (string) ($imageResult['error'] ?? 'Model AI gagal merespons. Silakan coba lagi.');
-    $imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [null, 'error', $errorMessage], $reportValues));
+    $imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [null, $imageSourceLabel, 'error', $errorMessage], $reportValues));
 
     if (!$reportResult['ok']) {
         ems_ai_radiology_json_response(['ok' => false, 'message' => 'Model AI error: ' . $errorMessage . ' Harap coba lagi.'], 502);
@@ -191,7 +198,7 @@ $image = $imageResult['image'];
 $imagePath = ems_ai_radiology_save_image_file((string) $image['data'], (string) $image['mime_type']);
 
 if ($imagePath === null) {
-    $imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [null, 'error', 'Gagal menyimpan file gambar hasil generate ke storage server.'], $reportValues));
+    $imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [null, $imageSourceLabel, 'error', 'Gagal menyimpan file gambar hasil generate ke storage server.'], $reportValues));
 
     if (!$reportResult['ok']) {
         ems_ai_radiology_json_response(['ok' => false, 'message' => 'Gagal menyimpan file gambar hasil generate. Silakan coba lagi.'], 500);
@@ -215,6 +222,6 @@ ems_ai_radiology_apply_overlay($imagePath, [
     'clinical_finding' => $clinicalFinding,
 ]);
 
-$imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [$imagePath, 'done', null], $reportValues));
+$imageId = ems_ai_radiology_insert_row($pdo, array_merge($baseValues, [$imagePath, $imageSourceLabel, 'done', null], $reportValues));
 
 ems_ai_radiology_json_response(['ok' => true, 'message' => 'Citra radiologi berhasil dibuat.', 'image_id' => $imageId]);
