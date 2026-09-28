@@ -169,25 +169,68 @@ $checkPlanQuality = static function (array $candidate): array {
 };
 $qualityErrors = $result['ok'] ? $checkPlanQuality($data) : [(string) ($result['error'] ?? 'Model tidak mengembalikan JSON rencana operasi.')];
 
-// One whole-plan correction is allowed for incomplete JSON/content. It keeps
-// the model-selected number of steps and does not impose any preset count.
+// Repair only the defective model-authored stages when issues can be mapped
+// to exact stages. This keeps valid content and the model-selected plan length.
 if ($result['ok'] && $qualityErrors !== []) {
-    $repairPrompt = "Perbaiki satu JSON rencana operasi lengkap berikut. Pertahankan fakta kasus dan urutan klinis yang benar. Model menentukan sendiri jumlah tahapan yang diperlukan: jangan mengejar angka/preset, jangan mengisi dengan langkah repetitif. Perbaiki seluruh masalah validasi berikut: "
-        . implode('; ', $qualityErrors)
-        . "\nKembalikan seluruh field schema secara lengkap, termasuk tahapan_prosedur, dengan setiap aksi /me konkret menyebut alat/bahan yang digunakan, hasil /do langsung, instruksi DPJP spesifik bila melibatkan asisten, dan tanpa pilihan bercabang. Jangan menambahkan temuan yang tidak ada pada konteks.\nKASUS:\n"
-        . $userPrompt . "\nJSON SAAT INI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $badStageIssues = [];
+    $otherIssues = [];
+    foreach ($qualityErrors as $issue) {
+        if (preg_match('/Tahapan operasi tahap\s+(\d+)/iu', $issue, $match) === 1) {
+            $stageIndex = (int) $match[1] - 1;
+            if (isset($data['tahapan_prosedur'][$stageIndex])) {
+                $badStageIssues[$stageIndex][] = $issue;
+                continue;
+            }
+        }
+        $otherIssues[] = $issue;
+    }
+
+    $targetedStageRepair = $badStageIssues !== [] && $otherIssues === [];
+    if ($targetedStageRepair) {
+        $repairItems = [];
+        foreach ($badStageIssues as $stageIndex => $issues) {
+            $repairItems[] = [
+                'nomor_tahap' => $stageIndex + 1,
+                'masalah_validasi' => $issues,
+                'tahap_saat_ini' => $data['tahapan_prosedur'][$stageIndex],
+            ];
+        }
+        $repairPrompt = "Perbaiki hanya tahap yang disertakan, dengan urutan dan jumlah item yang sama seperti daftar koreksi. Ini jumlah item koreksi saja, bukan target jumlah seluruh tahap operasi; pertahankan jumlah total tahap rencana tanpa menambah atau menghapus tahap. Perbaiki masalah validasi setiap tahap secara langsung. Bila pelaku adalah Asisten, isi instruksi sebagai perintah DPJP yang menyebut alat/instrumen/bahan spesifik dan aksi harus menggambarkan alat tersebut diambil/diserahkan/digunakan. Setiap aksi /me menyebut alat yang benar-benar dipakai; /do menyebut hasil langsung; hindari pilihan bercabang. Jangan mengubah fakta kasus, anatomi, sisi, urutan, atau hasil klinis yang telah ditetapkan. Kembalikan hanya JSON schema tahapan_prosedur.\nKASUS DAN KONTEKS: "
+            . $userPrompt . "\nDAFTAR TAHAP YANG HARUS DIPERBAIKI:\n"
+            . json_encode($repairItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $repairSchema = ems_ai_ds_surgery_response_schema(true);
+    } else {
+        $repairPrompt = "Perbaiki satu JSON rencana operasi lengkap berikut. Pertahankan fakta kasus dan urutan klinis yang benar. Model menentukan sendiri jumlah tahapan yang diperlukan: jangan mengejar angka/preset, jangan mengisi dengan langkah repetitif. Perbaiki seluruh masalah validasi berikut: "
+            . implode('; ', $qualityErrors)
+            . "\nKembalikan seluruh field schema secara lengkap, termasuk tahapan_prosedur, dengan setiap aksi /me konkret menyebut alat/bahan yang digunakan, hasil /do langsung, instruksi DPJP spesifik bila melibatkan asisten, dan tanpa pilihan bercabang. Jangan menambahkan temuan yang tidak ada pada konteks.\nKASUS:\n"
+            . $userPrompt . "\nJSON SAAT INI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $repairSchema = ems_ai_ds_surgery_response_schema();
+    }
     $repair = ems_ai_ds_call_gemini(
         $pdo,
         $systemPrompt,
         $repairPrompt,
         'ai_surgery_planner',
         isset($user['id']) ? (int) $user['id'] : null,
-        ems_ai_ds_surgery_response_schema()
+        $repairSchema
     );
     if ($repair['ok'] && is_array($repair['data'] ?? null)) {
-        $data = $repair['data'];
-        $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
-        $qualityErrors = $checkPlanQuality($data);
+        if ($targetedStageRepair) {
+            $repairedSteps = ems_ai_ds_extract_surgery_steps($repair['data']);
+            if (count($repairedSteps) === count($badStageIssues) || count($repairedSteps) === count($data['tahapan_prosedur'])) {
+                foreach (array_keys($badStageIssues) as $repairIndex => $stageIndex) {
+                    $replacementIndex = count($repairedSteps) === count($data['tahapan_prosedur']) ? $stageIndex : $repairIndex;
+                    $data['tahapan_prosedur'][$stageIndex] = $repairedSteps[$replacementIndex];
+                }
+                $qualityErrors = $checkPlanQuality($data);
+            } else {
+                $qualityErrors[] = 'perbaikan terarah tidak mengembalikan semua tahap yang diminta';
+            }
+        } else {
+            $data = $repair['data'];
+            $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
+            $qualityErrors = $checkPlanQuality($data);
+        }
     }
 }
 

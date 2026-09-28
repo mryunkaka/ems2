@@ -3078,10 +3078,9 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
             $customMaxOutputTokens = null;
             if ($featureKey === 'ai_surgery_planner') {
                 $schemaProperties = $responseSchemaOverride['properties'] ?? [];
-                // A full first batch includes both the report header and ten
-                // detailed steps; later batches contain steps only. Reserve
-                // enough output budget so the OpenAI-compatible router does
-                // not silently truncate JSON near the end of a long response.
+                // Full plans and targeted step corrections both include
+                // tahapan_prosedur. Reserve enough output budget so an
+                // OpenAI-compatible router does not truncate structured JSON.
                 $customMaxOutputTokens = !empty($schemaProperties['tahapan_prosedur']) ? 8192 : 2500;
             }
             $response = ems_custom_chat_completion(
