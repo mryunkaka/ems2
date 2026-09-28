@@ -75,7 +75,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <h1 class="page-title">Roxy</h1>
                 <p class="page-subtitle">Asisten AI internal — tanya apa saja soal cara pakai fitur di aplikasi ini atau SOP roleplay medis Roxwood Hospital.</p>
             </div>
-            <?php if ($isManagerPlus): ?>
+            <?php if (ems_current_user_is_programmer_roxwood()): ?>
                 <a href="/dashboard/ai_assistant_monitoring.php" class="btn-secondary"><?= ems_icon('users', 'h-4 w-4') ?> Monitoring Roxy</a>
             <?php endif; ?>
         </div>

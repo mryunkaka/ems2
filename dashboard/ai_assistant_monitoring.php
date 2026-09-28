@@ -9,14 +9,14 @@ require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/roxy_chatbot.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_roxy_ensure_tables($pdo);
-
 $user = $_SESSION['user_rh'] ?? [];
-if (!ems_is_manager_plus_role((string) ($user['role'] ?? ''))) {
-    $_SESSION['flash_errors'][] = 'Hanya manager ke atas yang bisa mengakses Monitoring Roxy.';
+if (!ems_current_user_is_programmer_roxwood()) {
+    $_SESSION['flash_errors'][] = 'Monitoring Roxy hanya dapat diakses oleh Programmer Roxwood.';
     header('Location: /dashboard/ai_assistant.php');
     exit;
 }
+
+ems_roxy_ensure_tables($pdo);
 
 $pageTitle = 'Monitoring Roxy | Farmasi EMS';
 $unitCode = ems_effective_unit($pdo, $user);

@@ -304,7 +304,14 @@ $groupedNav['Roxwood Hospital AI'] = [
 // Monitoring Roxy cuma untuk manager-plus (division apa pun) — sisipkan
 // setelah "Chat Roxy" kalau memenuhi syarat, sama pola dengan grant-based
 // sidebar mutation lain di file ini.
+$roxwoodAiManagementItems = [];
+if (ems_current_user_is_programmer_roxwood()) {
+    $roxwoodAiManagementItems[] = sidebarItem('/dashboard/ai_assistant_monitoring.php', 'ai_assistant_monitoring.php', 'Monitoring Roxy', 'users');
+}
 if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
+    $roxwoodAiManagementItems[] = sidebarItem('/dashboard/ai_assistant_knowledge.php', 'ai_assistant_knowledge.php', 'Basis Pengetahuan Roxy', 'document');
+}
+if ($roxwoodAiManagementItems !== []) {
     $chatRoxyIndex = null;
     foreach ($groupedNav['Roxwood Hospital AI'] as $navIndex => $navItem) {
         if (($navItem['page'] ?? '') === 'ai_assistant.php') {
@@ -312,14 +319,10 @@ if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
             break;
         }
     }
-    $managerRoxyItems = [
-        sidebarItem('/dashboard/ai_assistant_monitoring.php', 'ai_assistant_monitoring.php', 'Monitoring Roxy', 'users'),
-        sidebarItem('/dashboard/ai_assistant_knowledge.php', 'ai_assistant_knowledge.php', 'Basis Pengetahuan Roxy', 'document'),
-    ];
     if ($chatRoxyIndex !== null) {
-        array_splice($groupedNav['Roxwood Hospital AI'], $chatRoxyIndex + 1, 0, $managerRoxyItems);
+        array_splice($groupedNav['Roxwood Hospital AI'], $chatRoxyIndex + 1, 0, $roxwoodAiManagementItems);
     } else {
-        array_push($groupedNav['Roxwood Hospital AI'], ...$managerRoxyItems);
+        array_push($groupedNav['Roxwood Hospital AI'], ...$roxwoodAiManagementItems);
     }
 }
 

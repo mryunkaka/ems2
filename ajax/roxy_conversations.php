@@ -106,14 +106,13 @@ if ($action === 'list') {
 
 if ($action === 'messages') {
     $conversationId = (int) ($_GET['conversation_id'] ?? 0);
-    $isManagerPlus = ems_is_manager_plus_role((string) ($user['role'] ?? ''));
+    $canViewAllConversations = ems_current_user_is_programmer_roxwood();
 
     // Kepemilikan dicek eksplisit di WHERE — bukan cuma di query terpisah —
-    // supaya user biasa tidak bisa baca riwayat percakapan orang lain lewat
-    // conversation_id sembarangan (isolasi per-user, docs/AI_ASSISTANT_MODULE.md §4a).
-    // Manager-plus dikecualikan dari filter user_id — mereka memang berhak
-    // lihat riwayat SEMUA medis lewat halaman monitoring (§4c).
-    if ($isManagerPlus) {
+    // sehingga semua user selain Programmer Roxwood hanya dapat membaca
+    // percakapan miliknya sendiri (docs/AI_ASSISTANT_MODULE.md §4a).
+    // Programmer Roxwood dapat membaca lintas-user melalui monitoring (§4c).
+    if ($canViewAllConversations) {
         $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? AND unit_code = ? LIMIT 1");
         $stmt->execute([$conversationId, $unitCode]);
     } else {

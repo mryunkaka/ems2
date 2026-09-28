@@ -93,7 +93,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 <h1 class="page-title">Basis Pengetahuan Roxy</h1>
                 <p class="page-subtitle">Kelola panduan aplikasi dan SOP yang menjadi sumber jawaban Roxy untuk unit ini. Tulis isi yang sudah disepakati dan rujukan yang jelas.</p>
             </div>
-            <a class="btn-secondary" href="/dashboard/ai_assistant_monitoring.php"><?= ems_icon('arrow-left', 'h-4 w-4') ?> Monitoring Roxy</a>
+            <a class="btn-secondary" href="<?= ems_current_user_is_programmer_roxwood() ? '/dashboard/ai_assistant_monitoring.php' : '/dashboard/ai_assistant.php' ?>">
+                <?= ems_icon('arrow-left', 'h-4 w-4') ?> <?= ems_current_user_is_programmer_roxwood() ? 'Monitoring Roxy' : 'Chat Roxy' ?>
+            </a>
         </div>
 
         <?php foreach ($errors as $error): ?><div class="alert alert-danger mt-3"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endforeach; ?>

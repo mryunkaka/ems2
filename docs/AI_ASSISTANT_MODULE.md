@@ -159,11 +159,12 @@ ke halaman itu setiap kali tingkat 2 dibutuhkan tapi key belum ada.
   mulai topik baru.
 - **Staff biasa**: hanya lihat percakapan miliknya sendiri (sama seperti
   widget, cuma versi halaman penuh).
-- **Manager ke atas**: lihat halaman monitoring terpisah (§4c) yang
-  menampilkan riwayat SEMUA medis.
+- **Programmer Roxwood**: lihat halaman monitoring terpisah (§4c) yang
+  menampilkan riwayat SEMUA medis. User lain hanya dapat melihat percakapan
+  miliknya sendiri.
 
-### 4c. Halaman monitoring `dashboard/ai_assistant_monitoring.php` (manager-plus)
-Ini jawab kebutuhan "kalau ada yang tanya bersamaan, manager harus jelas
+### 4c. Halaman monitoring `dashboard/ai_assistant_monitoring.php` (Programmer Roxwood)
+Ini jawab kebutuhan "kalau ada yang tanya bersamaan, Programmer Roxwood harus jelas
 lihat pertanyaan siapa dijawab yang mana": karena setiap percakapan di
 database memang **sudah terikat ke satu user_id** sejak awal (lihat §6 —
 tidak ada percakapan yang "campur" antar user), tidak akan pernah tertukar
@@ -587,12 +588,12 @@ diuji langsung terhadap DB lokal nyata, bukan cuma dry-run):
   dari `document_files`.
 - Endpoint: `actions/roxy_chat_action.php` (kirim pesan, CSRF + rate
   limit), `ajax/roxy_conversations.php` (list/messages, isolasi per-user
-  untuk staff biasa, akses lintas-user untuk manager-plus khusus
-  monitoring).
+  untuk semua user selain Programmer Roxwood, akses lintas-user hanya untuk
+  Programmer Roxwood pada halaman monitoring).
 - Halaman: `dashboard/ai_assistant.php` (chat + riwayat percakapan
   pribadi, avatar 6 ekspresi berbasis `ems_icon()` + warna, bukan SVG
   karakter custom — realistis untuk scope PHP tanpa game engine, lihat
-  §8), `dashboard/ai_assistant_monitoring.php` (manager-plus, dikelompokkan
+  §8), `dashboard/ai_assistant_monitoring.php` (Programmer Roxwood, dikelompokkan
   per medis sesuai §4c). Terdaftar di whitelist ACL
   `$roxwoodHospitalAiPages` + sidebar grup "Roxwood Hospital AI".
 
