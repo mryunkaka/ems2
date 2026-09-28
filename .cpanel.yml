@@ -1,4 +1,6 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'set -o pipefail; /usr/bin/git -C /home/fouf9972/public_html/rh_ems archive --format=tar HEAD | /bin/tar --exclude=.cpanel.yml --exclude=.env -xf - -C /home/fouf9972/public_html/rh_ems'
+    - export DEPLOYPATH=/home/fouf9972/public_html/rh_ems
+    - set -o pipefail
+    - /usr/bin/git -C /home/fouf9972/public_html/rh_ems archive --format=tar HEAD | /bin/tar --exclude=.cpanel.yml --exclude=.env -xf - -C $DEPLOYPATH
