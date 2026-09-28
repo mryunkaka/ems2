@@ -64,6 +64,11 @@ if (mb_strlen($message) > 4000) {
 try {
     ems_roxy_ensure_tables($pdo);
     $unitCode = ems_effective_unit($pdo, $user);
+    // A provider response can take many seconds. Release this user's PHP
+    // session lock so other tabs are not serialized behind Roxy's reply.
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
 
     $conversationId = 0;
     if ($conversationIdInput > 0) {

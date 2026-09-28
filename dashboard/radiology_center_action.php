@@ -31,6 +31,11 @@ $userId = isset($user['id']) ? (int) $user['id'] : 0;
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $division = (string) ($user['division'] ?? '');
 
+// Do not serialize this user's page requests behind image/report generation.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 // "Generate Ulang" dari riwayat: pakai ulang PERSIS input dari baris asal
 // (bukan dari form), dan lewati pengecekan kode-sudah-dipakai karena ini
 // memang sengaja generate ulang dengan kode referensi yang sama.

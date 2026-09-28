@@ -33,6 +33,11 @@ $action = trim((string) ($_POST['action'] ?? ''));
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $division = (string) ($user['division'] ?? '');
 
+// Do not keep the per-user PHP session lock during assessment/model calls.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 // "Generate Ulang" dari riwayat: bukan interview baru, langsung finalize
 // ulang PERSIS dengan input + transcript dari baris asal (bukan dari
 // form/state klien), dan lewati pengecekan kode-sudah-dipakai karena ini

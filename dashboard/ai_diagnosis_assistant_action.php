@@ -533,6 +533,13 @@ $patientCitizenId = mb_strtoupper(trim((string) ($_POST['patient_citizen_id'] ??
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $division = (string) ($user['division'] ?? '');
 
+// Persist the authenticated context before the long model call. The default
+// PHP file-session handler locks this user's session until the request ends;
+// releasing it lets their other tabs/pages continue loading during generation.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $systemPrompt = ems_ai_ds_build_system_prompt($pdo, 'ai_diagnosis_assistant', ems_ai_ds_default_diagnosis_system_prompt());
 $systemPrompt .= "\n\nREFERENSI KATALOG RADIOLOGI (format: Modality > Category > Body Region > [Projection/Options], pilih PERSIS salah satu kombinasi untuk \"radiologi_terstruktur\"):\n"
     . ems_ai_radiology_catalog_reference_text()

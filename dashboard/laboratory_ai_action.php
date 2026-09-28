@@ -33,6 +33,11 @@ $user = $_SESSION['user_rh'] ?? [];
 $effectiveUnit = ems_effective_unit($pdo, $user);
 $division = (string) ($user['division'] ?? '');
 
+// Do not hold the per-user PHP session lock during laboratory generation.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 // "Generate Ulang" dari riwayat: pakai ulang PERSIS input dari baris asal
 // (bukan dari form), dan lewati pengecekan kode-sudah-dipakai karena ini
 // memang sengaja generate ulang dengan kode referensi yang sama.

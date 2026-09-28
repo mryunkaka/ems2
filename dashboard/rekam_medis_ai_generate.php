@@ -45,6 +45,12 @@ if ($code === '') {
 
 $effectiveUnit = ems_effective_unit($pdo, $user);
 
+// Release the user's session before aggregation and AI drafting so their
+// other tabs are not blocked by PHP's default session-file lock.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 $agg = ems_rmai_aggregate($pdo, $code, $effectiveUnit);
 if ($agg === null) {
     ems_rmai_gen_response(['ok' => false, 'message' => 'Laporan AI Diagnosis Assistant dengan kode tersebut tidak ditemukan.'], 404);
