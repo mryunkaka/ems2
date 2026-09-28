@@ -1,6 +1,5 @@
 <?php
-// A 30-step roleplay plan can need more time than the PHP default while the
-// configured provider completes its JSON response and quality checks run.
+// The model selects a case-appropriate number of roleplay steps in one request.
 @set_time_limit(300);
 date_default_timezone_set('Asia/Jakarta');
 session_start();
@@ -55,15 +54,14 @@ if ($regenerateOfId > 0) {
     }
     $jenisOperasi = (string) $orig['jenis_operasi_kategori'];
     $jenisAnestesi = (string) $orig['jenis_anestesi_input'];
-    $kompleksitas = (string) $orig['kompleksitas'];
+    $kompleksitas = 'Auto';
     $kasusTindakan = (string) $orig['kasus_tindakan'];
     $diagnosisCode = $orig['source_report_code'] !== null ? (string) $orig['source_report_code'] : null;
     $isRegenerate = true;
 } else {
     $jenisOperasi = in_array($_POST['jenis_operasi'] ?? '', ['Mayor', 'Minor'], true) ? $_POST['jenis_operasi'] : 'Mayor';
     $jenisAnestesi = trim((string) ($_POST['jenis_anestesi'] ?? ''));
-    $kompleksitasInput = trim((string) ($_POST['kompleksitas'] ?? 'Auto'));
-    $kompleksitas = in_array($kompleksitasInput, ['Mudah', 'Sedang', 'Panjang'], true) ? $kompleksitasInput : 'Auto';
+    $kompleksitas = 'Auto'; // legacy DB enum only; it does not control plan length.
     $kasusTindakan = trim((string) ($_POST['kasus_tindakan'] ?? ''));
     $diagnosisCodeInput = trim((string) ($_POST['diagnosis_code'] ?? ''));
     $diagnosisCode = $diagnosisCodeInput !== '' ? $diagnosisCodeInput : null;
@@ -125,21 +123,23 @@ if ($diagnosisCode !== null) {
 }
 
 $complexityEvidence = implode("\n", array_filter([$kasusTindakan, $diagnosisContext], static fn ($value) => trim((string) $value) !== ''));
-if ($kompleksitas === 'Auto') {
-    $kompleksitas = ems_ai_ds_recommend_surgery_complexity($complexityEvidence);
-}
-
-$stepCountMap = ['Mudah' => 10, 'Sedang' => 20, 'Panjang' => 30];
-$jumlahLangkah = $stepCountMap[$kompleksitas];
+$kompleksitas = ems_ai_ds_recommend_surgery_complexity($complexityEvidence); // Legacy enum metadata; never used as a step-count target.
 
 $systemPrompt = ems_ai_ds_build_system_prompt($pdo, 'ai_surgery_planner', ems_ai_ds_default_surgery_system_prompt());
 $template = ems_ai_get_active_prompt_template($pdo, 'ai_surgery_planner');
 $userPromptTemplate = trim((string) ($template['user_prompt_template'] ?? '')) !== ''
     ? (string) $template['user_prompt_template']
-    : "JENIS OPERASI: {{jenis_operasi}}\nJENIS ANESTESI: {{jenis_anestesi}}\nTINGKAT KOMPLEKSITAS: {{kompleksitas}}\nJUMLAH LANGKAH: {{jumlah_langkah}}\nKASUS MEDIS / TINDAKAN YANG DIPERLUKAN:\n{{kasus_tindakan}}";
+    : "JENIS OPERASI: {{jenis_operasi}}\nJENIS ANESTESI: {{jenis_anestesi}}\nJUMLAH TAHAP: ditentukan model sesuai kebutuhan klinis kasus, tanpa target angka\nKASUS MEDIS / TINDAKAN YANG DIPERLUKAN:\n{{kasus_tindakan}}";
+// Older database templates explicitly demanded an exact preset count. Remove
+// that legacy clause at runtime too, so a skipped DB migration cannot restore it.
+$userPromptTemplate = preg_replace(
+    '/,\s*dengan\s+"tahapan_prosedur"\s+berjumlah\s+PERSIS\s+\{\{jumlah_langkah\}\}\s+langkah\s+\(tidak\s+kurang,\s*tidak\s+lebih\)\./iu',
+    '. Model menentukan jumlah tahap yang diperlukan dan tidak mengejar hitungan tertentu.',
+    $userPromptTemplate
+) ?? $userPromptTemplate;
 $userPrompt = str_replace(
     ['{{jenis_operasi}}', '{{jenis_anestesi}}', '{{kompleksitas}}', '{{jumlah_langkah}}', '{{kasus_tindakan}}'],
-    [$jenisOperasi, $jenisAnestesi, $kompleksitas, (string) $jumlahLangkah, $kasusTindakan],
+    [$jenisOperasi, $jenisAnestesi, 'tanpa preset; model menentukan detail tahapan dari kasus', 'ditentukan model; tidak ada angka target', $kasusTindakan],
     $userPromptTemplate
 );
 if ($diagnosisContext !== '') {
@@ -147,161 +147,52 @@ if ($diagnosisContext !== '') {
         . "\n\nKESINAMBUNGAN TINDAKAN WAJIB: bagian tindakan_igd_selesai di atas adalah tindakan yang telah dilakukan sebelum transfer. Mulai skenario operasi dari keadaan pasien saat tiba di OK dan lanjutkan secara kronologis. Jika IGD menekan/membalut luka, pada awal tindakan OK DPJP membuka balutan spesifik itu dengan gunting perban sambil Asisten 1 menyiapkan kasa steril baru untuk mempertahankan tekanan. Jika laporan IGD menyebut darah menggenang/aktif, Asisten 2 menyerahkan kateter suction steril yang tersambung ke mesin suction bedah kepada DPJP untuk mengangkat darah; jangan menulis 'menghisap darah' tanpa mesin dan kateter suction, jangan menggunakan mulut. Jangan melakukan ulang penanganan IGD tanpa alasan klinis dalam skenario. Setiap tahap wajib menyebut instrumen/bahan yang dipakai di aksi /me. Jika Asisten mengambil alat, tulis perintah DPJP dengan nama alat, jawaban singkat Asisten, lalu aksi pengambilan/penyerahan alat.";
 }
 
-$data = [];
-$generationError = '';
-$batchSize = 10;
-$validateBatch = static function (array $steps, int $expectedCount): array {
-    return ems_ai_ds_surgery_quality_errors([
-        'durasi' => 'akan ditetapkan pada ringkasan operasi',
-        'farmakologi' => ['pra_operatif' => [], 'intra_operatif' => [], 'post_operatif' => [], 'pemulangan' => []],
-        'tahapan_prosedur' => $steps,
-        'risiko_komplikasi' => [],
-        'laporan_pasca_operasi' => 'akan ditetapkan pada ringkasan operasi',
-        'sop_references' => ['akan ditetapkan pada ringkasan operasi'],
-    ], $expectedCount);
+$userPrompt .= "\n\nKONTRAK JUMLAH TAHAP: Tentukan sendiri jumlah tahap yang wajar untuk menyelesaikan kasus ini secara runtut dan cukup detail. Tidak ada target cepat/sedang/lama maupun angka tahap yang harus dipenuhi. Jangan menambah tahap pengisi, mengulang tindakan, atau memecah satu tindakan hanya untuk memperbanyak jumlah. Kembalikan satu JSON lengkap sesuai schema, termasuk seluruh tahapan_prosedur dalam satu respons.";
+
+ $result = ems_ai_ds_call_gemini(
+    $pdo,
+    $systemPrompt,
+    $userPrompt,
+    'ai_surgery_planner',
+    isset($user['id']) ? (int) $user['id'] : null,
+    ems_ai_ds_surgery_response_schema()
+);
+$data = is_array($result['data'] ?? null) ? $result['data'] : [];
+$data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
+$checkPlanQuality = static function (array $candidate): array {
+    $errors = ems_ai_ds_surgery_quality_errors($candidate);
+    $serialized = json_encode($candidate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (preg_match('/\b(?:usia|berusia|tahun)\b[^\n]{0,50}\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b|\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b/iu', (string) $serialized) === 1) {
+        $errors[] = 'usia pasien ditulis sebagai rentang yang ambigu';
+    }
+    return array_values(array_unique($errors));
 };
+$qualityErrors = $result['ok'] ? $checkPlanQuality($data) : [(string) ($result['error'] ?? 'Model tidak mengembalikan JSON rencana operasi.')];
 
-for ($offset = 0; $offset < $jumlahLangkah; $offset += $batchSize) {
-    $batchNumber = intdiv($offset, $batchSize) + 1;
-    $batchCount = min($batchSize, $jumlahLangkah - $offset);
-    $firstStepNumber = $offset + 1;
-    $lastStepNumber = $offset + $batchCount;
-    $batchPrompt = $userPrompt
-        . "\n\nMODE GENERASI BERTAHAP — BAGIAN {$batchNumber}: susun hanya tahapan nomor {$firstStepNumber} sampai {$lastStepNumber} dari total {$jumlahLangkah}. Kembalikan tepat {$batchCount} objek pada tahapan_prosedur. Jangan membuat tahapan di luar rentang ini. Pertahankan urutan kronologis kasus, keselamatan pasien, dan kontinuitas alat/tindakan. Setiap aksi fisik wajib menyebut alat atau bahan spesifik yang benar-benar dipakai; tugas briefing/identitas/dokumentasi harus menyebut formulir, checklist, papan operasi, atau perangkat dokumentasi yang digunakan. Jika Asisten bertugas, instruksi harus berupa perintah DPJP yang menyebut alat spesifik dan aksi menyatakan alat itu diserahkan/dipakai. Periksa sendiri tiap aksi dan instruksi sebelum mengeluarkan JSON.";
-    if ($offset > 0) {
-        $priorSteps = array_slice($data['tahapan_prosedur'] ?? [], -10);
-        $batchPrompt .= "\n\nKONTEKS LANGKAH SEBELUMNYA (jangan ulangi atau bertentangan):\n"
-            . json_encode($priorSteps, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-            . "\nLanjutkan tepat setelah tahap " . $offset . '. Ulangi identitas, anatomi, sisi cedera, alur perdarahan, tindakan yang sudah dilakukan, dan status alat/akses secara konsisten.';
-    }
-
-    $attemptErrors = [];
-    $acceptedSteps = null;
-    $acceptedHeader = null;
-    for ($batchAttempt = 1; $batchAttempt <= 2 && $acceptedSteps === null; $batchAttempt++) {
-        $batchResult = ems_ai_ds_call_gemini(
-            $pdo,
-            $systemPrompt,
-            $batchPrompt,
-            'ai_surgery_planner',
-            isset($user['id']) ? (int) $user['id'] : null,
-            $offset === 0 ? ems_ai_ds_surgery_response_schema() : ems_ai_ds_surgery_response_schema(true)
-        );
-        if (!$batchResult['ok'] || !is_array($batchResult['data'] ?? null)) {
-            $attemptErrors[] = (string) ($batchResult['error'] ?? 'Model tidak mengembalikan JSON tahap operasi.');
-            continue;
-        }
-
-        $candidate = $batchResult['data'];
-        $candidateSteps = ems_ai_ds_extract_surgery_steps($candidate);
-        $candidateSteps = ems_ai_ds_compact_surgery_documentation_overflow($candidateSteps, $batchCount);
-
-        // Count errors do not identify a particular stage number, so the
-        // per-stage repair below cannot select anything to fix. Ask the model
-        // to reconcile the whole current batch to the exact requested count;
-        // preserve its clinical sequence and merge related preparation or
-        // documentation only when it generated too many stages.
-        for ($countRepairAttempt = 1; count($candidateSteps) !== $batchCount && $countRepairAttempt <= 1; $countRepairAttempt++) {
-            $currentCount = count($candidateSteps);
-            $countRepairPrompt = "REKONSILIASI JUMLAH TAHAP — keluarkan tepat {$batchCount} tahap untuk rentang nomor {$firstStepNumber} sampai {$lastStepNumber} (total rencana {$jumlahLangkah}). JSON masukan memiliki {$currentCount} tahap setelah normalisasi. "
-                . ($currentCount > $batchCount
-                    ? "Gabungkan hanya tahap administratif/persiapan/pemantauan yang saling terkait; jangan menghapus tindakan klinis penting, jangan mengubah urutan tindakan, fakta kasus, anatomi/sisi, alat, pelaku, atau hasil /do."
-                    : "Lengkapi kekurangan dengan tahap yang memang diperlukan dalam urutan kronologis; jangan mengulang tindakan yang sudah selesai dan jangan membuat temuan atau hasil klinis baru.")
-                . " Kembalikan tepat {$batchCount} item pada key tahapan_prosedur, tanpa field lain. Setiap item harus tetap konkret, memiliki aksi /me dan hasil /do, serta memenuhi kontrak alat. JSON batch saat ini:\n"
-                . json_encode(['tahapan_prosedur' => $candidateSteps], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                . "\nKONTEKS KASUS DAN RENTANG TAHAP:\n" . $batchPrompt;
-            $countRepair = ems_ai_ds_call_gemini(
-                $pdo,
-                $systemPrompt,
-                $countRepairPrompt,
-                'ai_surgery_planner',
-                isset($user['id']) ? (int) $user['id'] : null,
-                ems_ai_ds_surgery_response_schema(true)
-            );
-            $reconciledSteps = is_array($countRepair['data'] ?? null)
-                ? ems_ai_ds_extract_surgery_steps($countRepair['data'])
-                : [];
-            if (!$countRepair['ok'] || count($reconciledSteps) !== $batchCount) {
-                $attemptErrors[] = 'Perbaikan jumlah tahap ' . $firstStepNumber . '–' . $lastStepNumber
-                    . ' menghasilkan ' . count($reconciledSteps) . '/' . $batchCount . ' tahap.';
-                continue;
-            }
-            $candidateSteps = $reconciledSteps;
-        }
-
-        $batchIssues = $validateBatch($candidateSteps, $batchCount);
-
-        // Correct only invalid items in this ten-step batch. Keep every valid
-        // action/result untouched so the repair cannot rewrite prior surgery.
-        for ($repairAttempt = 1; $batchIssues !== [] && $repairAttempt <= 2; $repairAttempt++) {
-            $badIndexes = [];
-            foreach ($batchIssues as $issue) {
-                if (preg_match('/tahap\s+(\d+)/iu', $issue, $match) === 1) {
-                    $localIndex = (int) $match[1] - 1;
-                    if (isset($candidateSteps[$localIndex])) $badIndexes[$localIndex] = $candidateSteps[$localIndex];
-                }
-            }
-            if ($badIndexes === []) break;
-
-            $repairPrompt = "Perbaiki hanya item tahap yang tercantum pada JSON ini. Output hanya JSON sesuai schema dengan key tahapan_prosedur, tepat " . count($badIndexes) . " item dalam urutan masukan. Item diberikan berurutan dengan nomor tahap global; jangan menambah/menghapus tahap. Kekurangan: " . implode('; ', $batchIssues)
-                . ". Pertahankan pelaku, hasil /do, dan animasi persis kecuali field tersebut kosong/tidak valid. Ubah aksi /me dan instruksi hanya bila perlu untuk melengkapi alat spesifik yang relevan, instruksi DPJP, dan hasil yang bisa langsung dimainkan. Jangan menambahkan diagnosis, temuan, atau tindakan definitif baru.\nTAHAP BERMASALAH:\n"
-                . json_encode(array_values($badIndexes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                . "\nKONTEKS KASUS DAN TAHAP SEBELUMNYA:\n" . $batchPrompt;
-            $repairResult = ems_ai_ds_call_gemini(
-                $pdo,
-                $systemPrompt,
-                $repairPrompt,
-                'ai_surgery_planner',
-                isset($user['id']) ? (int) $user['id'] : null,
-                ems_ai_ds_surgery_response_schema(true)
-            );
-            $repairedSteps = is_array($repairResult['data'] ?? null)
-                ? ems_ai_ds_extract_surgery_steps($repairResult['data'])
-                : [];
-            if (!$repairResult['ok'] || count($repairedSteps) !== count($badIndexes)) {
-                $attemptErrors[] = 'Perbaikan terarah untuk tahap ' . implode(', ', array_map(static fn (int $i): int => $i + $firstStepNumber, array_keys($badIndexes))) . ' tidak mengembalikan jumlah item yang sama.';
-                break;
-            }
-
-            foreach (array_keys($badIndexes) as $repairIndex => $localIndex) {
-                $replacement = $repairedSteps[$repairIndex];
-                foreach (['aksi', 'instruksi'] as $field) {
-                    if (trim((string) ($replacement[$field] ?? '')) !== '') {
-                        $candidateSteps[$localIndex][$field] = trim((string) $replacement[$field]);
-                    }
-                }
-                foreach (['pelaku', 'hasil', 'animasi'] as $field) {
-                    if (trim((string) ($candidateSteps[$localIndex][$field] ?? '')) === '' && trim((string) ($replacement[$field] ?? '')) !== '') {
-                        $candidateSteps[$localIndex][$field] = trim((string) $replacement[$field]);
-                    }
-                }
-            }
-            $batchIssues = $validateBatch($candidateSteps, $batchCount);
-        }
-
-        if ($batchIssues === []) {
-            $acceptedSteps = $candidateSteps;
-            if ($offset === 0) $acceptedHeader = $candidate;
-            break;
-        }
-        $attemptErrors[] = implode('; ', $batchIssues);
-    }
-
-    if ($acceptedSteps === null) {
-        $generationError = 'Tahap ' . $firstStepNumber . '–' . $lastStepNumber . ' belum lolos pemeriksaan setelah dua percobaan bertahap: ' . implode(' | ', $attemptErrors);
-        break;
-    }
-
-    if ($offset === 0) {
-        $data = $acceptedHeader ?? [];
-        $data['tahapan_prosedur'] = $acceptedSteps;
-    } else {
-        $data['tahapan_prosedur'] = array_merge($data['tahapan_prosedur'] ?? [], $acceptedSteps);
+// One whole-plan correction is allowed for incomplete JSON/content. It keeps
+// the model-selected number of steps and does not impose any preset count.
+if ($result['ok'] && $qualityErrors !== []) {
+    $repairPrompt = "Perbaiki satu JSON rencana operasi lengkap berikut. Pertahankan fakta kasus dan urutan klinis yang benar. Model menentukan sendiri jumlah tahapan yang diperlukan: jangan mengejar angka/preset, jangan mengisi dengan langkah repetitif. Perbaiki seluruh masalah validasi berikut: "
+        . implode('; ', $qualityErrors)
+        . "\nKembalikan seluruh field schema secara lengkap, termasuk tahapan_prosedur, dengan setiap aksi /me konkret menyebut alat/bahan yang digunakan, hasil /do langsung, instruksi DPJP spesifik bila melibatkan asisten, dan tanpa pilihan bercabang. Jangan menambahkan temuan yang tidak ada pada konteks.\nKASUS:\n"
+        . $userPrompt . "\nJSON SAAT INI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $repair = ems_ai_ds_call_gemini(
+        $pdo,
+        $systemPrompt,
+        $repairPrompt,
+        'ai_surgery_planner',
+        isset($user['id']) ? (int) $user['id'] : null,
+        ems_ai_ds_surgery_response_schema()
+    );
+    if ($repair['ok'] && is_array($repair['data'] ?? null)) {
+        $data = $repair['data'];
+        $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
+        $qualityErrors = $checkPlanQuality($data);
     }
 }
 
-if ($generationError !== '') {
-    $errorMessage = 'Model AI belum dapat menyelesaikan rencana operasi. ' . $generationError . '. Tidak disimpan sebagai rencana selesai. Coba ulangi setelah memeriksa koneksi/provider AI.';
+if (!$result['ok'] && $qualityErrors !== []) {
+    $errorMessage = 'Model AI belum dapat menyelesaikan rencana operasi: ' . implode('; ', $qualityErrors) . '. Tidak disimpan sebagai rencana selesai.';
 
     $insertFail = $pdo->prepare("
         INSERT INTO ai_surgery_plans (user_id, unit_code, division_snapshot, jenis_operasi_kategori, jenis_anestesi_input, kompleksitas, kasus_tindakan, source_report_code, result_json, status, error_message)
@@ -320,41 +211,6 @@ if ($generationError !== '') {
     ]);
 
     ems_ai_ds_surgery_json_response(['ok' => false, 'message' => $errorMessage], 502);
-}
-$qualityErrors = ems_ai_ds_surgery_quality_errors($data, $jumlahLangkah);
-$serializedPlan = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-if (preg_match('/\b(?:usia|berusia|tahun)\b[^\n]{0,50}\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b|\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b/iu', (string) $serializedPlan) === 1) {
-    $qualityErrors[] = 'usia pasien ditulis sebagai rentang yang ambigu';
-}
-
-$headerErrors = array_values(array_filter($qualityErrors, static fn (string $error): bool => !str_starts_with($error, 'Tahapan operasi') && !str_contains($error, 'jumlah tahapan')));
-for ($repairAttempt = 1; $headerErrors !== [] && $repairAttempt <= 2; $repairAttempt++) {
-    $preservedSteps = $data['tahapan_prosedur'] ?? [];
-    $headerData = $data;
-    unset($headerData['tahapan_prosedur']);
-    $repairPrompt = "Perbaiki hanya field ringkasan berikut yang belum lolos. Jangan keluarkan tahapan_prosedur. Pertahankan fakta dan keputusan yang konsisten dengan input. Kembalikan hanya object JSON berisi field header lengkap sesuai schema. Kekurangan: "
-        . implode('; ', $headerErrors) . "\nINPUT KASUS:\n" . $userPrompt . "\nHEADER SAAT INI:\n"
-        . json_encode($headerData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $repairResult = ems_ai_ds_call_gemini(
-        $pdo,
-        $systemPrompt,
-        $repairPrompt,
-        'ai_surgery_planner',
-        isset($user['id']) ? (int) $user['id'] : null,
-        ems_ai_ds_surgery_response_schema(false, true)
-    );
-    if (!$repairResult['ok'] || !is_array($repairResult['data'] ?? null)) {
-        $headerErrors[] = 'model tidak mengembalikan JSON header pada perbaikan ke-' . $repairAttempt;
-        break;
-    }
-    $data = array_merge($data, $repairResult['data']);
-    $data['tahapan_prosedur'] = $preservedSteps;
-    $qualityErrors = ems_ai_ds_surgery_quality_errors($data, $jumlahLangkah);
-    $serializedPlan = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if (preg_match('/\b(?:usia|berusia|tahun)\b[^\n]{0,50}\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b|\b\d{1,3}\s*[-–]\s*\d{1,3}\s*tahun\b/iu', (string) $serializedPlan) === 1) {
-        $qualityErrors[] = 'usia pasien ditulis sebagai rentang yang ambigu';
-    }
-    $headerErrors = array_values(array_filter($qualityErrors, static fn (string $error): bool => !str_starts_with($error, 'Tahapan operasi') && !str_contains($error, 'jumlah tahapan')));
 }
 if ($qualityErrors !== []) {
     $message = 'Rencana operasi belum lolos validasi akhir: ' . implode('; ', $qualityErrors) . '. Tahapan yang lolos tetap diperiksa per bagian dan tidak diganti oleh perbaikan ringkasan. Tidak disimpan sebagai rencana selesai.';

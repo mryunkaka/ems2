@@ -132,8 +132,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     <span class="text-sm font-bold text-amber-900"><?= htmlspecialchars((string) ($result['durasi'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></span>
                 </div>
                 <div class="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2">
-                    <span class="text-xs font-bold text-violet-800 tracking-wide">KOMPLEKSITAS:</span>
-                    <span class="text-sm font-bold text-violet-900"><?= htmlspecialchars((string) $plan['kompleksitas'], ENT_QUOTES, 'UTF-8') ?> (<?= count($tahapan) ?> langkah)</span>
+                    <span class="text-xs font-bold text-violet-800 tracking-wide">TAHAPAN PROSEDUR:</span>
+                    <span class="text-sm font-bold text-violet-900"><?= count($tahapan) ?> langkah yang ditentukan model AI sesuai kasus</span>
                 </div>
             </div>
 

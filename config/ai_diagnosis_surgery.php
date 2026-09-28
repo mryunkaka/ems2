@@ -527,13 +527,13 @@ function ems_ai_ds_default_diagnosis_system_prompt(): string
 
 function ems_ai_ds_default_surgery_system_prompt(): string
 {
-    return "Anda adalah dokter spesialis bedah senior Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun rencana operasi (operative note) untuk simulasi/roleplay EMS. Tugas Anda: dari jenis operasi, jenis anestesi, tingkat kompleksitas, dan kasus medis yang diberikan (sepadat apa pun), susun rencana operasi LENGKAP, definitif, dan siap pakai, bukan daftar pertanyaan.\n\n"
+    return "Anda adalah dokter spesialis bedah senior Roxwood Hospital dengan pengalaman lebih dari 15 tahun, menyusun rencana operasi (operative note) untuk simulasi/roleplay EMS. Tugas Anda: dari jenis operasi, jenis anestesi, dan kasus medis yang diberikan (sepadat apa pun), susun rencana operasi LENGKAP, definitif, dan siap pakai, bukan daftar pertanyaan.\n\n"
         . "ATURAN WAJIB:\n"
         . "1. Ini skenario operasi FiveM roleplay, bukan rekam klinis nyata. Pertahankan identitas, mekanisme, anatomi, dan TTV/GCS dari laporan Diagnosis IGD. Lengkapi skenario operasi secara final dan spesifik terhadap kasus; hasil /do adalah hasil final di dalam skenario RP, bukan klaim tindakan dunia nyata. Jangan mengeluarkan placeholder atau bahasa verifikasi.\n"
         . "2. \"durasi\" wajib realistis dan PROPORSIONAL dengan jumlah \"tahapan_prosedur\" dan kompleksitas kasus - makin banyak langkah/makin kompleks, makin lama durasinya. Operasi Minor umumnya 30-90 menit; Mayor 2-8 jam. Format contoh: \"4 Jam 30 Menit\".\n"
         . "3. \"farmakologi\" harus berupa rencana roleplay yang lengkap, relevan dengan kasus dan jenis anestesi. Jangan isi dosis dengan placeholder; isi nama dan dosis skenario yang konsisten, atau kosongkan array untuk kategori obat yang memang tidak dipakai dalam skenario.\n"
         . "3a. KESELAMATAN OBAT: untuk bedah saraf/kraniotomi, mata, atau tindakan berisiko perdarahan tinggi, JANGAN meresepkan NSAID/antiplatelet (Ketorolac, Asam Mefenamat, Ibuprofen, Aspirin) - gunakan Paracetamol dan/atau opioid sebagai gantinya. Untuk operasi lain tanpa risiko perdarahan tinggi, NSAID boleh dipakai sesuai indikasi.\n"
-        . "4. \"tahapan_prosedur\" wajib memiliki JUMLAH LANGKAH PERSIS SESUAI permintaan eksplisit user. Susun langkah spesifik pada anatomi dan kasus. Tiap item wajib berisi satu pelaku yang jelas (DPJP, Asisten 1, atau Asisten 2), aksi langsung dengan /me, hasil skenario final dengan /do dalam bentuk lampau, dan animasi /e. Jangan menulis 'Data belum tersedia', 'petugas belum tersedia', 'wajib diverifikasi', 'belum dilakukan', 'belum diketahui', 'belum tercatat', 'sedang diproses', atau kalimat yang meminta pemain memeriksa sendiri hasilnya. Tulis hasil yang konkret, misalnya jahitan tertutup rapat dan tepi luka rapi setelah penutupan.\n"
+        . "4. Model menentukan sendiri jumlah tahapan berdasarkan kebutuhan kasus. Buat semua tahap yang diperlukan agar persiapan, tindakan, hasil, dan penutupan skenario lengkap; kasus sederhana tetap ringkas dan kasus kompleks lebih terperinci. Jangan mengejar angka tertentu, mengisi tahap berulang, atau memperpanjang rencana hanya untuk mencapai jumlah tetap. Setiap item wajib berisi satu pelaku yang jelas (DPJP, Asisten 1, atau Asisten 2), aksi langsung dengan /me, hasil skenario final dengan /do dalam bentuk lampau, dan animasi /e. Jangan menulis 'Data belum tersedia', 'petugas belum tersedia', 'wajib diverifikasi', 'belum dilakukan', 'belum diketahui', 'belum tercatat', 'sedang diproses', atau kalimat yang meminta pemain memeriksa sendiri hasilnya. Tulis hasil yang konkret, misalnya jahitan tertutup rapat dan tepi luka rapi setelah penutupan.\n"
         . "4a. Temuan operasi harus menjadi satu skenario yang koheren dengan diagnosis dan lokasi luka pada laporan sumber. Tentukan hasil akhir roleplay yang masuk akal, lalu gunakan hasil itu konsisten pada tahap eksplorasi, hemostasis, pengambilan proyektil, penutupan, dan laporan akhir. Jangan mencantumkan beberapa pilihan teknik dengan kata 'atau'. Setiap langkah harus dapat langsung dimainkan. Setiap aksi menyebut alat/instrumen/bahan tepat yang dipakai; bila Asisten menyiapkannya, tulis instruksi DPJP dengan nama alat dan aksi Asisten mengambil/menyerahkannya.\n"
         . "9. Ikuti pembagian peran & kewenangan dari referensi - DPJP sebagai operator utama melakukan tindakan definitif, Asisten 1 & 2 membantu atas instruksi dan supervisi. Anestesi lokal oleh co-ass tidak boleh ditulis sebagai tindakan mandiri tanpa supervisi; catat operator aktual hanya bila diberikan. ORIF/Open Reduction Internal Fixation selalu Mayor.\n"
         . "10. \"risiko_komplikasi\" hanya memuat risiko yang relevan dengan jenis tindakan; jangan menyatakannya sebagai kejadian aktual.\n"
@@ -551,8 +551,8 @@ function ems_ai_ds_default_surgery_system_prompt(): string
 }
 
 /**
- * Recommend a planner length from the documented diagnosis context. This is
- * only a default; a user-selected 10/20/30-step length remains authoritative.
+ * Legacy enum metadata derived from case complexity. It must never control
+ * the model's procedure-step count.
  */
 function ems_ai_ds_recommend_surgery_complexity(string $context): string
 {
@@ -2662,7 +2662,7 @@ function ems_ai_ds_sanitize_step_items(array $items): array
 }
 
 /** Reject incomplete or placeholder-filled roleplay surgery reports. */
-function ems_ai_ds_surgery_quality_errors(array $data, int $expectedSteps): array
+function ems_ai_ds_surgery_quality_errors(array $data, ?int $expectedSteps = null): array
 {
     $errors = [];
     $serialized = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
@@ -2670,7 +2670,8 @@ function ems_ai_ds_surgery_quality_errors(array $data, int $expectedSteps): arra
         $errors[] = 'laporan masih mengandung placeholder atau status menunggu';
     }
     $steps = is_array($data['tahapan_prosedur'] ?? null) ? $data['tahapan_prosedur'] : [];
-    if (count($steps) !== $expectedSteps) $errors[] = 'jumlah tahapan harus tepat ' . $expectedSteps . ', yang lolos validasi ' . count($steps);
+    if ($steps === []) $errors[] = 'tahapan prosedur belum dibuat oleh model';
+    if ($expectedSteps !== null && count($steps) !== $expectedSteps) $errors[] = 'jumlah tahapan harus tepat ' . $expectedSteps . ', yang lolos validasi ' . count($steps);
     foreach ($steps as $index => $step) {
         $role = trim((string) ($step['pelaku'] ?? ''));
         $roles = array_map('trim', explode('+', $role));
@@ -2874,7 +2875,7 @@ function ems_ai_ds_model_completion_contract(string $featureKey): string
         return 'KONTRAK MODEL KHUSUS SIMULASI IGD ROXWOOD: keluarkan laporan skenario roleplay final, lengkap, dan spesifik; semua pemeriksaan dan hasil dalam laporan adalah fakta skenario simulasi, bukan klaim pemeriksaan dunia nyata. Jangan menulis placeholder, data menunggu, estimasi AI/verifikasi, atau fakta meta. Lengkapi narasi anamnesis final, diagnosis utama dan minimal 3 diagnosis banding yang relevan pada mekanisme sama, GCS E/V/M aritmetis, tepat lima TTV, hasil pemeriksaan laboratorium/radiologi yang relevan, 8–14 langkah stabilisasi pra-operasi, handoff ke Ruang Operasi, serta rujukan SOP Roxwood dari konteks dokumen. Buat temuan konsisten dengan trigger: luka superfisial tidak boleh dinaikkan menjadi cedera tendon/fraktur tanpa tanda atau mekanisme pendukung; temuan baru hanya boleh ditambahkan jika merupakan detail skenario yang wajar dan tidak bertentangan dengan input. Untuk fraktur terbuka, jangan menetapkan grade Gustilo IIIB/IIIC tanpa bukti kehilangan jaringan lunak luas, periosteal stripping, atau cedera arteri yang terkonfirmasi; tulang terlihat saja tidak cukup. Jangan mendiagnosis sindrom kompartemen hanya dari nyeri, CRT memanjang, atau nadi lemah; harus ada tanda khas seperti kompartemen tegang dan nyeri saat peregangan pasif. Nadi distal lemah/akral dingin berarti ancaman perfusi yang perlu disebut sebagai temuan dan ditangani, bukan bukti otomatis robekan arteri atau sindrom kompartemen. Jangan menaikkan derajat cedera di luar temuan trigger dan hasil penunjang skenario. Jangan pernah menulis diagnosis utama yang sekaligus menyebut fraktur terbuka dan fraktur tertutup; pada tulang tampak di luka, diagnosis utama harus konsisten sebagai fraktur terbuka. Kasus Minor maupun Mayor hanya menjalani stabilisasi, pemeriksaan, pemantauan, kontrol perdarahan, irigasi/pembersihan awal, balut steril, analgesia dan handoff di IGD; semua tindakan definitif dilakukan di Ruang Operasi. Isi emergency sebagai satu tindakan fisik konkret per aksi dan hasil langsung per /do. DILARANG menulis pilihan bercabang atau frasa "sesuai protokol", "sesuai instruksi", "sesuai arahan", "sesuai kewenangan DPJP", "akan dilakukan", atau pernyataan administratif; tuliskan tindakan yang langsung dilakukan pemain. Jangan melakukan tindakan kepala/TIK pada kasus ekstremitas tanpa indikasi. Gunakan identitas pasien eksplisit secara konsisten, termasuk jenis kelamin dan kehamilan. Cantumkan pemeriksaan lab/radiologi hanya yang masuk akal untuk keputusan kasus dan sertakan hasil skenario final.' . ems_ai_ds_instrument_action_contract();
     }
     if ($featureKey === 'ai_surgery_planner') {
-        return 'KONTRAK OUTPUT ROLEPLAY: Ini simulasi FiveM, bukan dokumen klinis nyata. Susun skenario operasi yang siap dimainkan dan final di dalam dunia roleplay. Setiap tahap berisi satu petugas dari DPJP/Asisten 1/Asisten 2, aksi /me spesifik, dan hasil /do konkret dalam bentuk lampau; dilarang memakai placeholder, status menunggu, verifikasi, atau meminta pemain menentukan sendiri. Untuk fakta anatomi intraoperatif yang tidak dirinci input, tetapkan satu hasil skenario yang masuk akal dan gunakan konsisten dari eksplorasi sampai penutupan. Jangan memberi pilihan bercabang pada aksi. Isi ringkasan, risiko relevan, farmakologi roleplay, dan SOP secara konkret; array obat boleh kosong bila kategori memang tidak digunakan. Pertahankan identitas dan lokasi cedera dari laporan sumber. Output adalah skenario roleplay final, bukan klaim tindakan dunia nyata.' . ems_ai_ds_instrument_action_contract();
+        return 'KONTRAK OUTPUT ROLEPLAY: Ini simulasi FiveM, bukan dokumen klinis nyata. Susun skenario operasi yang siap dimainkan dan final di dalam dunia roleplay. MODEL MENENTUKAN SENDIRI JUMLAH tahapan sesuai kebutuhan kasus; abaikan angka target atau kategori jumlah langkah yang mungkin tercantum di template lama. Sertakan tahapan yang diperlukan saja, tanpa pengulangan atau pemanjangan artifisial. Setiap tahap berisi satu petugas dari DPJP/Asisten 1/Asisten 2, aksi /me spesifik, dan hasil /do konkret dalam bentuk lampau; dilarang memakai placeholder, status menunggu, verifikasi, atau meminta pemain menentukan sendiri. Untuk fakta anatomi intraoperatif yang tidak dirinci input, tetapkan satu hasil skenario yang masuk akal dan gunakan konsisten dari eksplorasi sampai penutupan. Jangan memberi pilihan bercabang pada aksi. Isi ringkasan, risiko relevan, farmakologi roleplay, dan SOP secara konkret; array obat boleh kosong bila kategori memang tidak digunakan. Pertahankan identitas dan lokasi cedera dari laporan sumber. Output adalah skenario roleplay final, bukan klaim tindakan dunia nyata.' . ems_ai_ds_instrument_action_contract();
     }
     if ($featureKey === 'ai_laboratory') {
         return 'KONTRAK HASIL LAB ROLEPLAY: semua nilai, interpretasi, korelasi, kesan, dan rekomendasi adalah hasil final skenario FiveM. Lengkapi semua parameter panel yang dipilih dengan nilai, satuan, rentang rujukan, dan flag Normal/High/Low yang konsisten; pertahankan nilai sumber diagnosis untuk parameter yang sama. Jangan menulis data tidak tersedia, belum diperiksa, menunggu hasil, wajib verifikasi, dugaan yang belum selesai, atau menyarankan pemain menunggu pemeriksaan. Jangan menambah parameter di luar panel. Kembalikan JSON lengkap sesuai schema.';
@@ -2967,7 +2968,7 @@ function ems_ai_ds_diagnosis_response_schema(string $featureKey): array
     return ['type' => 'OBJECT', 'properties' => $properties, 'required' => array_keys($properties)];
 }
 
-/** Gemini schema for chunked surgery plans; each request generates at most ten steps. */
+/** JSON schema for a complete surgery plan; the model chooses the step count. */
 function ems_ai_ds_surgery_response_schema(bool $stepsOnly = false, bool $headerOnly = false): array
 {
     $string = ['type' => 'STRING'];

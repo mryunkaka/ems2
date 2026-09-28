@@ -98,15 +98,6 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
 
-                    <label class="mt-4">Tingkat Kompleksitas (Jumlah Tahapan Prosedur)</label>
-                    <select name="kompleksitas" id="aiSurgKompleksitas">
-                        <option value="Auto" selected>Otomatis dari tingkat kesulitan kasus</option>
-                        <option value="Mudah">Mudah - 10 tahapan</option>
-                        <option value="Sedang">Sedang - 20 tahapan</option>
-                        <option value="Panjang">Panjang - 30 tahapan</option>
-                    </select>
-                    <p id="aiSurgKompleksitasHint" class="page-subtitle" style="margin-top:6px;font-size:12px;">Otomatis: sistem merekomendasikan 10, 20, atau 30 langkah berdasarkan diagnosis dan kompleksitas kasus. Anda tetap dapat memilih jumlah tahapan sendiri.</p>
-
                     <label class="mt-4">Kasus Medis / Tindakan yang Diperlukan</label>
                     <textarea name="kasus_tindakan" id="aiSurgKasusTindakan" rows="6" required placeholder="Contoh singkat: fraktur tungkai kiri setelah kecelakaan; rencana ORIF."><?= htmlspecialchars($_POST['kasus_tindakan'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
                     <p class="page-subtitle" style="margin-top:6px;font-size:12px;">Tulis konteks singkat. Model AI yang menyusun indikasi, persiapan, tahapan operasi, peran, risiko relevan, monitoring, dan rujukan SOP. Hasil tetap rencana sampai ada bukti tindakan.</p>
@@ -138,7 +129,7 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?php foreach ($recentRows as $row): ?>
                                 <tr>
                                     <td class="whitespace-nowrap"><?= htmlspecialchars(date('d/m/Y H:i', strtotime((string) $row['created_at'])), ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td class="whitespace-nowrap"><?= htmlspecialchars((string) $row['jenis_operasi_kategori'], ENT_QUOTES, 'UTF-8') ?> / <?= htmlspecialchars((string) $row['kompleksitas'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td class="whitespace-nowrap"><?= htmlspecialchars((string) $row['jenis_operasi_kategori'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars(mb_strimwidth((string) $row['kasus_tindakan'], 0, 80, '...'), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="whitespace-nowrap"><?= htmlspecialchars((string) ($row['created_by_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td>
@@ -286,11 +277,6 @@ include __DIR__ . '/../partials/sidebar.php';
                     jenisAnestesiSelect.value = anestesiMatch;
                 }
 
-                var recommendedComplexity = ['Mudah', 'Sedang', 'Panjang'].indexOf(data.kompleksitas_rekomendasi) !== -1
-                    ? data.kompleksitas_rekomendasi : 'Sedang';
-                kompleksitasSelect.value = recommendedComplexity;
-                kompleksitasHint.textContent = 'Rekomendasi otomatis untuk kasus ini: ' + recommendedComplexity + ' (' + ({ Mudah: 10, Sedang: 20, Panjang: 30 }[recommendedComplexity]) + ' tahapan). Anda masih dapat mengubahnya.';
-
                 diagCodeHidden.value = data.report_code || '';
 
                 var usedWarning = formatUsedOnTargetWarning(data);
@@ -307,18 +293,6 @@ include __DIR__ . '/../partials/sidebar.php';
                 diagFetchNote.textContent = 'Gagal menghubungi server. Coba lagi.';
                 diagFetchNote.style.color = '#dc2626';
             });
-    });
-
-    var kompleksitasSelect = document.getElementById('aiSurgKompleksitas');
-    var kompleksitasHint = document.getElementById('aiSurgKompleksitasHint');
-    var KOMPLEKSITAS_HINTS = {
-        Auto: 'Otomatis: sistem memilih 10, 20, atau 30 langkah berdasarkan diagnosis dan tingkat kesulitan kasus.',
-        Mudah: 'Mudah: 10 langkah prosedur, durasi & detail lebih ringkas.',
-        Sedang: 'Sedang: 20 langkah prosedur, durasi & detail proporsional dengan jumlah langkah.',
-        Panjang: 'Panjang: 30 langkah prosedur, durasi lebih lama & detail paling rinci.'
-    };
-    kompleksitasSelect.addEventListener('change', function () {
-        kompleksitasHint.textContent = KOMPLEKSITAS_HINTS[kompleksitasSelect.value] || '';
     });
 
     var overlay = document.getElementById('aiSurgLoadingOverlay');
@@ -340,8 +314,8 @@ include __DIR__ . '/../partials/sidebar.php';
         { at: 30000, pct: 62, text: 'Model AI menyusun tahapan prosedur bedah...' },
         { at: 60000, pct: 75, text: 'Model AI masih menganalisis, mohon tunggu...' },
         { at: 90000, pct: 85, text: 'Menyusun risiko & laporan pasca-operasi...' },
-        { at: 140000, pct: 93, text: 'Respons sebelumnya kurang sesuai, mencoba ulang otomatis...' },
-        { at: 200000, pct: 96, text: 'Percobaan ulang sedang diproses...' }
+        { at: 140000, pct: 93, text: 'Memeriksa kelengkapan rencana operasi...' },
+        { at: 200000, pct: 96, text: 'Menunggu respons akhir dari model AI...' }
     ];
 
     function renderProgress() {
