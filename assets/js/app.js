@@ -125,6 +125,11 @@ document.addEventListener("DOMContentLoaded", () => {
     .forEach((node) => {
       const text = String(node.textContent || "").trim();
       if (!text) {
+        // Keep hidden alert containers: async forms populate these after the
+        // initial page scan (for example AI generation error details).
+        if (node.classList.contains("hidden")) {
+          return;
+        }
         node.remove();
         return;
       }

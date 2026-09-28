@@ -183,7 +183,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <div id="aiSurgLoadingBar" style="height:100%;width:0%;border-radius:999px;background:#0ea5e9;transition:width .3s ease;"></div>
         </div>
         <div id="aiSurgLoadingPct" style="margin-top:6px;font-size:12px;font-weight:800;color:#0284c7;">0%</div>
-        <div id="aiSurgLoadingErrorBox" class="hidden alert alert-error" style="margin-top:12px;text-align:left;"></div>
+        <div id="aiSurgLoadingErrorBox" class="hidden alert alert-error" style="margin-top:12px;text-align:left;max-height:180px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap;"></div>
         <button type="button" id="aiSurgLoadingRetryBtn" class="btn-secondary hidden" style="margin-top:10px;">Tutup & Coba Lagi</button>
     </div>
 </div>
@@ -389,7 +389,16 @@ include __DIR__ . '/../partials/sidebar.php';
             credentials: 'same-origin',
             headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
         })
-            .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+            .then(function (res) {
+                return res.json()
+                    .then(function (data) { return { ok: res.ok, data: data }; })
+                    .catch(function () {
+                        return {
+                            ok: false,
+                            data: { ok: false, message: 'Server mengirim respons non-JSON (HTTP ' + res.status + '). Periksa batas waktu server atau log PHP.' }
+                        };
+                    });
+            })
             .then(function (result) {
                 if (!result.ok || !result.data.ok || !result.data.plan_id) {
                     showError((result.data && result.data.message) || 'Gagal memproses rencana operasi.');
@@ -397,8 +406,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
                 finishSuccess(result.data.plan_id);
             })
-            .catch(function () {
-                showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
+            .catch(function (error) {
+                showError(error && error.message ? error.message : 'Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
             });
     });
 
@@ -425,7 +434,16 @@ include __DIR__ . '/../partials/sidebar.php';
                 credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
             })
-                .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                .then(function (res) {
+                    return res.json()
+                        .then(function (data) { return { ok: res.ok, data: data }; })
+                        .catch(function () {
+                            return {
+                                ok: false,
+                                data: { ok: false, message: 'Server mengirim respons non-JSON (HTTP ' + res.status + '). Periksa batas waktu server atau log PHP.' }
+                            };
+                        });
+                })
                 .then(function (result) {
                     btn.disabled = false;
                     if (!result.ok || !result.data.ok || !result.data.plan_id) {
@@ -434,9 +452,9 @@ include __DIR__ . '/../partials/sidebar.php';
                     }
                     finishSuccess(result.data.plan_id);
                 })
-                .catch(function () {
+                .catch(function (error) {
                     btn.disabled = false;
-                    showError('Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
+                    showError(error && error.message ? error.message : 'Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
                 });
         });
     });
