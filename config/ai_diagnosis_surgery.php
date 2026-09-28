@@ -403,11 +403,15 @@ function ems_ai_ds_instrument_action_contract(): string
 function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, string $caseText = ''): array
 {
     $issues = [];
-    $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|set\s+infus|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|pinset(?:\s+(?:jaringan|anatomi|chirurgis))?|forsep|skalpel|bisturi|retraktor|duk\s+steril|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+operasi|lembar\s+instruksi|formulir(?:\s+consent)?|informed\s+consent\s+form|clipboard|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril)\b/iu';
+    // Keep this list broad enough for named specialty instruments. A narrow
+    // lexicon caused valid tools (e.g. Jackson-Pratt drains/trocars) to be
+    // rejected and sent through needless repair cycles.
+    $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|masker\s+bedah|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|set\s+infus|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|gunting\s+Metzenbaum|pinset(?:\s+(?:jaringan|anatomi|chirurgis|atraumatik))?|forsep|forceps|skalpel|bisturi|pisau\s+bedah|elektrokauter|electrocautery|diatermi|monopolar|bipolar|stapler(?:\s+bedah)?|retraktor|dilator|spekulum|duk\s+steril|gaun\s+(?:bedah\s+)?steril|sarung\s+tangan(?:\s+steril)?|APD|pelindung\s+(?:wajah|mata)|sabun\s+antiseptik|hand\s*rub|cairan\s+antiseptik|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl|prolene|kromik|PDS)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+(?:operasi|pre[- ]?operatif)|lembar\s+(?:checklist|hitung)|formulir\s+(?:identitas|operasi|consent|pre[- ]?operatif)|informed\s+consent\s+form|papan\s+operasi|clipboard|spidol\s+steril|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril|laparotomy\s+pad|tampon\s+abdomen|surgical\s+tray|suction\s+tubing|arterial\s+line|infusion\s+pump|pompa\s+infus|line\s+arteri|drain(?:\s+[a-z][a-z0-9-]*){0,4}|Jackson[- ]?Pratt|trocar|blood\s+warmer|penghangat\s+darah|bor\s+kranial|perforator|burr\s+hole|gigli\s+saw|elevator\s+periosteum|pin\s+Mayfield|Surgicel|bone\s+wax|kawat\s+sternum|staples?\s+(?:kulit|bedah)|clip\s+aplikator|klip\s+vaskuler|C-arm|fluoroskopi|kateter\s+Foley|kateter\s+urin|tube\s+thoracostomy|chest\s+tube|water\s+seal\s+drainage|WSD|mesin\s+anestesi|ventilator|sirkuit\s+anestesi|laring\s+mask|LMA|probe\s+USG|transduser\s+USG|selimut\s+penghangat|klem\s+kocher|klem\s+Kelly|klem\s+mosquito|pinset\s+DeBakey|pinset\s+Adson|retraktor\s+Balfour|retraktor\s+Weitlaner|retraktor\s+Hohmann|suction\s+Yankauer|kateter\s+Yankauer|kateter\s+Nelaton|klem\s+umbilikal|kateter\s+umbilikal|spuit\s+insulin|spuit\s+10\s*mL|spuit\s+20\s*mL|spuit\s+50\s*mL|kasa\s+lapar[ao]tomi|kasa\s+radiopak)\b/iu';
+    $specialtyToolPattern = '/\b(?:klem\s+(?:atraumatik\s+)?DeBakey|jarum\s+(?:besar|bedah|melengkung|atraumatik)|benang\s+chromic|lembar\s+hitung|kasa\s+laparatomi)\b/iu';
     foreach ($items as $index => $item) {
         if (!is_array($item)) continue;
         $action = trim((string) ($item['aksi'] ?? ''));
-        if ($action !== '' && preg_match($toolPattern, $action) !== 1) {
+        if ($action !== '' && preg_match($toolPattern, $action) !== 1 && preg_match($specialtyToolPattern, $action) !== 1) {
             $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' belum menyebut nama alat/instrumen/bahan di dalam aksi /me';
         }
         if ($action !== '' && preg_match('/\b(?:perfusi|pengisian\s+kapiler|capillary\s+refill|nadi\s+perifer)\b/iu', $action) === 1
@@ -434,7 +438,7 @@ function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, str
         $actor = mb_strtolower(trim((string) ($item['pelaku'] ?? '')), 'UTF-8');
         if (str_contains($actor, 'asisten')) {
             $instruction = trim((string) ($item['instruksi'] ?? ''));
-            if (preg_match('/\bDPJP\s*:/iu', $instruction) !== 1 || preg_match($toolPattern, $instruction) !== 1) {
+            if (preg_match('/\bDPJP\s*:/iu', $instruction) !== 1 || (preg_match($toolPattern, $instruction) !== 1 && preg_match($specialtyToolPattern, $instruction) !== 1)) {
                 $issues[] = $fieldName . ' tahap ' . ($index + 1) . ' menugaskan asisten tanpa instruksi DPJP yang menyebut alat spesifik';
             }
         }
@@ -2672,7 +2676,11 @@ function ems_ai_ds_surgery_quality_errors(array $data, int $expectedSteps): arra
         $roles = array_map('trim', explode('+', $role));
         if ($role === '' || count(array_filter($roles, static fn ($r) => in_array($r, ['DPJP', 'Asisten 1', 'Asisten 2'], true))) !== count($roles)) $errors[] = 'pelaku tahap ' . ($index + 1) . ' kosong atau tidak dikenali';
         foreach (['aksi', 'hasil'] as $field) if (trim((string) ($step[$field] ?? '')) === '') $errors[] = $field . ' tahap ' . ($index + 1) . ' kosong';
-        if (preg_match('/\\b(?:atau|or)\\b/iu', (string) ($step['aksi'] ?? ''))) $errors[] = 'aksi tahap ' . ($index + 1) . ' masih memberi pilihan bercabang';
+        $branchChoiceText = (string) ($step['aksi'] ?? '');
+        // A negative safety clause such as "tanpa menekan atau menarik" is
+        // one instruction, not two alternatives for the player to choose.
+        $branchChoiceText = (string) preg_replace('/\\b(?:tanpa|tidak|bukan|hindari|mencegah)\\b[^,;.!?]{0,120}\\b(?:atau|or)\\b/iu', '', $branchChoiceText);
+        if (preg_match('/\\b(?:atau|or)\\b/iu', $branchChoiceText)) $errors[] = 'aksi tahap ' . ($index + 1) . ' masih memberi pilihan bercabang';
     }
     $errors = array_merge($errors, ems_ai_ds_instrument_action_issues($steps, 'Tahapan operasi'));
     foreach (['durasi', 'laporan_pasca_operasi'] as $field) if (trim((string) ($data[$field] ?? '')) === '') $errors[] = 'field ' . $field . ' kosong';
@@ -2959,7 +2967,55 @@ function ems_ai_ds_diagnosis_response_schema(string $featureKey): array
     return ['type' => 'OBJECT', 'properties' => $properties, 'required' => array_keys($properties)];
 }
 
-function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy): array
+/** Gemini schema for chunked surgery plans; each request generates at most ten steps. */
+function ems_ai_ds_surgery_response_schema(bool $stepsOnly = false, bool $headerOnly = false): array
+{
+    $string = ['type' => 'STRING'];
+    $stringList = ['type' => 'ARRAY', 'items' => $string];
+    $step = ['type' => 'OBJECT', 'properties' => [
+        'pelaku' => $string,
+        'instruksi' => $string,
+        'aksi' => $string,
+        'hasil' => $string,
+        'animasi' => $string,
+    ], 'required' => ['pelaku', 'instruksi', 'aksi', 'hasil', 'animasi']];
+    $steps = ['type' => 'ARRAY', 'items' => $step];
+    if ($stepsOnly) {
+        return ['type' => 'OBJECT', 'properties' => ['tahapan_prosedur' => $steps], 'required' => ['tahapan_prosedur']];
+    }
+    $drugList = ['type' => 'ARRAY', 'items' => ['type' => 'OBJECT', 'properties' => [
+        'nama' => $string, 'dosis' => $string, 'catatan' => $string,
+    ], 'required' => ['nama', 'dosis', 'catatan']]];
+    $risks = ['type' => 'ARRAY', 'items' => ['type' => 'OBJECT', 'properties' => [
+        'judul' => $string, 'deskripsi' => $string,
+    ], 'required' => ['judul', 'deskripsi']]];
+    $properties = [
+        'durasi' => $string,
+        'farmakologi' => ['type' => 'OBJECT', 'properties' => [
+            'pra_operatif' => $drugList, 'intra_operatif' => $drugList,
+            'post_operatif' => $drugList, 'pemulangan' => $drugList,
+        ], 'required' => ['pra_operatif', 'intra_operatif', 'post_operatif', 'pemulangan']],
+        'tahapan_prosedur' => $steps,
+        'risiko_komplikasi' => $risks,
+        'laporan_pasca_operasi' => $string,
+        'sop_references' => $stringList,
+    ];
+    if ($headerOnly) {
+        unset($properties['tahapan_prosedur']);
+    }
+    return ['type' => 'OBJECT', 'properties' => $properties, 'required' => array_keys($properties)];
+}
+
+/** Custom OpenAI-compatible models sometimes return a bare step array instead of the requested wrapper object. */
+function ems_ai_ds_extract_surgery_steps(array $payload): array
+{
+    $steps = is_array($payload['tahapan_prosedur'] ?? null)
+        ? $payload['tahapan_prosedur']
+        : (array_is_list($payload) ? $payload : []);
+    return ems_ai_ds_sanitize_step_items($steps);
+}
+
+function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy, ?array $responseSchemaOverride = null): array
 {
     $isDiagnosisAssistant = $featureKey === 'ai_diagnosis_assistant'
         || str_starts_with($featureKey, 'ai_diagnosis_assistant_');
@@ -3069,7 +3125,8 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
                 ['text' => $finalValidation],
             ],
         ]];
-        $responseSchema = $isDiagnosisAssistant ? ems_ai_ds_diagnosis_response_schema($featureKey) : null;
+        $responseSchema = $responseSchemaOverride
+            ?? ($isDiagnosisAssistant ? ems_ai_ds_diagnosis_response_schema($featureKey) : null);
         try {
             $response = ems_gemini_generate_content(
                 $pdo, $settings, $contents,
