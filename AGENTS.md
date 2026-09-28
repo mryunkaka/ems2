@@ -543,7 +543,14 @@ always take the user ID from the authenticated session. Since custom endpoints
 are called server-side, require public HTTPS destinations, reject internal or
 reserved DNS addresses, and pin the validated address for the request to
 prevent SSRF and DNS-rebinding access to private services. Global Gemini
-configuration remains Programmer Roxwood-only.
+configuration remains Programmer Roxwood-only. For text features that call
+`ems_ai_ds_call_gemini()`, try the user's Gemini first, then the configured
+custom OpenAI-compatible provider if Gemini throws or returns empty/invalid
+JSON. If Gemini is not configured, use the custom provider directly. Both
+providers use the same prompt and JSON contract; never save an invalid
+fallback response as a completed report. AI Surgery Planner also retries the
+complete plan once on the custom provider if a Gemini plan remains invalid
+after targeted quality repair. Image generation remains Gemini-only.
 
 ## 6. `actions/` + `ajax/` + `public/` — endpoint layer
 

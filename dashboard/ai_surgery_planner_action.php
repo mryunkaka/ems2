@@ -159,6 +159,7 @@ $userPrompt .= "\n\nKONTRAK JUMLAH TAHAP: Tentukan sendiri jumlah tahap yang waj
 );
 $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
+$initialProvider = (string) ($result['provider'] ?? 'Gemini');
 $checkPlanQuality = static function (array $candidate): array {
     $errors = ems_ai_ds_surgery_quality_errors($candidate);
     $serialized = json_encode($candidate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -231,6 +232,42 @@ if ($result['ok'] && $qualityErrors !== []) {
             $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
             $qualityErrors = $checkPlanQuality($data);
         }
+    }
+}
+
+// A Gemini answer can be valid JSON and still miss the surgery quality gate.
+// After its targeted repair fails validation, allow one complete custom-provider
+// failover, then run the exact same local gate before saving anything as done.
+$userAiSettings = ems_ai_ds_get_user_settings($pdo, isset($user['id']) ? (int) $user['id'] : 0);
+$customProviderName = trim((string) ($userAiSettings['custom_provider'] ?? ''));
+$hasCustomFallback = ems_ai_ds_has_custom_provider($userAiSettings);
+if ($result['ok'] && $qualityErrors !== [] && strcasecmp($initialProvider, $customProviderName) !== 0 && $hasCustomFallback) {
+    $qualityFallbackPrompt = "Gemini menghasilkan rencana yang belum lolos quality gate setelah perbaikan terarah. Buat ulang satu JSON rencana operasi lengkap sesuai schema, perbaiki SEMUA masalah validasi berikut, dan pertahankan fakta kasus, sisi/anatomi, hasil pemeriksaan, serta urutan kronologis. Setiap aksi /me menyebut instrumen atau bahan yang digunakan; setiap /do berisi hasil langsung; instruksi asisten harus menyebut alat spesifik. Jangan mengarang data klinis atau menambah tindakan yang tidak didukung konteks.\nMASALAH VALIDASI:\n"
+        . implode("\n", $qualityErrors)
+        . "\nKASUS DAN KONTEKS KANONIK:\n" . $userPrompt
+        . "\nJSON GEMINI YANG GAGAL VALIDASI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $qualityFallback = ems_ai_ds_call_gemini(
+        $pdo,
+        $systemPrompt,
+        $qualityFallbackPrompt,
+        'ai_surgery_planner',
+        isset($user['id']) ? (int) $user['id'] : null,
+        ems_ai_ds_surgery_response_schema(),
+        'custom'
+    );
+    if (!empty($qualityFallback['ok']) && is_array($qualityFallback['data'] ?? null)) {
+        $fallbackData = $qualityFallback['data'];
+        $fallbackData['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($fallbackData);
+        $fallbackQualityErrors = $checkPlanQuality($fallbackData);
+        if ($fallbackQualityErrors === []) {
+            $data = $fallbackData;
+            $qualityErrors = [];
+            $result = $qualityFallback;
+        } else {
+            $qualityErrors[] = 'custom provider cadangan juga belum lolos validasi: ' . implode('; ', $fallbackQualityErrors);
+        }
+    } else {
+        $qualityErrors[] = 'custom provider cadangan gagal: ' . (string) ($qualityFallback['error'] ?? 'respons tidak valid');
     }
 }
 

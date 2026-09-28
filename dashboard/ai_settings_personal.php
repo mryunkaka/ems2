@@ -70,8 +70,11 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
             <div class="card-body space-y-3 text-sm text-slate-700">
                 <p>
-                    Gemini bersifat opsional. Fitur teks juga dapat memakai custom provider OpenAI-compatible
-                    seperti 9Router; Radiology Center membutuhkan Gemini khusus untuk generate citra. Jika memilih
+                    Gemini menjadi provider utama jika sudah diatur; custom provider OpenAI-compatible seperti 9Router
+                    otomatis dicoba sebagai cadangan saat Gemini gagal atau mengembalikan JSON yang tidak valid.
+                    AI Surgery Planner juga memakai cadangan jika rencana Gemini tetap gagal validasi kualitas setelah perbaikan.
+                    Jika Gemini belum diatur, custom provider digunakan langsung. Radiology Center membutuhkan Gemini
+                    khusus untuk generate citra. Jika memilih
                     Gemini, gunakan API key <strong>milik sendiri</strong> dan jangan dibagikan. Cara membuatnya
                     <strong>gratis</strong> dan cukup pakai akun Google (Gmail) pribadi — tidak perlu kartu kredit.
                 </p>
@@ -298,7 +301,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <input id="custom_api_key" name="custom_api_key" type="password" placeholder="<?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan API key custom' ?>" autocomplete="new-password">
                     <div class="helper-note mt-1">Provider custom memakai format request OpenAI Chat Completions. Key aktif: <strong><?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong>. Kosongkan key jika endpoint tidak memerlukan autentikasi.</div>
                 </div>
-                <div class="helper-note">Pengaturan ini hanya berlaku untuk akun Anda. Jika Nama Provider, Endpoint, dan Model terisi, custom provider menjadi provider utama fitur teks Anda. Gunakan endpoint HTTPS publik; alamat jaringan internal tidak diizinkan. Kosongkan konfigurasi custom untuk menonaktifkannya dan kembali ke provider lain.</div>
+                <div class="helper-note">Pengaturan ini hanya berlaku untuk akun Anda. Jika Gemini tersedia, sistem mencobanya dahulu lalu memakai custom provider sebagai cadangan bila request gagal atau responsnya bukan JSON valid. Jika Gemini belum diatur, custom provider dipakai langsung. Gunakan endpoint HTTPS publik; alamat jaringan internal tidak diizinkan. Kosongkan konfigurasi custom untuk menonaktifkan cadangan.</div>
                 <div class="flex flex-wrap gap-3 pt-2">
                     <button type="submit" class="btn-primary"><?= ems_icon('check', 'h-4 w-4') ?><span>Simpan Custom Provider</span></button>
                     <button type="submit" formaction="ai_settings_personal_action.php?action=test_connection_custom" class="btn-success"><?= ems_icon('arrow-path', 'h-4 w-4') ?><span>Test Custom Provider</span></button>

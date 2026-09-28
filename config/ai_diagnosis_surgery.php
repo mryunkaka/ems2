@@ -3016,7 +3016,7 @@ function ems_ai_ds_extract_surgery_steps(array $payload): array
     return ems_ai_ds_sanitize_step_items($steps);
 }
 
-function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy, ?array $responseSchemaOverride = null): array
+function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $createdBy, ?array $responseSchemaOverride = null, ?string $preferredProvider = null): array
 {
     $isDiagnosisAssistant = $featureKey === 'ai_diagnosis_assistant'
         || str_starts_with($featureKey, 'ai_diagnosis_assistant_');
@@ -3034,16 +3034,22 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
     $customApiKey = trim((string) ($userSettings['custom_api_key'] ?? ''));
     $customBaseUrl = trim((string) ($userSettings['custom_base_url'] ?? ''));
     $customModel = trim((string) ($userSettings['custom_default_model'] ?? ''));
-    // Diagnosis Assistant membutuhkan structured JSON dan prompt SOP IGD
-    // canonical. Custom provider tetap tersedia untuk fitur lain, tetapi
-    // tidak boleh mengambil alih dua tahap Diagnosis Assistant.
-    $useCustomProvider = !$isDiagnosisAssistant
-        && $customProvider !== '' && $customBaseUrl !== '' && $customModel !== '';
+    $hasGeminiProvider = ems_ai_ds_has_gemini_provider($userSettings);
+    $hasCustomProvider = ems_ai_ds_has_custom_provider($userSettings);
+    $forceCustomProvider = strtolower(trim((string) $preferredProvider)) === 'custom';
+    // Gemini menjadi provider utama saat tersedia. Custom provider dipakai
+    // sebagai failover setelah error/JSON invalid, dengan prompt dan schema
+    // validasi fitur yang sama; bila Gemini belum disetel, custom jadi utama.
+    if ($forceCustomProvider && !$hasCustomProvider) {
+        return ['ok' => false, 'error' => 'Custom provider cadangan belum dikonfigurasi lengkap.'];
+    }
+    $useCustomProvider = $forceCustomProvider || (!$hasGeminiProvider && $hasCustomProvider);
+    $canFallbackToCustom = $hasCustomProvider;
     $customFieldsPresent = $customProvider !== '' || $customBaseUrl !== '' || $customModel !== '';
-    if ($customFieldsPresent && !$useCustomProvider && !$isDiagnosisAssistant) {
+    if ($customFieldsPresent && !$hasCustomProvider && !$hasGeminiProvider) {
         return ['ok' => false, 'error' => 'Konfigurasi custom provider belum lengkap. Isi provider, endpoint, dan model.'];
     }
-    if (!$useCustomProvider && !ems_ai_ds_has_gemini_provider($userSettings)) {
+    if (!$hasGeminiProvider && !$hasCustomProvider) {
         return ['ok' => false, 'error' => 'Belum ada provider AI aktif untuk fitur ini. Isi Gemini atau custom provider di Setting AI Saya.'];
     }
 
@@ -3073,7 +3079,10 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         . ($isRoleplayFinalFeature ? $completionContract : ems_ai_official_consistency_guardrail() . "\n" . $completionContract)
         . "\n" . $crossFeatureActionContract;
 
-    if ($useCustomProvider) {
+    $callCustomProvider = static function () use (
+        $pdo, $userPrompt, $systemPrompt, $finalValidation, $responseSchemaOverride,
+        $customProvider, $customApiKey, $customBaseUrl, $customModel, $featureKey, $createdBy
+    ): array {
         try {
             $customMaxOutputTokens = null;
             if ($featureKey === 'ai_surgery_planner') {
@@ -3112,8 +3121,34 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
             return ['ok' => false, 'error' => 'Respons custom provider bukan format JSON yang valid.'];
         }
 
-        return ['ok' => true, 'data' => $parsed, 'usage' => $response['usage'] ?? []];
+        return [
+            'ok' => true,
+            'data' => $parsed,
+            'usage' => $response['usage'] ?? [],
+            'provider' => $customProvider,
+            'model' => $customModel,
+        ];
+    };
+
+    if ($useCustomProvider) {
+        return $callCustomProvider();
     }
+
+    $fallbackAfterGeminiFailure = static function (string $geminiError) use ($canFallbackToCustom, $callCustomProvider): array {
+        if (!$canFallbackToCustom) {
+            return ['ok' => false, 'error' => $geminiError];
+        }
+        $fallback = $callCustomProvider();
+        if (!empty($fallback['ok'])) {
+            $fallback['fallback_from'] = 'Gemini';
+            $fallback['fallback_reason'] = $geminiError;
+            return $fallback;
+        }
+        return [
+            'ok' => false,
+            'error' => 'Gemini gagal (' . $geminiError . '); custom provider sebagai cadangan juga gagal (' . (string) ($fallback['error'] ?? 'error tidak diketahui') . ').',
+        ];
+    };
 
     $settings = array_merge(ems_ai_settings_defaults(), [
         'provider' => 'gemini',
@@ -3156,17 +3191,17 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
             );
         }
     } catch (Throwable $e) {
-        return ['ok' => false, 'error' => $e->getMessage()];
+        return $fallbackAfterGeminiFailure($e->getMessage());
     }
 
     $text = trim((string) ($response['text'] ?? ''));
     if ($text === '') {
-        return ['ok' => false, 'error' => 'Respons kosong dari model AI.'];
+        return $fallbackAfterGeminiFailure('Respons kosong dari model AI.');
     }
 
     $parsed = ems_ai_decode_json_text($text);
     if (!is_array($parsed)) {
-        return ['ok' => false, 'error' => 'Respons AI bukan format JSON yang valid.'];
+        return $fallbackAfterGeminiFailure('Respons AI bukan format JSON yang valid.');
     }
 
     return [
@@ -3174,6 +3209,8 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'data' => $parsed,
         'usage' => $response['usage'] ?? [],
         'system_prompt' => $systemPrompt,
+        'provider' => 'Gemini',
+        'model' => (string) ($settings['default_model'] ?? ''),
     ];
 }
 
