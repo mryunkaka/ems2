@@ -220,7 +220,7 @@ ems_ai_radiology_apply_overlay($imagePath, [
     'patient_name' => $patientName,
     'age_label' => ems_ai_radiology_age_label($patientDob),
     'patient_citizen_id' => $patientCitizenId,
-    'doctor_name' => $doctorName,
+    'doctor_name' => ems_medical_doctor_display_name_for_user($pdo, $doctorName) ?: $doctorName,
     'modality' => $modality,
     'body_region' => $bodyRegion,
     'projection' => $projection,

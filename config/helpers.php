@@ -661,6 +661,44 @@ function ems_medical_display_name_for_user(PDO $pdo, ?string $name): string
     return $name;
 }
 
+/** Format a clinician's role and credential for report headers/signatures. */
+function ems_medical_doctor_display_name_for_user(PDO $pdo, ?string $name): string
+{
+    $name = trim((string) $name);
+    if ($name === '') {
+        return '';
+    }
+
+    try {
+        $hasDegrees = ems_column_exists($pdo, 'user_rh', 'specialist_degrees');
+        $degreeSelect = $hasDegrees ? ', specialist_degrees' : '';
+        $stmt = $pdo->prepare("SELECT full_name, position{$degreeSelect} FROM user_rh WHERE full_name = ? LIMIT 1");
+        $stmt->execute([$name]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($user)) {
+            $position = ems_normalize_position((string) ($user['position'] ?? ''));
+            $displayName = ems_format_medical_display_name(
+                (string) ($user['full_name'] ?? $name),
+                $position,
+                (string) ($user['specialist_degrees'] ?? '')
+            );
+            $roleLabel = match ($position) {
+                'trainee' => 'Trainee',
+                'paramedic' => 'Paramedis',
+                'co_asst' => 'Co-ass',
+                'general_practitioner' => 'Dokter Umum',
+                'specialist' => 'Dokter Spesialis',
+                default => '',
+            };
+            return $roleLabel !== '' ? $roleLabel . ' ' . $displayName : $displayName;
+        }
+    } catch (Throwable $e) {
+        // Reports can still render the saved name if a title lookup fails.
+    }
+
+    return $name;
+}
+
 function ems_medical_display_names_for_users(PDO $pdo, array $names): array
 {
     $names = array_values(array_unique(array_filter(array_map(static fn ($name): string => trim((string) $name), $names), static fn (string $name): bool => $name !== '')));

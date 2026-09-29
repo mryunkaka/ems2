@@ -52,7 +52,7 @@ if (!$report) {
     exit;
 }
 $report['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['created_by_name'] ?? '')) ?: '-';
-$report['doctor_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
+$report['doctor_name'] = ems_medical_doctor_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
 
 $result = [];
 if ($report['status'] === 'done' && $report['result_json']) {

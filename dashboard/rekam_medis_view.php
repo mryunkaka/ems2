@@ -60,7 +60,7 @@ if (!$record) {
     header('Location: ' . ($isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php'));
     exit;
 }
-$record['doctor_name'] = ems_medical_display_name_for_user($pdo, (string) ($record['doctor_name'] ?? '')) ?: (string) ($record['doctor_name'] ?? '');
+$record['doctor_name'] = ems_medical_doctor_display_name_for_user($pdo, (string) ($record['doctor_name'] ?? '')) ?: (string) ($record['doctor_name'] ?? '');
 $record['assistant_name'] = ems_medical_display_name_for_user($pdo, (string) ($record['assistant_name'] ?? '')) ?: (string) ($record['assistant_name'] ?? '');
 $record['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($record['created_by_name'] ?? '')) ?: (string) ($record['created_by_name'] ?? '');
 

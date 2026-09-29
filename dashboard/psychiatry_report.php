@@ -51,6 +51,7 @@ if (!$report) {
     header('Location: psychiatry_center.php');
     exit;
 }
+$report['doctor_name'] = ems_medical_doctor_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
 
 $result = [];
 if ($report['status'] === 'done' && $report['result_json']) {

@@ -66,7 +66,7 @@ if (!$report) {
     exit;
 }
 $report['created_by_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['created_by_name'] ?? '')) ?: '-';
-$report['doctor_name'] = ems_medical_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
+$report['doctor_name'] = ems_medical_doctor_display_name_for_user($pdo, (string) ($report['doctor_name'] ?? '')) ?: (string) ($report['doctor_name'] ?? '');
 
 $imageUrl = $report['status'] === 'done' && !empty($report['image_path']) ? ems_secure_file_url((string) $report['image_path']) : '';
 $referenceImage = ems_ai_radiology_reference_match($report);
@@ -132,6 +132,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div style="background:#000;border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:420px;">
                             <img id="radImage" src="<?= htmlspecialchars($imageUrl, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars((string) ($report['image_source_label'] ?: 'Ilustrasi radiologi simulasi'), ENT_QUOTES, 'UTF-8') ?>" style="max-width:100%;max-height:70vh;object-fit:contain;cursor:zoom-in;">
                         </div>
+                        <div class="meta-text-xs mt-2"><strong>Dokter pemeriksa:</strong> <?= htmlspecialchars((string) ($report['doctor_name'] ?: '-'), ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="alert alert-info mt-3 mb-0">
                             <strong>Sumber/jenis gambar:</strong> <?= htmlspecialchars((string) ($report['image_source_label'] ?: 'Ilustrasi simulasi'), ENT_QUOTES, 'UTF-8') ?>.
                             <?php if (str_starts_with((string) ($report['image_source_label'] ?? ''), 'Skema anatomi terarah')): ?>
