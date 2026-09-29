@@ -59,7 +59,7 @@ function ems_ai_ds_surgery_job_validate_header(array $header): array
         }
     }
     $outline = $header['outline_tahapan'] ?? null;
-    if (!is_array($outline) || count($outline) < 2 || count($outline) > 24) $errors[] = 'model harus menentukan 2 sampai 24 tahap inti yang diperlukan';
+    if (!is_array($outline) || count($outline) < 20 || count($outline) > 24) $errors[] = 'model harus menentukan minimal 20 dan maksimal 24 tahap berurutan';
     else foreach ($outline as $index => $item) {
         if (!is_array($item) || trim((string) ($item['judul'] ?? '')) === '' || trim((string) ($item['tujuan'] ?? '')) === '') {
             $errors[] = 'judul/tujuan tahap ' . ($index + 1) . ' pada kerangka belum lengkap';
@@ -161,7 +161,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
         if ($stageNo === 1) {
             $stageType = 'outline';
             $schema = ems_ai_ds_surgery_response_schema(false, true, true);
-            $prompt = $basePrompt . "\n\nTAHAP 1 DARI GENERASI BERTAHAP — KERANGKA DAN RINGKASAN. Keluarkan semua field ringkasan selain tahapan_prosedur, lalu tentukan sendiri outline_tahapan berupa 2 sampai 24 item berurutan. Setiap item hanya berisi judul dan tujuan yang spesifik pada kasus. Jangan menulis detail aksi tahap dahulu. Semua nilai harus final sebagai skenario roleplay dan sesuai schema."
+            $prompt = $basePrompt . "\n\nTAHAP 1 DARI GENERASI BERTAHAP — KERANGKA DAN RINGKASAN. Keluarkan semua field ringkasan selain tahapan_prosedur, lalu buat outline_tahapan berisi MINIMAL 20 dan maksimal 24 item berurutan. Buka dengan cuci tangan bedah, persiapan gaun/sarung tangan, briefing tim dan doa singkat; lanjutkan verifikasi pasien/prosedur/lokasi, persiapan anestesi dan alat, time-out, tindakan spesifik kasus, pemeriksaan akhir, penutupan, balutan, pemindahan, dan serah-terima pascaoperasi. Setiap item harus berbeda, benar-benar diperlukan dan spesifik pada kasus; jangan memecah satu tindakan menjadi langkah artifisial atau mengulang. Jangan menulis detail aksi tahap dahulu. Semua nilai harus final sebagai skenario roleplay dan sesuai schema."
                 . ((string) ($job['last_error'] ?? '') !== '' ? "\nPerbaiki kekurangan validasi sebelumnya: " . implode('; ', json_decode((string) $job['last_error'], true) ?: []) : '');
         } elseif ($job['status'] === 'repairing') {
             $repairPosition = $stageNo - $repairStart;
@@ -186,7 +186,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
                 . json_encode($outlineChunk, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . "\nTAHAP SEBELUMNYA YANG SUDAH TERSIMPAN (untuk kesinambungan; jangan salin atau ulangi):\n"
                 . json_encode(array_slice(array_values($steps), max(0, count($steps) - 3)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-                . "\nKembalikan tepat " . count($outlineChunk) . " item tahapan_prosedur sesuai urutan kerangka. Setiap item menjabarkan aksi /me dan hasil langsung /do. Alat dan bahan harus disebut di dalam aksi, instruksi kepada asisten menyebut alat spesifik. Jangan membuat tindakan/hasil yang bertentangan dengan kasus atau langkah sebelumnya."
+                . "\nKembalikan tepat " . count($outlineChunk) . " item tahapan_prosedur sesuai urutan kerangka. Pertahankan seluruh urutan outline minimal 20 tahap dari persiapan cuci tangan/briefing/doa sampai serah-terima akhir. Setiap item menjabarkan satu aksi /me dan hasil langsung /do yang konkret; setiap aksi menyebut dan menggunakan alat/bahan yang relevan, instruksi kepada asisten menyebut nama alat spesifik. Jangan membuat tindakan/hasil yang bertentangan dengan kasus atau langkah sebelumnya, dan jangan menggabungkan atau menghilangkan item outline."
                 . ((string) ($job['last_error'] ?? '') !== '' ? "\nPerbaiki juga masalah validasi percobaan sebelumnya: " . implode('; ', json_decode((string) $job['last_error'], true) ?: []) : '');
         }
 
@@ -502,7 +502,7 @@ if ($diagnosisContext !== '') {
         . "\n\nKESINAMBUNGAN TINDAKAN WAJIB: bagian tindakan_igd_selesai di atas adalah tindakan yang telah dilakukan sebelum transfer. Mulai skenario operasi dari keadaan pasien saat tiba di OK dan lanjutkan secara kronologis. Jika IGD menekan/membalut luka, pada awal tindakan OK DPJP membuka balutan spesifik itu dengan gunting perban sambil Asisten 1 menyiapkan kasa steril baru untuk mempertahankan tekanan. Jika laporan IGD menyebut darah menggenang/aktif, Asisten 2 menyerahkan kateter suction steril yang tersambung ke mesin suction bedah kepada DPJP untuk mengangkat darah; jangan menulis 'menghisap darah' tanpa mesin dan kateter suction, jangan menggunakan mulut. Jangan melakukan ulang penanganan IGD tanpa alasan klinis dalam skenario. Setiap tahap wajib menyebut instrumen/bahan yang dipakai di aksi /me. Jika Asisten mengambil alat, tulis perintah DPJP dengan nama alat, jawaban singkat Asisten, lalu aksi pengambilan/penyerahan alat.";
 }
 
-$userPrompt .= "\n\nKONTRAK JUMLAH TAHAP: Tentukan sendiri jumlah tahap yang wajar untuk menyelesaikan kasus ini secara runtut dan cukup detail. Tidak ada target cepat/sedang/lama maupun angka tahap yang harus dipenuhi. Jangan menambah tahap pengisi, mengulang tindakan, atau memecah satu tindakan hanya untuk memperbanyak jumlah. Kembalikan satu JSON lengkap sesuai schema, termasuk seluruh tahapan_prosedur dalam satu respons.";
+$userPrompt .= "\n\nKONTRAK JUMLAH TAHAP: Susun minimal 20 tahap berurutan (ideal 20-22, batas 24) agar roleplay lengkap dari cuci tangan bedah, persiapan gaun dan sarung tangan, briefing tim serta doa singkat, verifikasi dan persiapan, time-out, tindakan spesifik kasus, pemeriksaan akhir, penutupan, balutan hingga serah-terima. Tiap tahap harus punya aksi berbeda dan tujuan jelas; jangan mengulang atau memecah satu tindakan secara artifisial. Jumlah di bawah 20 tidak valid. Kembalikan satu JSON sesuai schema respons tahap saat ini.";
 
 $result = null;
 if ($stageAction === 'start') {

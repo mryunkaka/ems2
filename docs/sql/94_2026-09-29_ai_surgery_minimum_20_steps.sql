@@ -1,0 +1,5 @@
+-- Require a sufficiently detailed, playable procedure from preparation
+-- (handwashing and team briefing) through transfer and handoff.
+UPDATE `system_ai_prompt_templates`
+SET `user_prompt_template` = 'JENIS OPERASI: {{jenis_operasi}}\nJENIS ANESTESI: {{jenis_anestesi}}\nJUMLAH TAHAP: minimal 20; model menentukan 20-24 tahap sesuai kebutuhan kasus\nKASUS MEDIS / TINDAKAN DARI USER:\n{{kasus_tindakan}}\n\nTUGAS MODEL AI: Susun satu rencana operasi roleplay lengkap dan spesifik terhadap kasus, termasuk persiapan, tahapan, peran, alat, risiko relevan, monitoring, dan rujukan SOP. Susun minimal 20 tahap berbeda dan berurutan (ideal 20-22, maksimal 24), dimulai dari cuci tangan bedah, persiapan gaun dan sarung tangan, briefing tim dan doa singkat, verifikasi serta persiapan, time-out, tindakan sesuai kasus, pemeriksaan akhir, penutupan, balutan, pemindahan, dan serah-terima. Jangan mengulang atau memecah tindakan secara artifisial. Kembalikan bagian yang diminta pada tahap generasi saat ini sesuai schema respons.'
+WHERE `feature_key` = 'ai_surgery_planner';
