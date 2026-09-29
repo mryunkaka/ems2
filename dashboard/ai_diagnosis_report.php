@@ -96,6 +96,11 @@ if ($report['status'] === 'done' && $report['result_json']) {
 // anamnesis sumber. Ini menjaga laporan lama yang metadata radiologinya kosong
 // atau salah anatomi tanpa mengubah narasi/diagnosis model yang tersimpan.
 if ($report['status'] === 'done' && $result !== []) {
+    if (is_array($result['emergency'] ?? null)) {
+        // Render legacy rows using the same actor/action/emote rules as new
+        // reports; keep the stored clinical results and ordering unchanged.
+        $result['emergency'] = ems_ai_ds_normalize_roleplay_cards($result['emergency']);
+    }
     ems_ai_ds_ensure_igd_radiology($result, (string) ($report['anamnesis'] ?? ''));
     ems_ai_ds_reconcile_radiology_projection_views($result);
     if (is_array($result['laboratorium_terstruktur'] ?? null)) {

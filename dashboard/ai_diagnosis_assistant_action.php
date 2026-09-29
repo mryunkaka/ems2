@@ -610,7 +610,7 @@ KEY FINAL WAJIB: lab=array hasil laboratorium konkret; radiologi=array hasil rad
     $data = ems_ai_ds_align_model_schema(ems_ai_ds_merge_stage_reports($result['data'], $finalResult['data']));
     ems_ai_ds_ensure_igd_radiology($data, $anamnesis);
     $data = ems_ai_ds_reconcile_transfer_status($data);
-    $data['emergency'] = ems_ai_ds_complete_emergency_tool_wording(
+    $data['emergency'] = ems_ai_ds_normalize_roleplay_cards(
         is_array($data['emergency'] ?? null) ? $data['emergency'] : []
     );
     if (ems_ai_ds_instrument_action_issues(
@@ -625,7 +625,7 @@ KEY FINAL WAJIB: lab=array hasil laboratorium konkret; radiologi=array hasil rad
     }
     // Run the deterministic normalization after model repair as well as before
     // it; the model may still omit tool wording in its second response.
-    $data['emergency'] = ems_ai_ds_complete_emergency_tool_wording(
+    $data['emergency'] = ems_ai_ds_normalize_roleplay_cards(
         is_array($data['emergency'] ?? null) ? $data['emergency'] : []
     );
     try {
@@ -662,7 +662,7 @@ KEY FINAL WAJIB: lab=array hasil laboratorium konkret; radiologi=array hasil rad
             $data = ems_ai_ds_align_model_schema(ems_ai_ds_merge_stage_reports($data, $auditResult['data']));
             ems_ai_ds_ensure_igd_radiology($data, $anamnesis);
             $data = ems_ai_ds_reconcile_transfer_status($data);
-            $data['emergency'] = ems_ai_ds_complete_emergency_tool_wording(
+            $data['emergency'] = ems_ai_ds_normalize_roleplay_cards(
                 is_array($data['emergency'] ?? null) ? $data['emergency'] : []
             );
             try {

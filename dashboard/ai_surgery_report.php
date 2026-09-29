@@ -69,6 +69,9 @@ if ($plan['status'] === 'done' && $plan['result_json']) {
         $result = $decoded;
     }
 }
+if (is_array($result['tahapan_prosedur'] ?? null)) {
+    $result['tahapan_prosedur'] = ems_ai_ds_normalize_roleplay_cards($result['tahapan_prosedur']);
+}
 
 $pharmaSections = [
     'pra_operatif' => 'Pra-Operatif',

@@ -450,7 +450,65 @@ function ems_ai_ds_igd_authority_reference(): string
 /** Shared roleplay contract: every physical action names the actual tool/material used. */
 function ems_ai_ds_instrument_action_contract(): string
 {
-    return "\n\nKONTRAK ALAT DAN KESINAMBUNGAN TINDAKAN ROXWOOD (WAJIB untuk setiap item /me di IGD dan Surgery Planner): setiap aksi harus menyebut nama alat/instrumen/bahan yang benar-benar dipakai secara spesifik; jangan menulis tindakan telanjang seperti 'menghisap darah', 'membalut luka', 'membersihkan luka', 'menjahit', 'memeriksa', atau 'memindahkan' tanpa alat yang digunakan. Contoh: 'menghubungkan mesin suction bedah ke kateter suction steril lalu menyedot genangan darah dari luka lengan bawah kanan' (bukan menghisap dengan mulut); 'menekan luka memakai kasa steril tebal lalu memasang balut tekan dengan perban elastis'; 'mengirigasi luka memakai spuit irigasi 50 mL berisi NaCl 0,9%'; 'menjahit kulit memakai needle holder, pinset jaringan, dan benang nylon 3-0'; 'memindahkan pasien dengan brankar sambil mempertahankan monitor transport'. Setiap instrumen harus relevan dengan langkahnya, bukan daftar alat yang ditempel tanpa dipakai: jangan memakai senter pupil untuk memeriksa pengisian kapiler/perfusi atau memposisikan anggota gerak; gunakan pemeriksaan palpasi, stopwatch, atau Doppler vaskular genggam sesuai langkah. Bila Asisten membantu, isi instruksi sebagai perintah DPJP yang menyebut alat spesifik ('DPJP: Asisten 1, ambilkan kateter suction steril dan sambungkan ke mesin suction'), balasan asisten singkat, lalu aksi menjelaskan penyerahan/penggunaan alat. Untuk tindakan DPJP, asisten boleh menyiapkan alat pada langkah sebelumnya; jangan menggambarkan asisten mengambil keputusan/tindakan definitif mandiri.\nKONTINUITAS IGD → RUANG OPERASI: perlakukan seluruh tindakan emergency sumber sebagai sudah selesai di dalam skenario sebelum pasien tiba di OK. Baca alat/balutan terakhir yang dipakai pada luka dan lanjutkan secara berurutan: di OK, buka balutan IGD yang benar-benar disebut sambil mempertahankan tekanan dengan kasa steril baru; sebut gunting perban bila memotong balutan, pinset bila mengangkat kasa, dan mesin suction + kateter suction steril bila membersihkan genangan darah. Jangan menyebut material generik jika laporan IGD menyebut material spesifik; jangan menyatakan luka baru dibalut di OK sebelum balutan IGD dibuka. Pertahankan sisi, anatomi, status perdarahan, akses IV, transfusi, airway/ETT, dan hasil penunjang dari laporan DGN tanpa mengulang tindakan yang sudah selesai kecuali tindakan itu secara logis perlu diulang.";
+    return "\n\nKONTRAK ROLEPLAY ROXWOOD HOSPITAL (untuk semua fitur yang meminta tindakan /me, /do, atau /e): kolom pelaku/badge menentukan siapa yang sedang bertindak. /me ditulis sebagai aksi fisik karakter itu, diawali kata kerja langsung, tanpa menyebut 'DPJP', 'Asisten 1', 'Asisten 2', atau nama pemain di dalam aksi; contoh: 'mengambil pulse oximeter dari meja alat lalu memasangkannya pada jari pasien'. Instruksi/dialog supervisor ditaruh terpisah sebelum aksi: 'DPJP: Asisten 1, tolong ambil pulse oximeter dari lemari alat dan letakkan di meja tindakan. Asisten 1: Baik, Dok.' Jika instruksi menyebut Asisten 1/2 sebagai penerima tugas, pelaku pada kartu wajib Asisten yang sama. Jangan beri badge DPJP untuk aksi yang dilakukan Asisten. /do menyatakan hasil/keadaan yang tampak setelah aksi, bukan instruksi atau aksi karakter lain; contoh: 'Pulse oximeter terpasang; layar menunjukkan SpO2 96% dan nadi 104 kali/menit.' Nilai hasil harus konsisten dengan field hasil utama. /e hanya memakai kode animasi yang tersedia dalam kamus Roxwood dan harus cocok dengan gerakan; jangan mengarang alias emote seperti 'examine'.\nKONTRAK ALAT (wajib untuk setiap aksi fisik di IGD dan Surgery Planner): /me menyebut dan benar-benar menggunakan alat/instrumen/bahan relevan secara spesifik. Untuk TTV, sebut alat sesuai pengukuran, minimal manset tensimeter, pulse oximeter, dan termometer bila memuat tekanan darah, SpO2/nadi, dan suhu. Contoh: sambungkan mesin suction bedah ke kateter suction steril untuk darah; tekan luka dengan kasa steril dan pasang perban elastis; irigasi dengan spuit berisi NaCl 0,9%; jahit dengan needle holder, pinset jaringan, dan benang spesifik; pindahkan dengan brankar sambil mempertahankan monitor transport. Jangan menempelkan alat yang tidak relevan. Bila Asisten membantu, instruksi DPJP menyebut alat yang sama dan meminta mengambilnya dari lemari/meja alat; jawaban asisten singkat; /me Asisten menyebut mengambil/memasang/menggunakan alat itu. Untuk tindakan DPJP, Asisten boleh menyiapkan alat lebih dahulu; Asisten tidak mengambil keputusan/tindakan definitif mandiri.\nKONTINUITAS IGD → RUANG OPERASI: perlakukan seluruh tindakan emergency sumber sebagai sudah selesai di dalam skenario sebelum pasien tiba di OK. Baca alat/balutan terakhir yang dipakai pada luka dan lanjutkan berurutan: di OK, buka balutan IGD yang benar-benar disebut sambil mempertahankan tekanan dengan kasa steril baru; sebut gunting perban bila memotong balutan, pinset bila mengangkat kasa, dan mesin suction + kateter suction steril bila membersihkan genangan darah. Pertahankan sisi, anatomi, status perdarahan, akses IV, transfusi, airway/ETT, dan hasil penunjang dari laporan DGN tanpa mengulang tindakan yang sudah selesai kecuali logis perlu diulang.";
+}
+
+/** Normalize roleplay grammar shared by generated and legacy report cards. */
+function ems_ai_ds_normalize_roleplay_cards(array $items): array
+{
+    foreach ($items as &$item) {
+        if (!is_array($item)) continue;
+        $instruction = trim((string) ($item['instruksi'] ?? ''));
+        $action = trim((string) ($item['aksi'] ?? ''));
+        if (preg_match('/\bDPJP\s*:\s*(Asisten\s+[12])\b/iu', $instruction, $recipient) === 1) {
+            $item['pelaku'] = preg_replace('/\s+/u', ' ', ucfirst(mb_strtolower($recipient[1], 'UTF-8')));
+        } elseif (preg_match('/^\s*(?:\/me\s*)?(Asisten\s+[12])\s*[:,]?\s+(?=(?:meng|me|me\s|mem|men|ber|pasang|ambil|menjaga|memantau|melakukan|memeriksa|mengukur))/iu', $action, $actorPrefix) === 1) {
+            $item['pelaku'] = preg_replace('/\s+/u', ' ', ucfirst(mb_strtolower($actorPrefix[1], 'UTF-8')));
+        }
+        // /me is auto-attributed by the game/chat command; never repeat the
+        // actor label as third-person text inside the action itself.
+        $action = preg_replace('/^\s*(?:\/me\s*)?(?:(?:DPJP|Asisten\s+[12])\s*[:,]?\s*)+/iu', '', $action) ?? $action;
+        $action = preg_replace('/\bpulse[- ]?oximeter\b/iu', 'pulse oximeter', $action) ?? $action;
+        $action = trim($action);
+        $item['hasil'] = trim((string) (preg_replace('/^\s*\/do\s*/iu', '', (string) ($item['hasil'] ?? '')) ?? ($item['hasil'] ?? '')));
+
+        // TTV cards must name the physical devices that produce the values,
+        // even when the model says only "monitor" or "mengukur tanda vital".
+        $fullTtvTask = preg_match('/\b(?:TTV|tanda\s+vital)\b/iu', $action) === 1;
+        if ($fullTtvTask || preg_match('/\btekanan\s+darah\b/iu', $action) === 1) {
+            if (preg_match('/\b(?:manset\s+tensimeter|tensimeter|manset\s+tekanan\s+darah)\b/iu', $action) !== 1) $action .= ' dengan manset tensimeter';
+        }
+        if ($fullTtvTask || preg_match('/\b(?:saturasi\s*O?2|SpO2)\b/iu', $action) === 1) {
+            if (preg_match('/\b(?:pulse\s*-?\s*oximeter|pulseoximeter|oksimeter)\b/iu', $action) !== 1) $action .= ' dengan pulse oximeter';
+        }
+        if ($fullTtvTask || preg_match('/\b(?:suhu|temperatur)\b/iu', $action) === 1) {
+            if (preg_match('/\btermometer\b/iu', $action) !== 1) $action .= ' dengan termometer';
+        }
+        $item['aksi'] = $action;
+
+        $anim = trim((string) ($item['animasi'] ?? ''));
+        $animAliases = ['examine' => 'mechanic', 'inspect' => 'mechanic', 'inspection' => 'mechanic', 'check' => 'mechanic'];
+        if (isset($animAliases[mb_strtolower($anim, 'UTF-8')])) $anim = $animAliases[mb_strtolower($anim, 'UTF-8')];
+        $semanticAnim = match (true) {
+            preg_match('/\b(?:mengukur\s+(?:TTV|tanda\s+vital|tekanan|nadi|suhu|saturasi)|mencatat\s+(?:TTV|tanda\s+vital)|memantau|monitor(?:\s+pasien|\s+EKG)?)\b/iu', $action) === 1 => 'type',
+            preg_match('/\b(?:GCS|memeriksa|menilai|pemeriksaan|palpasi|menginspeksi)\b/iu', $action) === 1 => 'mechanic',
+            preg_match('/\bmemasang\w*\b/iu', $action) === 1 && preg_match('/\b(?:pulse[- ]?oximeter|pulseoximeter|monitor)\b/iu', $action) === 1 => 'mechanic5',
+            preg_match('/\b(?:mengambil|menyerahkan|menyiapkan)\b/iu', $action) === 1 => 'mechanic4',
+            preg_match('/\b(?:infus|kanula|pulse[- ]?oximeter|pulseoximeter|memasang\s+monitor|menyuntik|injeksi)\b/iu', $action) === 1 => 'mechanic5',
+            preg_match('/\b(?:suction|menyedot|menghisap)\b/iu', $action) === 1 => 'weld',
+            preg_match('/\b(?:irigasi|membilas)\b/iu', $action) === 1 => 'champagnespray',
+            preg_match('/\b(?:menjahit|jahitan)\b/iu', $action) === 1 => 'valet2',
+            preg_match('/\b(?:mendokumentasikan|mencatat|formulir|consent)\b/iu', $action) === 1 => 'clipboard',
+            str_contains(mb_strtolower($action, 'UTF-8'), 'membersihkan') => 'clean',
+            default => null,
+        };
+        if ($semanticAnim !== null) $anim = $semanticAnim;
+        elseif (!in_array($anim, array_keys(ems_ai_ds_anim_mantra_table()), true)) $anim = 'mechanic';
+        $item['animasi'] = $anim;
+    }
+    unset($item);
+
+    return ems_ai_ds_complete_emergency_tool_wording($items);
 }
 
 /** Return a quality issue when a roleplay /me step performs an instrumented task without naming its tool. */
@@ -461,6 +519,7 @@ function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, str
     // lexicon caused valid tools (e.g. Jackson-Pratt drains/trocars) to be
     // rejected and sent through needless repair cycles.
     $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|masker\s+bedah|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%(?:\s*persen)?|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|selang\s+infus|set\s+infus|abocath|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|gunting\s+Metzenbaum|pinset(?:\s+(?:jaringan|anatomi|chirurgis|atraumatik))?|forsep|forceps|skalpel|bisturi|pisau\s+bedah|elektrokauter|electrocautery|diatermi|monopolar|bipolar|stapler(?:\s+bedah)?|retraktor|dilator|spekulum|duk\s+steril|gaun\s+(?:bedah\s+)?steril|sarung\s+tangan(?:\s+steril)?|APD|pelindung\s+(?:wajah|mata)|sabun\s+antiseptik|hand\s*rub|cairan\s+antiseptik|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl|prolene|kromik|PDS)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+(?:operasi|pre[- ]?operatif)|lembar\s+(?:checklist|hitung)|formulir\s+(?:identitas|operasi|consent|pre[- ]?operatif)|informed\s+consent\s+form|papan\s+operasi|clipboard|spidol\s+steril|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril|laparotomy\s+pad|tampon\s+abdomen|surgical\s+tray|suction\s+tubing|arterial\s+line|infusion\s+pump|pompa\s+infus|line\s+arteri|drain(?:\s+[a-z][a-z0-9-]*){0,4}|Jackson[- ]?Pratt|trocar|blood\s+warmer|penghangat\s+darah|bor\s+kranial|perforator|burr\s+hole|gigli\s+saw|elevator\s+periosteum|pin\s+Mayfield|Surgicel|bone\s+wax|kawat\s+sternum|staples?\s+(?:kulit|bedah)|clip\s+aplikator|klip\s+vaskuler|C-arm|fluoroskopi|kateter\s+Foley|kateter\s+urin|tube\s+thoracostomy|chest\s+tube|water\s+seal\s+drainage|WSD|mesin\s+anestesi|ventilator|sirkuit\s+anestesi|laring\s+mask|LMA|probe\s+USG|transduser\s+USG|selimut\s+penghangat|klem\s+kocher|klem\s+Kelly|klem\s+mosquito|pinset\s+DeBakey|pinset\s+Adson|retraktor\s+Balfour|retraktor\s+Weitlaner|retraktor\s+Hohmann|suction\s+Yankauer|kateter\s+Yankauer|kateter\s+Nelaton|klem\s+umbilikal|kateter\s+umbilikal|spuit\s+insulin|spuit\s+10\s*mL|spuit\s+20\s*mL|spuit\s+50\s*mL|kasa\s+lapar[ao]tomi|kasa\s+radiopak)\b/iu';
+    $toolPattern = str_replace('pulse\s+oximeter|oksimeter', 'pulse[- ]?oximeter|pulseoximeter|oksimeter', $toolPattern);
     $toolPattern = str_replace('Doppler\s+vaskular|stopwatch|USG', 'Doppler\s+vaskular|stopwatch|bidai(?:\s+(?:vakum|ortopedi|pneumatik))?|USG', $toolPattern);
     $specialtyToolPattern = '/\b(?:set\s+instrumen\s+(?:bedah\s+steril|ortopedi)|klem\s+(?:atraumatik\s+)?DeBakey|jarum\s+(?:besar|bedah|melengkung|atraumatik)|benang\s+chromic|lembar\s+hitung|kasa\s+laparatomi)\b/iu';
     foreach ($items as $index => $item) {
@@ -2358,7 +2417,7 @@ function ems_ai_ds_require_complete_model_report(mixed $value): array
     // Keep this at the final gate itself as a backstop for every caller,
     // including conditional model-repair paths that might return fresh text.
     if (is_array($value['emergency'] ?? null)) {
-        $value['emergency'] = ems_ai_ds_complete_emergency_tool_wording($value['emergency']);
+        $value['emergency'] = ems_ai_ds_normalize_roleplay_cards($value['emergency']);
     }
 
     $requiredText = [
@@ -2816,7 +2875,7 @@ function ems_ai_ds_sanitize_step_items(array $items): array
         ];
     }
 
-    return $sanitized;
+    return ems_ai_ds_normalize_roleplay_cards($sanitized);
 }
 
 /** Reject incomplete or placeholder-filled roleplay surgery reports. */
@@ -2970,7 +3029,7 @@ function ems_ai_ds_normalize_emergency_item_aliases(array $item): array
 /** Targeted model repair for missing tools; preserves every /do and action order. */
 function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $userId): array
 {
-    $current = is_array($report['emergency'] ?? null) ? array_values($report['emergency']) : [];
+    $current = is_array($report['emergency'] ?? null) ? ems_ai_ds_normalize_roleplay_cards(array_values($report['emergency'])) : [];
     $caseText = 'GCS ' . (string) ($report['gcs'] ?? '') . ' ' . implode(' ', array_map(static fn ($key): string => is_scalar($report[$key] ?? null) ? (string) $report[$key] : '', ['anamnesis_lengkap', 'diagnosis_utama', 'kasus_tindakan']));
     $issues = ems_ai_ds_instrument_action_issues($current, 'Emergency IGD', $caseText);
     if ($issues === []) return ['ok' => true, 'data' => $report, 'changed' => false];
@@ -3017,7 +3076,7 @@ function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $us
         // The provider can omit the same tool on its repair response. Apply
         // the narrowly scoped task-to-tool normalizer again before the next
         // semantic validation pass, while preserving pinned /do data/order.
-        $current = ems_ai_ds_complete_emergency_tool_wording($updated);
+        $current = ems_ai_ds_normalize_roleplay_cards($updated);
         $issues = ems_ai_ds_instrument_action_issues($current, 'Emergency IGD', $caseText);
     }
     if ($issues !== []) return ['ok' => false, 'error' => implode('; ', $issues)];
@@ -3032,14 +3091,21 @@ function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $us
  */
 function ems_ai_ds_complete_emergency_tool_wording(array $items): array
 {
-    $toolPattern = '/\\b(?:stetoskop|senter\\s+pupil|penlight|lembar\\s+(?:skor\\s+)?GCS|manset\\s+(?:tensimeter|tekanan\\s+darah)|tensimeter|pulse\\s+oximeter|oksimeter|monitor\\s+EKG|monitor\\s+pasien|termometer|ambu\\s*bag|bag[- ]?valve[- ]?mask|masker\\s+oksigen|NRM|flowmeter(?:\\s+oksigen)?|ETT|laringoskop|mesin\\s+suction|kateter\\s+suction|kasa\\s+steril|perban\\s+(?:elastis|kompresi)|balut\\s+tekan|spuit\\s+irigasi|spuit|NaCl\\s*0[,\\.]9%|kanula\\s+IV|jalur\\s+intravena|set\\s+infus|kantong\\s+PRC|set\\s+transfusi|tabung\\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\\s+vakutainer|torniquet|torniket|klem\\s+(?:arteri|vaskuler|hemostat)|gunting\\s+perban|pinset(?:\\s+(?:jaringan|anatomi|chirurgis))?|forsep|forceps|skalpel|benang\\s+jahit|needle\\s+holder|brankar|tandu|monitor\\s+transport|Doppler\\s+vaskular|stopwatch|bidai)\\b/iu';
+        $toolPattern = '/\\b(?:stetoskop|senter\\s+pupil|penlight|lembar\\s+(?:skor\\s+)?GCS|manset\\s+(?:tensimeter|tekanan\\s+darah)|tensimeter|pulse[- ]?oximeter|pulseoximeter|oksimeter|monitor\\s+EKG|monitor\\s+pasien|termometer|ambu\\s*bag|bag[- ]?valve[- ]?mask|masker\\s+oksigen|NRM|flowmeter(?:\\s+oksigen)?|ETT|laringoskop|mesin\\s+suction|kateter\\s+suction|kasa\\s+steril|perban\\s+(?:elastis|kompresi)|balut\\s+tekan|spuit\\s+irigasi|spuit|NaCl\\s*0[,\\.]9%|kanula\\s+IV|jalur\\s+intravena|set\\s+infus|kantong\\s+PRC|set\\s+transfusi|tabung\\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\\s+vakutainer|torniquet|torniket|klem\\s+(?:arteri|vaskuler|hemostat)|gunting\\s+perban|pinset(?:\\s+(?:jaringan|anatomi|chirurgis))?|forsep|forceps|skalpel|benang\\s+jahit|needle\\s+holder|brankar|tandu|monitor\\s+transport|Doppler\\s+vaskular|stopwatch|bidai)\\b/iu';
     foreach ($items as &$item) {
         if (!is_array($item)) continue;
         $action = trim((string) ($item['aksi'] ?? ''));
         if ($action === '') continue;
         $toolMatch = [];
-        $hasTool = preg_match($toolPattern, $action, $toolMatch) === 1;
-        $tool = $hasTool ? (string) $toolMatch[0] : null;
+        $hasTtvTask = preg_match('/\b(?:TTV|tanda\s+vital)\b/iu', $action) === 1;
+        if ($hasTtvTask && preg_match('/\b(?:manset\s+tensimeter|tensimeter)\b/iu', $action) === 1
+            && preg_match('/\b(?:pulse[- ]?oximeter|pulseoximeter|oksimeter)\b/iu', $action) === 1) {
+            $hasTool = true;
+            $tool = 'manset tensimeter, pulse oximeter, dan termometer';
+        } else {
+            $hasTool = preg_match($toolPattern, $action, $toolMatch) === 1;
+            $tool = $hasTool ? (string) $toolMatch[0] : null;
+        }
         if ($tool === null && preg_match('/\\b(?:GCS|Glasgow|AVPU|E\\s*\\d\\s*V\\s*\\d\\s*M\\s*\\d|respons\\s+(?:mata|verbal|motorik)|(?:menilai|memeriksa|mengevaluasi)\\b[^.!?]{0,50}kesadaran)\\b/iu', $action)) {
             $tool = 'lembar skor GCS';
         } elseif ($tool === null && preg_match('/\\b(?:TTV|tanda\\s+vital|tekanan\\s+darah|mengukur\\s+nadi|mengukur\\s+suhu|mengukur\\s+respirasi|saturasi\\s+oksigen)\\b/iu', $action)) {
@@ -3085,7 +3151,7 @@ function ems_ai_ds_complete_emergency_tool_wording(array $items): array
         $actor = (string) ($item['pelaku'] ?? '');
         if (preg_match('/\\bAsisten(?:\\s+[12])?\\b/iu', $actor, $assistantMatch) === 1) {
             $assistantRole = trim((string) $assistantMatch[0]);
-            $item['instruksi'] = 'DPJP: ' . $assistantRole . ', ambilkan dan serahkan ' . $tool . '. ' . $assistantRole . ': Baik, Dok.';
+            $item['instruksi'] = 'DPJP: ' . $assistantRole . ', tolong ambilkan ' . $tool . ' dari lemari alat dan letakkan di meja tindakan. ' . $assistantRole . ': Baik, Dok.';
         }
     }
     unset($item);
@@ -3311,7 +3377,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
     $completionContract = ems_ai_ds_model_completion_contract($featureKey);
     $isSurgeryStepOutput = $featureKey === 'ai_surgery_planner'
         && array_keys($responseSchemaOverride['properties'] ?? []) === ['tahapan_prosedur'];
-    $crossFeatureActionContract = "KONTRAK LINTAS FITUR ROXWOOD HOSPITAL AI: hanya bila schema fitur ini meminta tindakan fisik atau mantra roleplay, setiap aksi wajib menyebut alat/instrumen/bahan yang dipakai (contoh suction: mesin suction bedah + kateter suction steril; balut: kasa steril + perban; jahit: needle holder + pinset + benang spesifik). Bila ada field pelaku/asisten, perintah supervisor menyebut nama alat yang harus diambil/dipasang. Jangan menambah kartu tindakan fisik ke fitur yang tidak memintanya dan jangan menempelkan alat yang tidak relevan.";
+    $crossFeatureActionContract = "KONTRAK LINTAS FITUR ROXWOOD HOSPITAL AI: hanya bila schema fitur ini meminta tindakan fisik atau mantra roleplay, pisahkan pelaku, instruksi/dialog, /me, /do, dan /e. Pelaku adalah aktor yang benar-benar melakukan /me; bila instruksi DPJP menugaskan Asisten 1/2, field pelaku harus asisten itu. /me adalah aksi langsung karakter aktif tanpa menyebut label/nama pelaku (misalnya 'mengambil pulse oximeter dari meja alat lalu memasangkannya pada jari pasien'), bukan narasi pihak ketiga atau ucapan. /do adalah hasil/keadaan yang tampak sesudah aksi, bukan aksi atau instruksi; angka hasil harus sama dengan nilai laporan. /e hanya gunakan kode emote yang tersedia dalam kamus Roxwood dan cocok dengan gerakan (jangan kirim 'examine' sebagai alias). Jika asisten bertugas, DPJP meminta alat spesifik dari lemari/meja perlengkapan, asisten membalas singkat, lalu /me asisten mengambil dan memakai alat tersebut. Setiap /me tindakan fisik menyebut alat/instrumen/bahan relevan yang benar-benar digunakan; contoh suction: mesin suction bedah + kateter suction steril; balut: kasa steril + perban; jahit: needle holder + pinset + benang spesifik; pengukuran TTV mencakup manset tensimeter, pulse oximeter, dan termometer sesuai data yang dilaporkan. Jangan menambah kartu tindakan fisik ke fitur yang tidak memintanya dan jangan menempelkan alat yang tidak relevan.";
     $systemPrompt .= "\n\n" . $completionContract . "\n\n" . $crossFeatureActionContract;
     $finalValidation = "FINAL VALIDATION GATE (mengalahkan instruksi template/user yang bertentangan):\n"
         . ($isRoleplayFinalFeature ? $completionContract : ems_ai_official_consistency_guardrail() . "\n" . $completionContract)
