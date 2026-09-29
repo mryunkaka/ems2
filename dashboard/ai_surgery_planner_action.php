@@ -110,6 +110,12 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
         $chunkCount = max(1, (int) ceil($plannedCount / $chunkSize));
         $header = null;
         $steps = [];
+        $repairStart = $chunkCount + 2;
+        $repairIndexes = json_decode((string) ($job['repair_indexes_json'] ?? '[]'), true);
+        $repairIndexes = is_array($repairIndexes) ? array_values(array_unique(array_map('intval', $repairIndexes))) : [];
+        $latestAuditStmt = $pdo->prepare("SELECT id, result_json FROM ai_surgery_generation_stages WHERE job_id = ? AND stage_type = 'audit' ORDER BY id DESC LIMIT 1");
+        $latestAuditStmt->execute([(int) $job['id']]);
+        $latestAudit = $latestAuditStmt->fetch(PDO::FETCH_ASSOC) ?: null;
         $stageStmt = $pdo->prepare("SELECT s.* FROM ai_surgery_generation_stages s JOIN (SELECT stage_no, MAX(attempt_no) attempt_no FROM ai_surgery_generation_stages WHERE job_id = ? AND status = 'done' GROUP BY stage_no) latest ON latest.stage_no=s.stage_no AND latest.attempt_no=s.attempt_no WHERE s.job_id = ? ORDER BY s.stage_no");
         $stageStmt->execute([(int) $job['id'], (int) $job['id']]);
         $completedStages = $stageStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
@@ -121,11 +127,25 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
                 $one = ems_ai_ds_extract_surgery_steps($piece);
                 $chunkStart = ((int) $completed['stage_no'] - 2) * $chunkSize;
                 foreach ($one as $offset => $item) $steps[$chunkStart + $offset] = $item;
-            } elseif ($job['status'] === 'repairing' && (int) $completed['stage_no'] >= $chunkCount + 2) {
-                $repairIndexes = json_decode((string) ($job['repair_indexes_json'] ?? '[]'), true) ?: [];
-                $repairPosition = (int) $completed['stage_no'] - ($chunkCount + 2);
-                $one = ems_ai_ds_extract_surgery_steps($piece);
-                if (isset($repairIndexes[$repairPosition], $one[0])) $steps[(int) $repairIndexes[$repairPosition]] = $one[0];
+            }
+        }
+        // A final-audit snapshot is the canonical baseline for repeated repair
+        // rounds; it preserves already-correct steps even if the failing step
+        // list changes between rounds.
+        if ($latestAudit) {
+            $auditData = json_decode((string) ($latestAudit['result_json'] ?? ''), true);
+            if (is_array($auditData) && is_array($auditData['tahapan_prosedur'] ?? null)) {
+                $steps = array_values($auditData['tahapan_prosedur']);
+            }
+        }
+        if ($job['status'] === 'repairing' && $repairIndexes !== []) {
+            foreach ($completedStages as $completed) {
+                $stageNoDone = (int) $completed['stage_no'];
+                if ($stageNoDone < $repairStart || $stageNoDone >= $repairStart + count($repairIndexes)) continue;
+                if ($latestAudit && (int) $completed['id'] <= (int) $latestAudit['id']) continue;
+                $repairPosition = $stageNoDone - $repairStart;
+                $one = ems_ai_ds_extract_surgery_steps(json_decode((string) ($completed['result_json'] ?? ''), true) ?: []);
+                if (isset($repairIndexes[$repairPosition], $one[0])) $steps[$repairIndexes[$repairPosition]] = $one[0];
             }
         }
         if ($header === null && $stageNo !== 1) throw new RuntimeException('Kerangka hasil model tidak ditemukan; proses tidak dapat dilanjutkan.');
@@ -144,10 +164,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
             $prompt = $basePrompt . "\n\nTAHAP 1 DARI GENERASI BERTAHAP — KERANGKA DAN RINGKASAN. Keluarkan semua field ringkasan selain tahapan_prosedur, lalu tentukan sendiri outline_tahapan berupa 2 sampai 24 item berurutan. Setiap item hanya berisi judul dan tujuan yang spesifik pada kasus. Jangan menulis detail aksi tahap dahulu. Semua nilai harus final sebagai skenario roleplay dan sesuai schema."
                 . ((string) ($job['last_error'] ?? '') !== '' ? "\nPerbaiki kekurangan validasi sebelumnya: " . implode('; ', json_decode((string) $job['last_error'], true) ?: []) : '');
         } elseif ($job['status'] === 'repairing') {
-            $repairIndexes = json_decode((string) ($job['repair_indexes_json'] ?? '[]'), true);
-            $repairIndexes = is_array($repairIndexes) ? array_values(array_unique(array_map('intval', $repairIndexes))) : [];
-            $repairStageStart = $chunkCount + 2;
-            $repairPosition = $stageNo - $repairStageStart;
+            $repairPosition = $stageNo - $repairStart;
             if (!isset($repairIndexes[$repairPosition])) throw new RuntimeException('Daftar tahap perbaikan tidak konsisten.');
             $targetIndex = $repairIndexes[$repairPosition];
             $stageType = 'repair';
@@ -155,7 +172,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
             $prompt = "KASUS KANONIK:\n" . $basePrompt . "\n\nPERBAIKI HANYA TAHAP " . ($targetIndex + 1) . " BERDASARKAN KERANGKA MODEL:\n" . json_encode($jobOutline = ($header['outline_tahapan'][$targetIndex] ?? []), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . "\nTAHAP SAAT INI:\n" . json_encode($oldStep, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 . "\nMASALAH VALIDASI:\n" . implode('; ', json_decode((string) ($job['last_error'] ?? '[]'), true) ?: [])
-                . "\nKembalikan tepat satu item tahapan_prosedur. Pertahankan urutan, hasil /do dan fakta kasus; ubah hanya bagian yang perlu agar semua aturan alat/instrumen dan instruksi asisten valid. Jangan membuat tahap baru.";
+                . "\nKembalikan tepat satu item tahapan_prosedur. Untuk setiap masalah alat, tulis nama alat/instrumen/bahan yang dikenali secara eksplisit di aksi /me, lalu jelaskan penggunaannya dalam tindakan itu; jangan hanya menambahkan daftar alat atau mengandalkan instruksi asisten. Jika pelakunya asisten, instruksi DPJP juga wajib menyebut alat yang sama. Pertahankan urutan, hasil /do dan fakta kasus; jangan membuat tahap baru.";
         } else {
             $chunkIndex = $stageNo - 2;
             $chunkStart = $chunkIndex * $chunkSize;
@@ -239,7 +256,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
         $isRepair = $job['status'] === 'repairing';
         if ($isRepair) {
             $repairIndexes = json_decode((string) ($job['repair_indexes_json'] ?? '[]'), true) ?: [];
-            $repairPosition = $stageNo - ($chunkCount + 2);
+            $repairPosition = $stageNo - $repairStart;
             $steps[(int) $repairIndexes[$repairPosition]] = $newSteps[0];
         } else {
             foreach ($newSteps as $offset => $item) $steps[$targetIndex + $offset] = $item;
@@ -251,7 +268,7 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
         $advance->execute([$expectedNext, $isRepair ? (string) $job['last_error'] : null, (int) $job['id']]);
 
         $allStepsReady = $isRepair
-            ? $expectedNext >= $chunkCount + 2 + count(json_decode((string) ($job['repair_indexes_json'] ?? '[]'), true) ?: [])
+            ? $expectedNext >= $repairStart + count($repairIndexes)
             : $expectedNext > $chunkCount + 1;
         if (!$allStepsReady) {
             $completedCount = count($steps);
@@ -276,12 +293,17 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
             $failedIndexes = [];
             foreach ($finalErrors as $error) if (preg_match('/Tahapan operasi tahap (\d+)/u', $error, $match)) $failedIndexes[] = (int) $match[1] - 1;
             $failedIndexes = array_values(array_unique(array_filter($failedIndexes, static fn ($i) => $i >= 0 && $i < count($finalData['tahapan_prosedur']))));
-            if (!$isRepair && $failedIndexes !== []) {
-                $auditStage = $chunkCount + 2;
+            $auditCountStmt = $pdo->prepare("SELECT COUNT(*) FROM ai_surgery_generation_stages WHERE job_id = ? AND stage_type = 'audit'");
+            $auditCountStmt->execute([(int) $job['id']]);
+            $auditCount = (int) $auditCountStmt->fetchColumn();
+            if ($failedIndexes !== [] && $auditCount < 5) {
+                $auditStage = $repairStart;
+                // Save the latest assembled plan as the baseline for this
+                // repair round, including every step that already passed.
                 ems_ai_ds_surgery_job_record_stage($pdo, (int) $job['id'], $auditStage, 'audit', false, $finalData, $finalErrors);
                 $repair = $pdo->prepare("UPDATE ai_surgery_generation_jobs SET status = 'repairing', repair_indexes_json = ?, next_stage_no = ?, last_error = ?, lock_expires_at = NULL WHERE id = ?");
                 $repair->execute([json_encode($failedIndexes), $auditStage, json_encode($finalErrors, JSON_UNESCAPED_UNICODE), (int) $job['id']]);
-                return ['ok' => true, 'done' => false, 'job_token' => $token, 'planned_steps' => count($steps), 'completed_steps' => count($steps), 'progress' => 94, 'message' => 'Semua tahap tersimpan. Memperbaiki ' . count($failedIndexes) . ' tahap yang belum lolos validasi.'];
+                return ['ok' => true, 'done' => false, 'job_token' => $token, 'planned_steps' => count($steps), 'completed_steps' => count($steps), 'progress' => 94, 'message' => 'Semua tahap tersimpan. Putaran perbaikan ' . ($auditCount + 1) . ' menargetkan ' . count($failedIndexes) . ' tahap yang belum lolos validasi.'];
             }
             $errorText = 'Rencana gabungan belum lolos validasi: ' . implode('; ', $finalErrors);
             $pdo->beginTransaction();

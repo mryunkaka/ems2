@@ -309,6 +309,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
     var target = 0, shown = 0, creepTimer = null;
     var activeJobToken = null, activeRetryAction = null;
+    var automaticStageRetries = Object.create(null);
     var resumeStorageKey = 'aiSurgeryJob_' + <?= json_encode((string) ((int) ($user['id'] ?? 0))) ?>;
     var serverPendingJobToken = <?= json_encode($pendingJobToken, JSON_UNESCAPED_UNICODE) ?>;
 
@@ -420,6 +421,13 @@ include __DIR__ . '/../partials/sidebar.php';
             if (!response.ok || !data.ok) {
                 if (data.retryable) {
                     activeRetryAction = function () { return runSurgeryJob(null, token, false); };
+                    var retryKey = String(data.stage_no || 0);
+                    automaticStageRetries[retryKey] = (automaticStageRetries[retryKey] || 0) + 1;
+                    if (automaticStageRetries[retryKey] <= 2) {
+                        messageEl.textContent = 'Memperbaiki tahap yang belum valid, percobaan otomatis ' + automaticStageRetries[retryKey] + ' dari 2...';
+                        return new Promise(function (resolve) { window.setTimeout(resolve, 1200); })
+                            .then(function () { return runSurgeryJob(null, token, false); });
+                    }
                 } else {
                     try { localStorage.removeItem(resumeStorageKey); } catch (ignored) {}
                 }
@@ -427,6 +435,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 failure.retryAction = activeRetryAction;
                 throw failure;
             }
+            if (data.stage_no != null) automaticStageRetries[String(data.stage_no)] = 0;
             if (data.done && data.plan_id) return data;
             if (data.planned_steps) {
                 var completed = Number(data.completed_steps || 0);
