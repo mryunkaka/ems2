@@ -318,28 +318,41 @@ function ems_ai_official_document_context(PDO $pdo, string $unitCode, string $qu
     $query = trim($query);
     $seedByFeature = [
         'ai_diagnosis_assistant' => [
+            'SOP Pelayanan Instalasi Gawat Darurat IGD',
             'SOP IGD stabilisasi ABCDE pertolongan pertama',
             'SOP Roxwood Hospital kewenangan medis',
             'GCS TTV anamnesis diagnosis operasi anestesi',
         ],
-        'ai_surgery_planner' => ['operasi', 'ORIF', 'anestesi', 'kewenangan medis', 'operasi mayor', 'operasi minor'],
-        'rekam_medis_ai' => ['rekam medis', 'GCS', 'TTV', 'hasil operasi', 'kesadaran', 'motorik', 'anestesi', 'kewenangan medis'],
+        'ai_surgery_planner' => [
+            'SOP Pelayanan Kamar Bedah Operating Theatre OK',
+            'Prosedur Operasi instrumen operasi anestesi',
+            'Kebijakan Kewenangan Medis operasi mayor minor',
+        ],
+        'rekam_medis_ai' => [
+            'SOP Penulisan dan Pengisian Rekam Medis',
+            'format rekam medis laporan tindakan operasi hasil pasca operasi',
+            'konsistensi GCS TTV radiologi laboratorium diagnosis',
+        ],
         'roxy_chat' => ['SOP', 'kebijakan', 'kewenangan medis', 'rekam medis', 'operasi', 'anestesi'],
-        'ai_radiology_report' => ['radiologi', 'interpretasi radiologi', 'diagnosis'],
-        'ai_laboratory' => ['laboratorium', 'nilai rujukan', 'interpretasi laboratorium'],
-        'ai_psychiatry_start' => ['psikiatri', 'asesmen psikiatri', 'status mental'],
-        'ai_psychiatry_next' => ['psikiatri', 'asesmen psikiatri', 'status mental'],
-        'ai_psychiatry_final' => ['psikiatri', 'asesmen psikiatri', 'status mental'],
+        'ai_radiology_report' => ['SOP Pelayanan Radiologi', 'proyeksi radiologi anatomi diagnosis'],
+        'ai_laboratory' => [
+            'SOP Pelayanan Laboratorium Medis',
+            'SOP Laboratorium Roxwood Hospital CBC Whole Blood EDTA',
+            'nilai rujukan laboratorium interpretasi hasil',
+        ],
+        'ai_psychiatry_start' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
+        'ai_psychiatry_next' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
+        'ai_psychiatry_final' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
     ];
 
-    $queries = $query === '' ? [] : [$query];
-    foreach ($seedByFeature[$featureKey] ?? [] as $seed) {
-        $queries[] = $seed;
-    }
+    // Feature-specific SOP searches run first. The full prompt comes later
+    // because it contains generic words that can match unrelated documents.
+    $queries = array_merge($seedByFeature[$featureKey] ?? [], $query === '' ? [] : [$query]);
+    $queries = array_values(array_unique($queries));
 
     $rowsById = [];
     $rankById = [];
-    $addRow = static function (array $row, int $rank) use (&$rowsById, &$rankById): void {
+    $addRow = static function (array $row, int $rank, string $relevanceQuery = '') use (&$rowsById, &$rankById): void {
         $id = (int) ($row['id'] ?? 0);
         $text = trim((string) ($row['extracted_text'] ?? ''));
         $status = (string) ($row['extraction_status'] ?? '');
@@ -347,35 +360,35 @@ function ems_ai_official_document_context(PDO $pdo, string $unitCode, string $qu
             return;
         }
         if (!isset($rowsById[$id]) || $rank < $rankById[$id]) {
+            $row['_official_query'] = $relevanceQuery;
             $rowsById[$id] = $row;
             $rankById[$id] = $rank;
         }
     };
 
-    foreach (array_values(array_unique($queries)) as $searchQuery) {
+    foreach ($queries as $queryIndex => $searchQuery) {
         try {
             foreach (ems_document_search($pdo, $unitCode, $searchQuery, max(3, $limit)) as $row) {
-                $addRow($row, 0);
+                $addRow($row, $queryIndex, $searchQuery);
             }
         } catch (Throwable $e) {
             // Latest-row fallback still exposes current updates.
         }
     }
 
-    try {
-        $latestLimit = max(12, $limit * 3);
-        $latestStmt = $pdo->prepare(
-            "SELECT * FROM document_files WHERE unit_code = ? AND extraction_status IN ('done', 'manual') "
-            . "ORDER BY updated_at DESC, id DESC LIMIT {$latestLimit}"
-        );
-        $latestStmt->execute([$unitCode]);
-        $latestIndex = 0;
-        foreach ($latestStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $addRow($row, $latestIndex < 2 ? -1 : 1);
-            $latestIndex++;
+    if ($rowsById === []) {
+        try {
+            $latestStmt = $pdo->prepare(
+                "SELECT * FROM document_files WHERE unit_code = ? AND extraction_status IN ('done', 'manual') "
+                . "ORDER BY updated_at DESC, id DESC LIMIT " . max(1, $limit)
+            );
+            $latestStmt->execute([$unitCode]);
+            foreach ($latestStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $addRow($row, 100, '');
+            }
+        } catch (Throwable $e) {
+            // Search results remain usable on older installations.
         }
-    } catch (Throwable $e) {
-        // Search results remain usable on older installations.
     }
 
     if ($rowsById === []) {
@@ -398,7 +411,8 @@ function ems_ai_official_document_context(PDO $pdo, string $unitCode, string $qu
     foreach (array_slice(array_values($rowsById), 0, max(1, $limit)) as $index => $row) {
         $title = trim((string) ($row['title'] ?? 'Tanpa judul'));
         $text = trim((string) ($row['extracted_text'] ?? ''));
-        $excerpt = ems_ai_official_document_excerpt($text, $query, 3000);
+        $excerptQuery = trim((string) ($row['_official_query'] ?? '')) ?: $query;
+        $excerpt = ems_ai_official_document_excerpt($text, $excerptQuery, 3000);
         if ($excerpt === '') {
             continue;
         }

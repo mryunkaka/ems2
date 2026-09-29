@@ -2306,6 +2306,49 @@ function ems_ai_ds_reconcile_radiology_projection_views(array &$data): void
  * siap dimainkan. Ia tidak mengisi, menerjemahkan, memilih, atau memperbaiki
  * isi model.
  */
+/**
+ * Reconcile the transfer status only when the report already records the
+ * physical transfer in its emergency actions or handoff. This prevents a
+ * missing summary sentence from invalidating otherwise consistent scenario
+ * data, without inventing a transfer that the report did not document.
+ */
+function ems_ai_ds_reconcile_transfer_status(array $data): array
+{
+    $status = trim((string) ($data['status_rencana_operasi'] ?? ''));
+    if (preg_match('/\b(?:pasien\s+)?(?:dipindahkan|diantar|dibawa|ditransfer|memindahkan|mengantar|membawa|transfer)\b[^.!?]{0,160}\b(?:ruang|kamar)\s+operasi\b/iu', $status) === 1) {
+        return $data;
+    }
+
+    $evidence = [];
+    $handoff = $data['handoff'] ?? $data['handoff_pemeriksaan_penunjang'] ?? '';
+    if (is_scalar($handoff)) {
+        $evidence[] = (string) $handoff;
+    } elseif (is_array($handoff)) {
+        $evidence[] = json_encode($handoff, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '';
+    }
+    $actions = is_array($data['emergency'] ?? null) ? $data['emergency'] : [];
+    foreach ($actions as $action) {
+        if (is_array($action)) {
+            $evidence[] = (string) ($action['aksi'] ?? $action['action'] ?? '') . ' ' . (string) ($action['hasil'] ?? $action['result'] ?? '');
+        } elseif (is_scalar($action)) {
+            $evidence[] = (string) $action;
+        }
+    }
+    $evidenceText = implode(' ', $evidence);
+    $confirmsTransfer = preg_match('/\b(?:pasien\s+)?(?:dipindahkan|diantar|dibawa|ditransfer|memindahkan|mengantar|membawa|transfer|tiba|sampai)\b/iu', $evidenceText) === 1
+        && preg_match('/\b(?:ruang|kamar)\s+operasi\b/iu', $evidenceText) === 1;
+    if (!$confirmsTransfer) {
+        return $data;
+    }
+
+    $operation = trim((string) ($data['jenis_operasi'] ?? ''));
+    if ($operation === '') {
+        $operation = 'tindakan definitif';
+    }
+    $data['status_rencana_operasi'] = 'Setelah stabilisasi awal, pasien dipindahkan ke Ruang Operasi untuk ' . $operation . '. Pemeriksaan penunjang tidak menjadi prasyarat pemindahan.';
+    return $data;
+}
+
 function ems_ai_ds_require_complete_model_report(mixed $value): array
 {
     if (!is_array($value)) {
@@ -2973,6 +3016,54 @@ function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $us
     return ['ok' => true, 'data' => $report, 'changed' => true];
 }
 
+/**
+ * Normalize only omitted tool wording when the action itself clearly identifies
+ * the task. This does not add actions, findings, or outcomes; unknown actions
+ * remain subject to the model repair and quality gate.
+ */
+function ems_ai_ds_complete_emergency_tool_wording(array $items): array
+{
+    $toolPattern = '/\\b(?:stetoskop|senter\\s+pupil|penlight|lembar\\s+(?:skor\\s+)?GCS|manset\\s+(?:tensimeter|tekanan\\s+darah)|tensimeter|pulse\\s+oximeter|oksimeter|monitor\\s+EKG|monitor\\s+pasien|termometer|ambu\\s*bag|bag[- ]?valve[- ]?mask|masker\\s+oksigen|NRM|flowmeter(?:\\s+oksigen)?|ETT|laringoskop|mesin\\s+suction|kateter\\s+suction|kasa\\s+steril|perban\\s+(?:elastis|kompresi)|balut\\s+tekan|spuit\\s+irigasi|spuit|NaCl\\s*0[,\\.]9%|kanula\\s+IV|jalur\\s+intravena|set\\s+infus|kantong\\s+PRC|set\\s+transfusi|tabung\\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\\s+vakutainer|torniquet|torniket|klem\\s+(?:arteri|vaskuler|hemostat)|gunting\\s+perban|pinset(?:\\s+(?:jaringan|anatomi|chirurgis))?|forsep|forceps|skalpel|benang\\s+jahit|needle\\s+holder|brankar|tandu|monitor\\s+transport|Doppler\\s+vaskular|stopwatch|bidai)\\b/iu';
+    foreach ($items as &$item) {
+        if (!is_array($item)) continue;
+        $action = trim((string) ($item['aksi'] ?? ''));
+        if ($action === '') continue;
+        $toolMatch = [];
+        $hasTool = preg_match($toolPattern, $action, $toolMatch) === 1;
+        $tool = $hasTool ? (string) $toolMatch[0] : null;
+        if ($tool === null && preg_match('/\\b(?:GCS|Glasgow|respons\\s+(?:mata|verbal|motorik)|menilai\\s+kesadaran)\\b/iu', $action)) {
+            $tool = 'lembar skor GCS';
+        } elseif ($tool === null && preg_match('/\\b(?:TTV|tanda\\s+vital|tekanan\\s+darah|mengukur\\s+nadi|mengukur\\s+suhu|mengukur\\s+respirasi|saturasi\\s+oksigen)\\b/iu', $action)) {
+            $tool = 'monitor pasien';
+        } elseif ($tool === null && preg_match('/\\b(?:perfusi|pengisian\\s+kapiler|capillary\\s+refill|nadi\\s+perifer)\\b/iu', $action)) {
+            $tool = 'Doppler vaskular';
+        } elseif ($tool === null && preg_match('/\\b(?:imobilisasi|menyangga\\s+fraktur|menstabilkan\\s+anggota\\s+gerak)\\b/iu', $action)) {
+            $tool = 'bidai dan perban elastis';
+        } elseif ($tool === null && preg_match('/\\b(?:mengirigasi|irigasi\\s+luka|membilas\\s+luka)\\b/iu', $action)) {
+            $tool = 'spuit irigasi 50 mL berisi NaCl 0,9%';
+        } elseif ($tool === null && preg_match('/\\b(?:menghisap|menyedot|suction|genangan\\s+darah)\\b/iu', $action)) {
+            $tool = 'mesin suction bedah dan kateter suction steril';
+        } elseif ($tool === null && preg_match('/\\b(?:menekan\\s+luka|membalut|balut\\s+tekan|menutup\\s+luka)\\b/iu', $action)) {
+            $tool = 'kasa steril dan perban elastis';
+        } elseif ($tool === null && preg_match('/\\b(?:memindahkan|mengantar|mendorong|membawa)\\b.*\\b(?:IGD|ruang\\s+operasi|radiologi|laboratorium|brankar|pasien)\\b/iu', $action)) {
+            $tool = 'brankar dan monitor transport';
+        } elseif ($tool === null && preg_match('/\\b(?:memasang|mempertahankan|akses)\\b.*\\b(?:infus|intravena|IV)\\b/iu', $action)) {
+            $tool = 'kanula IV dan set infus';
+        } elseif ($tool === null && preg_match('/\\b(?:memberi|memasang|menyalurkan)\\b.*\\b(?:oksigen|O2)\\b/iu', $action)) {
+            $tool = 'masker oksigen';
+        }
+        if ($tool === null) continue;
+        if (!$hasTool) {
+            $item['aksi'] = rtrim($action, " .") . ' menggunakan ' . $tool;
+        }
+        if (str_contains(mb_strtolower((string) ($item['pelaku'] ?? ''), 'UTF-8'), 'asisten')) {
+            $item['instruksi'] = 'DPJP: Asisten, ambilkan dan serahkan ' . $tool . '. Asisten: Baik, Dok.';
+        }
+    }
+    unset($item);
+    return $items;
+}
+
 function ems_ai_ds_model_completion_contract(string $featureKey): string
 {
     if ($featureKey === 'ai_diagnosis_assistant_action_repair') {
@@ -2985,7 +3076,7 @@ function ems_ai_ds_model_completion_contract(string $featureKey): string
         return 'KONTRAK MODEL KHUSUS SIMULASI IGD ROXWOOD: keluarkan laporan skenario roleplay final, lengkap, dan spesifik; semua pemeriksaan dan hasil dalam laporan adalah fakta skenario simulasi, bukan klaim pemeriksaan dunia nyata. Jangan menulis placeholder, data menunggu, estimasi AI/verifikasi, atau fakta meta. Lengkapi narasi anamnesis final, diagnosis utama dan minimal 3 diagnosis banding yang relevan pada mekanisme sama, GCS E/V/M aritmetis, tepat lima TTV, hasil pemeriksaan laboratorium/radiologi yang relevan, 8–14 langkah stabilisasi pra-operasi, handoff ke Ruang Operasi, serta rujukan SOP Roxwood dari konteks dokumen. Buat temuan konsisten dengan trigger: luka superfisial tidak boleh dinaikkan menjadi cedera tendon/fraktur tanpa tanda atau mekanisme pendukung; temuan baru hanya boleh ditambahkan jika merupakan detail skenario yang wajar dan tidak bertentangan dengan input. Untuk fraktur terbuka, jangan menetapkan grade Gustilo IIIB/IIIC tanpa bukti kehilangan jaringan lunak luas, periosteal stripping, atau cedera arteri yang terkonfirmasi; tulang terlihat saja tidak cukup. Jangan mendiagnosis sindrom kompartemen hanya dari nyeri, CRT memanjang, atau nadi lemah; harus ada tanda khas seperti kompartemen tegang dan nyeri saat peregangan pasif. Nadi distal lemah/akral dingin berarti ancaman perfusi yang perlu disebut sebagai temuan dan ditangani, bukan bukti otomatis robekan arteri atau sindrom kompartemen. Jangan menaikkan derajat cedera di luar temuan trigger dan hasil penunjang skenario. Jangan pernah menulis diagnosis utama yang sekaligus menyebut fraktur terbuka dan fraktur tertutup; pada tulang tampak di luka, diagnosis utama harus konsisten sebagai fraktur terbuka. Kasus Minor maupun Mayor hanya menjalani stabilisasi, pemeriksaan, pemantauan, kontrol perdarahan, irigasi/pembersihan awal, balut steril, analgesia dan handoff di IGD; semua tindakan definitif dilakukan di Ruang Operasi. Isi emergency sebagai satu tindakan fisik konkret per aksi dan hasil langsung per /do. DILARANG menulis pilihan bercabang atau frasa "sesuai protokol", "sesuai instruksi", "sesuai arahan", "sesuai kewenangan DPJP", "akan dilakukan", atau pernyataan administratif; tuliskan tindakan yang langsung dilakukan pemain. Jangan melakukan tindakan kepala/TIK pada kasus ekstremitas tanpa indikasi. Gunakan identitas pasien eksplisit secara konsisten, termasuk jenis kelamin dan kehamilan. Cantumkan pemeriksaan lab/radiologi hanya yang masuk akal untuk keputusan kasus dan sertakan hasil skenario final.' . ems_ai_ds_instrument_action_contract();
     }
     if ($featureKey === 'ai_surgery_planner') {
-        return 'KONTRAK OUTPUT ROLEPLAY: Ini simulasi FiveM, bukan dokumen klinis nyata. Susun skenario operasi yang siap dimainkan dan final di dalam dunia roleplay. MODEL MENENTUKAN SENDIRI JUMLAH tahapan sesuai kebutuhan kasus; abaikan angka target atau kategori jumlah langkah yang mungkin tercantum di template lama. Sertakan tahapan yang diperlukan saja, tanpa pengulangan atau pemanjangan artifisial. Setiap tahap berisi satu petugas dari DPJP/Asisten 1/Asisten 2, aksi /me spesifik, dan hasil /do konkret dalam bentuk lampau; dilarang memakai placeholder, status menunggu, verifikasi, atau meminta pemain menentukan sendiri. Untuk fakta anatomi intraoperatif yang tidak dirinci input, tetapkan satu hasil skenario yang masuk akal dan gunakan konsisten dari eksplorasi sampai penutupan. Jangan memberi pilihan bercabang pada aksi. Isi ringkasan, risiko relevan, farmakologi roleplay, dan SOP secara konkret; array obat boleh kosong bila kategori memang tidak digunakan. Pertahankan identitas dan lokasi cedera dari laporan sumber. Output adalah skenario roleplay final, bukan klaim tindakan dunia nyata.' . ems_ai_ds_instrument_action_contract();
+        return 'KONTRAK OUTPUT ROLEPLAY: Ini simulasi FiveM, bukan dokumen klinis nyata. Susun skenario operasi yang siap dimainkan dan final di dalam dunia roleplay. Buat 20 sampai 24 tahap berbeda sesuai kebutuhan kasus; minimal 20 tahap wajib, tanpa pengulangan atau pemanjangan artifisial. Setiap tahap berisi satu petugas dari DPJP/Asisten 1/Asisten 2, aksi /me spesifik, dan hasil /do konkret dalam bentuk lampau; dilarang memakai placeholder, status menunggu, verifikasi, atau meminta pemain menentukan sendiri. Untuk fakta anatomi intraoperatif yang tidak dirinci input, tetapkan satu hasil skenario yang masuk akal dan gunakan konsisten dari eksplorasi sampai penutupan. Jangan memberi pilihan bercabang pada aksi. Isi ringkasan, risiko relevan, farmakologi roleplay, dan SOP secara konkret; array obat boleh kosong bila kategori memang tidak digunakan. Pertahankan identitas dan lokasi cedera dari laporan sumber. Output adalah skenario roleplay final, bukan klaim tindakan dunia nyata.' . ems_ai_ds_instrument_action_contract();
     }
     if ($featureKey === 'ai_laboratory') {
         return 'KONTRAK HASIL LAB ROLEPLAY: semua nilai, interpretasi, korelasi, kesan, dan rekomendasi adalah hasil final skenario FiveM. Lengkapi semua parameter panel yang dipilih dengan nilai, satuan, rentang rujukan, dan flag Normal/High/Low yang konsisten; pertahankan nilai sumber diagnosis untuk parameter yang sama. Jangan menulis data tidak tersedia, belum diperiksa, menunggu hasil, wajib verifikasi, dugaan yang belum selesai, atau menyarankan pemain menunggu pemeriksaan. Jangan menambah parameter di luar panel. Kembalikan JSON lengkap sesuai schema.';
@@ -3275,9 +3366,10 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'gemini_api_key' => (string) $userSettings['gemini_api_key'],
         'gemini_base_url' => trim((string) $userSettings['gemini_base_url']) !== '' ? (string) $userSettings['gemini_base_url'] : 'https://generativelanguage.googleapis.com/v1beta',
         'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-3.5-flash-lite',
-        // Keep each synchronous Surgery Planner provider call bounded so a
-        // Gemini failure plus custom fallback stays below common proxy limits.
-        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 8 : ($isDiagnosisAssistant ? 150 : 55),
+        // A 8-second cap caused valid Surgery Planner batches to time out.
+        // Keep Gemini and custom fallback bounded at 24 seconds each; the
+        // endpoint's 55-second request limit still leaves room for assembly.
+        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 24 : ($isDiagnosisAssistant ? 150 : 55),
         'max_output_tokens' => $isDiagnosisAssistant ? 12000 : ($isSurgeryStepOutput ? 3000 : 8192),
         'daily_request_limit' => 0,
     ]);

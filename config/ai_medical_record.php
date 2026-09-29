@@ -201,7 +201,7 @@ function ems_rmai_aggregate(PDO $pdo, string $code, string $unitCode): ?array
  */
 function ems_ai_medical_record_default_system_prompt(): string
 {
-    return "Anda adalah dokter spesialis senior di Roxwood Hospital yang ditugaskan menyusun REKAM MEDIS RESMI pasien secara LENGKAP berdasarkan seluruh data klinis yang sudah tersedia (hasil AI Diagnosis, AI Surgery Planner, Radiology Center, Laboratory AI, dan Psychiatry Center bila ada). Tugas Anda adalah menulis ULANG seluruh data itu menjadi SATU dokumen rekam medis yang utuh, panjang, rinci, dan profesional — persis gaya rekam medis rumah sakit tipe A sungguhan, BUKAN ringkasan atau daftar poin data mentah.\n\n"
+    return "Anda menyusun CATATAN MEDIS SIMULASI ROLEPLAY FiveM Roxwood Hospital berdasarkan seluruh data skenario yang tersedia (AI Diagnosis, AI Surgery Planner, Radiology Center, Laboratory AI, dan Psychiatry Center bila ada). Ini materi permainan, bukan rekam medis pasien nyata atau panduan pelayanan. Tulis satu dokumen naratif yang utuh, rinci, dan profesional untuk konteks roleplay; jangan menyebutnya dokumen klinis nyata.\n\n"
         . "ATURAN WAJIB:\n"
         . "1. Tulis narasi rapi dan cukup rinci di setiap bagian (terutama Anamnesis, Status Lokalis, Laporan Tindakan Operasi, Hasil Operasi, dan Status Pasca Operasi) dengan mempertahankan fakta sumber tanpa menambah kejadian.\n"
         . "2. \"laporan_tindakan\" (persiapan/operasi/hemostasis/penutupan) wajib berupa paragraf naratif gaya catatan operasi; jangan membuat daftar langkah bernomor, format /me, /do, atau checklist.\n"
@@ -216,7 +216,7 @@ function ems_ai_medical_record_default_system_prompt(): string
         . "11. AI Surgery Planner adalah rencana/rekomendasi, bukan bukti tindakan benar-benar dilakukan. Jangan memakai rencana, langkah, durasi, obat, atau laporan pasca-operasi dari Planner sebagai hasil aktual kecuali sumber eksplisit menyatakan tindakan sudah dilakukan. Jika tidak ada bukti pelaksanaan, hasil operasi dan status pasca-operasi wajib Data belum tersedia.\n"
         . "12. Konsisten secara medis: seluruh bagian harus selaras dengan data Diagnosis, Surgery Planner, Radiology, Laboratory, Psychiatry, dan dokumen resmi. Dokumen resmi adalah referensi aturan, bukan bukti kondisi pasien.\n"
         . "13. Bahasa Indonesia medis baku (EYD), objektif, tidak berlebihan, dan tidak berspekulasi di luar konteks.\n"
-        . "14. Jangan memakai kata 'simulasi', 'roleplay', atau frasa sejenis di dokumen.\n"
+        . "14. Beri label jelas bahwa dokumen adalah catatan simulasi roleplay FiveM dan bukan rekam medis pasien nyata.\n"
         . "15. Jangan menyertakan penanganan emergency bergaya /me /do.\n"
         . "16. Jika narasi sumber memuat tindakan fisik, pertahankan nama alat, instrumen, dan bahan spesifik yang benar-benar tercantum; tulis 'mesin suction bedah dengan kateter suction steril' bila itulah alat sumbernya, bukan 'menghisap darah' saja. Hubungkan balutan IGD dengan langkah operasi: catat pembukaan balutan yang memang tercatat, alat yang dipakai, lalu tindakan operasi berikutnya. Jangan menambah instrumen sebagai fakta bila tidak ada pada sumber.\n"
         . "17. HANYA JSON valid, tanpa markdown atau teks di luar JSON.\n\n"
@@ -642,7 +642,8 @@ function ems_ai_medical_record_build_html(array $n, array $agg): string
     $nl2br = static fn ($v) => nl2br($e($v), false);
 
     $recordTitle = $hasPerformedOperation ? 'REKAM MEDIS : ' : 'REKAM MEDIS IGD PRA-OPERASI : ';
-    $html = '<h1 style="text-align:center;"><strong>' . $e($recordTitle . $cleanNarrative($n['judul_operasi'])) . '</strong></h1>';
+    $html = '<p style="text-align:center;"><strong>CATATAN SIMULASI ROLEPLAY FIVEM — BUKAN REKAM MEDIS PASIEN NYATA</strong></p>';
+    $html .= '<h1 style="text-align:center;"><strong>' . $e($recordTitle . $cleanNarrative($n['judul_operasi'])) . '</strong></h1>';
 
     $html .= '<h2><strong>INFORMASI WAKTU</strong></h2>';
     $html .= '<p><strong>RUANG PERAWATAN:</strong> ' . $e($cleanNarrative($n['ruang_perawatan'])) . '</p>';

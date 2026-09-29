@@ -116,10 +116,9 @@ function ems_custom_chat_completion(
     }
 
     $startedAt = microtime(true);
-    // The Surgery Planner requests only a small stored chunk at a time. Keep
-    // this call short enough for shared-host PHP request limits; the browser
-    // can retry only this chunk without losing completed work.
-    $timeoutSeconds = $featureKey === 'ai_surgery_planner' ? 35 : 120;
+    // Surgery Planner's Gemini call has a matching bounded timeout, keeping a
+    // failed primary plus fallback within its 55-second PHP request budget.
+    $timeoutSeconds = $featureKey === 'ai_surgery_planner' ? 24 : 120;
     $response = ems_ai_http_post_json($url, $payload, $headers, $timeoutSeconds, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : [];
     $content = $responseJson['choices'][0]['message']['content'] ?? null;

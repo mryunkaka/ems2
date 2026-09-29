@@ -89,7 +89,11 @@ function ems_ai_ds_surgery_job_globalize_step_errors(array $errors, int $stepNo)
 {
     $globalized = [];
     foreach ($errors as $error) {
-        $detail = preg_replace('/^(?:Tahapan operasi tahap\s+\d+\s*)+/u', '', (string) $error) ?? (string) $error;
+        // Instrument validation receives a one-element list while repairing a
+        // single global step, so its local index is always 1. Strip any local
+        // or already-global prefix before adding the canonical step number.
+        $detail = preg_replace('/\bTahapan operasi tahap\s+\d+\s*/iu', '', (string) $error) ?? (string) $error;
+        $detail = trim($detail, " \t\n\r\0\x0B:;-.");
         $globalized[] = 'Tahapan operasi tahap ' . $stepNo . ' ' . $detail;
     }
     return array_values(array_unique($globalized));
