@@ -31,6 +31,9 @@ $recentStmt = $pdo->prepare("
 ");
 $recentStmt->execute([$canViewAllAiHistory ? 1 : 0, $effectiveUnit, $canViewAllAiHistory ? 1 : 0, (int) ($user['id'] ?? 0)]);
 $recentRows = $recentStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+$pendingJobStmt = $pdo->prepare("SELECT job_token FROM ai_surgery_generation_jobs WHERE user_id = ? AND unit_code = ? AND status IN ('running','repairing') AND updated_at >= DATE_SUB(NOW(), INTERVAL 1 DAY) ORDER BY updated_at DESC LIMIT 1");
+$pendingJobStmt->execute([(int) ($user['id'] ?? 0), $effectiveUnit]);
+$pendingJobToken = (string) ($pendingJobStmt->fetchColumn() ?: '');
 
 $hasOwnApiKey = ems_ai_ds_has_text_provider(ems_ai_ds_get_user_settings($pdo, (int) ($user['id'] ?? 0)));
 $canDelete = ems_is_manager_plus_role($user['role'] ?? '');
@@ -304,19 +307,10 @@ include __DIR__ . '/../partials/sidebar.php';
     var retryBtn = document.getElementById('aiSurgLoadingRetryBtn');
     var submitBtn = document.getElementById('aiSurgSubmitBtn');
 
-    var target = 0, shown = 0, creepTimer = null, stageTimers = [];
-
-    var STAGES = [
-        { at: 0, pct: 8, text: 'Menyiapkan & memvalidasi data operasi...' },
-        { at: 3000, pct: 24, text: 'Menerapkan referensi klasifikasi operasi & kewenangan...' },
-        { at: 5000, pct: 34, text: 'Mengirim kasus ke model AI...' },
-        { at: 12000, pct: 48, text: 'Model AI menyusun protokol farmakologi...' },
-        { at: 30000, pct: 60, text: 'Model AI menyusun tahapan prosedur bedah...' },
-        { at: 50000, pct: 72, text: 'Memeriksa risiko & laporan pasca-operasi...' },
-        { at: 70000, pct: 83, text: 'Memeriksa kelengkapan rencana...' },
-        { at: 82000, pct: 90, text: 'Menunggu respons akhir dari model AI...' },
-        { at: 105000, pct: 95, text: 'Menunggu batas akhir respons provider...' }
-    ];
+    var target = 0, shown = 0, creepTimer = null;
+    var activeJobToken = null, activeRetryAction = null;
+    var resumeStorageKey = 'aiSurgeryJob_' + <?= json_encode((string) ((int) ($user['id'] ?? 0))) ?>;
+    var serverPendingJobToken = <?= json_encode($pendingJobToken, JSON_UNESCAPED_UNICODE) ?>;
 
     function renderProgress() {
         bar.style.width = shown + '%';
@@ -332,45 +326,39 @@ include __DIR__ . '/../partials/sidebar.php';
         }, 150);
     }
     function stopCreep() { if (creepTimer) { clearInterval(creepTimer); creepTimer = null; } }
-    function clearStages() { stageTimers.forEach(function (t) { clearTimeout(t); }); stageTimers = []; }
-    function scheduleStages() {
-        clearStages();
-        STAGES.forEach(function (s) {
-            stageTimers.push(setTimeout(function () {
-                target = Math.max(target, Math.min(96, s.pct));
-                messageEl.textContent = s.text;
-            }, s.at));
-        });
-    }
     function resetOverlay() {
         spinner.classList.remove('hidden');
         errorBox.classList.add('hidden');
         retryBtn.classList.add('hidden');
+        retryBtn.textContent = 'Tutup & Coba Lagi';
         bar.style.background = '#0ea5e9';
         target = 0; shown = 0;
         messageEl.textContent = 'Menyiapkan permintaan...';
         renderProgress();
     }
     function showError(msg) {
-        stopCreep(); clearStages();
+        stopCreep();
         spinner.classList.add('hidden');
         bar.style.background = '#e11d48';
         messageEl.textContent = 'Gagal';
         errorBox.textContent = msg;
         errorBox.classList.remove('hidden');
         retryBtn.classList.remove('hidden');
+        retryBtn.textContent = activeRetryAction ? 'Lanjutkan / Coba Tahap Lagi' : 'Tutup';
         submitBtn.disabled = false;
     }
     function finishSuccess(planId) {
-        stopCreep(); clearStages();
+        stopCreep();
+        activeRetryAction = null;
+        try { localStorage.removeItem(resumeStorageKey); } catch (ignored) {}
         target = 100; shown = 100; renderProgress();
         messageEl.textContent = 'Selesai, membuka rencana operasi...';
         window.location.href = 'ai_surgery_report.php?id=' + encodeURIComponent(planId);
     }
 
-    function postSurgeryPlan(formData) {
+    function postSurgeryStage(formData) {
         var controller = new AbortController();
-        var timeoutId = window.setTimeout(function () { controller.abort(); }, 122000);
+        var timeoutId = window.setTimeout(function () { controller.abort(); }, 50000);
         return fetch('ai_surgery_planner_action.php', {
             method: 'POST',
             body: formData,
@@ -388,7 +376,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
         }).catch(function (error) {
             if (error && error.name === 'AbortError') {
-                throw new Error('Permintaan dihentikan setelah 122 detik. Server atau provider AI tidak mengirim hasil tepat waktu; periksa provider dan log server sebelum mencoba ulang.');
+                throw new Error('Batch ini melewati batas waktu. Hasil batch sebelumnya tetap tersimpan; lanjutkan kembali untuk mencoba batch ini lagi.');
             }
             throw error;
         }).finally(function () {
@@ -396,10 +384,87 @@ include __DIR__ . '/../partials/sidebar.php';
         });
     }
 
+    function makeJobToken() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            var r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+        });
+    }
+    function stageRequest(action, token, initialFormData) {
+        var fd = initialFormData || new FormData();
+        if (!initialFormData) fd.append('csrf_token', CSRF_TOKEN);
+        fd.set('stage_action', action);
+        fd.set('job_token', token);
+        return postSurgeryStage(fd);
+    }
+    function runSurgeryJob(initialFormData, token, starting) {
+        if (starting) activeRetryAction = null;
+        activeJobToken = token;
+        try { localStorage.setItem(resumeStorageKey, token); } catch (ignored) {}
+        if (starting) {
+            target = Math.max(target, 12);
+            messageEl.textContent = 'Model AI menentukan kerangka dan jumlah tahap...';
+        } else {
+            target = Math.max(target, Math.min(92, target + 8));
+            messageEl.textContent = 'Model AI menyusun dan memvalidasi bagian berikutnya...';
+        }
+        return stageRequest(starting ? 'start' : 'continue', token, initialFormData).then(function (response) {
+            var data = response.data || {};
+            if (data.busy && data.retryable) {
+                var waitSeconds = Math.max(2, Math.min(15, Number(data.retry_after_seconds || 5)));
+                messageEl.textContent = data.message || 'Menunggu giliran provider AI...';
+                return new Promise(function (resolve) { window.setTimeout(resolve, waitSeconds * 1000); })
+                    .then(function () { return runSurgeryJob(null, token, false); });
+            }
+            if (!response.ok || !data.ok) {
+                if (data.retryable) {
+                    activeRetryAction = function () { return runSurgeryJob(null, token, false); };
+                } else {
+                    try { localStorage.removeItem(resumeStorageKey); } catch (ignored) {}
+                }
+                var failure = new Error(data.message || 'Tahap pembuatan rencana gagal.');
+                failure.retryAction = activeRetryAction;
+                throw failure;
+            }
+            if (data.done && data.plan_id) return data;
+            if (data.planned_steps) {
+                var completed = Number(data.completed_steps || 0);
+                target = Math.max(target, Math.min(92, 12 + Math.floor(completed / Math.max(1, Number(data.planned_steps)) * 76)));
+                messageEl.textContent = data.message || 'Bagian hasil tersimpan di database.';
+            } else {
+                target = Math.max(target, 12);
+                messageEl.textContent = data.message || 'Kerangka rencana tersimpan. Menyiapkan tahap berikutnya...';
+            }
+            return runSurgeryJob(null, token, false);
+        }).catch(function (error) {
+            if (!error.retryAction && token) {
+                error.retryAction = function () { return runSurgeryJob(starting ? initialFormData : null, token, starting); };
+            }
+            throw error;
+        });
+    }
+
     retryBtn.addEventListener('click', function () {
-        overlay.classList.add('hidden');
-        overlay.setAttribute('aria-hidden', 'true');
-        submitBtn.disabled = false;
+        if (activeRetryAction) {
+            var resume = activeRetryAction;
+            activeRetryAction = null;
+            resetOverlay();
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+            submitBtn.disabled = true;
+            startCreep();
+            resume().then(function (data) {
+                if (data.done && data.plan_id) finishSuccess(data.plan_id);
+            }).catch(function (error) {
+                activeRetryAction = error.retryAction || null;
+                showError(error.message || 'Tahap belum dapat dilanjutkan. Coba lagi.');
+            });
+        } else {
+            overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', 'true');
+            submitBtn.disabled = false;
+        }
     });
 
     form.addEventListener('submit', function (e) {
@@ -409,17 +474,10 @@ include __DIR__ . '/../partials/sidebar.php';
         overlay.classList.remove('hidden');
         overlay.setAttribute('aria-hidden', 'false');
         startCreep();
-        scheduleStages();
-
-        postSurgeryPlan(new FormData(form))
-            .then(function (result) {
-                if (!result.ok || !result.data.ok || !result.data.plan_id) {
-                    showError((result.data && result.data.message) || 'Gagal memproses rencana operasi.');
-                    return;
-                }
-                finishSuccess(result.data.plan_id);
-            })
+        runSurgeryJob(new FormData(form), makeJobToken(), true)
+            .then(function (result) { finishSuccess(result.plan_id); })
             .catch(function (error) {
+                activeRetryAction = error && error.retryAction ? error.retryAction : null;
                 showError(error && error.message ? error.message : 'Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
             });
     });
@@ -435,27 +493,40 @@ include __DIR__ . '/../partials/sidebar.php';
             overlay.classList.remove('hidden');
             overlay.setAttribute('aria-hidden', 'false');
             startCreep();
-            scheduleStages();
 
             var fd = new FormData();
             fd.append('csrf_token', CSRF_TOKEN);
             fd.append('regenerate_of', btn.getAttribute('data-id'));
-
-            postSurgeryPlan(fd)
+            runSurgeryJob(fd, makeJobToken(), true)
                 .then(function (result) {
                     btn.disabled = false;
-                    if (!result.ok || !result.data.ok || !result.data.plan_id) {
-                        showError((result.data && result.data.message) || 'Gagal generate ulang rencana operasi.');
-                        return;
-                    }
-                    finishSuccess(result.data.plan_id);
+                    finishSuccess(result.plan_id);
                 })
                 .catch(function (error) {
                     btn.disabled = false;
+                    activeRetryAction = error && error.retryAction ? error.retryAction : null;
                     showError(error && error.message ? error.message : 'Tidak dapat menghubungi server (koneksi terputus atau timeout). Cek koneksi lalu coba lagi.');
                 });
         });
     });
+
+    try {
+        var savedJobToken = localStorage.getItem(resumeStorageKey) || serverPendingJobToken;
+        if (savedJobToken && /^[a-f0-9-]{36}$/i.test(savedJobToken)) {
+            submitBtn.disabled = true;
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+            startCreep();
+            messageEl.textContent = 'Melanjutkan tahap terakhir yang tersimpan...';
+            activeJobToken = savedJobToken;
+            runSurgeryJob(null, savedJobToken, false)
+                .then(function (result) { if (result.done) finishSuccess(result.plan_id); })
+                .catch(function (error) {
+                    activeRetryAction = error && error.retryAction ? error.retryAction : null;
+                    showError(error && error.message ? error.message : 'Tidak dapat melanjutkan proses tersimpan.');
+                });
+        }
+    } catch (ignored) {}
 })();
 </script>
 

@@ -30,8 +30,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         header('Location: ai_surgery_report.php?id=' . $planId);
         exit;
     }
-    $del = $pdo->prepare("DELETE FROM ai_surgery_plans WHERE id = ? AND unit_code = ?");
-    $del->execute([$planId, $effectiveUnit]);
+    $pdo->beginTransaction();
+    try {
+        $jobs = $pdo->prepare('DELETE FROM ai_surgery_generation_jobs WHERE final_plan_id = ? AND user_id = ? AND unit_code = ?');
+        $jobs->execute([$planId, (int) ($user['id'] ?? 0), $effectiveUnit]);
+        $del = $pdo->prepare("DELETE FROM ai_surgery_plans WHERE id = ? AND unit_code = ?");
+        $del->execute([$planId, $effectiveUnit]);
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
     $_SESSION['flash_messages'] = ['Rencana operasi berhasil dihapus.'];
     header('Location: ai_surgery_planner.php');
     exit;

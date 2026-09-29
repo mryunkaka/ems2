@@ -22,6 +22,60 @@ function ems_ai_ds_ensure_tables(PDO $pdo): void
     }
     $ensured = true;
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `ai_surgery_generation_jobs` (
+        `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `job_token` CHAR(36) NOT NULL,
+        `user_id` INT NOT NULL,
+        `unit_code` VARCHAR(20) NOT NULL DEFAULT 'roxwood',
+        `division_snapshot` VARCHAR(60) NULL,
+        `jenis_operasi_kategori` ENUM('Minor','Mayor') NOT NULL DEFAULT 'Mayor',
+        `jenis_anestesi_input` VARCHAR(100) NOT NULL,
+        `kompleksitas` ENUM('Mudah','Sedang','Panjang') NOT NULL DEFAULT 'Sedang',
+        `kasus_tindakan` TEXT NOT NULL,
+        `source_report_code` VARCHAR(40) NULL,
+        `diagnosis_context` LONGTEXT NULL,
+        `system_prompt` LONGTEXT NOT NULL,
+        `user_prompt` LONGTEXT NOT NULL,
+        `outline_json` LONGTEXT NULL,
+        `status` ENUM('running','repairing','done','error') NOT NULL DEFAULT 'running',
+        `next_stage_no` INT NOT NULL DEFAULT 1,
+        `planned_step_count` SMALLINT UNSIGNED NULL,
+        `repair_indexes_json` TEXT NULL,
+        `lock_expires_at` DATETIME NULL,
+        `final_plan_id` INT NULL,
+        `last_error` TEXT NULL,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uniq_ai_surgery_job_token` (`job_token`),
+        KEY `idx_ai_surgery_job_user_status` (`user_id`, `status`, `updated_at`),
+        KEY `idx_ai_surgery_job_unit` (`unit_code`, `created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `ai_surgery_generation_stages` (
+        `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `job_id` BIGINT UNSIGNED NOT NULL,
+        `stage_no` INT NOT NULL,
+        `attempt_no` SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+        `stage_type` VARCHAR(20) NOT NULL,
+        `status` ENUM('done','error') NOT NULL,
+        `result_json` LONGTEXT NULL,
+        `validation_errors_json` LONGTEXT NULL,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uniq_ai_surgery_job_stage_attempt` (`job_id`, `stage_no`, `attempt_no`),
+        KEY `idx_ai_surgery_stage_job` (`job_id`, `stage_no`),
+        CONSTRAINT `fk_ai_surgery_stage_job` FOREIGN KEY (`job_id`) REFERENCES `ai_surgery_generation_jobs` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS `ai_surgery_generation_provider_slots` (
+        `slot_id` TINYINT UNSIGNED NOT NULL,
+        `job_id` BIGINT UNSIGNED NULL,
+        `lock_token` CHAR(36) NULL,
+        `expires_at` DATETIME NULL,
+        PRIMARY KEY (`slot_id`),
+        KEY `idx_ai_surgery_provider_slot_expiry` (`expires_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
+    $pdo->exec('INSERT IGNORE INTO `ai_surgery_generation_provider_slots` (`slot_id`) VALUES (1), (2)');
+
     if (!ems_table_exists($pdo, 'ai_diagnosis_reports')) {
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS `ai_diagnosis_reports` (
@@ -2969,7 +3023,7 @@ function ems_ai_ds_diagnosis_response_schema(string $featureKey): array
 }
 
 /** JSON schema for a complete surgery plan; the model chooses the step count. */
-function ems_ai_ds_surgery_response_schema(bool $stepsOnly = false, bool $headerOnly = false): array
+function ems_ai_ds_surgery_response_schema(bool $stepsOnly = false, bool $headerOnly = false, bool $includeOutline = false): array
 {
     $string = ['type' => 'STRING'];
     $stringList = ['type' => 'ARRAY', 'items' => $string];
@@ -3003,6 +3057,13 @@ function ems_ai_ds_surgery_response_schema(bool $stepsOnly = false, bool $header
     ];
     if ($headerOnly) {
         unset($properties['tahapan_prosedur']);
+        if ($includeOutline) {
+            $properties['outline_tahapan'] = ['type' => 'ARRAY', 'items' => [
+                'type' => 'OBJECT',
+                'properties' => ['judul' => $string, 'tujuan' => $string],
+                'required' => ['judul', 'tujuan'],
+            ]];
+        }
     }
     return ['type' => 'OBJECT', 'properties' => $properties, 'required' => array_keys($properties)];
 }
@@ -3073,6 +3134,8 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
     }
 
     $completionContract = ems_ai_ds_model_completion_contract($featureKey);
+    $isSurgeryStepOutput = $featureKey === 'ai_surgery_planner'
+        && array_keys($responseSchemaOverride['properties'] ?? []) === ['tahapan_prosedur'];
     $crossFeatureActionContract = "KONTRAK LINTAS FITUR ROXWOOD HOSPITAL AI: hanya bila schema fitur ini meminta tindakan fisik atau mantra roleplay, setiap aksi wajib menyebut alat/instrumen/bahan yang dipakai (contoh suction: mesin suction bedah + kateter suction steril; balut: kasa steril + perban; jahit: needle holder + pinset + benang spesifik). Bila ada field pelaku/asisten, perintah supervisor menyebut nama alat yang harus diambil/dipasang. Jangan menambah kartu tindakan fisik ke fitur yang tidak memintanya dan jangan menempelkan alat yang tidak relevan.";
     $systemPrompt .= "\n\n" . $completionContract . "\n\n" . $crossFeatureActionContract;
     $finalValidation = "FINAL VALIDATION GATE (mengalahkan instruksi template/user yang bertentangan):\n"
@@ -3087,10 +3150,10 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
             $customMaxOutputTokens = null;
             if ($featureKey === 'ai_surgery_planner') {
                 $schemaProperties = $responseSchemaOverride['properties'] ?? [];
-                // Full plans and targeted step corrections both include
-                // tahapan_prosedur. Reserve enough output budget so an
-                // OpenAI-compatible router does not truncate structured JSON.
-                $customMaxOutputTokens = !empty($schemaProperties['tahapan_prosedur']) ? 8192 : 2500;
+                // A staged request asks for exactly one procedure step, so do
+                // not reserve a full-plan token budget for each small response.
+                $stepOnly = array_keys($schemaProperties) === ['tahapan_prosedur'];
+                $customMaxOutputTokens = $stepOnly ? 3000 : (!empty($schemaProperties['tahapan_prosedur']) ? 8192 : 2500);
             }
             $response = ems_custom_chat_completion(
                 $pdo,
@@ -3158,8 +3221,8 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-3.5-flash-lite',
         // Keep each synchronous Surgery Planner provider call bounded so a
         // Gemini failure plus custom fallback stays below common proxy limits.
-        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 12 : ($isDiagnosisAssistant ? 150 : 55),
-        'max_output_tokens' => $isDiagnosisAssistant ? 12000 : 8192,
+        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 8 : ($isDiagnosisAssistant ? 150 : 55),
+        'max_output_tokens' => $isDiagnosisAssistant ? 12000 : ($isSurgeryStepOutput ? 3000 : 8192),
         'daily_request_limit' => 0,
     ]);
 
