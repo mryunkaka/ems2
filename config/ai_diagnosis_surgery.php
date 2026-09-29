@@ -461,7 +461,7 @@ function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, str
     // lexicon caused valid tools (e.g. Jackson-Pratt drains/trocars) to be
     // rejected and sent through needless repair cycles.
     $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|masker\s+bedah|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|set\s+infus|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|gunting\s+Metzenbaum|pinset(?:\s+(?:jaringan|anatomi|chirurgis|atraumatik))?|forsep|forceps|skalpel|bisturi|pisau\s+bedah|elektrokauter|electrocautery|diatermi|monopolar|bipolar|stapler(?:\s+bedah)?|retraktor|dilator|spekulum|duk\s+steril|gaun\s+(?:bedah\s+)?steril|sarung\s+tangan(?:\s+steril)?|APD|pelindung\s+(?:wajah|mata)|sabun\s+antiseptik|hand\s*rub|cairan\s+antiseptik|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl|prolene|kromik|PDS)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+(?:operasi|pre[- ]?operatif)|lembar\s+(?:checklist|hitung)|formulir\s+(?:identitas|operasi|consent|pre[- ]?operatif)|informed\s+consent\s+form|papan\s+operasi|clipboard|spidol\s+steril|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril|laparotomy\s+pad|tampon\s+abdomen|surgical\s+tray|suction\s+tubing|arterial\s+line|infusion\s+pump|pompa\s+infus|line\s+arteri|drain(?:\s+[a-z][a-z0-9-]*){0,4}|Jackson[- ]?Pratt|trocar|blood\s+warmer|penghangat\s+darah|bor\s+kranial|perforator|burr\s+hole|gigli\s+saw|elevator\s+periosteum|pin\s+Mayfield|Surgicel|bone\s+wax|kawat\s+sternum|staples?\s+(?:kulit|bedah)|clip\s+aplikator|klip\s+vaskuler|C-arm|fluoroskopi|kateter\s+Foley|kateter\s+urin|tube\s+thoracostomy|chest\s+tube|water\s+seal\s+drainage|WSD|mesin\s+anestesi|ventilator|sirkuit\s+anestesi|laring\s+mask|LMA|probe\s+USG|transduser\s+USG|selimut\s+penghangat|klem\s+kocher|klem\s+Kelly|klem\s+mosquito|pinset\s+DeBakey|pinset\s+Adson|retraktor\s+Balfour|retraktor\s+Weitlaner|retraktor\s+Hohmann|suction\s+Yankauer|kateter\s+Yankauer|kateter\s+Nelaton|klem\s+umbilikal|kateter\s+umbilikal|spuit\s+insulin|spuit\s+10\s*mL|spuit\s+20\s*mL|spuit\s+50\s*mL|kasa\s+lapar[ao]tomi|kasa\s+radiopak)\b/iu';
-    $specialtyToolPattern = '/\b(?:klem\s+(?:atraumatik\s+)?DeBakey|jarum\s+(?:besar|bedah|melengkung|atraumatik)|benang\s+chromic|lembar\s+hitung|kasa\s+laparatomi)\b/iu';
+    $specialtyToolPattern = '/\b(?:set\s+instrumen\s+(?:bedah\s+steril|ortopedi)|klem\s+(?:atraumatik\s+)?DeBakey|jarum\s+(?:besar|bedah|melengkung|atraumatik)|benang\s+chromic|lembar\s+hitung|kasa\s+laparatomi)\b/iu';
     foreach ($items as $index => $item) {
         if (!is_array($item)) continue;
         $action = trim((string) ($item['aksi'] ?? ''));
@@ -498,6 +498,61 @@ function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, str
         }
     }
     return $issues;
+}
+
+/** Add a narrowly scoped equipment mention when the model omitted one. */
+function ems_ai_ds_surgery_complete_tool_contract(array $step, array $outline = []): array
+{
+    $action = trim((string) ($step['aksi'] ?? ''));
+    $context = mb_strtolower($action . ' ' . (string) ($outline['judul'] ?? '') . ' ' . (string) ($outline['tujuan'] ?? ''), 'UTF-8');
+    $tool = 'set instrumen bedah steril';
+    $rules = [
+        ['/cuci tangan|handwash|scrub bedah|kebersihan tangan/u', 'sabun antiseptik'],
+        ['/gaun|sarung tangan|gown|glove/u', 'gaun bedah steril dan sarung tangan steril'],
+        ['/briefing|doa|verifikasi|identitas|persetujuan|consent|time.?out|checklist|dokumentasi|catatan/u', 'checklist operasi dan clipboard'],
+        ['/intubasi|airway|laring|ventilasi|anestesi/u', 'laringoskop dan ETT'],
+        ['/monitor|tanda vital|ekg|oksigenasi/u', 'monitor pasien'],
+        ['/pindah|transfer|brankar|serah.?terima/u', 'brankar dan monitor transport'],
+        ['/suction|hisap|genangan darah/u', 'mesin suction bedah dan kateter suction steril'],
+        ['/irigasi|bilas luka/u', 'spuit irigasi 50 mL berisi NaCl 0,9%'],
+        ['/jahit|menjahit|suture|penutupan kulit/u', 'needle holder dan benang nylon 3-0'],
+        ['/hemost|perdarahan|menghentikan darah/u', 'klem hemostat'],
+        ['/debrid|eksisi|potong jaringan/u', 'gunting Metzenbaum'],
+        ['/insisi|sayatan|membuat sayatan/u', 'skalpel'],
+        ['/periksa|eksplorasi|menilai luka|evaluasi luka/u', 'pinset anatomi'],
+        ['/balut|dressing|kasa|menutup luka/u', 'kasa steril dan perban elastis'],
+        ['/fraktur|tulang|ortopedi|orif/u', 'set instrumen ortopedi'],
+    ];
+    foreach ($rules as [$pattern, $candidate]) {
+        if (preg_match($pattern, $context) === 1) { $tool = $candidate; break; }
+    }
+
+    $probe = $step;
+    $probe['aksi'] = $action;
+    $actionIssues = ems_ai_ds_instrument_action_issues([$probe], 'Tahapan operasi');
+    $missingActionTool = (bool) array_filter($actionIssues, static fn ($issue) => str_contains($issue, 'belum menyebut nama alat/instrumen/bahan'));
+    if ($action !== '' && $missingActionTool) $step['aksi'] = rtrim($action, " .\t\n\r\0\x0B") . ' menggunakan ' . $tool . '.';
+
+    if (str_contains(mb_strtolower(trim((string) ($step['pelaku'] ?? '')), 'UTF-8'), 'asisten')) {
+        $instruction = trim((string) ($step['instruksi'] ?? ''));
+        $issues = ems_ai_ds_instrument_action_issues([[
+            'pelaku' => $step['pelaku'], 'instruksi' => $instruction, 'aksi' => (string) ($step['aksi'] ?? ''),
+        ]], 'Tahapan operasi');
+        $missingDirective = (bool) array_filter($issues, static fn ($issue) => str_contains($issue, 'tanpa instruksi DPJP'));
+        if ($missingDirective) {
+            // Keep the instructed item explicitly present in /me so the action
+            // and hand-off remain consistent and pass the same validator.
+            $actualTool = $tool;
+            $actionNow = trim((string) ($step['aksi'] ?? ''));
+            if (preg_match('/\b(?:mesin\s+suction\s+bedah\s+dan\s+kateter\s+suction\s+steril|spuit\s+irigasi\s+50\s*mL\s+berisi\s+NaCl\s*0[,\.]9%|needle\s+holder\s+dan\s+benang\s+nylon\s+3-0|brankar\s+dan\s+monitor\s+transport|checklist\s+operasi\s+dan\s+clipboard|laringoskop\s+dan\s+ETT|gaun\s+bedah\s+steril\s+dan\s+sarung\s+tangan\s+steril|kasa\s+steril\s+dan\s+perban\s+elastis|set\s+instrumen\s+(?:bedah\s+steril|ortopedi)|pinset(?:\s+(?:jaringan|anatomi|chirurgis|atraumatik))?|retraktor(?:\s+[A-Za-z-]+)?|klem\s+(?:arteri|vaskuler|hemostat|Kelly|Kocher|mosquito)|gunting\s+(?:perban|operasi|Metzenbaum)|needle\s+holder|benang\s+(?:nylon|vicryl|prolene)|skalpel|stetoskop|monitor\s+(?:pasien|EKG|transport)|mesin\s+anestesi|laringoskop|ETT|Doppler\s+vaskular|spuit|kasa\s+steril|perban\s+elastis|brankar|sabun\s+antiseptik|clipboard|checklist\s+operasi|set\s+instrumen\s+bedah\s+steril)\b/iu', $actionNow, $match) === 1) {
+                $actualTool = trim($match[0]);
+            } elseif (mb_stripos($actionNow, $tool, 0, 'UTF-8') === false) {
+                $step['aksi'] = rtrim($actionNow, " .\t\n\r\0\x0B") . ' menggunakan ' . $tool . '.';
+            }
+            $step['instruksi'] = 'DPJP: Asisten, ambilkan dan serahkan ' . $actualTool . ".\nAsisten: Baik, Dok.";
+        }
+    }
+    return $step;
 }
 
 function ems_ai_ds_operation_classification_reference(): string

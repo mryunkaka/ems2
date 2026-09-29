@@ -423,8 +423,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     activeRetryAction = function () { return runSurgeryJob(null, token, false); };
                     var retryKey = String(data.stage_no || 0);
                     automaticStageRetries[retryKey] = (automaticStageRetries[retryKey] || 0) + 1;
-                    if (automaticStageRetries[retryKey] <= 2) {
-                        messageEl.textContent = 'Memperbaiki tahap yang belum valid, percobaan otomatis ' + automaticStageRetries[retryKey] + ' dari 2...';
+                    if (automaticStageRetries[retryKey] <= 5) {
+                        messageEl.textContent = 'Memperbaiki tahap yang belum valid secara otomatis, percobaan ' + automaticStageRetries[retryKey] + ' dari 5...';
                         return new Promise(function (resolve) { window.setTimeout(resolve, 1200); })
                             .then(function () { return runSurgeryJob(null, token, false); });
                     }

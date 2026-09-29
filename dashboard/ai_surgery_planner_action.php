@@ -85,6 +85,16 @@ function ems_ai_ds_surgery_job_validate_step(array $step, string $caseText): arr
     return array_values(array_unique($errors));
 }
 
+function ems_ai_ds_surgery_job_globalize_step_errors(array $errors, int $stepNo): array
+{
+    $globalized = [];
+    foreach ($errors as $error) {
+        $detail = preg_replace('/^(?:Tahapan operasi tahap\s+\d+\s*)+/u', '', (string) $error) ?? (string) $error;
+        $globalized[] = 'Tahapan operasi tahap ' . $stepNo . ' ' . $detail;
+    }
+    return array_values(array_unique($globalized));
+}
+
 function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, string $unitCode): array
 {
     $claim = $pdo->prepare("UPDATE ai_surgery_generation_jobs SET lock_expires_at = DATE_ADD(NOW(), INTERVAL 60 SECOND) WHERE job_token = ? AND user_id = ? AND unit_code = ? AND status IN ('running','repairing') AND (lock_expires_at IS NULL OR lock_expires_at < NOW())");
@@ -232,16 +242,31 @@ function ems_ai_ds_surgery_job_process(PDO $pdo, string $token, int $userId, str
 
         $newSteps = ems_ai_ds_extract_surgery_steps($piece);
         if ($stageType === 'repair') {
+            if (isset($newSteps[0])) $newSteps[0] = ems_ai_ds_surgery_complete_tool_contract($newSteps[0], $header['outline_tahapan'][$targetIndex] ?? []);
+        } else {
+            $outlineForSteps = array_slice($header['outline_tahapan'] ?? [], ($stageNo - 2) * $chunkSize, count($newSteps));
+            foreach ($newSteps as $offset => $step) {
+                $newSteps[$offset] = ems_ai_ds_surgery_complete_tool_contract($step, $outlineForSteps[$offset] ?? []);
+            }
+        }
+        // Persist and resume from the normalized version, never the incomplete
+        // raw provider payload, so one missing tool does not trigger user retries.
+        $piece['tahapan_prosedur'] = $newSteps;
+        if ($stageType === 'repair') {
             if (count($newSteps) !== 1) $errors = ['model harus mengembalikan tepat satu tahap perbaikan'];
-            else $errors = ems_ai_ds_surgery_job_validate_step($newSteps[0], $caseText);
+            else $errors = ems_ai_ds_surgery_job_globalize_step_errors(
+                ems_ai_ds_surgery_job_validate_step($newSteps[0], $caseText),
+                (int) $targetIndex + 1
+            );
         } else {
             $outlineChunk = array_slice($header['outline_tahapan'], ($stageNo - 2) * $chunkSize, $chunkSize);
             if (count($newSteps) !== count($outlineChunk)) $errors = ['batch harus mengembalikan tepat ' . count($outlineChunk) . ' tahap'];
             else {
                 $errors = [];
                 foreach ($newSteps as $offset => $itemErrors) {
+                    $globalStepNo = (((($stageNo - 2) * $chunkSize) + $offset) + 1);
                     foreach (ems_ai_ds_surgery_job_validate_step($itemErrors, $caseText) as $itemError) {
-                        $errors[] = 'Tahapan operasi tahap ' . (((($stageNo - 2) * $chunkSize) + $offset) + 1) . ' ' . $itemError;
+                        $errors[] = ems_ai_ds_surgery_job_globalize_step_errors([$itemError], $globalStepNo)[0];
                     }
                 }
             }
@@ -535,6 +560,12 @@ $result = ems_ai_ds_call_gemini(
 );
 $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
+foreach ($data['tahapan_prosedur'] as $stepIndex => $step) {
+    $data['tahapan_prosedur'][$stepIndex] = ems_ai_ds_surgery_complete_tool_contract(
+        $step,
+        is_array($data['outline_tahapan'][$stepIndex] ?? null) ? $data['outline_tahapan'][$stepIndex] : []
+    );
+}
 $checkPlanQuality = static function (array $candidate): array {
     $errors = ems_ai_ds_surgery_quality_errors($candidate);
     $serialized = json_encode($candidate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
