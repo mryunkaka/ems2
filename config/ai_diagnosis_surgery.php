@@ -3049,6 +3049,16 @@ function ems_ai_ds_complete_emergency_tool_wording(array $items): array
             $tool = 'kasa steril dan perban elastis';
         } elseif ($tool === null && preg_match('/\\b(?:memeriksa|menilai|menginspeksi|palpasi|meraba)\\b[^.!?]{0,140}\\b(?:deformitas|pembengkakan|tungkai|kaki|ekstremitas|cedera|area\\s+luka)\\b/iu', $action)) {
             $tool = 'sarung tangan pemeriksaan';
+        } elseif ($tool === null && preg_match('/\\b(?:secondary\\s+survey|survei\\s+sekunder|pemeriksaan\\s+menyeluruh)\\b/iu', $action)) {
+            $tool = 'sarung tangan pemeriksaan';
+        } elseif ($tool === null && preg_match('/\\b(?:memeriksa|menilai|mengevaluasi)\\b[^.!?]{0,100}\\b(?:pupil|reaktivitas\\s+pupil|kesimetrisan\\s+pupil)\\b/iu', $action)) {
+            $tool = 'senter pupil';
+        } elseif ($tool === null && preg_match('/\\b(?:menyiapkan|mempersiapkan|menyusun)\\b[^.!?]{0,120}\\b(?:osmoterapi|mannitol|NaCl\\s*3%|larutan\\s+hipertonik)\\b/iu', $action)) {
+            $tool = 'set infus';
+        } elseif ($tool === null && preg_match('/\\b(?:menyiapkan|mempersiapkan|mengirim)\\b[^.!?]{0,120}\\b(?:golongan\\s+darah|crossmatch|pencocokan\\s+darah)\\b/iu', $action)) {
+            $tool = 'tabung vakutainer';
+        } elseif ($tool === null && preg_match('/\\b(?:meminta|menjelaskan|menandatangani|mendokumentasikan)\\b[^.!?]{0,120}\\b(?:informed\\s+consent|persetujuan\\s+tindakan|consent)\\b/iu', $action)) {
+            $tool = 'informed consent form';
         } elseif ($tool === null && preg_match('/\\b(?:memindahkan|mengantar|mendorong|membawa)\\b.*\\b(?:IGD|ruang\\s+operasi|radiologi|laboratorium|brankar|pasien)\\b/iu', $action)) {
             $tool = 'brankar dan monitor transport';
         } elseif ($tool === null && preg_match('/\\b(?:memasang|mempertahankan|akses)\\b.*\\b(?:infus|intravena|IV)\\b/iu', $action)) {
@@ -3060,8 +3070,10 @@ function ems_ai_ds_complete_emergency_tool_wording(array $items): array
         if (!$hasTool) {
             $item['aksi'] = rtrim($action, " .") . ' menggunakan ' . $tool;
         }
-        if (str_contains(mb_strtolower((string) ($item['pelaku'] ?? ''), 'UTF-8'), 'asisten')) {
-            $item['instruksi'] = 'DPJP: Asisten, ambilkan dan serahkan ' . $tool . '. Asisten: Baik, Dok.';
+        $actor = (string) ($item['pelaku'] ?? '');
+        if (preg_match('/\\bAsisten(?:\\s+[12])?\\b/iu', $actor, $assistantMatch) === 1) {
+            $assistantRole = trim((string) $assistantMatch[0]);
+            $item['instruksi'] = 'DPJP: ' . $assistantRole . ', ambilkan dan serahkan ' . $tool . '. ' . $assistantRole . ': Baik, Dok.';
         }
     }
     unset($item);
