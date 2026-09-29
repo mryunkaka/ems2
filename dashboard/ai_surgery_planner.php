@@ -314,7 +314,8 @@ include __DIR__ . '/../partials/sidebar.php';
         { at: 30000, pct: 60, text: 'Model AI menyusun tahapan prosedur bedah...' },
         { at: 50000, pct: 72, text: 'Memeriksa risiko & laporan pasca-operasi...' },
         { at: 70000, pct: 83, text: 'Memeriksa kelengkapan rencana...' },
-        { at: 82000, pct: 90, text: 'Menunggu respons akhir dari model AI...' }
+        { at: 82000, pct: 90, text: 'Menunggu respons akhir dari model AI...' },
+        { at: 105000, pct: 95, text: 'Menunggu batas akhir respons provider...' }
     ];
 
     function renderProgress() {
@@ -369,7 +370,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
     function postSurgeryPlan(formData) {
         var controller = new AbortController();
-        var timeoutId = window.setTimeout(function () { controller.abort(); }, 100000);
+        var timeoutId = window.setTimeout(function () { controller.abort(); }, 122000);
         return fetch('ai_surgery_planner_action.php', {
             method: 'POST',
             body: formData,
@@ -387,7 +388,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 });
         }).catch(function (error) {
             if (error && error.name === 'AbortError') {
-                throw new Error('Permintaan dihentikan setelah 100 detik. Provider AI tidak merespons dalam batas waktu; periksa koneksi provider dan coba lagi.');
+                throw new Error('Permintaan dihentikan setelah 122 detik. Server atau provider AI tidak mengirim hasil tepat waktu; periksa provider dan log server sebelum mencoba ulang.');
             }
             throw error;
         }).finally(function () {

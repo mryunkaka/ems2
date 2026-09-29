@@ -3158,7 +3158,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-3.5-flash-lite',
         // Keep each synchronous Surgery Planner provider call bounded so a
         // Gemini failure plus custom fallback stays below common proxy limits.
-        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 20 : ($isDiagnosisAssistant ? 150 : 55),
+        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 12 : ($isDiagnosisAssistant ? 150 : 55),
         'max_output_tokens' => $isDiagnosisAssistant ? 12000 : 8192,
         'daily_request_limit' => 0,
     ]);
@@ -3183,7 +3183,7 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         } catch (Throwable $schemaError) {
             // Compatibility path for Gemini-compatible endpoints/models that do
             // not implement responseSchema; parser + repair gate remain active.
-            if ($responseSchema === null || preg_match('/schema|400|not supported|unsupported|invalid argument/iu', $schemaError->getMessage()) !== 1) {
+            if ($responseSchema === null || $featureKey === 'ai_surgery_planner' || preg_match('/schema|400|not supported|unsupported|invalid argument/iu', $schemaError->getMessage()) !== 1) {
                 throw $schemaError;
             }
             $response = ems_gemini_generate_content(

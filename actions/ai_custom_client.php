@@ -116,7 +116,10 @@ function ems_custom_chat_completion(
     }
 
     $startedAt = microtime(true);
-    $timeoutSeconds = $featureKey === 'ai_surgery_planner' ? 55 : 120;
+    // Surgery plans can take over 100 seconds on the configured router. Keep
+    // enough room for a complete response while fitting one provider fallback
+    // inside the app's bounded synchronous request budget.
+    $timeoutSeconds = $featureKey === 'ai_surgery_planner' ? 105 : 120;
     $response = ems_ai_http_post_json($url, $payload, $headers, $timeoutSeconds, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : [];
     $content = $responseJson['choices'][0]['message']['content'] ?? null;

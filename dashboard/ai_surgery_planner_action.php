@@ -1,9 +1,25 @@
 <?php
 // The model selects a case-appropriate number of roleplay steps in one request.
-@set_time_limit(110);
+@set_time_limit(120);
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 header('Content-Type: application/json; charset=UTF-8');
+
+register_shutdown_function(static function (): void {
+    $lastError = error_get_last();
+    if (!is_array($lastError) || !in_array((int) ($lastError['type'] ?? 0), [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+        return;
+    }
+    $requestTag = substr(hash('sha256', microtime(true) . ':' . mt_rand()), 0, 10);
+    error_log('[AI Surgery Planner][' . $requestTag . '] PHP fatal: ' . (string) ($lastError['message'] ?? 'unknown') . ' at ' . (string) ($lastError['file'] ?? 'unknown') . ':' . (int) ($lastError['line'] ?? 0));
+    if (!headers_sent()) {
+        http_response_code(500);
+        echo json_encode([
+            'ok' => false,
+            'message' => 'PHP menghentikan proses pembuatan rencana. Kode diagnostik: ' . $requestTag . '. Periksa error log hosting dengan kode tersebut.',
+        ], JSON_UNESCAPED_UNICODE);
+    }
+});
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
@@ -168,43 +184,6 @@ $checkPlanQuality = static function (array $candidate): array {
     return array_values(array_unique($errors));
 };
 $qualityErrors = $result['ok'] ? $checkPlanQuality($data) : [(string) ($result['error'] ?? 'Model tidak mengembalikan JSON rencana operasi.')];
-
-// A valid JSON response can still miss the quality gate. Make one full
-// custom-provider attempt instead of chaining slow repair calls; validate it
-// with the same gate before saving anything as done.
-$userAiSettings = ems_ai_ds_get_user_settings($pdo, isset($user['id']) ? (int) $user['id'] : 0);
-$hasCustomFallback = ems_ai_ds_has_custom_provider($userAiSettings);
-$primaryWasGemini = strcasecmp((string) ($result['provider'] ?? ''), 'Gemini') === 0
-    && empty($result['fallback_from']);
-if ($result['ok'] && $qualityErrors !== [] && $primaryWasGemini && $hasCustomFallback) {
-    $qualityFallbackPrompt = "Respons provider utama belum lolos quality gate. Buat satu JSON rencana operasi lengkap sesuai schema, perbaiki SEMUA masalah validasi berikut, dan pertahankan fakta kasus, sisi/anatomi, hasil pemeriksaan, serta urutan kronologis. Setiap aksi /me menyebut instrumen atau bahan yang digunakan; setiap /do berisi hasil langsung; instruksi asisten harus menyebut alat spesifik. Jangan mengarang data klinis atau menambah tindakan yang tidak didukung konteks.\nMASALAH VALIDASI:\n"
-        . implode("\n", $qualityErrors)
-        . "\nKASUS DAN KONTEKS KANONIK:\n" . $userPrompt
-        . "\nJSON YANG GAGAL VALIDASI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $qualityFallback = ems_ai_ds_call_gemini(
-        $pdo,
-        $systemPrompt,
-        $qualityFallbackPrompt,
-        'ai_surgery_planner',
-        isset($user['id']) ? (int) $user['id'] : null,
-        ems_ai_ds_surgery_response_schema(),
-        'custom'
-    );
-    if (!empty($qualityFallback['ok']) && is_array($qualityFallback['data'] ?? null)) {
-        $fallbackData = $qualityFallback['data'];
-        $fallbackData['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($fallbackData);
-        $fallbackQualityErrors = $checkPlanQuality($fallbackData);
-        if ($fallbackQualityErrors === []) {
-            $data = $fallbackData;
-            $qualityErrors = [];
-            $result = $qualityFallback;
-        } else {
-            $qualityErrors[] = 'custom provider cadangan juga belum lolos validasi: ' . implode('; ', $fallbackQualityErrors);
-        }
-    } else {
-        $qualityErrors[] = 'custom provider cadangan gagal: ' . (string) ($qualityFallback['error'] ?? 'respons tidak valid');
-    }
-}
 
 if (!$result['ok'] && $qualityErrors !== []) {
     $errorMessage = 'Model AI belum dapat menyelesaikan rencana operasi: ' . implode('; ', $qualityErrors) . '. Tidak disimpan sebagai rencana selesai.';
