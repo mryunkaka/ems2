@@ -311,11 +311,10 @@ include __DIR__ . '/../partials/sidebar.php';
         { at: 3000, pct: 24, text: 'Menerapkan referensi klasifikasi operasi & kewenangan...' },
         { at: 5000, pct: 34, text: 'Mengirim kasus ke model AI...' },
         { at: 12000, pct: 48, text: 'Model AI menyusun protokol farmakologi...' },
-        { at: 30000, pct: 62, text: 'Model AI menyusun tahapan prosedur bedah...' },
-        { at: 60000, pct: 75, text: 'Model AI masih menganalisis, mohon tunggu...' },
-        { at: 90000, pct: 85, text: 'Menyusun risiko & laporan pasca-operasi...' },
-        { at: 140000, pct: 93, text: 'Memeriksa kelengkapan rencana operasi...' },
-        { at: 200000, pct: 96, text: 'Menunggu respons akhir dari model AI...' }
+        { at: 30000, pct: 60, text: 'Model AI menyusun tahapan prosedur bedah...' },
+        { at: 50000, pct: 72, text: 'Memeriksa risiko & laporan pasca-operasi...' },
+        { at: 70000, pct: 83, text: 'Memeriksa kelengkapan rencana...' },
+        { at: 82000, pct: 90, text: 'Menunggu respons akhir dari model AI...' }
     ];
 
     function renderProgress() {
@@ -368,6 +367,34 @@ include __DIR__ . '/../partials/sidebar.php';
         window.location.href = 'ai_surgery_report.php?id=' + encodeURIComponent(planId);
     }
 
+    function postSurgeryPlan(formData) {
+        var controller = new AbortController();
+        var timeoutId = window.setTimeout(function () { controller.abort(); }, 100000);
+        return fetch('ai_surgery_planner_action.php', {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+            signal: controller.signal
+        }).then(function (res) {
+            return res.json()
+                .then(function (data) { return { ok: res.ok, data: data }; })
+                .catch(function () {
+                    return {
+                        ok: false,
+                        data: { ok: false, message: 'Server mengirim respons non-JSON (HTTP ' + res.status + '). Periksa batas waktu server atau log PHP.' }
+                    };
+                });
+        }).catch(function (error) {
+            if (error && error.name === 'AbortError') {
+                throw new Error('Permintaan dihentikan setelah 100 detik. Provider AI tidak merespons dalam batas waktu; periksa koneksi provider dan coba lagi.');
+            }
+            throw error;
+        }).finally(function () {
+            window.clearTimeout(timeoutId);
+        });
+    }
+
     retryBtn.addEventListener('click', function () {
         overlay.classList.add('hidden');
         overlay.setAttribute('aria-hidden', 'true');
@@ -383,22 +410,7 @@ include __DIR__ . '/../partials/sidebar.php';
         startCreep();
         scheduleStages();
 
-        fetch('ai_surgery_planner_action.php', {
-            method: 'POST',
-            body: new FormData(form),
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-        })
-            .then(function (res) {
-                return res.json()
-                    .then(function (data) { return { ok: res.ok, data: data }; })
-                    .catch(function () {
-                        return {
-                            ok: false,
-                            data: { ok: false, message: 'Server mengirim respons non-JSON (HTTP ' + res.status + '). Periksa batas waktu server atau log PHP.' }
-                        };
-                    });
-            })
+        postSurgeryPlan(new FormData(form))
             .then(function (result) {
                 if (!result.ok || !result.data.ok || !result.data.plan_id) {
                     showError((result.data && result.data.message) || 'Gagal memproses rencana operasi.');
@@ -428,22 +440,7 @@ include __DIR__ . '/../partials/sidebar.php';
             fd.append('csrf_token', CSRF_TOKEN);
             fd.append('regenerate_of', btn.getAttribute('data-id'));
 
-            fetch('ai_surgery_planner_action.php', {
-                method: 'POST',
-                body: fd,
-                credentials: 'same-origin',
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
-            })
-                .then(function (res) {
-                    return res.json()
-                        .then(function (data) { return { ok: res.ok, data: data }; })
-                        .catch(function () {
-                            return {
-                                ok: false,
-                                data: { ok: false, message: 'Server mengirim respons non-JSON (HTTP ' + res.status + '). Periksa batas waktu server atau log PHP.' }
-                            };
-                        });
-                })
+            postSurgeryPlan(fd)
                 .then(function (result) {
                     btn.disabled = false;
                     if (!result.ok || !result.data.ok || !result.data.plan_id) {

@@ -1,6 +1,6 @@
 <?php
 // The model selects a case-appropriate number of roleplay steps in one request.
-@set_time_limit(300);
+@set_time_limit(110);
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 header('Content-Type: application/json; charset=UTF-8');
@@ -159,7 +159,6 @@ $userPrompt .= "\n\nKONTRAK JUMLAH TAHAP: Tentukan sendiri jumlah tahap yang waj
 );
 $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
-$initialProvider = (string) ($result['provider'] ?? 'Gemini');
 $checkPlanQuality = static function (array $candidate): array {
     $errors = ems_ai_ds_surgery_quality_errors($candidate);
     $serialized = json_encode($candidate, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -170,82 +169,18 @@ $checkPlanQuality = static function (array $candidate): array {
 };
 $qualityErrors = $result['ok'] ? $checkPlanQuality($data) : [(string) ($result['error'] ?? 'Model tidak mengembalikan JSON rencana operasi.')];
 
-// Repair only the defective model-authored stages when issues can be mapped
-// to exact stages. This keeps valid content and the model-selected plan length.
-if ($result['ok'] && $qualityErrors !== []) {
-    $badStageIssues = [];
-    $otherIssues = [];
-    foreach ($qualityErrors as $issue) {
-        if (preg_match('/Tahapan operasi tahap\s+(\d+)/iu', $issue, $match) === 1) {
-            $stageIndex = (int) $match[1] - 1;
-            if (isset($data['tahapan_prosedur'][$stageIndex])) {
-                $badStageIssues[$stageIndex][] = $issue;
-                continue;
-            }
-        }
-        $otherIssues[] = $issue;
-    }
-
-    $targetedStageRepair = $badStageIssues !== [] && $otherIssues === [];
-    if ($targetedStageRepair) {
-        $repairItems = [];
-        foreach ($badStageIssues as $stageIndex => $issues) {
-            $repairItems[] = [
-                'nomor_tahap' => $stageIndex + 1,
-                'masalah_validasi' => $issues,
-                'tahap_saat_ini' => $data['tahapan_prosedur'][$stageIndex],
-            ];
-        }
-        $repairPrompt = "Perbaiki hanya tahap yang disertakan, dengan urutan dan jumlah item yang sama seperti daftar koreksi. Ini jumlah item koreksi saja, bukan target jumlah seluruh tahap operasi; pertahankan jumlah total tahap rencana tanpa menambah atau menghapus tahap. Perbaiki masalah validasi setiap tahap secara langsung. Bila pelaku adalah Asisten, isi instruksi sebagai perintah DPJP yang menyebut alat/instrumen/bahan spesifik dan aksi harus menggambarkan alat tersebut diambil/diserahkan/digunakan. Setiap aksi /me menyebut alat yang benar-benar dipakai; /do menyebut hasil langsung; hindari pilihan bercabang. Jangan mengubah fakta kasus, anatomi, sisi, urutan, atau hasil klinis yang telah ditetapkan. Kembalikan hanya JSON schema tahapan_prosedur.\nKASUS DAN KONTEKS: "
-            . $userPrompt . "\nDAFTAR TAHAP YANG HARUS DIPERBAIKI:\n"
-            . json_encode($repairItems, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $repairSchema = ems_ai_ds_surgery_response_schema(true);
-    } else {
-        $repairPrompt = "Perbaiki satu JSON rencana operasi lengkap berikut. Pertahankan fakta kasus dan urutan klinis yang benar. Model menentukan sendiri jumlah tahapan yang diperlukan: jangan mengejar angka/preset, jangan mengisi dengan langkah repetitif. Perbaiki seluruh masalah validasi berikut: "
-            . implode('; ', $qualityErrors)
-            . "\nKembalikan seluruh field schema secara lengkap, termasuk tahapan_prosedur, dengan setiap aksi /me konkret menyebut alat/bahan yang digunakan, hasil /do langsung, instruksi DPJP spesifik bila melibatkan asisten, dan tanpa pilihan bercabang. Jangan menambahkan temuan yang tidak ada pada konteks.\nKASUS:\n"
-            . $userPrompt . "\nJSON SAAT INI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $repairSchema = ems_ai_ds_surgery_response_schema();
-    }
-    $repair = ems_ai_ds_call_gemini(
-        $pdo,
-        $systemPrompt,
-        $repairPrompt,
-        'ai_surgery_planner',
-        isset($user['id']) ? (int) $user['id'] : null,
-        $repairSchema
-    );
-    if ($repair['ok'] && is_array($repair['data'] ?? null)) {
-        if ($targetedStageRepair) {
-            $repairedSteps = ems_ai_ds_extract_surgery_steps($repair['data']);
-            if (count($repairedSteps) === count($badStageIssues) || count($repairedSteps) === count($data['tahapan_prosedur'])) {
-                foreach (array_keys($badStageIssues) as $repairIndex => $stageIndex) {
-                    $replacementIndex = count($repairedSteps) === count($data['tahapan_prosedur']) ? $stageIndex : $repairIndex;
-                    $data['tahapan_prosedur'][$stageIndex] = $repairedSteps[$replacementIndex];
-                }
-                $qualityErrors = $checkPlanQuality($data);
-            } else {
-                $qualityErrors[] = 'perbaikan terarah tidak mengembalikan semua tahap yang diminta';
-            }
-        } else {
-            $data = $repair['data'];
-            $data['tahapan_prosedur'] = ems_ai_ds_extract_surgery_steps($data);
-            $qualityErrors = $checkPlanQuality($data);
-        }
-    }
-}
-
-// A Gemini answer can be valid JSON and still miss the surgery quality gate.
-// After its targeted repair fails validation, allow one complete custom-provider
-// failover, then run the exact same local gate before saving anything as done.
+// A valid JSON response can still miss the quality gate. Make one full
+// custom-provider attempt instead of chaining slow repair calls; validate it
+// with the same gate before saving anything as done.
 $userAiSettings = ems_ai_ds_get_user_settings($pdo, isset($user['id']) ? (int) $user['id'] : 0);
-$customProviderName = trim((string) ($userAiSettings['custom_provider'] ?? ''));
 $hasCustomFallback = ems_ai_ds_has_custom_provider($userAiSettings);
-if ($result['ok'] && $qualityErrors !== [] && strcasecmp($initialProvider, $customProviderName) !== 0 && $hasCustomFallback) {
-    $qualityFallbackPrompt = "Gemini menghasilkan rencana yang belum lolos quality gate setelah perbaikan terarah. Buat ulang satu JSON rencana operasi lengkap sesuai schema, perbaiki SEMUA masalah validasi berikut, dan pertahankan fakta kasus, sisi/anatomi, hasil pemeriksaan, serta urutan kronologis. Setiap aksi /me menyebut instrumen atau bahan yang digunakan; setiap /do berisi hasil langsung; instruksi asisten harus menyebut alat spesifik. Jangan mengarang data klinis atau menambah tindakan yang tidak didukung konteks.\nMASALAH VALIDASI:\n"
+$primaryWasGemini = strcasecmp((string) ($result['provider'] ?? ''), 'Gemini') === 0
+    && empty($result['fallback_from']);
+if ($result['ok'] && $qualityErrors !== [] && $primaryWasGemini && $hasCustomFallback) {
+    $qualityFallbackPrompt = "Respons provider utama belum lolos quality gate. Buat satu JSON rencana operasi lengkap sesuai schema, perbaiki SEMUA masalah validasi berikut, dan pertahankan fakta kasus, sisi/anatomi, hasil pemeriksaan, serta urutan kronologis. Setiap aksi /me menyebut instrumen atau bahan yang digunakan; setiap /do berisi hasil langsung; instruksi asisten harus menyebut alat spesifik. Jangan mengarang data klinis atau menambah tindakan yang tidak didukung konteks.\nMASALAH VALIDASI:\n"
         . implode("\n", $qualityErrors)
         . "\nKASUS DAN KONTEKS KANONIK:\n" . $userPrompt
-        . "\nJSON GEMINI YANG GAGAL VALIDASI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        . "\nJSON YANG GAGAL VALIDASI:\n" . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $qualityFallback = ems_ai_ds_call_gemini(
         $pdo,
         $systemPrompt,

@@ -3156,7 +3156,9 @@ function ems_ai_ds_call_gemini(PDO $pdo, string $systemPrompt, string $userPromp
         'gemini_api_key' => (string) $userSettings['gemini_api_key'],
         'gemini_base_url' => trim((string) $userSettings['gemini_base_url']) !== '' ? (string) $userSettings['gemini_base_url'] : 'https://generativelanguage.googleapis.com/v1beta',
         'default_model' => trim((string) $userSettings['default_model']) !== '' ? (string) $userSettings['default_model'] : 'gemini-3.5-flash-lite',
-        'timeout_seconds' => $isDiagnosisAssistant ? 150 : 55,
+        // Keep each synchronous Surgery Planner provider call bounded so a
+        // Gemini failure plus custom fallback stays below common proxy limits.
+        'timeout_seconds' => $featureKey === 'ai_surgery_planner' ? 20 : ($isDiagnosisAssistant ? 150 : 55),
         'max_output_tokens' => $isDiagnosisAssistant ? 12000 : 8192,
         'daily_request_limit' => 0,
     ]);

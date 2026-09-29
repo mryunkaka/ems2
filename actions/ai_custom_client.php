@@ -116,7 +116,8 @@ function ems_custom_chat_completion(
     }
 
     $startedAt = microtime(true);
-    $response = ems_ai_http_post_json($url, $payload, $headers, 120, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
+    $timeoutSeconds = $featureKey === 'ai_surgery_planner' ? 55 : 120;
+    $response = ems_ai_http_post_json($url, $payload, $headers, $timeoutSeconds, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : [];
     $content = $responseJson['choices'][0]['message']['content'] ?? null;
     $finishReason = strtolower(trim((string) ($responseJson['choices'][0]['finish_reason'] ?? '')));
