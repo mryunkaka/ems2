@@ -461,6 +461,7 @@ function ems_ai_ds_instrument_action_issues(array $items, string $fieldName, str
     // lexicon caused valid tools (e.g. Jackson-Pratt drains/trocars) to be
     // rejected and sent through needless repair cycles.
     $toolPattern = '/\b(?:stetoskop|senter\s+pupil|penlight|lembar\s+(?:skor\s+)?GCS|manset\s+(?:tensimeter|tekanan\s+darah)|tensimeter|pulse\s+oximeter|oksimeter|monitor\s+EKG|monitor\s+pasien|termometer|ambu\s*bag|bag[- ]?valve[- ]?mask|masker\s+oksigen|masker\s+bedah|non[- ]?rebreathing\s+mask|NRM|flowmeter(?:\s+oksigen)?|ETT|endotracheal\s+tube|laringoskop|mesin\s+suction|suction\s+bedah|kateter\s+suction|aspirator|kasa\s+steril|perban\s+(?:elastis|kompresi)|balut\s+tekan|spuit\s+irigasi|spuit|syringe|NaCl\s*0[,\.]9%(?:\s*persen)?|kanula\s+IV|kateter\s+(?:IV|intravena)|jalur\s+intravena|selang\s+infus|set\s+infus|abocath|kantong\s+PRC|set\s+transfusi|tabung\s+(?:EDTA|serum|vakutainer)|vacutainer|jarum\s+vakutainer|torniquet|torniket|klem\s+(?:arteri|vaskuler|hemostat)|gunting\s+perban|gunting\s+operasi|gunting\s+Metzenbaum|pinset(?:\s+(?:jaringan|anatomi|chirurgis|atraumatik))?|forsep|forceps|skalpel|bisturi|pisau\s+bedah|elektrokauter|electrocautery|diatermi|monopolar|bipolar|stapler(?:\s+bedah)?|retraktor|dilator|spekulum|duk\s+steril|gaun\s+(?:bedah\s+)?steril|sarung\s+tangan(?:\s+steril)?|APD|pelindung\s+(?:wajah|mata)|sabun\s+antiseptik|hand\s*rub|cairan\s+antiseptik|povidone\s+iodine|chlorhexidine|benang\s+(?:nylon|polipropilena|absorbable|vaskuler|vicryl|prolene|kromik|PDS)|needle\s+holder|pemegang\s+jarum|benang\s+jahit|klem\s+vaskuler|meja\s+tangan|meja\s+operasi|sabuk\s+fiksasi|brankar|tandu|monitor\s+transport|Doppler\s+vaskular|stopwatch|USG|ultrasonografi|CT\s*scan|X[- ]?ray|radiografi|film\s+radiologi|wadah\s+spesimen|count\s+sheet|checklist\s+(?:operasi|pre[- ]?operatif)|lembar\s+(?:checklist|hitung)|formulir\s+(?:identitas|operasi|consent|pre[- ]?operatif)|informed\s+consent\s+form|papan\s+operasi|clipboard|spidol\s+steril|lampu\s+operasi|penghangat\s+pasien|selimut\s+termal|kateter\s+urin|urine\s+bag|drape\s+steril|dressing\s+steril|kassa\s+steril|laparotomy\s+pad|tampon\s+abdomen|surgical\s+tray|suction\s+tubing|arterial\s+line|infusion\s+pump|pompa\s+infus|line\s+arteri|drain(?:\s+[a-z][a-z0-9-]*){0,4}|Jackson[- ]?Pratt|trocar|blood\s+warmer|penghangat\s+darah|bor\s+kranial|perforator|burr\s+hole|gigli\s+saw|elevator\s+periosteum|pin\s+Mayfield|Surgicel|bone\s+wax|kawat\s+sternum|staples?\s+(?:kulit|bedah)|clip\s+aplikator|klip\s+vaskuler|C-arm|fluoroskopi|kateter\s+Foley|kateter\s+urin|tube\s+thoracostomy|chest\s+tube|water\s+seal\s+drainage|WSD|mesin\s+anestesi|ventilator|sirkuit\s+anestesi|laring\s+mask|LMA|probe\s+USG|transduser\s+USG|selimut\s+penghangat|klem\s+kocher|klem\s+Kelly|klem\s+mosquito|pinset\s+DeBakey|pinset\s+Adson|retraktor\s+Balfour|retraktor\s+Weitlaner|retraktor\s+Hohmann|suction\s+Yankauer|kateter\s+Yankauer|kateter\s+Nelaton|klem\s+umbilikal|kateter\s+umbilikal|spuit\s+insulin|spuit\s+10\s*mL|spuit\s+20\s*mL|spuit\s+50\s*mL|kasa\s+lapar[ao]tomi|kasa\s+radiopak)\b/iu';
+    $toolPattern = str_replace('Doppler\s+vaskular|stopwatch|USG', 'Doppler\s+vaskular|stopwatch|bidai(?:\s+(?:vakum|ortopedi|pneumatik))?|USG', $toolPattern);
     $specialtyToolPattern = '/\b(?:set\s+instrumen\s+(?:bedah\s+steril|ortopedi)|klem\s+(?:atraumatik\s+)?DeBakey|jarum\s+(?:besar|bedah|melengkung|atraumatik)|benang\s+chromic|lembar\s+hitung|kasa\s+laparatomi)\b/iu';
     foreach ($items as $index => $item) {
         if (!is_array($item)) continue;
@@ -2354,6 +2355,11 @@ function ems_ai_ds_require_complete_model_report(mixed $value): array
     if (!is_array($value)) {
         throw new InvalidArgumentException('Model tidak mengembalikan objek laporan.');
     }
+    // Keep this at the final gate itself as a backstop for every caller,
+    // including conditional model-repair paths that might return fresh text.
+    if (is_array($value['emergency'] ?? null)) {
+        $value['emergency'] = ems_ai_ds_complete_emergency_tool_wording($value['emergency']);
+    }
 
     $requiredText = [
         'anamnesis_lengkap', 'diagnosis_utama', 'gcs', 'kasus_tindakan',
@@ -3008,7 +3014,10 @@ function ems_ai_ds_repair_emergency_instruments(PDO $pdo, array $report, int $us
             $updated[$index]['hasil'] = $newResult;
             $updated[$index]['animasi'] = (string) ($original[$index]['animasi'] ?? '');
         }
-        $current = $updated;
+        // The provider can omit the same tool on its repair response. Apply
+        // the narrowly scoped task-to-tool normalizer again before the next
+        // semantic validation pass, while preserving pinned /do data/order.
+        $current = ems_ai_ds_complete_emergency_tool_wording($updated);
         $issues = ems_ai_ds_instrument_action_issues($current, 'Emergency IGD', $caseText);
     }
     if ($issues !== []) return ['ok' => false, 'error' => implode('; ', $issues)];
@@ -3031,7 +3040,7 @@ function ems_ai_ds_complete_emergency_tool_wording(array $items): array
         $toolMatch = [];
         $hasTool = preg_match($toolPattern, $action, $toolMatch) === 1;
         $tool = $hasTool ? (string) $toolMatch[0] : null;
-        if ($tool === null && preg_match('/\\b(?:GCS|Glasgow|respons\\s+(?:mata|verbal|motorik)|menilai\\s+kesadaran)\\b/iu', $action)) {
+        if ($tool === null && preg_match('/\\b(?:GCS|Glasgow|AVPU|E\\s*\\d\\s*V\\s*\\d\\s*M\\s*\\d|respons\\s+(?:mata|verbal|motorik)|(?:menilai|memeriksa|mengevaluasi)\\b[^.!?]{0,50}kesadaran)\\b/iu', $action)) {
             $tool = 'lembar skor GCS';
         } elseif ($tool === null && preg_match('/\\b(?:TTV|tanda\\s+vital|tekanan\\s+darah|mengukur\\s+nadi|mengukur\\s+suhu|mengukur\\s+respirasi|saturasi\\s+oksigen)\\b/iu', $action)) {
             $tool = 'monitor pasien';
@@ -3065,6 +3074,9 @@ function ems_ai_ds_complete_emergency_tool_wording(array $items): array
             $tool = 'kanula IV dan set infus';
         } elseif ($tool === null && preg_match('/\\b(?:memberi|memasang|menyalurkan)\\b.*\\b(?:oksigen|O2)\\b/iu', $action)) {
             $tool = 'masker oksigen';
+        }
+        if ($tool === null && preg_match('/\\b(?:pemeriksaan|memeriksa|menilai|mengevaluasi|menginspeksi|palpasi|meraba|survey|survei|assessment|assesment)\\b/iu', $action)) {
+            $tool = 'sarung tangan pemeriksaan';
         }
         if ($tool === null) continue;
         if (!$hasTool) {

@@ -623,6 +623,11 @@ KEY FINAL WAJIB: lab=array hasil laboratorium konkret; radiologi=array hasil rad
             $data = $instrumentRepair['data'];
         }
     }
+    // Run the deterministic normalization after model repair as well as before
+    // it; the model may still omit tool wording in its second response.
+    $data['emergency'] = ems_ai_ds_complete_emergency_tool_wording(
+        is_array($data['emergency'] ?? null) ? $data['emergency'] : []
+    );
     try {
         $data = ems_ai_ds_require_complete_model_report($data);
     } catch (Throwable $qualityError) {
