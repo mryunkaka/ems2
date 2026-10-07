@@ -6,12 +6,12 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
-require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/ai_provider_core.php';
 require_once __DIR__ . '/../config/groq_settings.php';
 require_once __DIR__ . '/../actions/groq_client.php';
 require_once __DIR__ . '/../actions/ai_custom_client.php';
 
-ems_ai_ds_ensure_tables($pdo);
+ems_ai_provider_ensure_settings_table($pdo);
 
 $redirectTo = 'ai_settings_personal.php';
 $action = trim((string) ($_GET['action'] ?? ''));
@@ -37,7 +37,7 @@ if ($userId <= 0) {
 
 if ($action === 'clear_all') {
     try {
-        ems_ai_ds_clear_user_settings($pdo, $userId);
+        ems_ai_provider_clear_settings($pdo, $userId);
         $_SESSION['flash_messages'] = ['Semua API key, provider, endpoint, dan model berhasil dikosongkan. Semua provider AI pribadi nonaktif.'];
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Gagal mengosongkan setting AI pribadi.'];
@@ -47,7 +47,7 @@ if ($action === 'clear_all') {
     exit;
 }
 
-$existing = ems_ai_ds_get_user_settings($pdo, $userId);
+$existing = ems_ai_provider_get_user_settings($pdo, $userId);
 $isProgrammer = ems_current_user_is_programmer_roxwood();
 
 // Validasi field Gemini di bawah ini HANYA relevan untuk action Gemini
@@ -98,7 +98,7 @@ if (in_array($action, ['save', 'test_connection'], true)) {
 
 if ($action === 'save') {
     try {
-        ems_ai_ds_save_user_settings($pdo, $userId, $apiKey, $baseUrl, $model);
+        ems_ai_provider_save_gemini($pdo, $userId, $apiKey, $baseUrl, $model);
         $_SESSION['flash_messages'] = ['Setting AI Saya berhasil disimpan.'];
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Gagal menyimpan setting AI: ' . $e->getMessage()];
@@ -157,7 +157,7 @@ if ($action === 'save_custom' || $action === 'test_connection_custom') {
 
     try {
         if ($action === 'save_custom') {
-            ems_ai_ds_save_custom_user_settings($pdo, $userId, $customProvider, $customApiKey, $customBaseUrl, $customModel);
+            ems_ai_provider_save_custom($pdo, $userId, $customProvider, $customApiKey, $customBaseUrl, $customModel);
             $_SESSION['flash_messages'] = [$customIsCleared ? 'Custom provider dinonaktifkan; pengaturan provider AI lainnya tidak berubah.' : 'Custom provider berhasil disimpan.'];
         } else {
             $result = ems_custom_test_connection($pdo, [

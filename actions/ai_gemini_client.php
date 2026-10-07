@@ -120,6 +120,17 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
         CURLOPT_TIMEOUT => max(5, $timeoutSeconds),
         CURLOPT_CONNECTTIMEOUT => 10,
     ];
+    $responseHeaders = [];
+    $curlOptions[CURLOPT_HEADERFUNCTION] = static function ($curl, string $headerLine) use (&$responseHeaders): int {
+        $separator = strpos($headerLine, ':');
+        if ($separator !== false) {
+            $name = strtolower(trim(substr($headerLine, 0, $separator)));
+            if (in_array($name, ['content-type', 'cf-ray', 'cf-mitigated', 'server', 'location'], true)) {
+                $responseHeaders[$name] = trim(substr($headerLine, $separator + 1));
+            }
+        }
+        return strlen($headerLine);
+    };
 
     $caBundle = emsFindCaBundlePath();
     if ($caBundle !== null) {
@@ -134,6 +145,7 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
     $body = curl_exec($ch);
     $curlError = curl_error($ch);
     $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $contentType = (string) (curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: ($responseHeaders['content-type'] ?? ''));
 
     if ($body === false) {
         throw new RuntimeException('Request ' . $providerLabel . ' gagal: ' . $curlError);
@@ -143,6 +155,8 @@ function ems_ai_http_post_json(string $url, array $payload, array $headers, int 
 
     return [
         'http_status' => $httpCode,
+        'content_type' => $contentType,
+        'response_headers' => $responseHeaders,
         'body' => $body,
         'json' => is_array($decoded) ? $decoded : null,
     ];

@@ -89,7 +89,7 @@ di industri saat ini, kecepatan responnya sangat cepat, dan ini provider
 yang memang populer dipakai banyak project web kecil-menengah persis
 untuk kasus "model open source gratis yang pintar". Dipanggil lewat REST
 API + cURL — pola implementasinya identik dengan
-`actions/cloudflare_client.php` yang sudah ada di project ini (auth via
+client HTTP yang sudah ada di project ini (auth via
 Bearer token, bukan skema baru).
 - **Model asli yang dipakai** (diverifikasi langsung lewat `GET
   /openai/v1/models` pakai API key real, 2026-08-30 — BUKAN ditebak dari
@@ -127,12 +127,12 @@ Dipakai **hanya** ketika:
    pencarian), atau
 3. Proses verifikasi otomatis saat ada koreksi jawaban dari medis (§7.5).
 
-**Tidak perlu infrastruktur baru** — modul "Roxwood Hospital AI" yang
+**Tidak perlu infrastruktur baru** — modul "Roxwood AI" yang
 sudah ada persis menyediakan semua yang dibutuhkan: tabel
-`user_ai_settings`, fungsi `ems_ai_ds_get_user_settings()` &
-`ems_ai_ds_call_gemini()` di `config/ai_diagnosis_surgery.php` sudah
+`user_ai_settings`, fungsi `ems_ai_provider_get_user_settings()` &
+`ems_ai_provider_call_json()` di `config/ai_provider_core.php` sudah
 otomatis mengembalikan pesan "Anda belum mengatur API key Gemini pribadi.
-Atur dulu di menu Roxwood Hospital AI > Setting AI Saya" kalau key belum
+Atur dulu di menu Roxwood AI > Setting AI Saya" kalau key belum
 diisi — **ini persis mekanisme "muncul kalau belum setting API key,
 diarahkan ke tutorial" yang diminta**, sudah ada, tinggal dipakai ulang.
 Halaman `ai_settings_personal.php` juga sudah punya tutorial lengkap cara
@@ -247,7 +247,7 @@ Kolom utama: `unit_code`, `question_hash` (SHA-256), `question_text`,
   dan `groq_default_model` (VARCHAR 100, default `openai/gpt-oss-120b`) —
   lihat koreksi arsitektur di §3 untuk alasan kenapa Groq juga per-user,
   bukan tabel/setting global. Guard defensif kolomnya ada di
-  `ems_ai_ds_ensure_tables()` (`config/ai_diagnosis_surgery.php`), fungsi
+  `ems_ai_provider_ensure_settings_table()` (`config/ai_provider_core.php`), fungsi
   akses per-user (`ems_groq_get_user_settings()`/`ems_groq_save_user_settings()`)
   ada di `config/groq_settings.php`. Dikelola lewat halaman "Setting AI
   Saya" (`ai_settings_personal.php`) yang sudah ada — card baru "Konfigurasi
@@ -406,7 +406,7 @@ otomatis terbaca, tidak perlu ditranskrip manual lagi).
    jangan simpan pesan setengah jadi. Minta respons terstruktur (JSON) berisi
    `answer`, `expression` (§8), dan `needs_deeper_research` (boolean).
 5. Kalau `needs_deeper_research=true` dan user sudah punya Gemini key,
-   panggil tingkat 2 (`ems_ai_ds_call_gemini()`) dengan konteks yang sama.
+   panggil tingkat 2 (`ems_ai_provider_call_json()`) dengan konteks yang sama.
 6. Kalau butuh riset mendalam tetapi key Gemini tidak ada, jawaban Groq
    tetap ditampilkan dan UI memberi catatan bahwa provider personal perlu
    diatur untuk riset lanjutan.
@@ -469,7 +469,7 @@ untuk aplikasi PHP tanpa game engine, perlu diluruskan ekspektasi):
   (`confused` — dipakai saat minta klarifikasi).
 - Setiap balasan AI (tingkat 1 maupun tingkat 2) diminta mengembalikan
   field `expression` di respons JSON-nya (pola ini **sudah lazim** di
-  project ini — semua modul "Roxwood Hospital AI" lain sudah minta output
+  project ini — Roxy meminta output
   terstruktur dari Gemini), lalu front-end tinggal ganti class avatar
   sesuai tag itu begitu balasan diterima — ini yang dimaksud "realtime":
   berubah setiap ada balasan baru, bukan animasi kontinu saat idle.
@@ -525,7 +525,7 @@ prompt, tanpa perlu tabel baru).
 
 1. **Provider tingkat 1**: **Groq**, dikonfirmasi. User akan buat akun
    Groq + API key gratis sendiri sebelum implementasi bisa diuji
-   end-to-end (sama seperti proses Cloudflare Workers AI untuk Radiology).
+   end-to-end (sama seperti proses provider AI eksternal).
 2. **Surat Masuk/Sekretaris sebagai sumber Roxy (§6.3)**: **disertakan
    sebagian** — 7 tabel yang tidak sensitif (lihat daftar "BOLEH" di
    §6.3) ikut jadi sumber retrieval untuk SEMUA user, tapi Surat Rahasia
@@ -595,7 +595,7 @@ diuji langsung terhadap DB lokal nyata, bukan cuma dry-run):
   karakter custom — realistis untuk scope PHP tanpa game engine, lihat
   §8), `dashboard/ai_assistant_monitoring.php` (Programmer Roxwood, dikelompokkan
   per medis sesuai §4c). Terdaftar di whitelist ACL
-  `$roxwoodHospitalAiPages` + sidebar grup "Roxwood Hospital AI".
+  `$personalAiPages` + sidebar grup "Roxwood AI".
 
 **Status implementasi dan audit 2026-09-28**:
 - Bubble di `partials/footer.php` dan halaman `dashboard/ai_assistant.php`

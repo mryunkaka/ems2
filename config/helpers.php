@@ -1522,31 +1522,15 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
-    // Exception: Roxwood Hospital AI pages accessible by all logged-in users regardless of division
-    $roxwoodHospitalAiPages = [
-        'ai_diagnosis_assistant.php',
-        'ai_diagnosis_assistant_action.php',
-        'ai_diagnosis_report.php',
-        'ai_diagnosis_report_lookup.php',
-        'ai_surgery_planner.php',
-        'ai_surgery_planner_action.php',
-        'ai_surgery_report.php',
+    // Exception: general AI assistant and personal provider settings.
+    $personalAiPages = [
         'ai_settings_personal.php',
         'ai_settings_personal_action.php',
-        'radiology_center.php',
-        'radiology_center_action.php',
-        'radiology_report.php',
-        'laboratory_ai.php',
-        'laboratory_ai_action.php',
-        'laboratory_ai_report.php',
-        'psychiatry_center.php',
-        'psychiatry_center_action.php',
-        'psychiatry_report.php',
         'ai_assistant.php',
         'ai_assistant_monitoring.php',
         'ai_assistant_knowledge.php',
     ];
-    if (in_array($scriptName, $roxwoodHospitalAiPages, true)) {
+    if (in_array($scriptName, $personalAiPages, true)) {
         return;
     }
 

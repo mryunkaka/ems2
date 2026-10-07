@@ -100,6 +100,7 @@ $pricePerPcs = gaCooperationRegulationPricePerPcs($pdo, $effectiveUnit);
 $startDate = $_GET['from'] ?? '';
 $endDate = $_GET['to'] ?? '';
 $range = $_GET['range'] ?? 'week4';
+$selectedCooperationId = filter_var($_GET['cooperation_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
 $cooperationSettingsMap = [];
 if (gaCooperationTablesReady($pdo)) {
@@ -133,6 +134,11 @@ if (gaCooperationTablesReady($pdo)) {
     }
 }
 
+if (!$selectedCooperationId || !isset($cooperationSettingsMap[$selectedCooperationId])) {
+    http_response_code(400);
+    exit('Pilih instansi kerja sama yang valid untuk unit Anda.');
+}
+
 $sql = "
     SELECT
         sfr.*,
@@ -145,6 +151,8 @@ $sql = "
       AND COALESCE(sfr.keywords, '') LIKE :marker
 ";
 $params = [':marker' => '%ga_cooperation_input%'];
+$sql .= " AND FIND_IN_SET(:cooperation_tag, COALESCE(sfr.keywords, '')) > 0";
+$params[':cooperation_tag'] = 'cooperation_id:' . $selectedCooperationId;
 
 if ($range !== 'custom') {
     $sql .= " AND sfr.document_date BETWEEN :start_date AND :end_date";
@@ -192,7 +200,8 @@ if ($range === 'custom' && $startDate && $endDate) {
     $dateRangeLabel = date('d M Y', strtotime($startDate)) . ' - ' . date('d M Y', strtotime($endDate));
 }
 
-$sheet->setCellValue('A1', 'LAPORAN INPUT KERJA SAMA');
+$selectedInstitutionName = (string)($cooperationSettingsMap[$selectedCooperationId]['institution_name'] ?? '');
+$sheet->setCellValue('A1', 'LAPORAN INPUT KERJA SAMA - ' . $selectedInstitutionName);
 $sheet->mergeCells('A1:L1');
 $sheet->getStyle('A1')->applyFromArray([
     'font' => ['bold' => true, 'size' => 16, 'color' => ['rgb' => '0F766E']],

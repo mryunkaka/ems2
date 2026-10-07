@@ -340,13 +340,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     if (!empty($_GET['to'])) {
                         $exportParams['to'] = $_GET['to'];
                     }
-                    $exportQuery = http_build_query($exportParams);
-                    $exportUrl = ems_url('/dashboard/general_affair_kerjasama_input_export.php' . ($exportQuery ? '?' . $exportQuery : ''));
                     ?>
-                    <a href="<?= htmlspecialchars($exportUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
+                    <button type="button" id="btnExportCooperationInput" class="btn-secondary">
                         <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
                         <span>Export Excel</span>
-                    </a>
+                    </button>
                     <button type="button" id="btnAddCooperationInput" class="btn-success">
                         <?= ems_icon('plus', 'h-4 w-4') ?>
                         <span>Input Kerja Sama</span>
@@ -582,6 +580,40 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<div id="gaCooperationExportModal" class="modal-overlay hidden">
+    <div class="modal-box modal-shell modal-frame-md">
+        <div class="modal-head">
+            <div class="modal-title">Export Input Kerja Sama</div>
+            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
+                <?= ems_icon('x-mark', 'h-5 w-5') ?>
+            </button>
+        </div>
+        <form method="get" action="general_affair_kerjasama_input_export.php" class="form modal-form">
+            <?php foreach ($exportParams as $key => $value): ?>
+                <input type="hidden" name="<?= htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?>">
+            <?php endforeach; ?>
+            <div class="modal-content">
+                <label for="gaCooperationExportSelect">Instansi yang ingin diekspor</label>
+                <select name="cooperation_id" id="gaCooperationExportSelect" class="form-control" required>
+                    <option value="">-- Pilih Instansi --</option>
+                    <?php foreach ($cooperationSettings as $setting): ?>
+                        <option value="<?= (int)$setting['id'] ?>">
+                            <?= htmlspecialchars((string)$setting['institution_name'], ENT_QUOTES, 'UTF-8') ?><?= empty($setting['is_active']) ? ' (Nonaktif)' : '' ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="meta-text-xs mt-2">File Excel hanya memuat input dari instansi yang dipilih pada rentang tanggal aktif.</p>
+            </div>
+            <div class="modal-foot">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
+                    <button type="submit" class="btn-primary"><?= ems_icon('document-arrow-down', 'h-4 w-4') ?><span>Unduh Excel</span></button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div id="gaCooperationInputModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-md">
         <div class="modal-head">
@@ -676,6 +708,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const rangeSelect = document.getElementById('rangeSelect');
     const customFields = document.querySelectorAll('.filter-custom');
     const modal = document.getElementById('gaCooperationInputModal');
+    const exportModal = document.getElementById('gaCooperationExportModal');
+    const exportButton = document.getElementById('btnExportCooperationInput');
     const openButton = document.getElementById('btnAddCooperationInput');
     const settingSelect = document.getElementById('gaCooperationSettingSelect');
     const settingInfo = document.getElementById('gaCooperationSettingInfo');
@@ -780,20 +814,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    if (exportButton && exportModal) {
+        exportButton.addEventListener('click', function() {
+            exportModal.classList.remove('hidden');
+            exportModal.style.display = 'flex';
+            document.body.classList.add('modal-open');
+        });
+    }
+
     document.body.addEventListener('click', function(event) {
-        if (!modal) return;
-        if (event.target === modal || event.target.closest('.btn-cancel')) {
-            modal.classList.add('hidden');
-            modal.style.display = 'none';
+        const activeModal = event.target === modal || (modal && modal.contains(event.target)) ? modal
+            : (event.target === exportModal || (exportModal && exportModal.contains(event.target)) ? exportModal : null);
+        if (!activeModal) return;
+        if (event.target === activeModal || event.target.closest('.btn-cancel')) {
+            activeModal.classList.add('hidden');
+            activeModal.style.display = 'none';
             document.body.classList.remove('modal-open');
         }
 
     });
 
     document.addEventListener('keydown', function(event) {
-        if (event.key === 'Escape' && modal) {
-            modal.classList.add('hidden');
-            modal.style.display = 'none';
+        if (event.key === 'Escape') {
+            [modal, exportModal].forEach(function(activeModal) {
+                if (activeModal) {
+                    activeModal.classList.add('hidden');
+                    activeModal.style.display = 'none';
+                }
+            });
             document.body.classList.remove('modal-open');
         }
     });

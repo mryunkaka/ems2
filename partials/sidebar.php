@@ -279,24 +279,8 @@ if ($isMedicalDivision && $hasActiveDisciplinaryPoints) {
     }
 }
 
-// Urutan menu di bawah ini SENGAJA mengikuti alur kerja klinis nyata, bukan
-// urutan alfabet/pembuatan fitur: mulai dari AI Diagnosis Assistant (wajib
-// pertama — hasilnya berupa kode referensi DGN-... yang dipakai modul lain),
-// lalu penunjang diagnostik (Radiology, Laboratory), baru rencana
-// tindakan/operasi (Surgery Planner), asesmen psikiatri (opsional, terpisah),
-// dan terakhir Rekam Medis AI yang merangkum semuanya jadi satu dokumen resmi.
-// Chat Roxy (+ Monitoring, manager-plus) ditaruh setelah rantai kasus klinis
-// tapi sebelum Setting AI Saya — bukan langkah kasus, tapi asisten
-// general-purpose, bukan pengaturan akun juga. Setting AI Saya (konfigurasi
-// API key) ditaruh paling bawah karena bukan langkah alur kasus, melainkan
-// pengaturan akun.
-$groupedNav['Roxwood Hospital AI'] = [
-    sidebarItem('/dashboard/ai_diagnosis_assistant.php', 'ai_diagnosis_assistant.php', 'AI Diagnosis Assistant', 'sparkles'),
-    sidebarItem('/dashboard/radiology_center.php', 'radiology_center.php', 'Radiology Center', 'camera'),
-    sidebarItem('/dashboard/laboratory_ai.php', 'laboratory_ai.php', 'Laboratory AI', 'beaker'),
-    sidebarItem('/dashboard/ai_surgery_planner.php', 'ai_surgery_planner.php', 'AI Surgery Planner', 'clipboard-document-check'),
-    sidebarItem('/dashboard/psychiatry_center.php', 'psychiatry_center.php', 'Psychiatry Center', 'chat-bubble-left-right'),
-    sidebarItem('/dashboard/rekam_medis_ai.php', 'rekam_medis_ai.php', 'Rekam Medis AI', 'clipboard-document-list'),
+// Kelompok AI berisi asisten internal dan konfigurasi provider personal.
+$groupedNav['Roxwood AI'] = [
     sidebarItem('/dashboard/ai_assistant.php', 'ai_assistant.php', 'Chat Roxy', 'chat-bubble-left-right'),
     sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
 ];
@@ -313,31 +297,31 @@ if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
 }
 if ($roxwoodAiManagementItems !== []) {
     $chatRoxyIndex = null;
-    foreach ($groupedNav['Roxwood Hospital AI'] as $navIndex => $navItem) {
+    foreach ($groupedNav['Roxwood AI'] as $navIndex => $navItem) {
         if (($navItem['page'] ?? '') === 'ai_assistant.php') {
             $chatRoxyIndex = $navIndex;
             break;
         }
     }
     if ($chatRoxyIndex !== null) {
-        array_splice($groupedNav['Roxwood Hospital AI'], $chatRoxyIndex + 1, 0, $roxwoodAiManagementItems);
+        array_splice($groupedNav['Roxwood AI'], $chatRoxyIndex + 1, 0, $roxwoodAiManagementItems);
     } else {
-        array_push($groupedNav['Roxwood Hospital AI'], ...$roxwoodAiManagementItems);
+        array_push($groupedNav['Roxwood AI'], ...$roxwoodAiManagementItems);
     }
 }
 
-// Pindahkan grup "Roxwood Hospital AI" ke posisi ke-2 (tepat di bawah "Utama"),
+// Pindahkan grup "Roxwood AI" ke posisi ke-2 (tepat di bawah "Utama"),
 // apa pun urutan grup lain yang sudah terbentuk di atas (termasuk override
-// sidebar khusus unit Alta) — supaya AI suite selalu langsung terlihat tanpa
+// sidebar khusus unit Alta) — supaya Chat Roxy dan Setting AI Saya tetap terlihat tanpa
 // perlu scroll, sesuai permintaan eksplisit user.
-if (isset($groupedNav['Roxwood Hospital AI'])) {
-    $roxwoodHospitalAiGroup = $groupedNav['Roxwood Hospital AI'];
-    unset($groupedNav['Roxwood Hospital AI']);
+if (isset($groupedNav['Roxwood AI'])) {
+    $roxwoodHospitalAiGroup = $groupedNav['Roxwood AI'];
+    unset($groupedNav['Roxwood AI']);
     $utamaGroup = $groupedNav['Utama'] ?? null;
     unset($groupedNav['Utama']);
     $groupedNav = array_merge(
         $utamaGroup !== null ? ['Utama' => $utamaGroup] : [],
-        ['Roxwood Hospital AI' => $roxwoodHospitalAiGroup],
+        ['Roxwood AI' => $roxwoodHospitalAiGroup],
         $groupedNav
     );
 }
@@ -444,7 +428,6 @@ if (ems_current_user_is_programmer_roxwood()) {
     }
 
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/ai_settings.php', 'ai_settings.php', 'Setting AI', 'cog-6-tooth');
-    $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/cloudflare_settings.php', 'cloudflare_settings.php', 'Setting Cloudflare AI', 'wrench-screwdriver');
     $groupedNav['Pengaturan'][] = sidebarItem('/dashboard/storage_audit.php', 'storage_audit.php', 'Audit Storage', 'circle-stack');
 }
 

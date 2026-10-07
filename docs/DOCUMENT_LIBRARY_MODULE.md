@@ -227,7 +227,7 @@ besar tidak bikin request timeout.
 
 ## 9. Sidebar & Registrasi ACL
 
-Mengikuti pola "Roxwood Hospital AI" / `police_partnership.php` /
+Mengikuti pola "Roxwood AI" / `police_partnership.php` /
 `konsumen.php`: semua halaman modul ini didaftarkan sebagai **pengecualian
 page-level-open** di `ems_enforce_dashboard_page_access()`
 (`config/helpers.php`) — bisa dibuka semua user login. Untuk `dokumen.php`

@@ -17,9 +17,9 @@ $userId = (int) ($user['id'] ?? 0);
 $isManagerPlus = ems_is_manager_plus_role((string) ($user['role'] ?? ''));
 
 $groqSettings = ems_groq_get_user_settings($pdo, $userId);
-$aiSettings = ems_ai_ds_get_user_settings($pdo, $userId);
+$aiSettings = ems_ai_provider_get_user_settings($pdo, $userId);
 $hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
-$hasGeminiKey = ems_ai_ds_has_text_provider($aiSettings);
+$hasGeminiKey = ems_ai_provider_has_any($aiSettings);
 $hasAiProvider = $hasGroqKey || $hasGeminiKey;
 
 $csrfToken = generateCsrfToken();

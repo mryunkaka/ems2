@@ -248,12 +248,6 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     if (!(bool)$stmt->fetchColumn()) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
-} elseif (str_starts_with($relativePath, 'storage/radiology/')) {
-    $stmt = $pdo->prepare("SELECT 1 FROM ai_radiology_images WHERE image_path = ? LIMIT 1");
-    $stmt->execute([$relativePath]);
-    if (!(bool)$stmt->fetchColumn()) {
-        secureFileAbort(403, 'Akses file tidak diizinkan.');
-    }
 } elseif (str_starts_with($relativePath, 'storage/medical_records/')) {
     // Otorisasi untuk KTP/MRI/lampiran/surat visum rekam medis: file standard
     // bebas diakses (matching aturan lama), file forensic_private butuh akses

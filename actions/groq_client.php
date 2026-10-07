@@ -9,7 +9,7 @@ require_once __DIR__ . '/ai_gemini_client.php';
  * (endpoint `/openai/v1/chat/completions`, format `messages: [{role,
  * content}]`), auth Bearer token tunggal (lebih sederhana dari Cloudflare
  * yang butuh Account ID + Token terpisah). Pola cURL/logging di bawah
- * meniru actions/cloudflare_client.php yang sudah teruji (reuse
+ * menggunakan pola client HTTP yang sudah teruji (reuse
  * ems_ai_log_request() + emsFindCaBundlePath() dari ai_gemini_client.php).
  *
  * $settings adalah baris `user_ai_settings` (atau array sejenis) — dibaca
@@ -27,7 +27,7 @@ function ems_groq_chat_completion(
 ): array {
     $apiKey = trim((string) ($settings['groq_api_key'] ?? ''));
     if ($apiKey === '') {
-        throw new RuntimeException('Groq API Key belum diisi. Atur dulu di menu Roxwood Hospital AI > Setting AI Saya.');
+        throw new RuntimeException('Groq API Key belum diisi. Atur dulu di menu Roxwood AI > Setting AI Saya.');
     }
 
     $modelName = trim((string) ($model ?: ($settings['groq_default_model'] ?? 'openai/gpt-oss-120b')));

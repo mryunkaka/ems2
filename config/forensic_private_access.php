@@ -12,15 +12,8 @@
  * aturan lama, bukan menggantikannya.
  */
 
-// Sengaja TIDAK memakai ems_column_exists() di file ini — fungsi itu
-// meng-cache hasilnya di static array untuk sisa REQUEST yang sama. Kalau
-// ensure_tables() cek "belum ada" lalu langsung ADD COLUMN di request yang
-// sama, cache-nya tetap ke-poison ke `false` untuk pemanggilan berikutnya
-// (mis. saat rekam_medis_action.php mau memutuskan kolom itu perlu
-// di-INSERT atau tidak) — bug yang sama seperti pada ems_table_exists() yang
-// pernah ditemukan di modul Cloudflare Workers AI (lihat CLAUDE.md §10).
-// Query INFORMATION_SCHEMA langsung di sini supaya tidak menyentuh cache itu
-// sama sekali.
+// Gunakan INFORMATION_SCHEMA langsung agar pemeriksaan tidak bergantung pada
+// cache kolom statis yang dapat usang setelah perubahan schema dalam request.
 function ems_forensic_private_column_exists_raw(PDO $pdo, string $table, string $column): bool
 {
     $stmt = $pdo->prepare("

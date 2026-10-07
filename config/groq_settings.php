@@ -1,7 +1,7 @@
 <?php
 
 require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/ai_provider_core.php';
 
 /**
  * Groq — provider "tingkat 1" (model gratis, open-weight) untuk chat bot
@@ -14,13 +14,13 @@ require_once __DIR__ . '/ai_diagnosis_surgery.php';
  * satu obrolan panjang saja bisa menghabiskan jatah harian untuk semua
  * orang. Jadi kolom `groq_api_key`/`groq_default_model` ditambahkan ke
  * `user_ai_settings` (tabel yang sama dipakai Gemini pribadi), BUKAN
- * tabel baru — lihat ems_ai_ds_ensure_tables() di
- * config/ai_diagnosis_surgery.php untuk guard kolomnya.
+ * tabel baru — lihat ems_ai_provider_ensure_settings_table() di
+ * config/ai_provider_core.php untuk guard kolomnya.
  */
 
 function ems_groq_get_user_settings(PDO $pdo, int $userId): ?array
 {
-    return ems_ai_ds_get_user_settings($pdo, $userId);
+    return ems_ai_provider_get_user_settings($pdo, $userId);
 }
 
 function ems_groq_save_user_settings(PDO $pdo, int $userId, string $apiKey, string $model): void

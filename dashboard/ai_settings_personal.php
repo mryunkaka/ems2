@@ -6,11 +6,11 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
-require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+require_once __DIR__ . '/../config/ai_provider_core.php';
 require_once __DIR__ . '/../config/groq_settings.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_ai_ds_ensure_tables($pdo);
+ems_ai_provider_ensure_settings_table($pdo);
 
 $pageTitle = 'Setting AI Saya | Farmasi EMS';
 $user = $_SESSION['user_rh'] ?? [];
@@ -21,7 +21,7 @@ $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
-$userSettings = ems_ai_ds_get_user_settings($pdo, $userId) ?? [];
+$userSettings = ems_ai_provider_get_user_settings($pdo, $userId) ?? [];
 $hasUserSettings = $userSettings !== [];
 $apiKeyMasked = ems_ai_mask_api_key($userSettings['gemini_api_key'] ?? '');
 $baseUrl = $hasUserSettings
@@ -50,7 +50,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
                 <h1 class="page-title">Setting AI Saya</h1>
-                <p class="page-subtitle">Provider AI pribadi — Gemini, Groq, atau custom OpenAI-compatible seperti 9Router untuk fitur teks. Radiology Center tetap membutuhkan Gemini untuk generate citra.</p>
+                <p class="page-subtitle">Konfigurasi provider AI pribadi untuk Chat Roxy.</p>
             </div>
             <div class="badge-info">Akses: Semua User</div>
         </div>
@@ -72,9 +72,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 <p>
                     Gemini menjadi provider utama jika sudah diatur; custom provider OpenAI-compatible seperti 9Router
                     otomatis dicoba sebagai cadangan saat Gemini gagal atau mengembalikan JSON yang tidak valid.
-                    AI Surgery Planner juga memakai cadangan jika rencana Gemini tetap gagal validasi kualitas setelah perbaikan.
-                    Jika Gemini belum diatur, custom provider digunakan langsung. Radiology Center membutuhkan Gemini
-                    khusus untuk generate citra. Jika memilih
+                    Jika Gemini belum diatur, custom provider digunakan langsung. Jika memilih
                     Gemini, gunakan API key <strong>milik sendiri</strong> dan jangan dibagikan. Cara membuatnya
                     <strong>gratis</strong> dan cukup pakai akun Google (Gmail) pribadi — tidak perlu kartu kredit.
                 </p>
@@ -117,14 +115,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     lalu ganti key lama di halaman ini dengan yang baru.
                 </div>
 
-                <div class="helper-note">
-                    Catatan: pembuatan API key dan pemakaian untuk fitur berbasis teks (AI Diagnosis
-                    Assistant, AI Surgery Planner, Laboratory AI, Psychiatry Center, Rekam Medis AI, serta
-                    laporan teks Radiology Center) sepenuhnya gratis. Khusus citra/gambar hasil scan di
-                    Radiology Center, Google mensyaratkan billing aktif di akun Google Cloud pribadi — kalau
-                    fitur itu gagal dengan pesan terkait kuota (quota), itu bukan berarti API key Anda salah,
-                    laporkan saja ke Programmer Roxwood.
-                </div>
+                <div class="helper-note">Ketersediaan dan biaya pemakaian mengikuti kebijakan provider yang Anda pilih.</div>
             </div>
         </div>
 

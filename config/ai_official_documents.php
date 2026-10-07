@@ -317,32 +317,7 @@ function ems_ai_official_document_context(PDO $pdo, string $unitCode, string $qu
 
     $query = trim($query);
     $seedByFeature = [
-        'ai_diagnosis_assistant' => [
-            'SOP Pelayanan Instalasi Gawat Darurat IGD',
-            'SOP IGD stabilisasi ABCDE pertolongan pertama',
-            'SOP Roxwood Hospital kewenangan medis',
-            'GCS TTV anamnesis diagnosis operasi anestesi',
-        ],
-        'ai_surgery_planner' => [
-            'SOP Pelayanan Kamar Bedah Operating Theatre OK',
-            'Prosedur Operasi instrumen operasi anestesi',
-            'Kebijakan Kewenangan Medis operasi mayor minor',
-        ],
-        'rekam_medis_ai' => [
-            'SOP Penulisan dan Pengisian Rekam Medis',
-            'format rekam medis laporan tindakan operasi hasil pasca operasi',
-            'konsistensi GCS TTV radiologi laboratorium diagnosis',
-        ],
         'roxy_chat' => ['SOP', 'kebijakan', 'kewenangan medis', 'rekam medis', 'operasi', 'anestesi'],
-        'ai_radiology_report' => ['SOP Pelayanan Radiologi', 'proyeksi radiologi anatomi diagnosis'],
-        'ai_laboratory' => [
-            'SOP Pelayanan Laboratorium Medis',
-            'SOP Laboratorium Roxwood Hospital CBC Whole Blood EDTA',
-            'nilai rujukan laboratorium interpretasi hasil',
-        ],
-        'ai_psychiatry_start' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
-        'ai_psychiatry_next' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
-        'ai_psychiatry_final' => ['asesmen psikiatri status mental risiko psikologis', 'Medical Handbook psikiatri status mental'],
     ];
 
     // Feature-specific SOP searches run first. The full prompt comes later

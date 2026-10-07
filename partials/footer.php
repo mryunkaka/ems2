@@ -176,12 +176,12 @@ $roxyHasGroqKey = false;
 $roxyHasGeminiKey = false;
 if ($roxyWidgetEnabled) {
     require_once __DIR__ . '/../config/groq_settings.php';
-    require_once __DIR__ . '/../config/ai_diagnosis_surgery.php';
+    require_once __DIR__ . '/../config/ai_provider_core.php';
     $roxyUserId = (int) $_SESSION['user_rh']['id'];
     $roxyWidgetSettings = ems_groq_get_user_settings($pdo, $roxyUserId);
-    $roxyGeminiSettings = ems_ai_ds_get_user_settings($pdo, $roxyUserId);
+    $roxyGeminiSettings = ems_ai_provider_get_user_settings($pdo, $roxyUserId);
     $roxyHasGroqKey = $roxyWidgetSettings !== null && trim((string) ($roxyWidgetSettings['groq_api_key'] ?? '')) !== '';
-    $roxyHasGeminiKey = ems_ai_ds_has_text_provider($roxyGeminiSettings);
+    $roxyHasGeminiKey = ems_ai_provider_has_any($roxyGeminiSettings);
 }
 $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 ?>
