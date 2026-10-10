@@ -20,9 +20,16 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $settings = ems_ai_get_settings($pdo);
 $promptTemplates = ems_ai_get_prompt_templates($pdo);
 $todayUsage = ems_ai_count_today_requests($pdo);
-$hasTables = ems_ai_settings_table_exists($pdo) && ems_ai_request_logs_table_exists($pdo) && ems_ai_prompt_templates_table_exists($pdo);
+$hasBaseAiTables = ems_ai_settings_table_exists($pdo) && ems_ai_request_logs_table_exists($pdo) && ems_ai_prompt_templates_table_exists($pdo);
+$hasCustomProviderColumns = ems_column_exists($pdo, 'system_ai_settings', 'custom_provider')
+    && ems_column_exists($pdo, 'system_ai_settings', 'custom_api_key')
+    && ems_column_exists($pdo, 'system_ai_settings', 'custom_base_url')
+    && ems_column_exists($pdo, 'system_ai_settings', 'custom_default_model');
+$hasTables = $hasBaseAiTables && $hasCustomProviderColumns;
 $modelOptions = ems_ai_model_options();
 $apiKeyMasked = ems_ai_mask_api_key($settings['gemini_api_key'] ?? '');
+$customApiKeyMasked = ems_ai_mask_api_key($settings['custom_api_key'] ?? '');
+$isOpenAiCompatible = strtolower((string)$settings['provider'] ?? '') === 'openai_compatible';
 $savedAt = $settings['updated_at'] ?? $settings['created_at'] ?? null;
 
 include __DIR__ . '/../partials/header.php';
@@ -34,7 +41,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
                 <h1 class="page-title">Setting AI</h1>
-                <p class="page-subtitle">Konfigurasi Gemini untuk pondasi fitur rekrutmen AI internal EMS.</p>
+                <p class="page-subtitle">Satu konfigurasi provider untuk seluruh fitur AI di EMS2.</p>
             </div>
             <div class="badge-info">Akses: Programmer Roxwood</div>
         </div>
@@ -49,7 +56,7 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasTables): ?>
             <div class="alert alert-warning mb-4">
-                Tabel AI belum lengkap. Jalankan migration <strong>`docs/sql/20_2026-04-08_gemini_ai_foundation.sql`</strong> terlebih dahulu.
+                <?php if (!$hasBaseAiTables): ?>Tabel dasar AI belum lengkap. Jalankan <strong>`docs/sql/20_2026-04-08_gemini_ai_foundation.sql`</strong>.<?php else: ?>Kolom provider global belum lengkap. Jalankan <strong>`docs/sql/99_2026-10-10_global_openai_compatible_provider.sql`</strong>.<?php endif; ?>
             </div>
         <?php endif; ?>
 
@@ -67,7 +74,8 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="provider">Provider</label>
                             <select id="provider" name="provider">
-                                <option value="gemini" <?= strtolower((string)$settings['provider']) === 'gemini' ? 'selected' : '' ?>>Gemini</option>
+                                <option value="gemini" <?= !$isOpenAiCompatible ? 'selected' : '' ?>>Gemini</option>
+                                <option value="openai_compatible" <?= $isOpenAiCompatible ? 'selected' : '' ?>>Custom Provider OpenAI-Compatible</option>
                             </select>
                         </div>
                         <div class="flex items-end">
@@ -78,6 +86,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
 
+                    <div id="geminiProviderFields" class="<?= $isOpenAiCompatible ? 'hidden' : '' ?>">
                     <div>
                         <label class="text-sm font-semibold text-slate-900" for="gemini_api_key">Gemini API Key</label>
                         <input
@@ -90,8 +99,22 @@ include __DIR__ . '/../partials/sidebar.php';
                             Biarkan kosong jika tidak ingin mengganti API key. Key aktif saat ini: <strong><?= $apiKeyMasked !== '' ? htmlspecialchars($apiKeyMasked) : 'belum diatur' ?></strong>
                         </div>
                     </div>
+                    </div>
 
-                    <div class="grid gap-4 md:grid-cols-2">
+                    <div id="customProviderFields" class="space-y-4 <?= $isOpenAiCompatible ? '' : 'hidden' ?>">
+                        <div class="card mb-0">
+                            <div class="card-header">Custom Provider OpenAI-Compatible</div>
+                            <div class="grid gap-4">
+                                <div><label for="custom_provider">Nama Provider</label><input id="custom_provider" name="custom_provider" type="text" maxlength="100" value="<?= htmlspecialchars((string)($settings['custom_provider'] ?? 'OpenAI-Compatible'), ENT_QUOTES, 'UTF-8') ?>" placeholder="9Router"></div>
+                                <div><label for="custom_base_url">Base URL API</label><input id="custom_base_url" name="custom_base_url" type="url" maxlength="255" value="<?= htmlspecialchars((string)($settings['custom_base_url'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="https://endpoint-publik/v1"><small>Masukkan endpoint OpenAI-compatible yang bisa dijangkau server EMS2 melalui HTTPS.</small></div>
+                                <div><label for="custom_api_key">API Key</label><input id="custom_api_key" name="custom_api_key" type="password" autocomplete="new-password" placeholder="<?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'Masukkan API key provider' ?>"><div class="helper-note mt-1">Kosongkan jika tidak ingin mengganti key. Key aktif: <strong><?= $customApiKeyMasked !== '' ? htmlspecialchars($customApiKeyMasked, ENT_QUOTES, 'UTF-8') : 'belum diatur' ?></strong></div></div>
+                                <div><label for="custom_default_model">Model</label><input id="custom_default_model" name="custom_default_model" type="text" maxlength="100" value="<?= htmlspecialchars((string)($settings['custom_default_model'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="contoh: openai/gpt-4o-mini"></div>
+                            </div>
+                            <p class="helper-note mt-3">Endpoint harus HTTPS publik. API key hanya digunakan di server dan alamat privat ditolak untuk mencegah SSRF.</p>
+                        </div>
+                    </div>
+
+                    <div id="geminiBaseFields" class="grid gap-4 md:grid-cols-2 <?= $isOpenAiCompatible ? 'hidden' : '' ?>">
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="gemini_base_url">Base URL</label>
                             <input id="gemini_base_url" name="gemini_base_url" type="text" value="<?= htmlspecialchars((string)$settings['gemini_base_url']) ?>">
@@ -102,10 +125,11 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                     </div>
 
+                    <div id="geminiModelFields">
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="default_model">Default Model</label>
-                            <select id="default_model" name="default_model">
+                            <select class="gemini-model-input" data-model="default_model" name="default_model">
                                 <?php foreach ($modelOptions as $modelName): ?>
                                     <option value="<?= htmlspecialchars($modelName) ?>" <?= (string)$settings['default_model'] === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName) ?></option>
                                 <?php endforeach; ?>
@@ -113,7 +137,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="summary_model">Summary Model</label>
-                            <select id="summary_model" name="summary_model">
+                            <select class="gemini-model-input" data-model="summary_model" name="summary_model">
                                 <?php foreach ($modelOptions as $modelName): ?>
                                     <option value="<?= htmlspecialchars($modelName) ?>" <?= (string)$settings['summary_model'] === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName) ?></option>
                                 <?php endforeach; ?>
@@ -124,7 +148,7 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="interview_question_model">Interview Question Model</label>
-                            <select id="interview_question_model" name="interview_question_model">
+                            <select class="gemini-model-input" data-model="interview_question_model" name="interview_question_model">
                                 <?php foreach ($modelOptions as $modelName): ?>
                                     <option value="<?= htmlspecialchars($modelName) ?>" <?= (string)$settings['interview_question_model'] === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName) ?></option>
                                 <?php endforeach; ?>
@@ -132,12 +156,13 @@ include __DIR__ . '/../partials/sidebar.php';
                         </div>
                         <div>
                             <label class="text-sm font-semibold text-slate-900" for="criteria_scoring_model">Criteria Guidance Model</label>
-                            <select id="criteria_scoring_model" name="criteria_scoring_model">
+                            <select class="gemini-model-input" data-model="criteria_scoring_model" name="criteria_scoring_model">
                                 <?php foreach ($modelOptions as $modelName): ?>
                                     <option value="<?= htmlspecialchars($modelName) ?>" <?= (string)$settings['criteria_scoring_model'] === $modelName ? 'selected' : '' ?>><?= htmlspecialchars($modelName) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
+                    </div>
                     </div>
 
                     <div class="grid gap-4 md:grid-cols-4">
@@ -171,9 +196,13 @@ include __DIR__ . '/../partials/sidebar.php';
                             <?= ems_icon('check', 'h-4 w-4') ?>
                             <span>Simpan Setting</span>
                         </button>
-                        <button type="submit" formaction="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_action.php?action=test_connection')) ?>" class="btn-success">
+                        <button id="testGeminiButton" type="submit" formaction="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_action.php?action=test_connection')) ?>" class="btn-success <?= $isOpenAiCompatible ? 'hidden' : '' ?>">
                             <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                             <span>Test Connection Gemini</span>
+                        </button>
+                        <button id="testCustomButton" type="submit" formaction="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_action.php?action=test_connection_custom')) ?>" class="btn-success <?= $isOpenAiCompatible ? '' : 'hidden' ?>">
+                            <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                            <span>Test Custom Provider</span>
                         </button>
                     </div>
                 </form>
@@ -186,10 +215,10 @@ include __DIR__ . '/../partials/sidebar.php';
                         <span>Status</span>
                     </div>
                     <div class="space-y-3 text-sm text-slate-700">
-                        <div>Provider aktif: <strong><?= htmlspecialchars(strtoupper((string)$settings['provider'])) ?></strong></div>
+                        <div>Provider aktif: <strong><?= htmlspecialchars($isOpenAiCompatible ? (string)($settings['custom_provider'] ?? 'OpenAI-Compatible') : 'Gemini') ?></strong></div>
                         <div>Status AI: <strong><?= !empty($settings['is_enabled']) ? 'Aktif' : 'Nonaktif' ?></strong></div>
                         <div>Request hari ini: <strong><?= $todayUsage ?></strong> / <?= (int)$settings['daily_request_limit'] ?></div>
-                        <div>Model default: <strong><?= htmlspecialchars((string)$settings['default_model']) ?></strong></div>
+                        <div>Model default: <strong><?= htmlspecialchars($isOpenAiCompatible ? (string)($settings['custom_default_model'] ?: $settings['default_model']) : (string)$settings['default_model']) ?></strong></div>
                         <div>Last update: <strong><?= $savedAt ? htmlspecialchars(formatTanggalID($savedAt)) : '-' ?></strong></div>
                     </div>
                 </div>
@@ -245,4 +274,21 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const provider = document.getElementById('provider');
+    function updateProviderFields() {
+        const custom = provider && provider.value === 'openai_compatible';
+        document.getElementById('geminiProviderFields')?.classList.toggle('hidden', custom);
+        document.getElementById('geminiBaseFields')?.classList.toggle('hidden', custom);
+        document.getElementById('customProviderFields')?.classList.toggle('hidden', !custom);
+        document.getElementById('geminiModelFields')?.classList.toggle('hidden', custom);
+        document.getElementById('testGeminiButton')?.classList.toggle('hidden', custom);
+        document.getElementById('testCustomButton')?.classList.toggle('hidden', !custom);
+        document.querySelectorAll('.gemini-model-input').forEach(function(input) { input.disabled = custom; });
+    }
+    provider?.addEventListener('change', updateProviderFields);
+    updateProviderFields();
+});
+</script>
 <?php include __DIR__ . '/../partials/footer.php'; ?>

@@ -49,6 +49,17 @@ function secureFileUserRhHasColumn(PDO $pdo, string $column): bool
     return $cache[$column];
 }
 
+function secureFileTableExists(PDO $pdo, string $table): bool
+{
+    static $cache = [];
+    if (!array_key_exists($table, $cache)) {
+        $stmt = $pdo->prepare('SHOW TABLES LIKE ?');
+        $stmt->execute([$table]);
+        $cache[$table] = (bool) $stmt->fetchColumn();
+    }
+    return $cache[$table];
+}
+
 $relativePath = secureFileNormalizedPath((string)($_GET['path'] ?? ''));
 if ($relativePath === '' || !str_starts_with($relativePath, 'storage/')) {
     secureFileAbort(400, 'Path file tidak valid.');
@@ -71,9 +82,13 @@ $userDivision = ems_normalize_division($user['division'] ?? '');
 if ($userId <= 0) {
     secureFileAbort(401, 'Session user tidak valid.');
 }
-$canViewSecretaryProtectedFiles = $userDivision === 'Secretary' || ems_is_manager_plus_role($userRole);
+$canViewSecretaryProtectedFiles = ems_is_valid_division($userDivision);
 
-if (str_starts_with($relativePath, 'storage/identity/')) {
+if (str_starts_with($relativePath, 'storage/work_anniversary/')) {
+    if (!preg_match('#^storage/work_anniversary/\d+_\d{4}\.(png|jpg)$#', $relativePath)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+} elseif (str_starts_with($relativePath, 'storage/identity/')) {
     // Identity wajib lewat endpoint terproteksi, session login sudah cukup untuk akses internal.
 } elseif (str_starts_with($relativePath, 'storage/reimbursements/')) {
     $stmt = $pdo->prepare("SELECT 1 FROM reimbursements WHERE receipt_file = ? LIMIT 1");
@@ -110,19 +125,19 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/file_records/')) {
-    if (!ems_is_management_division($userDivision) && !$canViewSecretaryProtectedFiles) {
+    if (!$canViewSecretaryProtectedFiles) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 
     $stmt = $pdo->prepare("
-        SELECT 1
+        SELECT sfr.owner_division
         FROM secretary_file_record_attachments sfra
         INNER JOIN secretary_file_records sfr ON sfr.id = sfra.record_id
         WHERE sfra.file_path = ?
         LIMIT 1
     ");
     $stmt->execute([$relativePath]);
-    if (!(bool)$stmt->fetchColumn()) {
+    if (ems_normalize_division((string) $stmt->fetchColumn()) !== $userDivision) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/visit_agendas/')) {
@@ -131,30 +146,29 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     }
 
     $stmt = $pdo->prepare("
-        SELECT 1
-        FROM secretary_visit_agenda_attachments
-        WHERE file_path = ?
+        SELECT sva.owner_division
+        FROM secretary_visit_agenda_attachments svaatt
+        INNER JOIN secretary_visit_agendas sva ON sva.id = svaatt.agenda_id
+        WHERE svaatt.file_path = ?
         LIMIT 1
     ");
     $stmt->execute([$relativePath]);
-    if (!(bool)$stmt->fetchColumn()) {
+    if (ems_normalize_division((string) $stmt->fetchColumn()) !== $userDivision) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/internal_coordinations/')) {
+    if (!$canViewSecretaryProtectedFiles) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
     $stmt = $pdo->prepare("
-        SELECT sic.division_scope
+        SELECT sic.owner_division
         FROM secretary_internal_coordination_attachments sica
         INNER JOIN secretary_internal_coordinations sic ON sic.id = sica.coordination_id
         WHERE sica.file_path = ?
         LIMIT 1
     ");
     $stmt->execute([$relativePath]);
-    $coordinationScope = (string)($stmt->fetchColumn() ?: '');
-
-    if (
-        $coordinationScope === ''
-        || (!$canViewSecretaryProtectedFiles && !ems_division_scope_matches_division($coordinationScope, $userDivision))
-    ) {
+    if (ems_normalize_division((string) $stmt->fetchColumn()) !== $userDivision) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/secretary/confidential_letters/')) {
@@ -163,13 +177,14 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
     }
 
     $stmt = $pdo->prepare("
-        SELECT 1
-        FROM secretary_confidential_letter_attachments
-        WHERE file_path = ?
+        SELECT scl.owner_division
+        FROM secretary_confidential_letter_attachments sclatt
+        INNER JOIN secretary_confidential_letters scl ON scl.id = sclatt.letter_id
+        WHERE sclatt.file_path = ?
         LIMIT 1
     ");
     $stmt->execute([$relativePath]);
-    if (!(bool)$stmt->fetchColumn()) {
+    if (ems_normalize_division((string) $stmt->fetchColumn()) !== $userDivision) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/user_docs/')) {
@@ -230,7 +245,39 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/letters/')) {
-    if (!ems_is_letter_receiver_role((string)($user['role'] ?? '')) && !in_array($userDivision, ['Secretary', 'General Affair', 'Executive'], true)) {
+    if (!ems_is_valid_division($userDivision)) {
+        secureFileAbort(403, 'Akses file tidak diizinkan.');
+    }
+
+    $letterScopeQueries = ["
+        SELECT il.division_scope
+        FROM incoming_letter_attachments ila
+        INNER JOIN incoming_letters il ON il.id = ila.incoming_letter_id
+        WHERE ila.file_path = ?
+    ", "
+        SELECT ol.division_scope
+        FROM outgoing_letter_attachments ola
+        INNER JOIN outgoing_letters ol ON ol.id = ola.outgoing_letter_id
+        WHERE ola.file_path = ?
+    "];
+    if (secureFileTableExists($pdo, 'meeting_minutes_attachments')) {
+        $letterScopeQueries[] = "
+            SELECT mm.division_scope
+            FROM meeting_minutes_attachments mma
+            INNER JOIN meeting_minutes mm ON mm.id = mma.meeting_minutes_id
+            WHERE mma.file_path = ?
+        ";
+    }
+    $stmt = $pdo->prepare(implode("\nUNION ALL\n", $letterScopeQueries));
+    $stmt->execute(array_fill(0, count($letterScopeQueries), $relativePath));
+    $hasOwnDivisionAttachment = false;
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $divisionScope) {
+        if (ems_normalize_division_scope((string) $divisionScope) === $userDivision) {
+            $hasOwnDivisionAttachment = true;
+            break;
+        }
+    }
+    if (!$hasOwnDivisionAttachment) {
         secureFileAbort(403, 'Akses file tidak diizinkan.');
     }
 } elseif (str_starts_with($relativePath, 'storage/general_affair/cooperation_inputs/')) {
@@ -309,7 +356,7 @@ if (str_starts_with($relativePath, 'storage/identity/')) {
 } elseif (str_starts_with($relativePath, 'storage/documents/')) {
     // Document Library ("Dokumen"): basis pengetahuan bersama, semua user
     // login boleh baca file apa pun di sini (keputusan §11 poin 3
-    // docs/DOCUMENT_LIBRARY_MODULE.md) — cukup pastikan path ini memang
+    // docs/modules/document-library.md) — cukup pastikan path ini memang
     // baris dokumen yang valid, bukan tebakan path.
     $stmt = $pdo->prepare("SELECT 1 FROM document_files WHERE file_path = ? LIMIT 1");
     $stmt->execute([$relativePath]);

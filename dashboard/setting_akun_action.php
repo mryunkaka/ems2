@@ -825,6 +825,29 @@ foreach ($settingAkunIssuedDateFields as $dateField) {
     $issuedDateValues[$dateField] = $postedValue !== '' ? $postedValue : null;
 }
 
+if (isset($userRhColumns['sertifikat_heli_valid_from'], $userRhColumns['sertifikat_heli_valid_until'])) {
+    $heliFrom = trim((string)($_POST['sertifikat_heli_valid_from'] ?? ''));
+    $heliUntil = trim((string)($_POST['sertifikat_heli_valid_until'] ?? ''));
+    $hasHeliUpload = isset($uploadedPaths['sertifikat_heli']);
+    if ($hasHeliUpload && ($heliFrom === '' || $heliUntil === '')) {
+        $_SESSION['flash_errors'][] = 'Tanggal awal dan akhir masa berlaku sertifikat heli wajib diisi saat upload.';
+        header('Location: setting_akun.php'); exit;
+    }
+    foreach ([$heliFrom, $heliUntil] as $heliDate) {
+        if ($heliDate !== '' && (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $heliDate) || !checkdate((int)substr($heliDate, 5, 2), (int)substr($heliDate, 8, 2), (int)substr($heliDate, 0, 4)))) {
+            $_SESSION['flash_errors'][] = 'Tanggal masa berlaku sertifikat heli tidak valid.';
+            header('Location: setting_akun.php'); exit;
+        }
+    }
+    if (($heliFrom === '') !== ($heliUntil === '') || ($heliFrom !== '' && $heliUntil < $heliFrom)) {
+        $_SESSION['flash_errors'][] = 'Tanggal akhir masa berlaku harus sama dengan atau setelah tanggal awal.';
+        header('Location: setting_akun.php'); exit;
+    }
+    if (isset($docFieldsToNull['sertifikat_heli'])) { $heliFrom = ''; $heliUntil = ''; }
+    $dateFieldValues['sertifikat_heli_valid_from'] = $heliFrom !== '' ? $heliFrom : null;
+    $dateFieldValues['sertifikat_heli_valid_until'] = $heliUntil !== '' ? $heliUntil : null;
+}
+
 foreach ($docFieldsToNull as $docField => $_unused) {
     $issuedDateField = $docIssuedDateMap[$docField] ?? null;
     if ($issuedDateField !== null && array_key_exists($issuedDateField, $issuedDateValues)) {

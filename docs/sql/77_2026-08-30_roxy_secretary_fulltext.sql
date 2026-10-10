@@ -1,4 +1,4 @@
--- Retrieval Roxy (docs/AI_ASSISTANT_MODULE.md §6.3/§7.1) butuh FULLTEXT di
+-- Retrieval Roxy (docs/ai/assistant-module.md §6.3/§7.1) butuh FULLTEXT di
 -- extracted_text 6 tabel lampiran Secretary/Surat yang di-whitelist —
 -- kolomnya sudah ada dari migrasi 73/74, tapi belum ada index FULLTEXT
 -- (dicek langsung lewat SHOW INDEX, bukan diasumsikan). Tanpa ini, retrieval

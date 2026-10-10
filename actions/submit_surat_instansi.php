@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 function redirect_public_form(array $params = []): void
 {
-    $target = ems_url('/surat_instansi.php');
+    $target = ems_url('/public/surat_instansi.php');
     if (!empty($params)) {
         $target .= '?' . http_build_query($params);
     }

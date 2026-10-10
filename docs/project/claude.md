@@ -57,7 +57,7 @@ ajax/           ~12 small autocomplete/search/file-preview endpoints for the das
 api/            External REST surface (Bearer-token auth) — currently just sales sync
 cron/           Scheduled jobs (farmasi auto-offline, weekly salary, quiz finalize, cleanup)
 dashboard/      ~131 pages — the actual application (see §5 for the module map)
-public/         Unauthenticated recruitment portal + AI psychometric test + realtime chat embed
+public/         Public pages and the authenticated Secretary letters page; public meeting form and legacy notice
 assets/design/  Self-built PHP "component" design system + Tailwind source/tokens (see §8)
 storage/        Uploaded files (gitignored), served only via ajax/secure_file.php
 migrations/     5 old one-off migration files (superseded by docs/sql/)
@@ -68,10 +68,12 @@ docs/EMS/       Untracked in-character reference binder (PDFs/handbooks) — not
 vendor/, node_modules/   Composer/npm deps (gitignored)
 ```
 
-Root-level oddities worth knowing: `index.php` just redirects to
-`dashboard/rekap_farmasi.php`. `pindah.php`, `backfill_operations.php`,
-`.codex_tmp_boot.php`, `flush_setting_akun_cache.php`, `deploy-cron.php` are
-one-off/ops scripts, all blocked from web access by `.htaccess`. A full
+Root-level entrypoints worth knowing: Project Markdown guidance, policies, and release notes are grouped under `docs/project/`; the documentation index is `docs/README.md`. `index.php` redirects to
+`dashboard/rekap_farmasi.php`; `pindah.php` is a compatibility shim for its implementation in `public/`. The public meeting form is served directly from `public/surat_instansi.php`; there is no root-level shim. The obsolete destructive `backfill_operations.php`,
+empty `QWEN.md`, and temporary `.codex_tmp_boot.php` were removed. Cache
+invalidation now lives at `bin/flush_setting_akun_cache.php`; `deploy-cron.php`
+remains at root for the existing deployment setup and is blocked by `.htaccess`.
+A full
 production DB dump `fouf9972_ems (1).sql` (~28MB) sits at repo root —
 gitignored, don't read it wholesale (see §6 for extracted schema).
 
@@ -116,7 +118,8 @@ recruitment/HR-access roles — added via migration `51_...`.)
 `Medis, Executive, Secretary, Human Capital, Disciplinary Committee,
 Human Resource, General Affair, Specialist Medical Authority, Forensic`.
 Cross-division visibility rules live in `ems_can_access_division_menu()`:
-Executive & Secretary see everything; Human Capital also sees Human
+Executive sees everything; Secretary pages are open to every valid division
+with records scoped to their owning division; Human Capital also sees Human
 Resource + Disciplinary Committee; Forensic also sees Specialist Medical
 Authority.
 
@@ -183,7 +186,8 @@ know it exists before assuming role/division checks are the whole story.
   kelompok), **Pengaturan** (setting akun, + superuser AI/storage/OCR
   items), plus division-gated groups (Human Resource, Interview & Training
   / Recruitment, Disciplinary Committee, General Affair, Specialist Medical
-  Authority, Forensic, Secretary). `struktur_organisasi.php`,
+  Authority, Forensic); the Secretary group is visible to every valid division
+  and its records are scoped by owner division. `struktur_organisasi.php`,
   `user_availability.php`, `emt_doj.php` are intentionally **not** in the
   nav (see §5 note) — don't assume every reachable dashboard page has a
   menu entry.
@@ -484,7 +488,7 @@ a major extension on top of the base module above, migration
   untouched.
 
 ### Document Library ("Dokumen" module, added 2026-08-29)
-Full PRD/ERD/design rationale lives in `docs/DOCUMENT_LIBRARY_MODULE.md` —
+Full PRD/ERD/design rationale lives in `docs/modules/document-library.md` —
 read that first for anything non-obvious; this entry is a summary. A
 searchable internal document library (SOP/handbook binder, previously just
 loose files) — explicitly **not** division-gated for reading (a deliberate
@@ -509,7 +513,7 @@ division-restricted.
   page itself is reachable by anyone logged in, real restriction happens
   inside the page/query logic, not the ACL whitelist.
 - **Access decisions** (confirmed explicitly with the user, see
-  `docs/DOCUMENT_LIBRARY_MODULE.md` §11 for the full reasoning): manager
+  `docs/modules/document-library.md` §11 for the full reasoning): manager
   non-Executive can upload into their own division's **existing** folders
   only (cannot create subfolders themselves — strict upload-only); can
   edit/delete **only documents they personally uploaded**, not their whole
@@ -587,7 +591,7 @@ division-restricted.
   `--unit=`/`--actor-id=` flags. **Folder→division mapping is hardcoded by
   exact folder name** (`ems_document_ensure_tables()`'s division-inherits-
   from-parent rule means only branch-root folder names need mapping — see
-  the table in `docs/DOCUMENT_LIBRARY_MODULE.md` §11 point 8) since the
+  the table in `docs/modules/document-library.md` §11 point 8) since the
   source binder (`Handbook-EMS/4. SOP EMS/...`) already had its own
   per-division SOP subfolders (Committee Discipline, General Affairs,
   Sekretariat Relation, Human Resource, Forensic) baked into its real
@@ -1133,7 +1137,7 @@ simplest correct place to decide is PHP at render time, not JS after load.
 
 ### Attachment Text Extraction — non-Dokumen modules (added 2026-08-30)
 Groundwork for a planned future internal AI assistant (full PRD in
-`docs/AI_ASSISTANT_MODULE.md`) — before building the bot itself, the user
+`docs/ai/assistant-module.md`) — before building the bot itself, the user
 asked to first extend text extraction to real documents living **outside**
 the Document Library module, so the eventual bot's knowledge base isn't
 blind to them. `config/attachment_extraction.php` is a thin wrapper reusing
@@ -1208,7 +1212,7 @@ codebase).
   for these older records; the script correctly detects and skips missing
   files rather than erroring).
 - This work intentionally **preceded** any chat-bot code — see
-  `docs/AI_ASSISTANT_MODULE.md` for the full bot PRD, which remains
+  `docs/ai/assistant-module.md` for the full bot PRD, which remains
   unimplemented pending the open questions listed there (§11 of that doc).
 - **Manual content description for image-only attachments, same day
   (2026-08-30, user follow-up)**: photos of real letters/documents
@@ -1245,7 +1249,7 @@ codebase).
     form. Missed on the first documentation pass of this codebase; now
     covered by this same manual-description mechanism, with a new
     "Isi/Ringkasan Surat" textarea added to that public form.
-  - Touches 6 pages (`surat_instansi.php`, `surat_menyurat.php`'s outgoing
+  - Touches 6 pages (`surat_instansi.php`, `dashboard/surat_menyurat.php`'s outgoing
     + minutes create/edit forms, and all 4 Secretary attachment pages'
     create/edit forms) and their respective action controllers, adding
     one optional `attachment_content` textarea + one
@@ -1400,7 +1404,7 @@ codebase).
   UI-only changes made without browser access.
 
 ### Roxy — internal AI chat bot (Fase 1 MVP, added 2026-08-30)
-Full PRD/ERD lives in `docs/AI_ASSISTANT_MODULE.md` — read that first for
+Full PRD/ERD lives in `docs/ai/assistant-module.md` — read that first for
 anything non-obvious; this entry is a summary. General-purpose assistant
 for "how do I use this app" / SOP questions, distinct from the
 per-feature "Roxwood AI" suite (Diagnosis/Surgery/Radiology/etc).
@@ -1887,8 +1891,8 @@ factions; badge photo required; manager-only global recap + re-pricing
 (per_qty/per_week/per_month) + "titip" (pay-on-behalf) support.
 
 ### Letters / Correspondence
-`surat_menyurat.php`+`_action.php`, `surat_monitoring.php` (blocked for
-`Medis` division), plus the public root-level `surat_instansi.php` (no
+`dashboard/surat_menyurat.php` + `dashboard/surat_menyurat_action.php`, `surat_monitoring.php` (blocked for
+`Medis` division), plus `public/surat_instansi.php` (served directly at `/public/surat_instansi.php`; no
 auth — external institutions request a meeting, auto-generates a letter
 code). Tables: `incoming_letters`, `outgoing_letters`, `meeting_minutes`
 (+ their `*_attachments` tables), revision tracking via `revision_count`/
@@ -1897,7 +1901,7 @@ code). Tables: `incoming_letters`, `outgoing_letters`, `meeting_minutes`
 ### AI / Gemini Configuration
 `ai_settings.php`+`_action.php` — gated to the single named "Programmer
 Roxwood" superuser (documented stop-gap in
-`docs/GEMINI_AI_RECRUITMENT_FOUNDATION_PLAN.md`); configures
+`docs/recruitment/gemini-ai-foundation-plan.md`); configures
 `system_ai_settings` (API key, per-feature model, temperature/top_p/top_k,
 daily request cap). AI features silently no-op/fall back if disabled —
 the recruitment pipeline works fully without AI configured.
@@ -2175,9 +2179,9 @@ single source of truth for colors/spacing/radius/typography/shadows, mirrored
 into `tailwind.config.js`. Primary color `#0ea5e9`. Build: `npm run
 build:css` → `assets/design/tailwind/build.css`. The legacy dashboard is
 being incrementally migrated onto this system — track status in
-`docs/ui-refactor-progress.md` / `docs/ui-refactor-todo.md` before assuming
+`docs/ui/refactor-progress.md` / `docs/ui/refactor-todo.md` before assuming
 a page uses the new components. A **separate, not-yet-built** React/Laravel
-frontend rewrite is planned (`docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md`)
+frontend rewrite is planned (`docs/medical-records/frontend-redesign-prd.md`)
 — no code for it exists in this repo yet, it's forward-looking only.
 
 ## 9. Database — 100 tables (97 + `police_partnership_records` + 2 dispatcher tables added later)
@@ -2292,7 +2296,7 @@ defensive way.
     probe pattern, and protects any other environment that genuinely does
     have this misconfiguration; it just wasn't the fix for this bug.)
 6c. **Deploy-mechanism assumption corrected (2026-08-30)**: earlier
-    sessions (and the original `docs/DOCUMENT_LIBRARY_MODULE.md` write-up)
+    sessions (and the original `docs/modules/document-library.md` write-up)
     assumed production was deployed via **manual zip upload**, with no
     live-synced `.git` on the host — this was used as the explicit
     justification for NOT building automatic git-commit-based update
@@ -2343,29 +2347,28 @@ defensive way.
     re-deriving from code)
 
 - `README.md` — quick start, tech stack, module list.
-- `docs/INSTALLATION.md` — full local setup + hardening + upgrade checklist.
-- `docs/RELEASE_CHECKLIST.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
-- `docs/deploy/ROTATE_CREDENTIALS.md` + `apache-upload-exec-block.conf` +
+- `docs/project/installation.md` — full local setup + hardening + upgrade checklist.
+- `docs/project/release-checklist.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+- `docs/deploy/rotate-credentials.md` + `apache-upload-exec-block.conf` +
   `nginx-security.conf` — production hardening reference.
-- `docs/ui-design-system.md`, `docs/ui-migration-plan.md`,
-  `docs/ui-refactor-progress.md` / `-todo.md` — design system rollout status.
-- `docs/FIREBASE_REALTIME_CHAT_SETUP.md` — live chat/music/presence setup.
-- `docs/PRD_MEDICAL_SERVICE_FRONTEND_REDESIGN.md` — planned (not yet built)
+- `docs/ui/design-system.md`, `docs/ui/migration-plan.md`,
+  `docs/ui/refactor-progress.md` / `-todo.md` — design system rollout status.
+- `docs/integrations/firebase-realtime-chat-setup.md` — live chat/music/presence setup.
+- `docs/medical-records/frontend-redesign-prd.md` — planned (not yet built)
   React/Laravel frontend rewrite; phase one won't touch the current DB/schema.
-- `docs/GEMINI_AI_RECRUITMENT_FOUNDATION_PLAN.md`, `docs/
-  ASSISTANT_MANAGER_RECRUITMENT_FLOW.md` — AI recruitment design docs.
-- `docs/DISCIPLINARY_COMMITTEE_MODULE.md`, `docs/FORENSIC_MODULE.md`,
-  `docs/SECRETARY_MODULE.md`, `docs/SPECIALIST_MEDICAL_AUTHORITY_MODULE.md`.
-- `docs/prd-rekam-medis.md`, `docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md`,
+- `docs/recruitment/gemini-ai-foundation-plan.md` and
+  `docs/recruitment/assistant-manager-flow.md` — recruitment design docs.
+- `docs/modules/disciplinary-committee.md`, `docs/modules/forensic.md`,
+  `docs/modules/secretary.md`, `docs/modules/specialist-medical-authority.md`.
+- `docs/medical-records/product-requirements.md`, `docs/medical-records/implementation-plan.md`,
   `dashboard/README_REKAM_MEDIS.md` — medical-records feature history (note:
   the schema described there is an **earlier draft**, not what's deployed —
   see §5/§9 for the real runtime schema).
-- `docs/progress_cuti_resign.md` — leave/resign feature build log.
-- `docs/CODEX_FOR_OSS_APPLICATION.md` — OSS-program prep notes.
-- Two other AI-generated snapshots exist at repo root
-  (`PRODUCT_SPECIFICATION.md`, `PRODUCT_SPECIFICATION_CURRENT.md`,
-  `IMPLEMENTATION_SUMMARY.md`) — gitignored, locally-only, may go stale;
-  this `CLAUDE.md` supersedes them as the authoritative map going forward.
+- `docs/modules/leave-resign-progress.md` — leave/resign feature build log.
+- `docs/project/codex-for-oss-application.md` — OSS-program prep notes.
+- Historical product-specification snapshots and implementation notes are
+  kept in `docs/archive/`; they may be stale. This `CLAUDE.md` remains the
+  authoritative project map.
 
 ## 12. Working conventions
 
@@ -2374,7 +2377,7 @@ defensive way.
   this order for new pages.
 - All UI text is Bahasa Indonesia; icons via the Heroicons helper
   (`assets/design/ui/icon.php`), not emoji (emoji removal is an active
-  cleanup goal per `docs/ui-migration-plan.md`).
+  cleanup goal per `docs/ui/migration-plan.md`).
 - New DB columns/tables should be added via a new numbered file in
   `docs/sql/` (next number after `52_...`) and guarded in PHP with
   `ems_column_exists()`/`ems_table_exists()` until you're sure it's rolled

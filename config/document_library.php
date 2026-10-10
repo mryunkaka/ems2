@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Document Library module ("Dokumen" menu) — lihat docs/DOCUMENT_LIBRARY_MODULE.md
+ * Document Library module ("Dokumen" menu) — lihat docs/modules/document-library.md
  * untuk PRD/ERD lengkap & keputusan akses yang sudah dikonfirmasi.
  */
 
@@ -270,7 +270,7 @@ function ems_document_store_local_file(string $sourcePath, string $ext): ?array
 // Ekstraksi teks — inti dari pencarian cepat (dijalankan sekali saat
 // upload, bukan saat search). docx/odt/doc reuse fungsi yang sudah ada
 // di config/helpers.php; pdf pakai smalot/pdfparser (baru, lihat §8 & §11
-// poin 6 docs/DOCUMENT_LIBRARY_MODULE.md).
+// poin 6 docs/modules/document-library.md).
 // ===================================================================
 
 function ems_document_normalize_extracted_text(string $text, int $maxChars = 500000): string

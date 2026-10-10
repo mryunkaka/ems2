@@ -10,7 +10,13 @@ Modul `Secretary` dipakai untuk:
 - mencatat koordinasi internal divisi
 - merekap surat rahasia / confidential letter log
 
-Fitur ini melengkapi halaman `surat_menyurat.php` yang sudah ada.
+Fitur ini melengkapi halaman `dashboard/surat_menyurat.php` (route: `/dashboard/surat_menyurat.php`) yang sudah ada.
+
+Menu dan halaman Secretary dapat dibuka oleh semua divisi yang valid. Catatan
+agenda, koordinasi, surat rahasia, dan arsip file dipisahkan berdasarkan
+`owner_division`; lampiran mengikuti cakupan yang sama. Surat/notulen utama
+difilter menurut `division_scope`. Terapkan migrasi
+`docs/sql/102_2026-10-10_secretary_division_scope.sql` sebelum menggunakan modul.
 
 ## Ruang Lingkup Halaman
 

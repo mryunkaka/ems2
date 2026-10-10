@@ -3,7 +3,7 @@
 /**
  * Ekstraksi teks untuk lampiran di luar modul Dokumen (Secretary File
  * Registry, Notulen, lampiran Komdis) — Opsi A dari
- * docs/AI_ASSISTANT_MODULE.md §6.3, supaya isinya ikut FULLTEXT-searchable
+ * docs/ai/assistant-module.md §6.3, supaya isinya ikut FULLTEXT-searchable
  * dan bisa dipakai basis pengetahuan chat bot AI nanti.
  *
  * Reuse penuh mesin ekstraksi yang sudah ada & teruji di modul Dokumen

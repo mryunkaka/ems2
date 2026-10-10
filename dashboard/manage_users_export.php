@@ -56,6 +56,13 @@ $unitSelect = $hasUnitCodeColumn ? "u.unit_code," : "'roxwood' AS unit_code,";
 $citizenIdSelect = $hasCitizenIdColumn ? "u.citizen_id," : "NULL AS citizen_id,";
 $noHpIcSelect = $hasNoHpIcColumn ? "u.no_hp_ic," : "NULL AS no_hp_ic,";
 $jenisKelaminSelect = $hasJenisKelaminColumn ? "u.jenis_kelamin," : "NULL AS jenis_kelamin,";
+$hasFarmasiWebLoginColumn = manageUsersHasColumn($pdo, 'last_farmasi_web_login_at');
+$hasFarmasiSessionTracking = ems_table_exists($pdo, 'user_farmasi_sessions') && ems_column_exists($pdo, 'user_farmasi_sessions', 'session_start');
+$farmasiLoginSelect = $hasFarmasiWebLoginColumn
+    ? 'u.last_farmasi_web_login_at AS last_farmasi_login,'
+    : ($hasFarmasiSessionTracking
+        ? '(SELECT MAX(fs.session_start) FROM user_farmasi_sessions fs WHERE fs.user_id = u.id) AS last_farmasi_login,'
+        : 'NULL AS last_farmasi_login,');
 
 $unitWhere = $hasUnitCodeColumn ? "WHERE COALESCE(u.unit_code, 'roxwood') = :unit_code" : "";
 
@@ -70,6 +77,7 @@ $stmtUsers = $pdo->prepare("
         {$citizenIdSelect}
         {$noHpIcSelect}
         {$jenisKelaminSelect}
+        {$farmasiLoginSelect}
         u.is_active,
         u.tanggal_masuk,
         u.batch,
@@ -180,6 +188,19 @@ function getStatusLabel(array $u): string
     return 'Non-Aktif';
 }
 
+function getFarmasiLoginLabel(?string $lastLogin): string
+{
+    if (trim((string)$lastLogin) === '') return 'Belum pernah login (Nonaktif)';
+    try {
+        $timezone = new DateTimeZone('Asia/Jakarta');
+        $loginAt = new DateTimeImmutable((string)$lastLogin, $timezone);
+        $status = $loginAt < (new DateTimeImmutable('now', $timezone))->modify('-1 month') ? 'Nonaktif >1 bulan' : 'Aktif';
+        return $loginAt->format('d M Y H:i') . ' (' . $status . ')';
+    } catch (Throwable $e) {
+        return (string)$lastLogin . ' (Nonaktif)';
+    }
+}
+
 $spreadsheet = new Spreadsheet();
 $sheet = $spreadsheet->getActiveSheet();
 
@@ -198,7 +219,7 @@ $spreadsheet->getDefaultStyle()->getAlignment()->setVertical(Alignment::VERTICAL
 
 $title = $viewMode === 'per_batch' ? 'DAFTAR USER PER BATCH' : 'DAFTAR SEMUA USER';
 $sheet->setCellValue('A1', $title);
-$sheet->mergeCells('A1:L1');
+$sheet->mergeCells('A1:M1');
 $sheet->getStyle('A1')->applyFromArray([
     'font' => [
         'bold' => true,
@@ -212,7 +233,7 @@ $sheet->getStyle('A1')->applyFromArray([
 ]);
 
 $sheet->setCellValue('A2', 'Unit: ' . ems_unit_label($effectiveUnit));
-$sheet->mergeCells('A2:L2');
+$sheet->mergeCells('A2:M2');
 $sheet->getStyle('A2')->applyFromArray([
     'font' => [
         'size' => 11,
@@ -241,11 +262,12 @@ $headers = [
     'Status',
     'No HP IC',
     'Dokumen',
+    'Login Terakhir Farmasi',
 ];
 
 $sheet->fromArray($headers, null, 'A4');
 
-$headerRange = 'A4:L4';
+$headerRange = 'A4:M4';
 $sheet->getStyle($headerRange)->applyFromArray([
     'font' => [
         'bold' => true,
@@ -275,7 +297,7 @@ if ($viewMode === 'per_batch') {
     foreach ($usersByBatch as $batchName => $batchUsers) {
         // Batch header row
         $sheet->setCellValue('A' . $currentRow, $batchName);
-        $sheet->mergeCells('A' . $currentRow . ':L' . $currentRow);
+        $sheet->mergeCells('A' . $currentRow . ':M' . $currentRow);
         $sheet->getStyle('A' . $currentRow)->applyFromArray([
             'font' => [
                 'bold' => true,
@@ -315,9 +337,10 @@ if ($viewMode === 'per_batch') {
                 getStatusLabel($u),
                 trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-',
                 getDocumentList($u),
+                getFarmasiLoginLabel($u['last_farmasi_login'] ?? null),
             ], null, 'A' . $currentRow);
 
-            $rowRange = 'A' . $currentRow . ':L' . $currentRow;
+            $rowRange = 'A' . $currentRow . ':M' . $currentRow;
             $sheet->getStyle($rowRange)->applyFromArray([
                 'borders' => [
                     'allBorders' => [
@@ -373,9 +396,10 @@ if ($viewMode === 'per_batch') {
             getStatusLabel($u),
             trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-',
             getDocumentList($u),
+            getFarmasiLoginLabel($u['last_farmasi_login'] ?? null),
         ], null, 'A' . $currentRow);
 
-        $rowRange = 'A' . $currentRow . ':L' . $currentRow;
+        $rowRange = 'A' . $currentRow . ':M' . $currentRow;
         $sheet->getStyle($rowRange)->applyFromArray([
             'borders' => [
                 'allBorders' => [
@@ -484,6 +508,7 @@ $sheet->getColumnDimension('I')->setWidth(12);
 $sheet->getColumnDimension('J')->setWidth(22);
 $sheet->getColumnDimension('K')->setWidth(18);
 $sheet->getColumnDimension('L')->setWidth(35);
+$sheet->getColumnDimension('M')->setWidth(32);
 
 $viewModeSlug = $viewMode === 'per_batch' ? 'per_batch' : 'semua';
 $filename = 'manage_users_' . $viewModeSlug . '_' . date('Y-m-d_H-i-s') . '.xlsx';

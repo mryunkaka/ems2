@@ -16,11 +16,11 @@ $user = $_SESSION['user_rh'] ?? [];
 $userId = (int) ($user['id'] ?? 0);
 $isManagerPlus = ems_is_manager_plus_role((string) ($user['role'] ?? ''));
 
-$groqSettings = ems_groq_get_user_settings($pdo, $userId);
-$aiSettings = ems_ai_provider_get_user_settings($pdo, $userId);
-$hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
-$hasGeminiKey = ems_ai_provider_has_any($aiSettings);
-$hasAiProvider = $hasGroqKey || $hasGeminiKey;
+$aiSettings = ems_ai_get_settings($pdo);
+$hasAiProvider = ems_ai_global_provider_ready($pdo);
+$aiProviderName = strtolower((string)($aiSettings['provider'] ?? 'gemini')) === 'openai_compatible'
+    ? (string)($aiSettings['custom_provider'] ?? 'OpenAI-Compatible')
+    : 'Gemini';
 
 $csrfToken = generateCsrfToken();
 
@@ -82,12 +82,11 @@ include __DIR__ . '/../partials/sidebar.php';
 
         <?php if (!$hasAiProvider): ?>
             <div class="alert alert-warning mt-3">
-                Atur provider AI pribadi di
-                <a href="/dashboard/ai_settings_personal.php" class="underline font-semibold">Setting AI Saya</a> agar Roxy bisa dipakai.
+                Provider AI global belum siap. Hubungi Programmer Roxwood untuk melengkapi pengaturan di Setting AI.
             </div>
-        <?php elseif (!$hasGroqKey && $hasGeminiKey): ?>
+        <?php else: ?>
             <div class="alert alert-info mt-3">
-                Groq belum diatur. Roxy memakai provider AI pribadi sebagai jalur cadangan.
+                Roxy menggunakan provider global: <strong><?= htmlspecialchars($aiProviderName, ENT_QUOTES, 'UTF-8') ?></strong>.
             </div>
         <?php endif; ?>
 
@@ -316,9 +315,9 @@ include __DIR__ . '/../partials/sidebar.php';
         textarea.focus();
     }
 
-    function answerSourceLabel(source, usedDeepResearch, personalProvider) {
-        if (usedDeepResearch || source === 'gemini_personal') {
-            return 'Hasil riset mendalam (' + (personalProvider ? 'Provider personal: ' + personalProvider : 'Gemini pribadi') + ')';
+    function answerSourceLabel(source, usedDeepResearch, providerName) {
+        if (usedDeepResearch || source === 'global_provider') {
+            return 'Hasil riset mendalam (' + (providerName || 'provider global') + ')';
         }
         if (source === 'learned_correction') {
             return 'Menggunakan jawaban koreksi yang telah disetujui manager';
@@ -329,11 +328,7 @@ include __DIR__ . '/../partials/sidebar.php';
     function appendResearchSetupNotice() {
         var notice = document.createElement('div');
         notice.className = 'roxy-bubble-source';
-        notice.appendChild(document.createTextNode('Untuk riset lebih dalam, atur provider AI personal: '));
-        var link = document.createElement('a');
-        link.href = '/dashboard/ai_settings_personal.php';
-        link.textContent = 'Buka Setting AI Saya';
-        notice.appendChild(link);
+        notice.appendChild(document.createTextNode('Provider AI global belum dikonfigurasi. Hubungi Programmer Roxwood.'));
         els.chatWindow.appendChild(notice);
         els.chatWindow.scrollTop = els.chatWindow.scrollHeight;
     }
@@ -509,7 +504,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
                 currentConversationId = data.conversation_id;
                 setExpression(data.expression || 'netral');
-                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.personal_provider), data.message_id);
+                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.provider_name), data.message_id);
                 if (data.gemini_key_missing) {
                     appendResearchSetupNotice();
                 }

@@ -29,9 +29,9 @@ Berikut adalah file yang telah dibuat untuk fitur Rekam Medis:
 
 ### 5. Documentation
 ```
-✅ docs/prd-rekam-medis.md                - PRD lengkap
+✅ docs/medical-records/product-requirements.md                - PRD lengkap
 ✅ docs/sql/medical_records_migration.sql - SQL migration
-✅ docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md - Step-by-step guide
+✅ docs/medical-records/implementation-plan.md - Step-by-step guide
 ```
 
 ---
@@ -305,10 +305,10 @@ DESCRIBE medical_records;
 
 ## 📚 Referensi
 
-- PRD Lengkap: `docs/prd-rekam-medis.md`
+- PRD Lengkap: `docs/medical-records/product-requirements.md`
 - SQL Migration: `docs/sql/medical_records_migration.sql`
-- Implementation Plan: `docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md`
-- UI Design System: `docs/ui-design-system.md`
+- Implementation Plan: `docs/medical-records/implementation-plan.md`
+- UI Design System: `docs/ui/design-system.md`
 
 ---
 

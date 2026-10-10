@@ -9,6 +9,7 @@ require_once __DIR__ . '/../config/ai_settings.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/ai_guard.php';
 require_once __DIR__ . '/../actions/ai_gemini_client.php';
+require_once __DIR__ . '/../actions/ai_custom_client.php';
 
 ems_require_programmer_roxwood_access();
 
@@ -37,12 +38,27 @@ if (!ems_ai_settings_table_exists($pdo)) {
 $currentSettings = ems_ai_get_settings($pdo);
 $apiKeyInput = trim((string)($_POST['gemini_api_key'] ?? ''));
 $apiKey = $apiKeyInput !== '' ? $apiKeyInput : (string)($currentSettings['gemini_api_key'] ?? '');
+$provider = strtolower(trim((string)($_POST['provider'] ?? 'gemini')));
+$customProvider = trim((string)($_POST['custom_provider'] ?? ($currentSettings['custom_provider'] ?? 'OpenAI-Compatible')));
+$customApiKeyInput = trim((string)($_POST['custom_api_key'] ?? ''));
+$customApiKey = $customApiKeyInput !== '' ? $customApiKeyInput : (string)($currentSettings['custom_api_key'] ?? '');
+$customBaseUrl = rtrim(trim((string)($_POST['custom_base_url'] ?? ($currentSettings['custom_base_url'] ?? ''))), '/');
+$customModel = trim((string)($_POST['custom_default_model'] ?? ($currentSettings['custom_default_model'] ?? '')));
+
+if (!in_array($provider, ['gemini', 'openai_compatible'], true)) {
+    $_SESSION['flash_errors'][] = 'Provider AI tidak dikenal.';
+    header('Location: ' . $redirectTo); exit;
+}
 
 $incomingSettings = [
-    'provider' => 'gemini',
+    'provider' => $provider,
     'is_enabled' => isset($_POST['is_enabled']) ? 1 : 0,
     'gemini_api_key' => $apiKey,
-    'gemini_base_url' => rtrim(trim((string)($_POST['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta')), '/'),
+    'gemini_base_url' => rtrim(trim((string)($_POST['gemini_base_url'] ?? ($currentSettings['gemini_base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta'))), '/'),
+    'custom_provider' => $customProvider !== '' ? $customProvider : 'OpenAI-Compatible',
+    'custom_api_key' => $customApiKey,
+    'custom_base_url' => $customBaseUrl,
+    'custom_default_model' => $customModel,
     'default_model' => trim((string)($_POST['default_model'] ?? 'gemini-2.5-flash')),
     'summary_model' => trim((string)($_POST['summary_model'] ?? 'gemini-2.5-flash')),
     'interview_question_model' => trim((string)($_POST['interview_question_model'] ?? 'gemini-2.5-flash')),
@@ -57,17 +73,34 @@ $incomingSettings = [
 
 $modelOptions = ems_ai_model_options();
 foreach (['default_model', 'summary_model', 'interview_question_model', 'criteria_scoring_model'] as $modelField) {
-    if (!in_array($incomingSettings[$modelField], $modelOptions, true)) {
+    if ($provider === 'gemini' && !in_array($incomingSettings[$modelField], $modelOptions, true)) {
         $_SESSION['flash_errors'][] = 'Model AI yang dipilih tidak valid.';
         header('Location: ' . $redirectTo);
         exit;
     }
 }
 
-if ($incomingSettings['gemini_base_url'] === '') {
+if ($provider === 'gemini' && $incomingSettings['gemini_base_url'] === '') {
     $_SESSION['flash_errors'][] = 'Base URL Gemini wajib diisi.';
     header('Location: ' . $redirectTo);
     exit;
+}
+
+if ($provider === 'openai_compatible') {
+    $customUrlParts = $customBaseUrl !== '' ? parse_url($customBaseUrl) : false;
+    if ($customProvider === '' || mb_strlen($customProvider) > 100 || preg_match('/[\x00-\x1F\x7F]/', $customProvider)) {
+        $_SESSION['flash_errors'][] = 'Nama custom provider tidak valid.'; header('Location: ' . $redirectTo); exit;
+    }
+    if ($customModel === '' || mb_strlen($customModel) > 100 || preg_match('/[\x00-\x1F\x7F]/', $customModel)) {
+        $_SESSION['flash_errors'][] = 'Model custom wajib diisi (maksimal 100 karakter).'; header('Location: ' . $redirectTo); exit;
+    }
+    if ($customApiKey === '' || mb_strlen($customApiKey) > 255 || preg_match('/[\x00-\x1F\x7F]/', $customApiKey)) {
+        $_SESSION['flash_errors'][] = 'API key custom wajib diisi dan tidak boleh mengandung karakter kontrol.'; header('Location: ' . $redirectTo); exit;
+    }
+    if ($customUrlParts === false || strtolower((string)($customUrlParts['scheme'] ?? '')) !== 'https' || trim((string)($customUrlParts['host'] ?? '')) === '' || isset($customUrlParts['user'], $customUrlParts['pass'], $customUrlParts['query'], $customUrlParts['fragment'])) {
+        $_SESSION['flash_errors'][] = 'Endpoint custom harus URL HTTPS publik yang valid.'; header('Location: ' . $redirectTo); exit;
+    }
+    foreach (['default_model', 'summary_model', 'interview_question_model', 'criteria_scoring_model'] as $field) $incomingSettings[$field] = $customModel;
 }
 
 if ($action === 'save') {
@@ -79,6 +112,10 @@ if ($action === 'save') {
                 provider,
                 is_enabled,
                 gemini_api_key,
+                custom_provider,
+                custom_api_key,
+                custom_base_url,
+                custom_default_model,
                 gemini_base_url,
                 default_model,
                 summary_model,
@@ -93,11 +130,15 @@ if ($action === 'save') {
                 created_by,
                 updated_by
             ) VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 provider = VALUES(provider),
                 is_enabled = VALUES(is_enabled),
                 gemini_api_key = VALUES(gemini_api_key),
+                custom_provider = VALUES(custom_provider),
+                custom_api_key = VALUES(custom_api_key),
+                custom_base_url = VALUES(custom_base_url),
+                custom_default_model = VALUES(custom_default_model),
                 gemini_base_url = VALUES(gemini_base_url),
                 default_model = VALUES(default_model),
                 summary_model = VALUES(summary_model),
@@ -118,6 +159,10 @@ if ($action === 'save') {
             $incomingSettings['provider'],
             $incomingSettings['is_enabled'],
             $incomingSettings['gemini_api_key'],
+            $incomingSettings['custom_provider'],
+            $incomingSettings['custom_api_key'],
+            $incomingSettings['custom_base_url'],
+            $incomingSettings['custom_default_model'],
             $incomingSettings['gemini_base_url'],
             $incomingSettings['default_model'],
             $incomingSettings['summary_model'],
@@ -133,7 +178,7 @@ if ($action === 'save') {
             $userId > 0 ? $userId : null,
         ]);
 
-        $_SESSION['flash_messages'][] = 'Setting AI berhasil disimpan.';
+        $_SESSION['flash_messages'][] = 'Setting AI global berhasil disimpan untuk seluruh fitur.';
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Gagal menyimpan setting AI: ' . $e->getMessage();
     }
@@ -144,6 +189,7 @@ if ($action === 'save') {
 
 if ($action === 'test_connection') {
     try {
+        if ($provider !== 'gemini') throw new RuntimeException('Pilih provider Gemini untuk menjalankan pengujian ini.');
         if ($incomingSettings['gemini_api_key'] === '') {
             throw new RuntimeException('Isi atau simpan API key Gemini terlebih dahulu.');
         }
@@ -159,6 +205,26 @@ if ($action === 'test_connection') {
 
     header('Location: ' . $redirectTo);
     exit;
+}
+
+if ($action === 'test_connection_custom') {
+    try {
+        if ($provider !== 'openai_compatible') throw new RuntimeException('Pilih Custom Provider OpenAI-Compatible terlebih dahulu.');
+        $result = ems_custom_test_connection($pdo, [
+            'custom_provider' => $incomingSettings['custom_provider'],
+            'custom_api_key' => $incomingSettings['custom_api_key'],
+            'custom_base_url' => $incomingSettings['custom_base_url'],
+            'custom_default_model' => $incomingSettings['custom_default_model'],
+            'timeout_seconds' => $incomingSettings['timeout_seconds'],
+            'temperature' => $incomingSettings['temperature'],
+            'max_output_tokens' => $incomingSettings['max_output_tokens'],
+        ], $userId > 0 ? $userId : null);
+        $_SESSION['flash_messages'][] = 'Test koneksi ' . $incomingSettings['custom_provider'] . ' berhasil dengan model ' . $result['model'] . '.';
+        $_SESSION['flash_messages'][] = 'Response: ' . trim((string)$result['content']);
+    } catch (Throwable $e) {
+        $_SESSION['flash_errors'][] = 'Test custom provider gagal: ' . $e->getMessage();
+    }
+    header('Location: ' . $redirectTo); exit;
 }
 
 $_SESSION['flash_errors'][] = 'Action AI tidak dikenali.';

@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Chat bot AI internal "Roxy" — lihat docs/AI_ASSISTANT_MODULE.md untuk
+ * Chat bot AI internal "Roxy" — lihat docs/ai/assistant-module.md untuk
  * PRD/ERD lengkap. Fase 1 (MVP): percakapan, pesan, retrieval FULLTEXT
  * dari 3 sumber (bot_knowledge_base, document_files, whitelist tabel
  * lampiran Secretary/Surat yang tidak sensitif), panggilan Groq
@@ -10,8 +10,7 @@
 
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/document_library.php';
-require_once __DIR__ . '/groq_settings.php';
-require_once __DIR__ . '/../actions/groq_client.php';
+require_once __DIR__ . '/ai_provider_core.php';
 
 function ems_roxy_ensure_tables(PDO $pdo): void
 {
@@ -206,7 +205,7 @@ function ems_roxy_expression_options(): array
 
 // ===================================================================
 // Whitelist sumber retrieval Secretary/Surat — lihat
-// docs/AI_ASSISTANT_MODULE.md §6.3 untuk daftar lengkap + alasan
+// docs/ai/assistant-module.md §6.3 untuk daftar lengkap + alasan
 // keamanannya. HARDCODED, jangan pernah generate otomatis dari daftar
 // tabel yang punya extracted_text — Surat Rahasia & lampiran Komdis
 // SENGAJA tidak boleh muncul di sini sama sekali.
@@ -366,7 +365,7 @@ function ems_roxy_search_secretary_attachments(PDO $pdo, string $query, int $lim
 /**
  * Gabungkan jawaban koreksi yang disetujui dan tiga sumber dokumen menjadi
  * satu konteks untuk prompt; koreksi dicari exact-match per unit.
- * — lihat docs/AI_ASSISTANT_MODULE.md §7.1 langkah 2. bot_learned_answers
+ * — lihat docs/ai/assistant-module.md §7.1 langkah 2. bot_learned_answers
  */
 function ems_roxy_retrieval_query(string $query): string
 {
@@ -637,7 +636,7 @@ function ems_roxy_append_official_document_comparison(string $answer, array $con
 }
 
 // ===================================================================
-// Persona, system prompt, guardrail — docs/AI_ASSISTANT_MODULE.md §2/§10
+// Persona, system prompt, guardrail — docs/ai/assistant-module.md §2/§10
 // ===================================================================
 function ems_roxy_default_system_prompt(array $user): string
 {
@@ -830,7 +829,7 @@ function ems_roxy_get_conversation_messages(PDO $pdo, int $conversationId): arra
 }
 
 /**
- * Orkestrasi penuh satu putaran tanya-jawab — docs/AI_ASSISTANT_MODULE.md
+ * Orkestrasi penuh satu putaran tanya-jawab — docs/ai/assistant-module.md
  * §7.1. TIDAK menyimpan pesan user/bot di sini — caller (endpoint chat)
  * yang menyimpan, supaya fungsi ini murni "hitung jawaban" dan gampang
  * diuji terpisah dari sisi penyimpanan.
@@ -861,73 +860,22 @@ function ems_roxy_ask(PDO $pdo, array $user, string $unitCode, array $historyMes
     $messages[] = ['role' => 'user', 'content' => $userMessage];
     $historyText .= 'User: ' . $userMessage;
 
-    $parsed = null;
-    $usedPersonalProvider = false;
-    $groqFailure = '';
-    $groqSettings = ems_groq_get_user_settings($pdo, $userId);
-    $hasGroqKey = $groqSettings !== null && trim((string) ($groqSettings['groq_api_key'] ?? '')) !== '';
-    $personalProviderSettings = ems_ai_provider_get_user_settings($pdo, $userId);
-    $hasPersonalProvider = ems_ai_provider_has_any($personalProviderSettings);
-
-    if ($hasGroqKey) {
-        try {
-            $groqResult = ems_groq_chat_completion($pdo, $groqSettings, $messages, null, 'roxy_chat', $userId, true);
-            $parsed = ems_roxy_parse_structured_response((string) $groqResult['content']);
-            if ($parsed === null) {
-                $groqFailure = 'Respons Groq tidak valid.';
-            }
-        } catch (Throwable $e) {
-            $providerError = strtolower($e->getMessage());
-            $groqFailure = str_contains($providerError, 'invalid api key') || str_contains($providerError, 'unauthorized')
-                ? 'API key Groq ditolak atau sudah kedaluwarsa.'
-                : (str_contains($providerError, 'rate limit') || str_contains($providerError, 'too many requests')
-                    ? 'Batas request Groq tercapai.'
-                    : 'Groq sedang tidak tersedia.');
-        }
-    } else {
-        $groqFailure = 'Groq belum dikonfigurasi.';
-    }
-
-    if ($parsed === null && $hasPersonalProvider) {
-        $personalResult = ems_ai_provider_call_json(
-            $pdo,
-            $systemPrompt,
-            $historyText,
-            'roxy_chat_fallback_personal',
-            $userId
-        );
-        if (!empty($personalResult['ok']) && isset($personalResult['data']['answer'])) {
-            $parsed = ems_roxy_parse_structured_response(
-                json_encode($personalResult['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-            );
-            $usedPersonalProvider = $parsed !== null;
-        }
-
-        if ($parsed === null) {
-            $personalFailure = trim((string) ($personalResult['error'] ?? ''));
-            error_log('[Roxy] Provider fallback gagal. Main=' . $groqFailure . '; Personal=' . $personalFailure);
-        }
-    }
-
+    $aiResult = ems_ai_provider_call_json($pdo, $systemPrompt, $historyText, 'roxy_chat', $userId);
+    $parsed = !empty($aiResult['ok']) && isset($aiResult['data']['answer'])
+        ? ems_roxy_parse_structured_response(json_encode($aiResult['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
+        : null;
     if ($parsed === null) {
-        return [
-            'ok' => false,
-            'error_code' => 'ai_providers_unavailable',
-            'message' => 'Roxy belum dapat menjawab. Provider utama dan provider personal gagal. Periksa konfigurasi di Setting AI Saya.',
-        ];
+        return ['ok'=>false,'error_code'=>'global_ai_unavailable','message'=>'Roxy belum dapat menjawab. Periksa konfigurasi provider AI global di Setting AI.'];
     }
 
     $answer = $parsed['answer'];
     $expression = $parsed['expression'];
-    $answerSource = $usedPersonalProvider
-        ? 'gemini_personal'
-        : ($usedLearnedAnswer ? 'learned_correction' : 'free_model');
+    $answerSource = $usedLearnedAnswer ? 'learned_correction' : 'free_model';
     $usedDeepResearch = false;
     $geminiKeyMissing = false;
 
-    if (!$usedPersonalProvider && $parsed['needs_deeper_research']) {
-        $personalSettings = ems_ai_provider_get_user_settings($pdo, $userId);
-        if (ems_ai_provider_has_gemini($personalSettings) || ems_ai_provider_has_custom($personalSettings)) {
+    if ($parsed['needs_deeper_research']) {
+        if (ems_ai_global_provider_ready($pdo)) {
             $historyText = ''; // provider selection stays centralized in ems_ai_provider_call_json
             foreach ($historyMessages as $h) {
                 $historyText .= (((string) $h['sender']) === 'user' ? 'User: ' : 'Roxy: ') . $h['content'] . "\n";
@@ -947,7 +895,7 @@ function ems_roxy_ask(PDO $pdo, array $user, string $unitCode, array $historyMes
                     if (in_array($geminiExpression, ems_roxy_expression_options(), true)) {
                         $expression = $geminiExpression;
                     }
-                    $answerSource = 'gemini_personal';
+                    $answerSource = 'global_provider';
                     $usedDeepResearch = true;
                 }
             }
@@ -965,8 +913,6 @@ function ems_roxy_ask(PDO $pdo, array $user, string $unitCode, array $historyMes
         'answer_source' => $answerSource,
         'used_deep_research' => $usedDeepResearch,
         'gemini_key_missing' => $geminiKeyMissing,
-        'personal_provider' => ($usedPersonalProvider || $usedDeepResearch)
-            ? (($personalProviderSettings['custom_provider'] ?? '') !== '' ? (string) $personalProviderSettings['custom_provider'] : 'Gemini')
-            : null,
+        'provider_name' => (string)($aiResult['provider'] ?? ems_ai_get_settings($pdo)['provider']),
     ];
 }

@@ -6,10 +6,11 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/secretary_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Secretary'], '/dashboard/index.php');
+$secretaryDivision = secretary_require_division_context('/dashboard/index.php');
 
 $pageTitle = 'Data File Divisi';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -108,9 +109,10 @@ try {
                 SUM(CASE WHEN file_category = 'cooperation' THEN 1 ELSE 0 END) AS cooperation_count,
                 SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) AS archived_count
             FROM secretary_file_records
-            WHERE COALESCE(keywords, '') NOT LIKE :hidden_marker
+            WHERE owner_division = :owner_division
+              AND COALESCE(keywords, '') NOT LIKE :hidden_marker
         ");
-        $summaryStmt->execute([':hidden_marker' => $hiddenMarkerLike]);
+        $summaryStmt->execute([':owner_division' => $secretaryDivision, ':hidden_marker' => $hiddenMarkerLike]);
         $summaryRow = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
         $summary['total'] = (int) ($summaryRow['total_count'] ?? 0);
@@ -124,10 +126,11 @@ try {
                 updater.full_name AS updated_by_name
             FROM secretary_file_records sfr
             LEFT JOIN user_rh updater ON updater.id = sfr.updated_by
-            WHERE COALESCE(keywords, '') NOT LIKE :hidden_marker
+            WHERE sfr.owner_division = :owner_division
+              AND COALESCE(sfr.keywords, '') NOT LIKE :hidden_marker
             ORDER BY sfr.document_date DESC, sfr.id DESC
         ");
-        $rowStmt->execute([':hidden_marker' => $hiddenMarkerLike]);
+        $rowStmt->execute([':owner_division' => $secretaryDivision, ':hidden_marker' => $hiddenMarkerLike]);
         $rows = $rowStmt->fetchAll(PDO::FETCH_ASSOC);
 
         if ($hasAttachmentTable && !empty($rows)) {

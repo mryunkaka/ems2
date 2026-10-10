@@ -1483,6 +1483,20 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
+    // Secretary workspace is available to all divisions; each page/controller
+    // validates the user's division and applies its own division data scope.
+    if (in_array($scriptName, [
+        'surat_menyurat.php',
+        'surat_menyurat_action.php',
+        'secretary_file_registry.php',
+        'secretary_visit_agenda.php',
+        'secretary_internal_coordination.php',
+        'secretary_confidential_letters.php',
+        'secretary_action.php',
+    ], true)) {
+        return;
+    }
+
     if (in_array($scriptName, ['setting_akun.php', 'setting_akun_action.php', 'setting_akun_quick_save.php', 'setting_akun_delete_document.php'], true)) {
         return;
     }
@@ -1536,7 +1550,7 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
 
     // Exception: Document Library ("Dokumen") — basis pengetahuan bersama,
     // dokumen.php/document_view.php/document_search bisa dibuka & dibaca
-    // semua user login lintas division (§11 poin 3 docs/DOCUMENT_LIBRARY_MODULE.md).
+    // semua user login lintas division (§11 poin 3 docs/modules/document-library.md).
     // document_manage.php/_action.php juga page-level-open, tapi aksi
     // mutasi di dalamnya tetap digating manager-plus/Executive di kode
     // halaman itu sendiri (pola sama dengan Dispatcher).

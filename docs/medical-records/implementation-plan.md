@@ -57,7 +57,7 @@ ems2/
 ### Yang Harus Dibaca Sebelumnya
 
 1. **Database Schema**: `hark8423_ems (21).sql` - Tabel `user_rh`
-2. **UI Design**: `docs/ui-design-system.md`
+2. **UI Design**: `docs/ui/design-system.md`
 3. **Image Compression**: `auth/register_process.php` - function `compressImageSmart()`
 4. **Form Pattern**: `dashboard/surat_menyurat.php`
 5. **File Upload Pattern**: `dashboard/setting_akun.php`
@@ -945,8 +945,8 @@ if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
 Jika ada pertanyaan atau issue:
 
 1. **Check Documentation:**
-   - `docs/prd-rekam-medis.md` - PRD lengkap
-   - `docs/ui-design-system.md` - UI guidelines
+   - `docs/medical-records/product-requirements.md` - PRD lengkap
+   - `docs/ui/design-system.md` - UI guidelines
    - `docs/sql/medical_records_migration.sql` - Database schema
 
 2. **Check Existing Code:**

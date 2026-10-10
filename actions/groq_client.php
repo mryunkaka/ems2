@@ -5,7 +5,7 @@ require_once __DIR__ . '/ai_gemini_client.php';
 
 /**
  * Client untuk Groq (`https://api.groq.com`) — provider "tingkat 1" chat bot
- * Roxy, lihat docs/AI_ASSISTANT_MODULE.md §3. API-nya OpenAI-compatible
+ * Roxy, lihat docs/ai/assistant-module.md §3. API-nya OpenAI-compatible
  * (endpoint `/openai/v1/chat/completions`, format `messages: [{role,
  * content}]`), auth Bearer token tunggal (lebih sederhana dari Cloudflare
  * yang butuh Account ID + Token terpisah). Pola cURL/logging di bawah

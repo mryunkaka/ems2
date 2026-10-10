@@ -6,10 +6,11 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/secretary_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Secretary'], '/dashboard/index.php');
+$secretaryDivision = secretary_require_division_context('/dashboard/index.php');
 
 $pageTitle = 'Rekap Surat Rahasia';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -88,19 +89,34 @@ $hasAttachmentTable = false;
 
 try {
     $hasAttachmentTable = secretaryConfidentialTableExists($pdo, 'secretary_confidential_letter_attachments');
-    $summary['logged'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_confidential_letters WHERE status = 'logged'")->fetchColumn();
-    $summary['sealed'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_confidential_letters WHERE status = 'sealed'")->fetchColumn();
-    $summary['distributed'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_confidential_letters WHERE status = 'distributed'")->fetchColumn();
-    $summary['archived'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_confidential_letters WHERE status = 'archived'")->fetchColumn();
+    $summaryStmt = $pdo->prepare("
+        SELECT SUM(status = 'logged') AS logged_count,
+               SUM(status = 'sealed') AS sealed_count,
+               SUM(status = 'distributed') AS distributed_count,
+               SUM(status = 'archived') AS archived_count
+        FROM secretary_confidential_letters
+        WHERE owner_division = ?
+    ");
+    $summaryStmt->execute([$secretaryDivision]);
+    $summaryRow = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $summary = [
+        'logged' => (int) ($summaryRow['logged_count'] ?? 0),
+        'sealed' => (int) ($summaryRow['sealed_count'] ?? 0),
+        'distributed' => (int) ($summaryRow['distributed_count'] ?? 0),
+        'archived' => (int) ($summaryRow['archived_count'] ?? 0),
+    ];
 
-    $rows = $pdo->query("
+    $rowsStmt = $pdo->prepare("
         SELECT
             scl.*,
             updater.full_name AS updated_by_name
         FROM secretary_confidential_letters scl
         LEFT JOIN user_rh updater ON updater.id = scl.updated_by
+        WHERE scl.owner_division = ?
         ORDER BY scl.letter_date DESC, scl.id DESC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $rowsStmt->execute([$secretaryDivision]);
+    $rows = $rowsStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($hasAttachmentTable && !empty($rows)) {
         $letterIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $rows)));

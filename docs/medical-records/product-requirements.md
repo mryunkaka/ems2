@@ -788,7 +788,7 @@ document.querySelector('form').addEventListener('submit', function() {
 ## 10. Appendix
 
 ### 10.1 References
-- UI Design System: `docs/ui-design-system.md`
+- UI Design System: `docs/ui/design-system.md`
 - Database Schema: `hark8423_ems (21).sql`
 - Image Compression: `auth/register_process.php`
 - Form Pattern: `dashboard/surat_menyurat.php`

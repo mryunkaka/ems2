@@ -12,16 +12,16 @@ $pageTitle = 'Surat Masuk, Keluar, dan Notulen';
 $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
-$userDivision = trim((string)($user['division'] ?? ''));
+$userDivision = ems_normalize_division($user['division'] ?? '');
 $medicName = $user['name'] ?? 'User';
 $medicJabatan = ems_position_label($user['position'] ?? '');
 $avatarInitials = initialsFromName($medicName);
 $avatarColor = avatarColorFromName($medicName);
 $isSecretaryDivision = strcasecmp($userDivision, 'Secretary') === 0;
-$canAcknowledge = ems_is_letter_receiver_role($userRole) || $isSecretaryDivision;
+$canAcknowledge = ems_is_valid_division($userDivision);
 $canEditRecords = $canAcknowledge;
 $canManageRecords = ems_is_letter_receiver_role($userRole);
-$divisionScopeOptions = ems_division_scope_options();
+$divisionScopeOptions = [['value' => $userDivision, 'label' => $userDivision]];
 $allDivisionValue = ems_all_division_scope_value();
 $globalHospitalMinutesTitle = 'Notulen Rapat Internal/External 10-1 Rumah Sakit';
 
@@ -196,27 +196,45 @@ try {
         && surat_table_has_column($pdo, 'meeting_minutes', 'updated_at')
         && surat_table_has_column($pdo, 'meeting_minutes', 'updated_by');
 
-    $summary['incoming_unread'] = (int)$pdo->query("SELECT COUNT(*) FROM incoming_letters WHERE status = 'unread'")->fetchColumn();
-    $summary['incoming_read'] = (int)$pdo->query("SELECT COUNT(*) FROM incoming_letters WHERE status = 'read'")->fetchColumn();
-    $summary['outgoing_total'] = (int)$pdo->query("SELECT COUNT(*) FROM outgoing_letters")->fetchColumn();
-    $summary['minutes_total'] = (int)$pdo->query("SELECT COUNT(*) FROM meeting_minutes")->fetchColumn();
+    $summarySql = $hasIncomingDivisionScope
+        ? "SELECT SUM(status = 'unread') AS unread_count, SUM(status = 'read') AS read_count FROM incoming_letters WHERE division_scope = ?"
+        : "SELECT 0 AS unread_count, 0 AS read_count";
+    $summaryStmt = $pdo->prepare($summarySql);
+    $summaryStmt->execute($hasIncomingDivisionScope ? [$userDivision] : []);
+    $summaryRow = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $summary['incoming_unread'] = (int) ($summaryRow['unread_count'] ?? 0);
+    $summary['incoming_read'] = (int) ($summaryRow['read_count'] ?? 0);
 
-    $stmt = $pdo->query("
+    $summaryStmt = $pdo->prepare($hasOutgoingDivisionScope
+        ? 'SELECT COUNT(*) FROM outgoing_letters WHERE division_scope = ?'
+        : 'SELECT 0');
+    $summaryStmt->execute($hasOutgoingDivisionScope ? [$userDivision] : []);
+    $summary['outgoing_total'] = (int) $summaryStmt->fetchColumn();
+
+    $summaryStmt = $pdo->prepare($hasMinutesDivisionScope
+        ? 'SELECT COUNT(*) FROM meeting_minutes WHERE division_scope = ?'
+        : 'SELECT 0');
+    $summaryStmt->execute($hasMinutesDivisionScope ? [$userDivision] : []);
+    $summary['minutes_total'] = (int) $summaryStmt->fetchColumn();
+
+    $stmt = $pdo->prepare("
         SELECT
             l.*,
             rb.full_name AS read_by_name,
             " . ($hasIncomingDivisionScope ? "l.division_scope" : "'All Divisi' AS division_scope") . "
         FROM incoming_letters l
         LEFT JOIN user_rh rb ON rb.id = l.read_by
+        " . ($hasIncomingDivisionScope ? "WHERE l.division_scope = ?" : "WHERE 1 = 0") . "
         ORDER BY
             COALESCE(l.appointment_date, DATE(l.submitted_at)) DESC,
             COALESCE(l.appointment_time, TIME(l.submitted_at)) DESC,
             l.submitted_at DESC
         LIMIT 100
     ");
+    $stmt->execute($hasIncomingDivisionScope ? [$userDivision] : []);
     $incomingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT
             o.*,
             u.full_name AS created_by_name,
@@ -226,15 +244,17 @@ try {
         FROM outgoing_letters o
         LEFT JOIN user_rh u ON u.id = o.created_by
         " . ($hasOutgoingRevisionColumns ? "LEFT JOIN user_rh updater ON updater.id = o.updated_by" : "") . "
+        " . ($hasOutgoingDivisionScope ? "WHERE o.division_scope = ?" : "WHERE 1 = 0") . "
         ORDER BY
             COALESCE(o.appointment_date, DATE(o.created_at)) DESC,
             COALESCE(o.appointment_time, TIME(o.created_at)) DESC,
             o.created_at DESC
         LIMIT 100
     ");
+    $stmt->execute($hasOutgoingDivisionScope ? [$userDivision] : []);
     $outgoingRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT
             m.*,
             u.full_name AS created_by_name,
@@ -245,9 +265,11 @@ try {
         FROM meeting_minutes m
         LEFT JOIN user_rh u ON u.id = m.created_by
         " . ($hasMinutesRevisionColumns ? "LEFT JOIN user_rh updater ON updater.id = m.updated_by" : "") . "
+        " . ($hasMinutesDivisionScope ? "WHERE m.division_scope = ?" : "WHERE 1 = 0") . "
         ORDER BY m.meeting_date DESC, m.meeting_time DESC, m.created_at DESC
         LIMIT 100
     ");
+    $stmt->execute($hasMinutesDivisionScope ? [$userDivision] : []);
     $minutesRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     foreach ($minutesRows as $minutesRow) {
         if (surat_is_global_hospital_minutes_title($minutesRow['meeting_title'] ?? '', $globalHospitalMinutesTitle)) {
@@ -258,20 +280,24 @@ try {
         $institutionMinutesRows[] = $minutesRow;
     }
 
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT id, letter_code, institution_name, meeting_topic
         FROM incoming_letters
+        " . ($hasIncomingDivisionScope ? "WHERE division_scope = ?" : "WHERE 1 = 0") . "
         ORDER BY submitted_at DESC
         LIMIT 100
     ");
+    $stmt->execute($hasIncomingDivisionScope ? [$userDivision] : []);
     $linkableIncoming = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT id, outgoing_code, institution_name, subject
         FROM outgoing_letters
+        " . ($hasOutgoingDivisionScope ? "WHERE division_scope = ?" : "WHERE 1 = 0") . "
         ORDER BY created_at DESC
         LIMIT 100
     ");
+    $stmt->execute($hasOutgoingDivisionScope ? [$userDivision] : []);
     $linkableOutgoing = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $incomingIds = array_values(array_filter(array_map(static fn($row) => (int)($row['id'] ?? 0), $incomingRows)));
@@ -358,11 +384,11 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="card-header">Link Form Publik</div>
                     <p class="muted-copy-tight">Bagikan link ini ke instansi yang ingin membuat janji pertemuan.</p>
                 </div>
-                <a href="<?= htmlspecialchars(ems_url('/surat_instansi.php')) ?>" target="_blank" rel="noopener" class="btn-secondary">
+                <a href="<?= htmlspecialchars(ems_url('/public/surat_instansi.php')) ?>" target="_blank" rel="noopener" class="btn-secondary">
                     <?= ems_icon('document-text', 'h-4 w-4') ?> <span>Buka Form Publik</span>
                 </a>
             </div>
-            <div class="mt-2 font-mono text-sm"><?= htmlspecialchars(ems_url('/surat_instansi.php')) ?></div>
+            <div class="mt-2 font-mono text-sm"><?= htmlspecialchars(ems_url('/public/surat_instansi.php')) ?></div>
         </div>
 
         <div class="card card-section">

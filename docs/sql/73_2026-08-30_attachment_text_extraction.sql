@@ -1,4 +1,4 @@
--- Opsi A dari docs/AI_ASSISTANT_MODULE.md §6.3 — tambah extracted_text +
+-- Opsi A dari docs/ai/assistant-module.md §6.3 — tambah extracted_text +
 -- extraction_status ke tabel lampiran yang genuinely bisa berisi PDF/DOC/
 -- DOCX (bukan cuma foto), supaya isinya ikut FULLTEXT-searchable & bisa
 -- dibaca chat bot AI nanti. Juga dibuat defensif lewat

@@ -325,6 +325,12 @@ $medicRoleLabel = ems_role_label($medicRole);
 $medicDivisionLabel = ems_resolve_user_division($user['division'] ?? '', $user['position'] ?? '') ?: '-';
 $userId       = (int)($user['id'] ?? 0);
 
+// Catat kunjungan nyata ke halaman web Farmasi, terpisah dari sesi jaga online.
+if ($userId > 0 && ems_column_exists($pdo, 'user_rh', 'last_farmasi_web_login_at')) {
+    $trackFarmasiPageVisit = $pdo->prepare('UPDATE user_rh SET last_farmasi_web_login_at = NOW() WHERE id = ?');
+    $trackFarmasiPageVisit->execute([$userId]);
+}
+
 // Cek apakah user boleh melihat tombol settings Medis Online
 $canViewFarmasiSettings = canAccessFarmasiSettingsByDivision($user['division'] ?? '');
 $effectiveUnit = ems_effective_unit($pdo, $user);
@@ -2252,7 +2258,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         </p>
                     </div>
                     <?php if ($canAcknowledgeIncomingLetter): ?>
-                        <a href="surat_menyurat.php" class="btn-secondary">
+                        <a href="/dashboard/surat_menyurat.php" class="btn-secondary">
                             <?= ems_icon('document-text', 'h-4 w-4') ?> <span>Lihat Semua</span>
                         </a>
                     <?php else: ?>

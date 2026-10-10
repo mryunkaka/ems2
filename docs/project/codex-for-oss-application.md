@@ -11,11 +11,11 @@ Official program page: <https://openai.com/form/codex-for-oss/>
 - Primary maintainer: `mryunkaka`
 - Active maintenance: commits through June 2026
 - License: MIT
-- Install docs: `README.md` and `docs/INSTALLATION.md`
+- Install docs: `README.md` and `docs/project/installation.md`
 - Security policy: `SECURITY.md`
 - Contribution docs: `CONTRIBUTING.md`
 - Issue templates: `.github/ISSUE_TEMPLATE/`
-- Release process: `CHANGELOG.md` and `docs/RELEASE_CHECKLIST.md`
+- Release process: `CHANGELOG.md` and `docs/project/release-checklist.md`
 
 ## Signals That Still Need Real GitHub Activity
 

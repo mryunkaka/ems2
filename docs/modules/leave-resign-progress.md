@@ -20,7 +20,7 @@
 | 5 | Action Handler | ✅ | `dashboard/pengajuan_cuti_resign_action.php` | Submit, approve, reject dengan AJAX support |
 | 6 | Validasi Login | ✅ | `auth/login_process.php` | Cek is_active, info cuti saat login |
 | 7 | Tracking/Monitoring | ✅ | `dashboard/tracking_cuti_resign.php` | Monitoring semua user, progress bar cuti |
-| 8 | Documentation | ✅ | `docs/progress_cuti_resign.md` | File ini - untuk tracking progress |
+| 8 | Documentation | ✅ | `docs/modules/leave-resign-progress.md` | File ini - untuk tracking progress |
 | 9 | Cron Job Auto-Update | ✅ | `cron/update_cuti_status.php` | Auto-update status cuti saat periode selesai |
 | 10 | Database Verification | ✅ | - | Semua tabel dan field terverifikasi |
 
@@ -35,7 +35,7 @@
 4. ✅ `dashboard/pengajuan_cuti_resign_action.php` - Action handler
 5. ✅ `dashboard/tracking_cuti_resign.php` - Halaman monitoring
 6. ✅ `cron/update_cuti_status.php` - Cron job auto-update
-7. ✅ `docs/progress_cuti_resign.md` - Documentation progress (file ini)
+7. ✅ `docs/modules/leave-resign-progress.md` - Documentation progress (file ini)
 
 ### File Dimodifikasi (Modified):
 1. ✅ `config/helpers.php` - Menambahkan 8 helper functions untuk cuti & resign

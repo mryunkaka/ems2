@@ -37,9 +37,9 @@
 
 ### 5. Documentation ✅
 ```
-✅ docs/prd-rekam-medis.md                - PRD lengkap (Product Requirements Document)
+✅ docs/medical-records/product-requirements.md                - PRD lengkap (Product Requirements Document)
 ✅ docs/sql/medical_records_migration.sql - SQL migration script
-✅ docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md - Step-by-step implementation guide
+✅ docs/medical-records/implementation-plan.md - Step-by-step implementation guide
 ✅ dashboard/README_REKAM_MEDIS.md        - Quick start guide & troubleshooting
 ```
 
@@ -363,7 +363,7 @@ $stmt->execute([...]);
 ## 📖 Documentation Links
 
 1. **PRD (Product Requirements Document)**
-   - File: `docs/prd-rekam-medis.md`
+   - File: `docs/medical-records/product-requirements.md`
    - Isi: Requirements lengkap, UI mockup, database design
 
 2. **SQL Migration**
@@ -371,7 +371,7 @@ $stmt->execute([...]);
    - Isi: CREATE TABLE, indexes, foreign keys, sample data
 
 3. **Implementation Plan**
-   - File: `docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md`
+   - File: `docs/medical-records/implementation-plan.md`
    - Isi: Step-by-step guide untuk AI lain
 
 4. **Quick Start Guide**
@@ -447,8 +447,8 @@ $stmt->execute([...]);
 Jika ada pertanyaan atau issue:
 
 1. **Check Documentation:**
-   - `docs/prd-rekam-medis.md`
-   - `docs/IMPLEMENTATION_PLAN_REKAM_MEDIS.md`
+   - `docs/medical-records/product-requirements.md`
+   - `docs/medical-records/implementation-plan.md`
    - `dashboard/README_REKAM_MEDIS.md`
 
 2. **Debug Steps:**

@@ -88,7 +88,7 @@ npm run build:css
 
 Create the database, then apply SQL files in `docs/sql/` in chronological order. Existing deployments should review each migration before applying it to production.
 
-Point your web server document root to the repository root or `public/`, depending on your deployment model. The root `index.php` redirects to `public/index.php`.
+Point your web server document root to the repository root or `public/`, depending on your deployment model. The repository-root `index.php` redirects to `/dashboard/rekap_farmasi.php`.
 
 ## Local Development
 
@@ -124,29 +124,30 @@ EMS2 handles workflows that may involve sensitive medical, employee, and applica
 
 - Remove real names, patient identifiers, phone numbers, addresses, salaries, and medical details.
 - Never commit `.env`, database dumps, production uploads, private backups, or Firebase secrets.
-- Use private security reporting for vulnerabilities. See [SECURITY.md](SECURITY.md).
-- Follow the credential rotation guidance in [docs/deploy/ROTATE_CREDENTIALS.md](docs/deploy/ROTATE_CREDENTIALS.md).
+- Use private security reporting for vulnerabilities. See [SECURITY.md](security.md).
+- Follow the credential rotation guidance in [docs/deploy/rotate-credentials.md](../deploy/rotate-credentials.md).
 
 ## Documentation
 
-- [Installation Guide](docs/INSTALLATION.md)
-- [Release Checklist](docs/RELEASE_CHECKLIST.md)
-- [UI Design System](docs/ui-design-system.md)
-- [Firebase Realtime Chat Setup](docs/FIREBASE_REALTIME_CHAT_SETUP.md)
-- [Assistant Manager Recruitment Flow](docs/ASSISTANT_MANAGER_RECRUITMENT_FLOW.md)
-- [Disciplinary Committee Module](docs/DISCIPLINARY_COMMITTEE_MODULE.md)
-- [Forensic Module](docs/FORENSIC_MODULE.md)
-- [Secretary Module](docs/SECRETARY_MODULE.md)
+- [Documentation index](../README.md)
+- [Installation Guide](../project/installation.md)
+- [Release Checklist](../project/release-checklist.md)
+- [UI Design System](../ui/design-system.md)
+- [Firebase Realtime Chat Setup](../integrations/firebase-realtime-chat-setup.md)
+- [Assistant Manager Recruitment Flow](../recruitment/assistant-manager-flow.md)
+- [Disciplinary Committee Module](../modules/disciplinary-committee.md)
+- [Forensic Module](../modules/forensic.md)
+- [Secretary Module](../modules/secretary.md)
 
 ## Contributing
 
 Contributions are welcome for bug fixes, documentation, tests, security hardening, deployment guides, and module improvements.
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), open an issue before large changes, and avoid submitting real operational data in test fixtures or screenshots.
+Start with [CONTRIBUTING.md](contributing.md), open an issue before large changes, and avoid submitting real operational data in test fixtures or screenshots.
 
 ## Releases
 
-Releases should be published through GitHub Releases and summarized in [CHANGELOG.md](CHANGELOG.md). Each release should list:
+Releases should be published through GitHub Releases and summarized in [CHANGELOG.md](changelog.md). Each release should list:
 
 - User-facing changes.
 - Migration files added or changed.
@@ -165,4 +166,4 @@ This repository has active maintenance history, a clear open-source license, ins
 
 ## License
 
-EMS2 is released under the [MIT License](LICENSE).
+EMS2 is released under the [MIT License]../../LICENSE.

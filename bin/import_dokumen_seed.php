@@ -6,7 +6,7 @@
  * di database + jalankan ekstraksi teks, supaya hierarki folder yang sudah
  * disusun manual langsung jadi struktur di modul "Dokumen".
  *
- * CLI only (lihat docs/DOCUMENT_LIBRARY_MODULE.md §11 poin 8 untuk
+ * CLI only (lihat docs/modules/document-library.md §11 poin 8 untuk
  * pemetaan folder→division). Jalankan lewat CLI, contoh:
  *   php bin/import_dokumen_seed.php --unit=roxwood --actor-id=1
  *   php bin/import_dokumen_seed.php --dry-run
@@ -51,7 +51,7 @@ if ($sourceRoot === false || !is_dir($sourceRoot)) {
 // bisa jalan tanpa error "table doesn't exist".
 ems_document_ensure_tables($pdo);
 
-// Keputusan §11 poin 8 docs/DOCUMENT_LIBRARY_MODULE.md — nama folder persis
+// Keputusan §11 poin 8 docs/modules/document-library.md — nama folder persis
 // (case-sensitive) yang punya division pemilik spesifik; selain itu
 // mewarisi division folder induknya, default root = Medis.
 $divisionNameMap = [

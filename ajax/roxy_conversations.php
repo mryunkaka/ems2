@@ -110,7 +110,7 @@ if ($action === 'messages') {
 
     // Kepemilikan dicek eksplisit di WHERE — bukan cuma di query terpisah —
     // sehingga semua user selain Programmer Roxwood hanya dapat membaca
-    // percakapan miliknya sendiri (docs/AI_ASSISTANT_MODULE.md §4a).
+    // percakapan miliknya sendiri (docs/ai/assistant-module.md §4a).
     // Programmer Roxwood dapat membaca lintas-user melalui monitoring (§4c).
     if ($canViewAllConversations) {
         $stmt = $pdo->prepare("SELECT id FROM bot_conversations WHERE id = ? AND unit_code = ? LIMIT 1");

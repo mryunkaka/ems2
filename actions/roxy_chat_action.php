@@ -48,7 +48,7 @@ if ($userId <= 0) {
 
 // Batas wajar per user — ini cuma jaring pengaman lonjakan/abuse di sisi
 // aplikasi, terpisah dari jatah harian Groq itu sendiri (1.000
-// request/hari per akun, lihat docs/AI_ASSISTANT_MODULE.md §3).
+// request/hari per akun, lihat docs/ai/assistant-module.md §3).
 emsRequireRateLimit('roxy_chat', emsCurrentRequestIdentifier($userId), 20, 60, 'Terlalu banyak pesan ke Roxy dalam waktu singkat. Tunggu sebentar lalu coba lagi.');
 
 $conversationIdInput = (int) ($_POST['conversation_id'] ?? 0);
@@ -138,7 +138,7 @@ try {
         'answer_source' => $result['answer_source'],
         'used_deep_research' => $result['used_deep_research'],
         'gemini_key_missing' => $result['gemini_key_missing'],
-        'personal_provider' => $result['personal_provider'] ?? null,
+        'provider_name' => $result['provider_name'] ?? null,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } catch (Throwable $e) {
     error_log(sprintf(

@@ -51,7 +51,7 @@ per satu lewat UI.
 | `dashboard/document_manage_action.php` | Controller POST+CSRF: upload, replace file, edit judul/tag, hapus dokumen, buat/rename/hapus/pindah folder, pindah dokumen antar folder. |
 | `config/document_library.php` | `ensure_tables()`, helper ekstraksi teks per tipe file, helper permission/ACL, pembangun tree folder, query builder pencarian. |
 | `docs/sql/70_2026-08-27_document_library_module.sql` | Migration tabel baru (nomor lanjutan setelah `69_...`). |
-| `bin/import_dokumen_seed.php` (CLI, sekali-jalan) | Membaca `storage/dokumen_import/` secara rekursif, memetakan tiap subfolder jadi `document_folders` (subfolder bertingkat → parent_id berjenjang), tiap file jadi `document_files` (extract teks + copy ke `storage/documents/`). Dijalankan manual lewat CLI (`php bin/import_dokumen_seed.php`), bukan lewat web — sesuai pola script satu-kali lain di project ini (`pindah.php`, `backfill_operations.php`). |
+| `bin/import_dokumen_seed.php` (CLI, sekali-jalan) | Membaca `storage/dokumen_import/` secara rekursif, memetakan tiap subfolder jadi `document_folders` (subfolder bertingkat → parent_id berjenjang), tiap file jadi `document_files` (extract teks + copy ke `storage/documents/`). Dijalankan manual lewat CLI (`php bin/import_dokumen_seed.php`), bukan lewat web — mengikuti pola script CLI lain di `bin/`. |
 
 ## 3. Akses & Role (usulan)
 

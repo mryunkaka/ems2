@@ -562,6 +562,19 @@ DOKUMEN PENDUKUNG
                         renderDocInput('Kontrak Kerja', 'file_kontrak_kerja', $userDb['file_kontrak_kerja'], !$isTraineePosition);
                     }
                     renderDocInput('Sertifikat Heli', 'sertifikat_heli', $userDb['sertifikat_heli'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_heli', $userDb) ? 'tanggal_dikeluarkan_sertifikat_heli' : null, $userDb['tanggal_dikeluarkan_sertifikat_heli'] ?? '');
+                    $heliValidFrom = (string)($userDb['sertifikat_heli_valid_from'] ?? '');
+                    $heliValidUntil = (string)($userDb['sertifikat_heli_valid_until'] ?? '');
+                    if ($heliValidFrom === '' && $heliValidUntil === '') {
+                        $heliValidFrom = date('Y-m') === '2026-10' ? '2026-10-10' : date('Y-m-01');
+                        $heliValidUntil = date('Y-m-t');
+                    }
+                    ?>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div><label for="sertifikat_heli_valid_from">Masa Berlaku Sertifikat Heli — Tanggal Awal</label><input id="sertifikat_heli_valid_from" name="sertifikat_heli_valid_from" type="date" value="<?= htmlspecialchars($heliValidFrom, ENT_QUOTES, 'UTF-8') ?>"></div>
+                        <div><label for="sertifikat_heli_valid_until">Masa Berlaku Sertifikat Heli — Tanggal Akhir</label><input id="sertifikat_heli_valid_until" name="sertifikat_heli_valid_until" type="date" value="<?= htmlspecialchars($heliValidUntil, ENT_QUOTES, 'UTF-8') ?>"></div>
+                    </div>
+                    <p class="helper-note">Masa berlaku sementara berlaku 10–31 Oktober 2026. Bulan berikutnya menggunakan tanggal 1 sampai akhir bulan.</p>
+                    <?php
                     renderDocInput('Sertifikat Operasi', 'sertifikat_operasi', $userDb['sertifikat_operasi'], false, array_key_exists('tanggal_dikeluarkan_sertifikat_operasi', $userDb) ? 'tanggal_dikeluarkan_sertifikat_operasi' : null, $userDb['tanggal_dikeluarkan_sertifikat_operasi'] ?? '');
                     if (array_key_exists('sertifikat_pelatihan', $userDb)) {
                         renderDocInput('Sertifikat Pelatihan', 'sertifikat_pelatihan', $userDb['sertifikat_pelatihan']);

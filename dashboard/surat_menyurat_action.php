@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit('Invalid method');
 }
 
-function surat_redirect(string $fallback = 'surat_menyurat.php'): void
+function surat_redirect(string $fallback = '/dashboard/surat_menyurat.php'): void
 {
     $redirectTo = trim((string)($_POST['redirect_to'] ?? ''));
     if ($redirectTo === '' || strpos($redirectTo, '://') !== false || str_starts_with($redirectTo, '//')) {
@@ -78,6 +78,28 @@ function surat_table_has_column(PDO $pdo, string $table, string $column): bool
     $cache[$key] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
 
     return $cache[$key];
+}
+
+function surat_require_own_division_record(PDO $pdo, string $table, int $recordId, string $division): void
+{
+    $allowedTables = ['incoming_letters', 'outgoing_letters', 'meeting_minutes'];
+    if (!in_array($table, $allowedTables, true) || $recordId <= 0 || !surat_table_has_column($pdo, $table, 'division_scope')) {
+        throw new RuntimeException('Data surat tidak ditemukan atau belum memiliki cakupan divisi.');
+    }
+
+    $stmt = $pdo->prepare("SELECT division_scope FROM `{$table}` WHERE id = ? LIMIT 1");
+    $stmt->execute([$recordId]);
+    $scope = $stmt->fetchColumn();
+    if ($scope === false || ems_normalize_division_scope((string) $scope) !== $division) {
+        throw new RuntimeException('Data surat ini bukan milik divisi Anda.');
+    }
+}
+
+function surat_require_own_division_scope(string $scope, string $division): void
+{
+    if (ems_normalize_division_scope($scope) !== $division) {
+        throw new RuntimeException('Surat dan notulen hanya dapat dicatat untuk divisi Anda.');
+    }
 }
 
 function surat_table_exists(PDO $pdo, string $table): bool
@@ -298,6 +320,7 @@ $user = $_SESSION['user_rh'] ?? [];
 $userId = (int)($user['id'] ?? 0);
 $userRole = $user['role'] ?? '';
 $userDivision = trim((string)($user['division'] ?? ''));
+$userDivision = ems_normalize_division($userDivision);
 $action = trim((string)($_POST['action'] ?? ''));
 $isSecretaryDivision = strcasecmp($userDivision, 'Secretary') === 0;
 $secretaryAllowedActions = [
@@ -319,6 +342,29 @@ if ($userId <= 0) {
 }
 
 try {
+    $ownershipTarget = match ($action) {
+        'mark_incoming_read', 'delete_incoming_letter' => ['incoming_letters', (int) ($_POST['letter_id'] ?? 0)],
+        'edit_outgoing_letter', 'delete_outgoing_letter' => ['outgoing_letters', (int) ($_POST['letter_id'] ?? 0)],
+        'edit_meeting_minutes', 'delete_meeting_minutes' => ['meeting_minutes', (int) ($_POST['minutes_id'] ?? 0)],
+        default => null,
+    };
+    if ($ownershipTarget !== null) {
+        surat_require_own_division_record($pdo, $ownershipTarget[0], $ownershipTarget[1], $userDivision);
+    }
+    $relatedRecords = match ($action) {
+        'add_outgoing_letter', 'edit_outgoing_letter' => [['incoming_letters', (int) ($_POST['incoming_letter_id'] ?? 0)]],
+        'add_meeting_minutes', 'edit_meeting_minutes' => [
+            ['incoming_letters', (int) ($_POST['incoming_letter_id'] ?? 0)],
+            ['outgoing_letters', (int) ($_POST['outgoing_letter_id'] ?? 0)],
+        ],
+        default => [],
+    };
+    foreach ($relatedRecords as [$relatedTable, $relatedId]) {
+        if ($relatedId > 0) {
+            surat_require_own_division_record($pdo, $relatedTable, $relatedId, $userDivision);
+        }
+    }
+
     if ($action === 'mark_incoming_read') {
         $letterId = (int)($_POST['letter_id'] ?? 0);
         if ($letterId <= 0) {
@@ -369,6 +415,7 @@ try {
         $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
         $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
         $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        surat_require_own_division_scope($divisionScope, $userDivision);
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
         $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
 
@@ -459,6 +506,7 @@ try {
         $appointmentDate = trim((string)($_POST['appointment_date'] ?? ''));
         $appointmentTime = trim((string)($_POST['appointment_time'] ?? ''));
         $divisionScope = surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        surat_require_own_division_scope($divisionScope, $userDivision);
 
         if ($letterId <= 0 || $institutionName === '' || $subject === '' || $letterBody === '') {
             throw new Exception('Data edit surat keluar belum lengkap.');
@@ -561,8 +609,9 @@ try {
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
         $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
-            ? ems_all_division_scope_value()
+        ? $userDivision
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        surat_require_own_division_scope($divisionScope, $userDivision);
 
         if (
             $meetingTitle === '' ||
@@ -658,8 +707,9 @@ try {
         $attachmentFiles = normalizeMultiUpload($_FILES['attachments'] ?? []);
         $attachmentContentDescription = trim((string)($_POST['attachment_content'] ?? ''));
         $divisionScope = surat_is_global_hospital_minutes_title($meetingTitle)
-            ? ems_all_division_scope_value()
+        ? $userDivision
             : surat_normalize_division_scope($_POST['division_scope'] ?? '');
+        surat_require_own_division_scope($divisionScope, $userDivision);
 
         if (
             $minutesId <= 0 ||
@@ -776,11 +826,11 @@ try {
         $stmt->execute([$letterId]);
         $paths = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
-        $stmt = $pdo->prepare("UPDATE outgoing_letters SET incoming_letter_id = NULL WHERE incoming_letter_id = ?");
-        $stmt->execute([$letterId]);
+        $stmt = $pdo->prepare("UPDATE outgoing_letters SET incoming_letter_id = NULL WHERE incoming_letter_id = ? AND division_scope = ?");
+        $stmt->execute([$letterId, $userDivision]);
 
-        $stmt = $pdo->prepare("UPDATE meeting_minutes SET incoming_letter_id = NULL WHERE incoming_letter_id = ?");
-        $stmt->execute([$letterId]);
+        $stmt = $pdo->prepare("UPDATE meeting_minutes SET incoming_letter_id = NULL WHERE incoming_letter_id = ? AND division_scope = ?");
+        $stmt->execute([$letterId, $userDivision]);
 
         $stmt = $pdo->prepare("DELETE FROM incoming_letters WHERE id = ?");
         $stmt->execute([$letterId]);
@@ -809,8 +859,8 @@ try {
         $stmt->execute([$letterId]);
         $paths = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
-        $stmt = $pdo->prepare("UPDATE meeting_minutes SET outgoing_letter_id = NULL WHERE outgoing_letter_id = ?");
-        $stmt->execute([$letterId]);
+        $stmt = $pdo->prepare("UPDATE meeting_minutes SET outgoing_letter_id = NULL WHERE outgoing_letter_id = ? AND division_scope = ?");
+        $stmt->execute([$letterId, $userDivision]);
 
         $stmt = $pdo->prepare("DELETE FROM outgoing_letters WHERE id = ?");
         $stmt->execute([$letterId]);

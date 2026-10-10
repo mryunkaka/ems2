@@ -1,4 +1,4 @@
--- Document Library module ("Dokumen" menu) — lihat docs/DOCUMENT_LIBRARY_MODULE.md
+-- Document Library module ("Dokumen" menu) — lihat docs/modules/document-library.md
 -- Tabel juga dibuat defensif lewat ems_document_ensure_tables() di
 -- config/document_library.php (pola project ini: migration file untuk
 -- histori, ensure_tables() untuk runtime).

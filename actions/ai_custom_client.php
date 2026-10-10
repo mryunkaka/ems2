@@ -199,8 +199,9 @@ function ems_custom_chat_completion(
     $payload = [
         'model' => $modelName,
         'messages' => $messages,
-        'temperature' => 0.2,
+        'temperature' => max(0, min(2, (float)($settings['temperature'] ?? 0.2))),
     ];
+    if (isset($settings['top_p'])) $payload['top_p'] = max(0, min(1, (float)$settings['top_p']));
     if ($jsonMode) {
         $payload['response_format'] = ['type' => 'json_object'];
     }
@@ -216,9 +217,7 @@ function ems_custom_chat_completion(
     }
 
     $startedAt = microtime(true);
-    // The Gemini call has a matching bounded timeout, keeping a
-    // failed primary plus fallback within its 55-second PHP request budget.
-    $timeoutSeconds = 120;
+    $timeoutSeconds = max(5, min(120, (int)($settings['timeout_seconds'] ?? 120)));
     $response = ems_ai_http_post_json($url, $payload, $headers, $timeoutSeconds, (string) ($settings['custom_provider'] ?? 'Custom provider'), $curlResolve);
     $responseJson = is_array($response['json'] ?? null) ? $response['json'] : null;
     $completion = ems_ai_custom_extract_completion(

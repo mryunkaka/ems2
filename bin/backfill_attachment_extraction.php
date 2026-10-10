@@ -4,7 +4,7 @@
  * Backfill sekali-jalan: ekstrak teks untuk lampiran lama (yang sudah ada
  * sebelum kolom extracted_text/extraction_status ditambahkan) di 4 tabel
  * lampiran yang menerima dokumen berteks — lihat
- * docs/AI_ASSISTANT_MODULE.md §6.3 (Opsi A) dan
+ * docs/ai/assistant-module.md §6.3 (Opsi A) dan
  * docs/sql/73_2026-08-30_attachment_text_extraction.sql.
  *
  * CLI only. Jalankan lewat CLI, contoh:
@@ -25,7 +25,7 @@ $options = getopt('', ['dry-run']);
 $dryRun = array_key_exists('dry-run', $options);
 
 // Cuma 4 tabel yang genuinely bisa berisi dokumen berteks (bukan foto) —
-// lihat docs/AI_ASSISTANT_MODULE.md §6.3 untuk daftar lengkap & alasannya.
+// lihat docs/ai/assistant-module.md §6.3 untuk daftar lengkap & alasannya.
 $targets = [
     'secretary_file_record_attachments',
     'meeting_minutes_attachments',

@@ -289,6 +289,13 @@ foreach ($editOptionalColumns as $optionalColumn) {
         : "NULL AS {$optionalColumn}";
 }
 $optionalSelectSql = $optionalSelectParts ? implode(",\n        ", $optionalSelectParts) . "," : '';
+$hasFarmasiWebLoginColumn = manageUsersHasColumn($pdo, 'last_farmasi_web_login_at');
+$hasFarmasiSessionTracking = ems_table_exists($pdo, 'user_farmasi_sessions') && ems_column_exists($pdo, 'user_farmasi_sessions', 'session_start');
+$farmasiLoginSelectSql = $hasFarmasiWebLoginColumn
+    ? 'u.last_farmasi_web_login_at AS last_farmasi_login,'
+    : ($hasFarmasiSessionTracking
+        ? '(SELECT MAX(fs.session_start) FROM user_farmasi_sessions fs WHERE fs.user_id = u.id) AS last_farmasi_login,'
+        : 'NULL AS last_farmasi_login,');
 $unitWhere = $hasUnitCodeColumn ? "WHERE COALESCE(u.unit_code, 'roxwood') = :unit_code" : "";
 manageUsersEnsureUpdateHistoryTable($pdo);
 
@@ -306,6 +313,7 @@ $stmtUsers = $pdo->prepare("
         {$noHpIcSelect}
         {$jenisKelaminSelect}
         {$tanggalLahirIcSelect}
+        {$farmasiLoginSelectSql}
         u.is_active,
         u.tanggal_masuk,
         u.cuti_start_date,
@@ -447,6 +455,21 @@ function manageUsersFormatBirthdayCell(?string $tanggalLahirIc): array
         'countdown' => $countdown,
         'age' => $age !== null ? 'Usia ' . $age . ' tahun' : '-',
     ];
+}
+
+function manageUsersFarmasiLoginCell(?string $lastLogin): array
+{
+    if (trim((string)$lastLogin) === '') {
+        return ['date' => 'Belum pernah login', 'status' => 'Nonaktif'];
+    }
+    try {
+        $timezone = new DateTimeZone('Asia/Jakarta');
+        $loginAt = new DateTimeImmutable((string)$lastLogin, $timezone);
+        $cutoff = (new DateTimeImmutable('now', $timezone))->modify('-1 month');
+        return ['date' => $loginAt->format('d M Y H:i'), 'status' => $loginAt < $cutoff ? 'Nonaktif >1 bulan' : 'Aktif'];
+    } catch (Throwable $e) {
+        return ['date' => (string)$lastLogin, 'status' => 'Nonaktif'];
+    }
 }
 
 function manageUsersBuildBirthdayHighlights(array $users): array
@@ -1101,6 +1124,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
+                                        <th>Login Terakhir Farmasi</th>
                                         <th>No HP IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
@@ -1178,7 +1202,9 @@ uksort($usersByBatch, function ($a, $b) {
 			                                            data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
                                                         data-docs-hash="<?= htmlspecialchars($documentsHash, ENT_QUOTES, 'UTF-8') ?>"
                                                         data-docs-verified="<?= $documentsVerified ? '1' : '0' ?>"
-                                                        data-member-status="<?= htmlspecialchars($memberStatus) ?>">
+                                                        data-member-status="<?= htmlspecialchars($memberStatus) ?>"
+                                                        data-last-farmasi-login="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['date'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-farmasi-login-status="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['status'], ENT_QUOTES, 'UTF-8') ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -1226,6 +1252,8 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
                                             </td>
+                                            <?php $farmasiLoginCell = manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null); ?>
+                                            <td><div><?= htmlspecialchars($farmasiLoginCell['date'], ENT_QUOTES, 'UTF-8') ?></div><small class="meta-text"><?= htmlspecialchars($farmasiLoginCell['status'], ENT_QUOTES, 'UTF-8') ?></small></td>
                                             <td><?= htmlspecialchars(trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-') ?></td>
 	                                            <td>
 	                                                <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
@@ -1351,6 +1379,7 @@ uksort($usersByBatch, function ($a, $b) {
                                         <th>Division</th>
                                         <th>Tanggal Join</th>
                                         <th>Tanggal Lahir IC</th>
+                                        <th>Login Terakhir Farmasi</th>
                                         <th>No HP IC</th>
                                         <th>Dokumen</th>
                                         <th>Aksi</th>
@@ -1431,7 +1460,9 @@ uksort($usersByBatch, function ($a, $b) {
                                             data-other-doc-names="<?= htmlspecialchars(implode('|', $otherDocNames)) ?>"
                                             data-docs-hash="<?= htmlspecialchars($documentsHash, ENT_QUOTES, 'UTF-8') ?>"
                                             data-docs-verified="<?= $documentsVerified ? '1' : '0' ?>"
-                                            data-member-status="<?= htmlspecialchars($memberStatus) ?>">
+                                            data-member-status="<?= htmlspecialchars($memberStatus) ?>"
+                                            data-last-farmasi-login="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['date'], ENT_QUOTES, 'UTF-8') ?>"
+                                            data-farmasi-login-status="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['status'], ENT_QUOTES, 'UTF-8') ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td>
                                                 <strong><?= htmlspecialchars($u['full_name']) ?></strong>
@@ -1485,6 +1516,8 @@ uksort($usersByBatch, function ($a, $b) {
                                                     <span class="muted-placeholder">-</span>
                                                 <?php endif; ?>
                                             </td>
+                                            <?php $farmasiLoginCell = manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null); ?>
+                                            <td><div><?= htmlspecialchars($farmasiLoginCell['date'], ENT_QUOTES, 'UTF-8') ?></div><small class="meta-text"><?= htmlspecialchars($farmasiLoginCell['status'], ENT_QUOTES, 'UTF-8') ?></small></td>
                                             <td><?= htmlspecialchars(trim((string)($u['no_hp_ic'] ?? '')) !== '' ? (string)$u['no_hp_ic'] : '-') ?></td>
                                             <td>
                                                 <?php manageUsersRenderDocumentBadges($docs, $documentsVerified); ?>
@@ -2678,7 +2711,9 @@ uksort($usersByBatch, function ($a, $b) {
                         rows.forEach(function(row) {
                             const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
                             const noStr = String(no).padStart(2, '0');
-                            sectionLines.push(`${noStr}. ${nama}`);
+                                            const loginTerakhir = row.dataset.lastFarmasiLogin || 'Belum pernah login';
+                                            const statusFarmasi = row.dataset.farmasiLoginStatus || 'Nonaktif';
+                                            sectionLines.push(`${noStr}. ${nama} | Login terakhir web farmasi: ${loginTerakhir} (${statusFarmasi})`);
                             no++;
                         });
 
@@ -2711,7 +2746,9 @@ uksort($usersByBatch, function ($a, $b) {
                     return rows.map(function(row) {
                         const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
                         const noStr = String(no++).padStart(2, '0');
-                        return `${noStr}. ${nama}`;
+                        const loginTerakhir = row.dataset.lastFarmasiLogin || 'Belum pernah login';
+                        const statusFarmasi = row.dataset.farmasiLoginStatus || 'Nonaktif';
+                        return `${noStr}. ${nama} | Login terakhir web farmasi: ${loginTerakhir} (${statusFarmasi})`;
                     });
                 });
 
@@ -2753,7 +2790,7 @@ document.addEventListener('DOMContentLoaded', function () {
             autoWidth: false,
             order: [[0, 'asc']],
             columnDefs: [
-                { orderable: false, targets: -1 }
+                { orderable: false, targets: 10 }
             ]
         });
     }

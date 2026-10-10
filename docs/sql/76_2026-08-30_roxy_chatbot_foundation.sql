@@ -1,4 +1,4 @@
--- Fondasi modul asisten AI internal "Roxy" — lihat docs/AI_ASSISTANT_MODULE.md
+-- Fondasi modul asisten AI internal "Roxy" — lihat docs/ai/assistant-module.md
 -- untuk PRD/ERD lengkap. Fase 1 (MVP) saja: percakapan, pesan, dan knowledge
 -- base manual. bot_answer_corrections/bot_learned_answers (alur koreksi &
 -- pelatihan) sengaja BELUM dibuat di sini — itu Fase 2.

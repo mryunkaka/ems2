@@ -57,20 +57,26 @@ ajax/           ~12 small autocomplete/search/file-preview endpoints for the das
 api/            External REST surface (Bearer-token auth) — currently just sales sync
 cron/           Scheduled jobs (farmasi auto-offline, weekly salary, quiz finalize, cleanup)
 dashboard/      ~131 pages — the actual application (see §5 for the module map)
-public/         Unauthenticated recruitment portal + AI psychometric test + realtime chat embed
+public/         Public pages and the authenticated Secretary letters page; public meeting form and legacy notice
+bin/            CLI-only operational scripts; blocked from web access via .htaccess
 assets/design/  Self-built PHP "component" design system + Tailwind source/tokens (see §8)
 storage/        Uploaded files (gitignored), served only via ajax/secure_file.php
 migrations/     5 old one-off migration files (superseded by docs/sql/)
 docs/sql/       61 chronological, numbered migration files — the REAL migration history
-docs/           Product docs, module docs, deploy/security docs (see §9)
+docs/           Categorized product and project docs, deploy guides, SQL migrations,
+                and the in-character EMS reference library (start at docs/README.md)
 docs/EMS/       Untracked in-character reference binder (PDFs/handbooks) — not code, see §0
 vendor/, node_modules/   Composer/npm deps (gitignored)
 ```
 
-Root-level oddities worth knowing: `index.php` just redirects to
-`dashboard/rekap_farmasi.php`. `pindah.php`, `backfill_operations.php`,
-`.codex_tmp_boot.php`, `flush_setting_akun_cache.php`, `deploy-cron.php` are
-one-off/ops scripts, all blocked from web access by `.htaccess`. A full
+Root-level entrypoints worth knowing: Project Markdown guidance, policies, and release notes are grouped under `docs/project/`; the documentation index is `docs/README.md`. `index.php` redirects to
+`dashboard/rekap_farmasi.php`; `surat_instansi.php` and `pindah.php` are tiny
+compatibility shims for implementations in `public/`, preserving their
+existing public URLs. The obsolete destructive `backfill_operations.php`,
+empty `QWEN.md`, and temporary `.codex_tmp_boot.php` were removed. Cache
+invalidation now lives at `bin/flush_setting_akun_cache.php`; `deploy-cron.php`
+remains at root for the existing deployment setup and is blocked by `.htaccess`.
+A full
 production DB dump `fouf9972_ems (1).sql` (~28MB) sits at repo root —
 gitignored, don't read it wholesale (see §6 for extracted schema).
 
@@ -115,7 +121,8 @@ recruitment/HR-access roles — added via migration `51_...`.)
 `Medis, Executive, Secretary, Human Capital, Disciplinary Committee,
 Human Resource, General Affair, Specialist Medical Authority, Forensic`.
 Cross-division visibility rules live in `ems_can_access_division_menu()`:
-Executive & Secretary see everything; Human Capital also sees Human
+Executive sees everything; Secretary pages are open to every valid division
+with records scoped to their owning division; Human Capital also sees Human
 Resource + Disciplinary Committee; Forensic also sees Specialist Medical
 Authority.
 
@@ -173,13 +180,21 @@ know it exists before assuming role/division checks are the whole story.
   kelompok), **Pengaturan** (setting akun, + superuser AI/storage/OCR
   items), plus division-gated groups (Human Resource, Interview & Training
   / Recruitment, Disciplinary Committee, General Affair, Specialist Medical
-  Authority, Forensic, Secretary). `struktur_organisasi.php`,
+  Authority, Forensic); the Secretary group is visible to every valid division
+  and its records are scoped by owner division. `struktur_organisasi.php`,
   `user_availability.php`, `emt_doj.php` are intentionally **not** in the
   nav (see §5 note) — don't assume every reachable dashboard page has a
   menu entry.
 - **`partials/header.php`** / **`footer.php`** — farmasi duty "still
-  online?" modal + heartbeat JS, inbox polling, birthday modal, live chat +
-  live music widgets, session-validity poller.
+  online?" modal + heartbeat JS, inbox polling, birthday and work-anniversary
+  modals, live chat + live music widgets, session-validity poller. The work
+  anniversary modal calls `actions/work_anniversary_notices.php`; finalized
+  long greetings are generated once per person/year from global AI settings
+  and cached in `work_anniversary_greetings`. The endpoint returns cached
+  work immediately, releases the PHP session before AI generation, and only
+  queues active users who visited the Farmasi page within one month. AI text
+  and images are generated asynchronously; incomplete stories are never
+  shown. A cheerful synthesized Web Audio melody stops when the modal closes.
 - **`config/database.php`** — PDO bootstrap (`DB_HOST/NAME/USER/PASS/TIMEZONE`
   env vars, `Asia/Jakarta` timezone, `utf8mb4`).
 - **`ems_secure_file_url()`** — every `storage/` path must be rewritten
@@ -228,7 +243,9 @@ the existing one.
 ### User / Org Management
 `manage_users.php`+`_action.php`+`_export.php` (blocked for `staff` role;
 "Kode Medis" `RH{batch}-{id}{name-letters}` generation; hardcoded
-self-only-edit protection for "Programmer Alta"/"Programmer Roxwood"),
+self-only-edit protection for "Programmer Alta"/"Programmer Roxwood"; shows
+last Farmasi-page visit and a one-month active/inactive label in the table,
+Excel, and text exports),
 `setting_akun.php`+`_action.php`+`_quick_save.php` (self-service profile +
 PIN change + document uploads), `struktur_organisasi.php` (org chart + PDF
 export, excludes Medis division and specific user IDs — **removed from the
@@ -348,7 +365,7 @@ one). `identity_test.php` — production KTP-OCR + versioned identity store
 reachable only by direct URL, and has its own hardcoded copy of the OCR API
 key.
 
-### Roxy Internal Assistant (updated 2026-09-28)
+### Roxy Internal Assistant (updated 2026-10-10)
 
 `dashboard/ai_assistant.php` and the footer bubble share
 `actions/roxy_chat_action.php`, `ajax/roxy_conversations.php`, and
@@ -371,6 +388,10 @@ retrieval/comparison. Section paths (Pasal/Poin) are extracted from source
 text and included as evidence; do not let the model invent section numbers.
 Migration `docs/sql/90_2026-09-28_document_source_integrity_hash.sql` adds
 the source hash used by this check.
+
+All Roxy turns use the global provider selected in `dashboard/ai_settings.php`;
+the prior per-user Groq/Gemini/custom fallback has been removed. The personal
+provider page and action redirect to Roxy and do not accept settings changes.
 
 Medical name suffixes/prefixes are display-only: use
 `ems_format_medical_display_name()` and never modify `user_rh.full_name`
@@ -397,6 +418,9 @@ ID based, blacklist check, daily caps 30 bandage/10 ifaks/10 painkiller,
 based, missing unit scoping/blacklist/cooldown — confirm which is actually
 linked before assuming both are live). `farmasi_billing_audit.php`
 (anomaly-scoring formula for suspicious sale patterns, see §7).
+`rekap_farmasi.php` updates `user_rh.last_farmasi_web_login_at` on page access
+after migration `docs/sql/100_2026-10-10_farmasi_last_page_access.sql`; this
+is distinct from `user_farmasi_sessions`, which tracks opt-in duty sessions.
 `konsumen.php` (consumer list + manual entry, Excel import).
 `regulasi_farmasi.php` / `regulasi_medis.php` (pricing CRUD). Farmasi
 duty-status (online/offline) lifecycle is implemented in `actions/*` (see
@@ -407,7 +431,15 @@ in `config/farmasi_quiz.php` + 3 `actions/*_quiz_*` endpoints.
 ### Certificates & Misc Medical Admin
 `sertifikat_heli.php`+`_action.php`+`_pendaftaran.php` (GA opens a
 registration window with slot cap; registering is open to any logged-in
-user). `ems_services.php` (per-visit billing calculator — Pingsan/
+user). `sertifikat_heli.php` lists holders under the sidebar label `List`;
+heli validity dates live in `user_rh.sertifikat_heli_valid_from` and
+`sertifikat_heli_valid_until`, are maintained from Setting Akun on certificate
+upload, and status is computed as Expired after the end date. Migration
+`docs/sql/98_2026-10-10_heli_certificate_validity.sql` backfills existing
+holders to 10–31 October 2026 and creates the once-per-anniversary greeting
+cache table. `actions/work_anniversary_notices.php` gathers pharmacy sales,
+duty sessions, current position, and available promotion dates for the AI
+appreciation. `ems_services.php` (per-visit billing calculator — Pingsan/
 Treatment/Surat/Operasi/Rawat Inap/Kematian/Plastik, gunshot-wound
 medicine-cost swap, random price-within-tier for Operasi, fixed $20,280
 total for Plastik). `ocr_api_status.php` / `tesseract_test.php` (OCR
@@ -444,31 +476,25 @@ factions; badge photo required; manager-only global recap + re-pricing
 (per_qty/per_week/per_month) + "titip" (pay-on-behalf) support.
 
 ### Letters / Correspondence
-`surat_menyurat.php`+`_action.php`, `surat_monitoring.php` (blocked for
-`Medis` division), plus the public root-level `surat_instansi.php` (no
+`dashboard/surat_menyurat.php` + `dashboard/surat_menyurat_action.php`, `surat_monitoring.php` (blocked for
+`Medis` division), plus `public/surat_instansi.php` (served directly at `/public/surat_instansi.php`; no
 auth — external institutions request a meeting, auto-generates a letter
 code). Tables: `incoming_letters`, `outgoing_letters`, `meeting_minutes`
 (+ their `*_attachments` tables), revision tracking via `revision_count`/
 `revision_label`.
 
-### AI / Gemini Configuration
+### AI Provider Configuration
 `ai_settings.php`+`_action.php` — gated to the single named "Programmer
 Roxwood" superuser (documented stop-gap in
-`docs/GEMINI_AI_RECRUITMENT_FOUNDATION_PLAN.md`); configures
-`system_ai_settings` (API key, per-feature model, temperature/top_p/top_k,
-daily request cap). AI features silently no-op/fall back if disabled —
-the recruitment pipeline works fully without AI configured.
-
-`ai_settings_personal.php` exposes the OpenAI-compatible custom provider to
-all signed-in users. Its provider, API key, endpoint, and model are stored
-under the current user's `user_ai_settings` row; the personal action must
-always take the user ID from the authenticated session. Since custom endpoints
-are called server-side, require public HTTPS destinations, reject internal or
-reserved DNS addresses, and pin the validated address for the request to
-prevent SSRF and DNS-rebinding access to private services. Global Gemini
-configuration remains Programmer Roxwood-only. For text features that call
-`ems_ai_provider_call_json()`, try the user's Gemini first, then the configured
-custom OpenAI-compatible provider if Gemini throws or returns empty/invalid
-JSON. If Gemini is not configured, use the custom provider directly. Both
-providers use the same prompt and JSON contract; never save an invalid
-fallback response as a completed report.
+`docs/recruitment/gemini-ai-foundation-plan.md`); configures
+`system_ai_settings` as the sole provider configuration, including credentials,
+endpoint, per-feature model, temperature/token limit, and daily request cap.
+It supports Gemini or an OpenAI-compatible custom provider such as 9Router.
+Migration `docs/sql/99_2026-10-10_global_openai_compatible_provider.sql` adds
+the custom provider fields. Existing text-generation calls retain the legacy
+`ems_gemini_generate_content()` name but dispatch through the selected global
+provider; user-specific keys are no longer read. Custom endpoints require
+public HTTPS; internal/reserved DNS addresses are rejected and the validated
+address is pinned per request against SSRF and DNS rebinding. The personal AI
+settings page is disabled. Image generation remains Gemini-only because the
+compatible chat-completions interface does not support its image response.

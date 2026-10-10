@@ -6,10 +6,11 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/secretary_access.php';
 require_once __DIR__ . '/../config/surat_code_helper.php';
 require_once __DIR__ . '/../config/attachment_extraction.php';
 
-ems_require_division_access(['Secretary'], '/dashboard/index.php');
+$secretaryDivision = secretary_require_division_context('/dashboard/index.php');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -305,6 +306,17 @@ if ($userId <= 0) {
 }
 
 try {
+    $ownershipTarget = match ($action) {
+        'update_visit_status', 'edit_visit_agenda', 'delete_visit_agenda' => ['secretary_visit_agendas', 'agenda_id'],
+        'update_coordination_status', 'edit_internal_coordination', 'delete_internal_coordination' => ['secretary_internal_coordinations', 'coordination_id'],
+        'update_confidential_status', 'edit_confidential_letter', 'delete_confidential_letter' => ['secretary_confidential_letters', 'letter_id'],
+        'update_file_record_status', 'edit_file_record', 'delete_file_record' => ['secretary_file_records', 'record_id'],
+        default => null,
+    };
+    if ($ownershipTarget !== null) {
+        secretary_require_owned_record($pdo, $ownershipTarget[0], (int) ($_POST[$ownershipTarget[1]] ?? 0), $secretaryDivision);
+    }
+
     if ($action === 'save_visit_agenda') {
         $requestedAgendaCode = trim((string) ($_POST['agenda_code'] ?? ''));
         $visitorName = trim((string) ($_POST['visitor_name'] ?? ''));
@@ -332,9 +344,9 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_visit_agendas
                 (agenda_code, visitor_name, origin_name, visit_purpose, visit_date, visit_time,
-                 location, pic_user_id, status, notes, created_by)
+                 location, pic_user_id, status, notes, created_by, owner_division)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             surat_resolve_requested_code(
@@ -354,6 +366,7 @@ try {
             $status,
             $notes !== '' ? $notes : null,
             $userId,
+            $secretaryDivision,
         ]);
 
         secretarySaveAttachments($pdo, 'visit_agenda', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
@@ -504,9 +517,9 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_internal_coordinations
                 (coordination_code, title, division_scope, host_user_id, coordination_date,
-                 start_time, status, summary_notes, follow_up_notes, created_by)
+                 start_time, status, summary_notes, follow_up_notes, created_by, owner_division)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             surat_resolve_requested_code(
@@ -525,6 +538,7 @@ try {
             $summaryNotes !== '' ? $summaryNotes : null,
             $followUpNotes !== '' ? $followUpNotes : null,
             $userId,
+            $secretaryDivision,
         ]);
 
         secretarySaveAttachments($pdo, 'internal_coordination', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
@@ -672,9 +686,9 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_confidential_letters
                 (register_code, reference_number, letter_direction, subject, counterparty_name,
-                 confidentiality_level, letter_date, status, notes, created_by)
+                 confidentiality_level, letter_date, status, notes, created_by, owner_division)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             surat_resolve_requested_code(
@@ -693,6 +707,7 @@ try {
             $status,
             $notes !== '' ? $notes : null,
             $userId,
+            $secretaryDivision,
         ]);
 
         secretarySaveAttachments($pdo, 'confidential_letter', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);
@@ -840,9 +855,9 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_file_records
                 (file_code, file_category, reference_number, title, counterparty_name,
-                 document_date, status, keywords, description, created_by)
+                 document_date, status, keywords, description, created_by, owner_division)
             VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             surat_resolve_requested_code(
@@ -861,6 +876,7 @@ try {
             $keywords !== '' ? $keywords : null,
             $description !== '' ? $description : null,
             $userId,
+            $secretaryDivision,
         ]);
 
         secretarySaveAttachments($pdo, 'file_record', (int) $pdo->lastInsertId(), $attachmentFiles, $attachmentContentDescription);

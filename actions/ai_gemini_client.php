@@ -197,7 +197,7 @@ function ems_ai_decode_json_text(string $text): ?array
     return null;
 }
 
-function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
+function ems_gemini_generate_content_direct(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
 {
     $apiKey = trim((string)($settings['gemini_api_key'] ?? ''));
     if ($apiKey === '') {
@@ -301,6 +301,49 @@ function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents,
     }
 }
 
+/** Dispatch all text-generation features through the single global AI setting. */
+function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
+{
+    $global = ems_ai_get_settings($pdo);
+    if (empty($global['is_enabled'])) throw new RuntimeException('Provider AI global sedang nonaktif.');
+    $provider = strtolower(trim((string)($global['provider'] ?? 'gemini')));
+    $selectedModel = trim((string)($model ?: $global['default_model']));
+    $dailyLimit = (int)($global['daily_request_limit'] ?? 0);
+    if ($dailyLimit > 0 && ems_ai_count_today_requests($pdo) >= $dailyLimit) {
+        throw new RuntimeException('Batas request harian internal AI sudah tercapai.');
+    }
+
+    if ($provider === 'openai_compatible') {
+        require_once __DIR__ . '/ai_custom_client.php';
+        $messages = [];
+        foreach ($contents as $content) {
+            if (!is_array($content)) continue;
+            $role = strtolower((string)($content['role'] ?? 'user'));
+            $role = $role === 'model' ? 'assistant' : (in_array($role, ['system','assistant','user'], true) ? $role : 'user');
+            $parts = $content['parts'] ?? [];
+            $text = '';
+            foreach ($parts as $part) if (is_array($part) && isset($part['text'])) $text .= (string)$part['text'];
+            if ($text !== '') $messages[] = ['role'=>$role,'content'=>$text];
+        }
+        if ($messages === []) throw new RuntimeException('Prompt AI kosong.');
+        $result = ems_custom_chat_completion($pdo, [
+            'custom_provider' => trim((string)($global['custom_provider'] ?? 'OpenAI-Compatible')) ?: 'OpenAI-Compatible',
+            'custom_api_key' => (string)($global['custom_api_key'] ?? ''),
+            'custom_base_url' => (string)($global['custom_base_url'] ?? ''),
+            'custom_default_model' => $selectedModel !== '' ? $selectedModel : (string)($global['custom_default_model'] ?? ''),
+            'timeout_seconds' => (int)($global['timeout_seconds'] ?? 30),
+            'temperature' => (float)($global['temperature'] ?? 0.4),
+            'top_p' => (float)($global['top_p'] ?? 0.95),
+            'max_output_tokens' => (int)($global['max_output_tokens'] ?? 2048),
+        ], $messages, $selectedModel, $featureKey, $createdBy, true, (int)($global['max_output_tokens'] ?? 2048));
+        return ['model'=>$result['model'],'text'=>$result['content'],'json'=>null,'usage'=>$result['usage'],'http_status'=>$result['http_status'],'provider'=>'openai_compatible'];
+    }
+
+    if ($provider !== 'gemini') throw new RuntimeException('Provider AI global tidak dikenal.');
+    $global['provider'] = 'gemini';
+    return ems_gemini_generate_content_direct($pdo, $global, $contents, $selectedModel, $featureKey, $createdBy, $responseSchema);
+}
+
 /**
  * Ambil data gambar (base64 inline) pertama dari response Gemini image-generation.
  * Beda dari ems_gemini_extract_text() yang cuma ambil bagian "text" — model
@@ -335,6 +378,11 @@ function ems_gemini_extract_inline_image(?array $responseJson): ?array
  */
 function ems_gemini_generate_image(PDO $pdo, array $settings, array $contents, string $model, string $featureKey = 'generic_image', ?int $createdBy = null): array
 {
+    $global = ems_ai_get_settings($pdo);
+    if (strtolower((string)($global['provider'] ?? 'gemini')) !== 'gemini' || empty($global['is_enabled'])) {
+        throw new RuntimeException('Fitur pembuatan gambar hanya didukung saat provider global Gemini aktif.');
+    }
+    $settings = $global;
     $apiKey = trim((string)($settings['gemini_api_key'] ?? ''));
     if ($apiKey === '') {
         throw new RuntimeException('API key Gemini belum diisi.');
@@ -426,7 +474,7 @@ function ems_gemini_generate_image(PDO $pdo, array $settings, array $contents, s
 
 function ems_gemini_test_connection(PDO $pdo, array $settings, ?int $createdBy = null): array
 {
-    return ems_gemini_generate_content(
+    return ems_gemini_generate_content_direct(
         $pdo,
         $settings,
         [

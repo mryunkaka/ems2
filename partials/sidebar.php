@@ -54,7 +54,7 @@ $groupedNav = [
         sidebarItem('/dashboard/ems_services.php', 'ems_services.php', 'Layanan Medis', 'building-office-2'),
         sidebarItem('/dashboard/rekam_medis_list.php', 'rekam_medis_list.php', 'Rekam Medis', 'clipboard-document-list'),
         sidebarItem('/dashboard/operasi_plastik.php', 'operasi_plastik.php', 'Operasi Plastik', 'building-office-2'),
-        sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
+        sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Pendaftaran Sertifikat Heli', 'document-text'),
         sidebarItem('/dashboard/dispatcher.php', 'dispatcher.php', 'Dispatcher', 'megaphone'),
         sidebarItem('/dashboard/dispatcher_monitoring.php', 'dispatcher_monitoring.php', 'Monitoring Dispatcher', 'eye'),
     ],
@@ -149,7 +149,7 @@ if (ems_can_access_division_menu($division, 'Disciplinary Committee')) {
 
 if (ems_can_access_division_menu($division, 'General Affair')) {
     $groupedNav['General Affair'] = [
-        sidebarItem('/dashboard/sertifikat_heli.php', 'sertifikat_heli.php', 'Sertifikat Heli Medis', 'document-text'),
+        sidebarItem('/dashboard/sertifikat_heli.php', 'sertifikat_heli.php', 'List Sertifikat Heli', 'document-text'),
         sidebarItem('/dashboard/event_manage.php', 'event_manage.php', 'Manajemen Event', 'wrench'),
         sidebarItem('/dashboard/restaurant_settings.php', 'restaurant_settings.php', 'Manajemen Konsumsi', 'cake'),
         sidebarItem('/dashboard/gaji.php', 'gaji.php', 'Gaji', 'banknotes'),
@@ -193,7 +193,7 @@ if (ems_can_access_division_menu($division, 'Forensic')) {
     }
 }
 
-if (ems_can_access_division_menu($division, 'Secretary')) {
+if (ems_is_valid_division($division)) {
     $groupedNav['Secretary'] = [
         sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
         sidebarItem('/dashboard/secretary_file_registry.php', 'secretary_file_registry.php', 'Data File Divisi', 'archive-box'),
@@ -211,7 +211,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/police_partnership.php', 'police_partnership.php', 'Kerja Sama Police', 'shield-check'),
             ],
             'Medis' => [
-                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
+                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Pendaftaran Sertifikat Heli', 'document-text'),
             ],
             'Administrasi' => [
                 sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
@@ -238,7 +238,7 @@ if ($isAltaUnit && !$canViewAllUnits) {
                 sidebarItem('/dashboard/disciplinary_points_monitor.php', 'disciplinary_points_monitor.php', 'Point Pelanggaran Saya', 'shield-exclamation'),
             ],
             'Medis' => [
-                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Sertifikat Heli', 'document-text'),
+                sidebarItem('/dashboard/sertifikat_heli_pendaftaran.php', 'sertifikat_heli_pendaftaran.php', 'Pendaftaran Sertifikat Heli', 'document-text'),
             ],
             'Farmasi' => [
                 sidebarItem('/dashboard/rekap_farmasi.php', 'rekap_farmasi.php', 'Rekap Farmasi', 'beaker'),
@@ -261,6 +261,27 @@ if ($isAltaUnit && !$canViewAllUnits) {
             ],
         ];
     }
+
+    // The compact Alta sidebar replaces the main menu tree; keep the GA heli
+    // certificate list reachable for users whose division can access it.
+    if (ems_can_access_division_menu($division, 'General Affair')) {
+        if (!isset($groupedNav['General Affair']) || !is_array($groupedNav['General Affair'])) {
+            $groupedNav['General Affair'] = [];
+        }
+        $groupedNav['General Affair'][] = sidebarItem('/dashboard/sertifikat_heli.php', 'sertifikat_heli.php', 'List Sertifikat Heli', 'document-text');
+    }
+}
+
+// The compact Alta menu replaces the usual tree, so restore Secretary for
+// valid divisions after that override too.
+if (ems_is_valid_division($division) && !isset($groupedNav['Secretary'])) {
+    $groupedNav['Secretary'] = [
+        sidebarItem('/dashboard/surat_menyurat.php', 'surat_menyurat.php', 'Surat & Notulen', 'document-text'),
+        sidebarItem('/dashboard/secretary_file_registry.php', 'secretary_file_registry.php', 'Data File Divisi', 'archive-box'),
+        sidebarItem('/dashboard/secretary_visit_agenda.php', 'secretary_visit_agenda.php', 'Agenda Kunjungan Divisi', 'calendar-days'),
+        sidebarItem('/dashboard/secretary_internal_coordination.php', 'secretary_internal_coordination.php', 'Koordinasi Internal Divisi', 'user-group'),
+        sidebarItem('/dashboard/secretary_confidential_letters.php', 'secretary_confidential_letters.php', 'Rekap Surat Rahasia', 'inbox'),
+    ];
 }
 
 if ($isMedicalDivision && $hasActiveDisciplinaryPoints) {
@@ -279,10 +300,9 @@ if ($isMedicalDivision && $hasActiveDisciplinaryPoints) {
     }
 }
 
-// Kelompok AI berisi asisten internal dan konfigurasi provider personal.
+// Kelompok AI; provider tunggal diatur terpusat oleh Programmer Roxwood.
 $groupedNav['Roxwood AI'] = [
     sidebarItem('/dashboard/ai_assistant.php', 'ai_assistant.php', 'Chat Roxy', 'chat-bubble-left-right'),
-    sidebarItem('/dashboard/ai_settings_personal.php', 'ai_settings_personal.php', 'Setting AI Saya', 'cog-6-tooth'),
 ];
 
 // Monitoring Roxy cuma untuk manager-plus (division apa pun) — sisipkan
@@ -312,7 +332,7 @@ if ($roxwoodAiManagementItems !== []) {
 
 // Pindahkan grup "Roxwood AI" ke posisi ke-2 (tepat di bawah "Utama"),
 // apa pun urutan grup lain yang sudah terbentuk di atas (termasuk override
-// sidebar khusus unit Alta) — supaya Chat Roxy dan Setting AI Saya tetap terlihat tanpa
+// sidebar khusus unit Alta) — supaya Chat Roxy tetap terlihat tanpa
 // perlu scroll, sesuai permintaan eksplisit user.
 if (isset($groupedNav['Roxwood AI'])) {
     $roxwoodHospitalAiGroup = $groupedNav['Roxwood AI'];

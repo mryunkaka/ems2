@@ -11,7 +11,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 ems_require_division_access(['General Affair']);
 require_not_on_cuti('/dashboard/pengajuan_cuti_resign.php');
 
-$pageTitle = 'Sertifikat Heli Medis';
+$pageTitle = 'List Sertifikat Heli';
 
 function heliPageHasColumn(PDO $pdo, string $column): bool
 {
@@ -76,7 +76,9 @@ $stmt = $pdo->query("
         {$divisionSelect}
         u.tanggal_masuk,
         u.is_active,
-        u.sertifikat_heli
+        u.sertifikat_heli,
+        u.sertifikat_heli_valid_from,
+        u.sertifikat_heli_valid_until
     FROM user_rh u
     WHERE TRIM(COALESCE(u.sertifikat_heli, '')) <> ''
       AND NOT (
@@ -89,6 +91,13 @@ $stmt = $pdo->query("
     ORDER BY u.is_active DESC, u.full_name ASC
 ");
 $certificateUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$today = (new DateTimeImmutable('today', new DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
+foreach ($certificateUsers as &$certificateUser) {
+    $from = (string)($certificateUser['sertifikat_heli_valid_from'] ?? '');
+    $until = (string)($certificateUser['sertifikat_heli_valid_until'] ?? '');
+    $certificateUser['certificate_status'] = ($until !== '' && $until < $today) ? 'Expired' : 'Aktif';
+}
+unset($certificateUser);
 
 $totalLicensed = count($certificateUsers);
 $totalActiveLicensed = 0;
@@ -128,7 +137,7 @@ function heliFormatJoinDate(?string $date): string
     <div class="page page-shell-md">
         <div class="flex items-center justify-between gap-4 mb-4">
             <div>
-                <h1 class="page-title">Sertifikat Heli Medis</h1>
+                <h1 class="page-title">List</h1>
                 <p class="page-subtitle">Menampilkan user yang sudah memiliki lisensi sertifikat heli.</p>
             </div>
             <button type="button" onclick="openHeliSettingsModal()" class="btn-secondary">
@@ -167,7 +176,7 @@ function heliFormatJoinDate(?string $date): string
             <div class="card-header card-header-between">
                 <span>Daftar Lisensi Sertifikat Heli</span>
                 <div class="flex gap-2 items-center">
-                    <button id="btnExportText" class="btn-secondary button-compact" type="button">
+                    <button id="btnExportText" class="btn-secondary button-compact" type="button" data-export-items="<?= htmlspecialchars(json_encode(array_map(static fn($row) => ['name' => (string)($row['full_name'] ?? ''), 'position' => ems_position_label((string)($row['position'] ?? '')), 'status' => (string)($row['certificate_status'] ?? 'Aktif')], $certificateUsers), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8') ?>">
                         <?= ems_icon('document-text', 'h-4 w-4') ?> Export Teks
                     </button>
                     <span class="badge-muted"><?= $totalLicensed ?> data</span>
@@ -184,7 +193,9 @@ function heliFormatJoinDate(?string $date): string
                             <th>Role</th>
                             <th>Division</th>
                             <th>Tanggal Masuk</th>
-                            <th>Status</th>
+                            <th>Masa Berlaku</th>
+                            <th>Status Sertifikat</th>
+                            <th>Status User</th>
                             <th>Sertifikat</th>
                         </tr>
                     </thead>
@@ -198,6 +209,10 @@ function heliFormatJoinDate(?string $date): string
                                 <td><?= htmlspecialchars(ems_role_label($row['role'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars($divisionName, ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars(heliFormatJoinDate($row['tanggal_masuk'] ?? null), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_from'] ?? null), ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_until'] ?? null), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td data-certificate-status="<?= htmlspecialchars($row['certificate_status'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <?php if ($row['certificate_status'] === 'Expired'): ?><span class="badge-danger">Expired</span><?php else: ?><span class="badge-success">Aktif</span><?php endif; ?>
+                                </td>
                                 <td>
                                     <?php if ((int)($row['is_active'] ?? 0) === 1): ?>
                                         <span class="badge-success">Aktif</span>
@@ -281,27 +296,25 @@ document.addEventListener('keydown', function(e) {
 document.body.addEventListener('click', function(e) {
     const exportBtn = e.target.closest('#btnExportText');
     if (exportBtn) {
-        const table = document.getElementById('heliCertificateTable');
-        if (!table) {
-            alert('Tabel tidak ditemukan.');
-            return;
-        }
-
-        const rows = table.querySelectorAll('tbody tr');
-        if (!rows.length) {
+        let exportItems = [];
+        try { exportItems = JSON.parse(exportBtn.dataset.exportItems || '[]'); } catch (_) {}
+        if (!exportItems.length) {
             alert('Tidak ada data untuk diexport.');
             return;
         }
 
-        const lines = [];
-        let no = 1;
+        const activeLines = [];
+        const expiredLines = [];
+        let activeNo = 1;
+        let expiredNo = 1;
 
-        rows.forEach(function(row) {
-            const nama = row.querySelector('td:nth-child(2) strong')?.innerText || '';
-            const jabatan = row.querySelector('td:nth-child(3)')?.innerText || '';
-            const noStr = String(no).padStart(2, '0');
-            lines.push(`${noStr}. ${nama} - ${jabatan}`);
-            no++;
+        exportItems.forEach(function(item) {
+            const nama = item.name || '';
+            const jabatan = item.position || '';
+            const status = item.status || 'Aktif';
+            const noStr = String(status === 'Expired' ? expiredNo++ : activeNo++).padStart(2, '0');
+            const line = `${noStr}. ${nama} - ${jabatan}`;
+            (status === 'Expired' ? expiredLines : activeLines).push(line);
         });
 
         const now = new Date();
@@ -313,7 +326,7 @@ document.body.addEventListener('click', function(e) {
         const seconds = String(now.getSeconds()).padStart(2, '0');
         const timestamp = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
 
-        const content = 'Daftar Pemegang Sertifikat Heli\n\n' + lines.join('\n') + '\n';
+        const content = 'DAFTAR SERTIFIKAT HELI\n\nAKTIF\n' + (activeLines.join('\n') || 'Tidak ada') + '\n\nEXPIRED\n' + (expiredLines.join('\n') || 'Tidak ada') + '\n';
         const blob = new Blob([content], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

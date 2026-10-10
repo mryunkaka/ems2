@@ -281,7 +281,7 @@ dokumen memakai FULLTEXT (bukan embedding, lihat §0):
    Hospital secara spesifik.
 3. **`document_files.extracted_text`** (modul Dokumen yang sudah ada) —
    langsung reuse `ems_document_search()` yang sudah jadi & sudah
-   terbukti jalan (lihat `docs/DOCUMENT_LIBRARY_MODULE.md`). SOP/handbook
+   terbukti jalan (lihat `docs/modules/document-library.md`). SOP/handbook
    yang sudah diimport otomatis ikut jadi sumber jawaban Roxy, tanpa
    kerja tambahan.
 4. **Sebagian tabel lampiran Secretary/Surat** — lihat §6.3, cakupannya

@@ -2,14 +2,15 @@
 
 header('Content-Type: text/plain; charset=UTF-8');
 
+$projectRoot = dirname(__DIR__);
 $targets = [
-    __DIR__ . '/auth/auth_guard.php',
-    __DIR__ . '/config/helpers.php',
-    __DIR__ . '/dashboard/setting_akun.php',
-    __DIR__ . '/dashboard/setting_akun_action.php',
-    __DIR__ . '/dashboard/setting_akun_quick_save.php',
-    __DIR__ . '/partials/footer.php',
-    __DIR__ . '/assets/js/app.js',
+    $projectRoot . '/auth/auth_guard.php',
+    $projectRoot . '/config/helpers.php',
+    $projectRoot . '/dashboard/setting_akun.php',
+    $projectRoot . '/dashboard/setting_akun_action.php',
+    $projectRoot . '/dashboard/setting_akun_quick_save.php',
+    $projectRoot . '/partials/footer.php',
+    $projectRoot . '/assets/js/app.js',
 ];
 
 echo 'opcache_invalidate=' . (function_exists('opcache_invalidate') ? 'yes' : 'no') . PHP_EOL;

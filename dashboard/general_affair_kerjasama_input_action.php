@@ -337,9 +337,9 @@ try {
         $stmt = $pdo->prepare("
             INSERT INTO secretary_file_records
                 (file_code, file_category, reference_number, title, counterparty_name,
-                 document_date" . ($columnReady['document_time'] ? ", document_time" : "") . ", status, keywords, description, created_by)
+                 document_date" . ($columnReady['document_time'] ? ", document_time" : "") . ", status, keywords, description, created_by, owner_division)
             VALUES
-                (?, 'cooperation', ?, ?, ?, ?" . ($columnReady['document_time'] ? ", ?" : "") . ", 'draft', ?, ?, ?)
+                (?, 'cooperation', ?, ?, ?, ?" . ($columnReady['document_time'] ? ", ?" : "") . ", 'draft', ?, ?, ?, 'General Affair')
         ");
         $params = [
             gaInputGenerateCode($userId),

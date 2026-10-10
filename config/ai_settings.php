@@ -9,6 +9,10 @@ function ems_ai_settings_defaults(): array
         'provider' => 'gemini',
         'is_enabled' => 1,
         'gemini_api_key' => '',
+        'custom_provider' => 'OpenAI-Compatible',
+        'custom_api_key' => '',
+        'custom_base_url' => '',
+        'custom_default_model' => '',
         'gemini_base_url' => 'https://generativelanguage.googleapis.com/v1beta',
         'default_model' => 'gemini-2.5-flash',
         'summary_model' => 'gemini-2.5-flash',
@@ -40,6 +44,19 @@ function ems_ai_model_options(): array
 function ems_ai_settings_table_exists(PDO $pdo): bool
 {
     return ems_table_exists($pdo, 'system_ai_settings');
+}
+
+function ems_ai_global_provider_ready(PDO $pdo): bool
+{
+    $settings = ems_ai_get_settings($pdo);
+    if (empty($settings['is_enabled'])) return false;
+    $provider = strtolower(trim((string)($settings['provider'] ?? 'gemini')));
+    if ($provider === 'openai_compatible') {
+        return trim((string)($settings['custom_api_key'] ?? '')) !== ''
+            && trim((string)($settings['custom_base_url'] ?? '')) !== ''
+            && trim((string)($settings['custom_default_model'] ?? '')) !== '';
+    }
+    return $provider === 'gemini' && trim((string)($settings['gemini_api_key'] ?? '')) !== '';
 }
 
 function ems_ai_request_logs_table_exists(PDO $pdo): bool

@@ -352,6 +352,14 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
             </div>
         </div>
 
+        <div id="workAnniversaryModal" class="hidden inbox-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="workAnniversaryTitle">
+            <div class="inbox-modal-box modal-shell modal-frame-md">
+                <div class="modal-head"><div class="min-w-0"><div id="workAnniversaryTitle" class="modal-title">Apresiasi Masa Kerja</div><div class="meta-text-xs mt-1 text-slate-500">Merayakan perjalanan satu tahun atau lebih di Roxwood Hospital.</div></div><button onclick="closeWorkAnniversaryModal()" type="button" class="modal-close-btn" aria-label="Tutup apresiasi"><?= ems_icon('x-mark', 'h-5 w-5') ?></button></div>
+                <div class="modal-content"><div id="workAnniversaryList" class="space-y-3"></div><button id="workAnniversarySoundButton" type="button" class="btn-secondary mt-3">Putar musik apresiasi</button></div>
+                <div class="modal-foot"><div class="modal-actions justify-end"><button onclick="closeWorkAnniversaryModal()" type="button" class="btn-primary">Tutup</button></div></div>
+            </div>
+        </div>
+
         <script>
             let notifTimer = null;
             let offlineTimer = null;
@@ -749,8 +757,115 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                 };
             }
 
+            let anniversaryAudioContext = null;
+            let anniversaryOscillators = [];
+            let anniversaryMusicTimer = null;
+            function stopWorkAnniversarySound() {
+                if (anniversaryMusicTimer) { clearInterval(anniversaryMusicTimer); anniversaryMusicTimer = null; }
+                anniversaryOscillators.forEach(function(o) { try { o.stop(); } catch (_) {} }); anniversaryOscillators = [];
+                if (anniversaryAudioContext) { anniversaryAudioContext.close().catch(function() {}); anniversaryAudioContext = null; }
+            }
+            function playWorkAnniversarySound(seedValues) {
+                stopWorkAnniversarySound();
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = anniversaryAudioContext = new AudioCtx();
+                if (ctx.state === 'suspended') ctx.resume().catch(function() {});
+                const seeds = (Array.isArray(seedValues) ? seedValues : [seedValues]).map(function(value) { return (Number(value) >>> 0) || 1; });
+                if (seeds.length === 0) seeds.push(1);
+                const scale = [0,2,4,7,9,12,14,16];
+                const melodies = seeds.map(function(initialSeed) {
+                    let seed = initialSeed;
+                    const random = function() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return (seed >>> 0) / 4294967296; };
+                    const root = [392,440,493.88,523.25][Math.floor(random() * 4)];
+                    const notes = Array.from({length:16}, function(_, index) {
+                        const degree = Math.floor(random() * scale.length);
+                        const octave = (index % 8 === 7 && random() > .45) ? 2 : 1;
+                        return root * Math.pow(2, scale[degree] / 12) * octave;
+                    });
+                    const chordRoots = [130.81,146.83,164.81,196];
+                    const chords = Array.from({length:4}, function() {
+                        const base = chordRoots[Math.floor(random() * chordRoots.length)];
+                        return [base, base * 1.25, base * 1.5];
+                    });
+                    return {notes:notes, chords:chords};
+                });
+                let step = 0;
+                const playNote = function() {
+                    if (!anniversaryAudioContext) return;
+                    const tune = melodies[Math.floor(step / 16) % melodies.length];
+                    const localStep = step % 16;
+                    const now = ctx.currentTime, note = tune.notes[localStep];
+                    const playTone = function(freq, volume, duration, wave) {
+                        const osc = ctx.createOscillator(), gain = ctx.createGain();
+                        osc.type = wave; osc.frequency.value = freq; gain.gain.value = 0;
+                        osc.connect(gain); gain.connect(ctx.destination);
+                        gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(volume, now + .025);
+                        gain.gain.exponentialRampToValueAtTime(.001, now + duration);
+                        osc.onended = function() { anniversaryOscillators = anniversaryOscillators.filter(function(active) { return active !== osc; }); };
+                        osc.start(now); osc.stop(now + duration + .02); anniversaryOscillators.push(osc);
+                    };
+                    playTone(note, .045, .22, 'triangle');
+                    playTone(note * 2, .012, .18, 'sine');
+                    if (localStep % 4 === 0) tune.chords[Math.floor(localStep / 4)].forEach(function(freq) { playTone(freq, .009, .65, 'sine'); });
+                    step++;
+                };
+                playNote(); anniversaryMusicTimer = setInterval(playNote, 360);
+            }
+            function closeWorkAnniversaryModal() {
+                document.getElementById('workAnniversaryModal')?.classList.add('hidden'); document.body.classList.remove('modal-open'); stopWorkAnniversarySound();
+            }
+            function anniversaryEscape(value) {
+                return String(value ?? '').replace(/[&<>"']/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+            }
+            async function loadWorkAnniversaryModal() {
+                const modal = document.getElementById('workAnniversaryModal');
+                const list = document.getElementById('workAnniversaryList');
+                if (!modal || !list || !window.EMS_USER_ID) return;
+                const response = await safeFetchJSON(window.emsUrl('/actions/work_anniversary_notices.php'));
+                if (!response?.success || !Array.isArray(response.items)) return;
+                const pending = Array.isArray(response.pending) ? response.pending : [];
+                if (response.items.length === 0 && pending.length === 0) return;
+                const key = 'ems-work-anniversary:v2:' + response.year + ':' + response.date_key + ':' + String(window.EMS_USER_ID);
+                const alreadySeen = window.localStorage && localStorage.getItem(key) === '1';
+                const renderItem = function(item) {
+                    const artwork = item.image_url ? `<img src="${anniversaryEscape(item.image_url)}" alt="Ilustrasi apresiasi masa kerja ${anniversaryEscape(item.name)}" loading="lazy" style="width:100%;max-height:320px;object-fit:cover;border-radius:14px;margin-top:14px">` : '';
+                    return `<div class="card" data-work-anniversary-id="${Number(item.id || 0)}"><div class="text-sm font-semibold text-slate-800">${anniversaryEscape(item.name)} • ${Number(item.years || 1)} tahun</div><div class="meta-text-xs mt-1 text-slate-500">${anniversaryEscape(item.position)} • ${anniversaryEscape(item.division)}</div>${artwork}<p class="mt-3 text-sm text-slate-700" style="white-space:pre-wrap;line-height:1.8">${anniversaryEscape(item.greeting)}</p></div>`;
+                };
+                const refreshCard = function(item) {
+                    const oldCard = list.querySelector(`[data-work-anniversary-id="${Number(item.id || 0)}"]`);
+                    if (oldCard) oldCard.outerHTML = renderItem(item);
+                    else list.insertAdjacentHTML('beforeend', renderItem(item));
+                };
+                const showFinalItems = function(items) {
+                    if (alreadySeen || items.length === 0 || !modal.classList.contains('hidden')) return;
+                    list.innerHTML = items.map(renderItem).join('');
+                    modal.classList.remove('hidden'); document.body.classList.add('modal-open');
+                    if (pending.length === 0 && window.localStorage) localStorage.setItem(key, '1');
+                    const musicSeeds = items.map(function(item) { return item.music_seed; });
+                    playWorkAnniversarySound(musicSeeds);
+                    document.getElementById('workAnniversarySoundButton')?.addEventListener('click', function() { playWorkAnniversarySound(musicSeeds); }, {once:true});
+                };
+                showFinalItems(response.items);
+                // Nama/cerita yang belum final tidak ditampilkan. Modal muncul begitu
+                // cerita AI lengkap selesai dibuat, tanpa menahan navigasi halaman.
+                let generationFailed = false;
+                for (const task of pending) {
+                    try {
+                        const generated = await safeFetchJSON(window.emsUrl('/actions/work_anniversary_notices.php?mode=generate&user_id=' + encodeURIComponent(task.id)), {}, 110000);
+                        const finalItem = generated?.success && Array.isArray(generated.items) ? generated.items[0] : null;
+                        if (!finalItem || !finalItem.greeting || finalItem.greeting.length < 2400) { generationFailed = true; continue; }
+                        const isFirstFinal = list.children.length === 0;
+                        refreshCard(finalItem);
+                        if (isFirstFinal) showFinalItems([finalItem]);
+                    } catch (_) { generationFailed = true; /* Coba lagi pada kunjungan berikutnya bila provider sedang sibuk. */ }
+                }
+                if (!generationFailed && !modal.classList.contains('hidden') && window.localStorage) localStorage.setItem(key, '1');
+            }
+
             document.addEventListener('DOMContentLoaded', function() {
                 loadBirthdayTodayModal();
+                loadWorkAnniversaryModal();
             });
         </script>
         <script>

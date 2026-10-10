@@ -233,7 +233,7 @@ Kolom usulan:
 ### Docs / SQL
 
 - `docs/sql/20_2026-04-08_gemini_ai_foundation.sql`
-- `docs/GEMINI_AI_RECRUITMENT_FOUNDATION_PLAN.md`
+- `docs/recruitment/gemini-ai-foundation-plan.md`
 
 ## Kontrak Service yang Disiapkan
 

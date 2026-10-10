@@ -5,7 +5,7 @@ require_once __DIR__ . '/ai_provider_core.php';
 
 /**
  * Groq — provider "tingkat 1" (model gratis, open-weight) untuk chat bot
- * internal Roxy, lihat docs/AI_ASSISTANT_MODULE.md §3. PER-USER, bukan
+ * internal Roxy, lihat docs/ai/assistant-module.md §3. PER-USER, bukan
  * global — dicek langsung lewat header rate-limit API sungguhan
  * (2026-08-30): tier gratis Groq cuma 1.000 request/hari + 8.000
  * token/menit PER AKUN. Dengan 154 staff aktif (119 divisi Medis) dan

@@ -6,10 +6,11 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/secretary_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
 
-ems_require_division_access(['Secretary'], '/dashboard/index.php');
+$secretaryDivision = secretary_require_division_context('/dashboard/index.php');
 
 $pageTitle = 'Agenda Kunjungan Divisi';
 $messages = $_SESSION['flash_messages'] ?? [];
@@ -79,12 +80,24 @@ $hasAttachmentTable = false;
 
 try {
     $hasAttachmentTable = secretaryAgendaTableExists($pdo, 'secretary_visit_agenda_attachments');
-    $summary['total'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas")->fetchColumn();
-    $summary['scheduled'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas WHERE status IN ('scheduled', 'ongoing')")->fetchColumn();
-    $summary['today'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas WHERE visit_date = CURDATE()")->fetchColumn();
-    $summary['completed'] = (int) $pdo->query("SELECT COUNT(*) FROM secretary_visit_agendas WHERE status = 'completed'")->fetchColumn();
+    $summaryStmt = $pdo->prepare("
+        SELECT COUNT(*) AS total_count,
+               SUM(status IN ('scheduled', 'ongoing')) AS scheduled_count,
+               SUM(visit_date = CURDATE()) AS today_count,
+               SUM(status = 'completed') AS completed_count
+        FROM secretary_visit_agendas
+        WHERE owner_division = ?
+    ");
+    $summaryStmt->execute([$secretaryDivision]);
+    $summaryRow = $summaryStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+    $summary = [
+        'total' => (int) ($summaryRow['total_count'] ?? 0),
+        'scheduled' => (int) ($summaryRow['scheduled_count'] ?? 0),
+        'today' => (int) ($summaryRow['today_count'] ?? 0),
+        'completed' => (int) ($summaryRow['completed_count'] ?? 0),
+    ];
 
-    $agendas = $pdo->query("
+    $agendaStmt = $pdo->prepare("
         SELECT
             sva.*,
             pic.full_name AS pic_name,
@@ -92,8 +105,11 @@ try {
         FROM secretary_visit_agendas sva
         INNER JOIN user_rh pic ON pic.id = sva.pic_user_id
         LEFT JOIN user_rh updater ON updater.id = sva.updated_by
+        WHERE sva.owner_division = ?
         ORDER BY sva.visit_date DESC, sva.visit_time DESC, sva.id DESC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $agendaStmt->execute([$secretaryDivision]);
+    $agendas = $agendaStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($hasAttachmentTable && !empty($agendas)) {
         $agendaIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $agendas)));

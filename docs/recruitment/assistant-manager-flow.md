@@ -155,7 +155,7 @@ Kriteria tambahan untuk `assistant_manager`:
 
 Migration yang dipakai untuk implementasi ini:
 
-- [`19_2026-04-07_probation_manager_and_recruitment_tracks.sql`](/d:/Project/Web/ems2/docs/sql/19_2026-04-07_probation_manager_and_recruitment_tracks.sql)
+- [`19_2026-04-07_probation_manager_and_recruitment_tracks.sql`](../sql/19_2026-04-07_probation_manager_and_recruitment_tracks.sql)
 
 Catatan:
 

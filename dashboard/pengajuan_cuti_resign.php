@@ -412,6 +412,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <th>Tanggal Cuti</th>
                                         <th>Durasi</th>
                                         <th>Alasan IC</th>
+                                        <th>Alasan OOC</th>
                                         <th>Aksi</th>
                                     </tr>
                                 </thead>
@@ -429,6 +430,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <td><?= formatTanggalIndo($req['start_date']) ?> - <?= formatTanggalIndo($req['end_date']) ?></td>
                                             <td><strong><?= (int)$req['days_total'] ?> hari</strong></td>
                                             <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ic'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ic'] ?? '-') ?></div></td>
+                                            <td><div class="text-sm max-w-xs truncate" title="<?= htmlspecialchars($req['reason_ooc'] ?? '-') ?>"><?= htmlspecialchars($req['reason_ooc'] ?? '-') ?></div></td>
                                             <td class="action-cell">
                                                 <div class="action-row-nowrap">
                                                     <button type="button" onclick="approveCuti(<?= (int)$req['id'] ?>, '<?= htmlspecialchars($req['request_code']) ?>')" class="btn-success btn-sm action-icon-btn" title="Setujui cuti" aria-label="Setujui cuti">
@@ -612,14 +614,18 @@ function showModal(title, message, action, requestId, showRejection) {
     currentRequestId = requestId;
 
     var rejectionSection = document.getElementById('approvalRejectionSection');
+    var approvalReplySection = document.getElementById('approvalReplySection');
     var confirmBtn = document.getElementById('approvalConfirmBtn');
 
     if (showRejection) {
+        approvalReplySection.classList.add('hidden');
         rejectionSection.classList.remove('hidden');
         confirmBtn.className = 'btn-reject-soft';
         confirmBtn.textContent = 'Tolak';
     } else {
         rejectionSection.classList.add('hidden');
+        if (action === 'approve_cuti') approvalReplySection.classList.remove('hidden');
+        else approvalReplySection.classList.add('hidden');
         if (action === 'approve_resign') {
             confirmBtn.className = 'btn-resign-soft';
             confirmBtn.textContent = 'Setujui Resign';
@@ -645,6 +651,8 @@ function closeModal() {
     if (rejectionInput) {
         rejectionInput.value = '';
     }
+    var replyInput = document.getElementById('approvalManagerReply');
+    if (replyInput) replyInput.value = '';
     currentAction = null;
     currentRequestId = null;
 }
@@ -801,6 +809,8 @@ function showCutiDetailModal(data) {
                 <div class="request-detail-value whitespace-pre-line">${htmlspecialchars(data.reason_ooc)}</div>
             </div>
 
+            ${data.manager_approval_reply ? `<div class="request-detail-block request-detail-note-success"><div class="request-detail-label">Balasan manajemen</div><div class="whitespace-pre-line">${htmlspecialchars(data.manager_approval_reply)}</div></div>` : ''}
+
             ${data.rejection_reason ? `
             <div class="request-detail-block request-detail-note-danger">
                 <div class="request-detail-label">Alasan Penolakan</div>
@@ -931,6 +941,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 formData.append('rejection_reason', reason);
             }
+            if (currentAction === 'approve_cuti') {
+                var reply = document.getElementById('approvalManagerReply').value.trim();
+                if (reply.length < 20) {
+                    alert('Balasan persetujuan wajib diisi minimal 20 karakter.');
+                    return;
+                }
+                formData.append('manager_approval_reply', reply);
+            }
 
             console.log('Submitting approval:', currentAction, 'requestId:', currentRequestId);
 
@@ -997,6 +1015,12 @@ document.addEventListener('DOMContentLoaded', function() {
             <div id="approvalRejectionSection" class="hidden mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Alasan Penolakan</label>
                 <textarea id="approvalRejectionReason" class="w-full border border-gray-300 rounded-lg p-2 text-sm" rows="3" placeholder="Masukkan alasan penolakan..."></textarea>
+            </div>
+
+            <div id="approvalReplySection" class="hidden mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Balasan manajemen untuk pemohon <span class="text-red-600">*</span></label>
+                <textarea id="approvalManagerReply" class="w-full border border-gray-300 rounded-lg p-2 text-sm" rows="4" minlength="20" maxlength="2000" placeholder="Contoh: Semoga acaranya berjalan lancar dan menjadi keluarga yang sakinah, mawaddah, warahmah. Jaga kesehatan selama cuti, ya."></textarea>
+                <div class="meta-text-xs mt-1">Minimal 20 karakter. Balasan ini akan terlihat pada detail pengajuan.</div>
             </div>
 
             <div class="modal-actions">

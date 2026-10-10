@@ -6,9 +6,10 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/secretary_access.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-ems_require_division_access(['Secretary'], '/dashboard/index.php');
+$secretaryDivision = secretary_require_division_context('/dashboard/index.php');
 
 $pageTitle = 'Koordinasi Internal Divisi';
 $divisionScopeOptions = ems_division_scope_options();
@@ -78,7 +79,7 @@ $hasAttachmentTable = false;
 
 try {
     $hasAttachmentTable = secretaryCoordinationTableExists($pdo, 'secretary_internal_coordination_attachments');
-    $rows = $pdo->query("
+    $rowsStmt = $pdo->prepare("
         SELECT
             sic.*,
             host.full_name AS host_name,
@@ -86,8 +87,11 @@ try {
         FROM secretary_internal_coordinations sic
         INNER JOIN user_rh host ON host.id = sic.host_user_id
         LEFT JOIN user_rh updater ON updater.id = sic.updated_by
+        WHERE sic.owner_division = ?
         ORDER BY sic.coordination_date DESC, sic.start_time DESC, sic.id DESC
-    ")->fetchAll(PDO::FETCH_ASSOC);
+    ");
+    $rowsStmt->execute([$secretaryDivision]);
+    $rows = $rowsStmt->fetchAll(PDO::FETCH_ASSOC);
 
     if ($hasAttachmentTable && !empty($rows)) {
         $coordinationIds = array_values(array_filter(array_map(static fn($row) => (int) ($row['id'] ?? 0), $rows)));

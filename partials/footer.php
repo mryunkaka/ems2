@@ -166,24 +166,22 @@ $realtimeChatViewer = [
 <?php endif; ?>
 
 <?php
-// Widget bubble Roxy (docs/AI_ASSISTANT_MODULE.md §4a) — bersebelahan
+// Widget bubble Roxy (docs/ai/assistant-module.md §4a) — bersebelahan
 // (ditumpuk di atas) bubble Live Chat di atas, untuk obrolan cepat tanpa
 // pindah halaman. Isinya murni personal (percakapan user yang sedang
 // login saja) — reuse endpoint yang sama dengan halaman chat penuh
 // (dashboard/ai_assistant.php), bukan implementasi terpisah.
 $roxyWidgetEnabled = isset($pdo) && !empty($_SESSION['user_rh']['id']);
-$roxyHasGroqKey = false;
-$roxyHasGeminiKey = false;
+$roxyProviderName = 'Gemini';
+$roxyHasAiProvider = false;
 if ($roxyWidgetEnabled) {
-    require_once __DIR__ . '/../config/groq_settings.php';
     require_once __DIR__ . '/../config/ai_provider_core.php';
-    $roxyUserId = (int) $_SESSION['user_rh']['id'];
-    $roxyWidgetSettings = ems_groq_get_user_settings($pdo, $roxyUserId);
-    $roxyGeminiSettings = ems_ai_provider_get_user_settings($pdo, $roxyUserId);
-    $roxyHasGroqKey = $roxyWidgetSettings !== null && trim((string) ($roxyWidgetSettings['groq_api_key'] ?? '')) !== '';
-    $roxyHasGeminiKey = ems_ai_provider_has_any($roxyGeminiSettings);
+    $roxyWidgetSettings = ems_ai_get_settings($pdo);
+    $roxyHasAiProvider = ems_ai_global_provider_ready($pdo);
+    $roxyProviderName = strtolower((string)($roxyWidgetSettings['provider'] ?? 'gemini')) === 'openai_compatible'
+        ? (string)($roxyWidgetSettings['custom_provider'] ?? 'OpenAI-Compatible')
+        : 'Gemini';
 }
-$roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 ?>
 <?php if ($roxyWidgetEnabled): ?>
     <div id="roxyWidget" class="roxy-widget" aria-live="polite">
@@ -216,12 +214,11 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
 
             <?php if (!$roxyHasAiProvider): ?>
                 <div class="roxy-widget-warning">
-                    Atur provider AI pribadi di
-                    <a href="<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>">Setting AI Saya</a>.
+                    Provider AI global belum siap. Hubungi Programmer Roxwood untuk melengkapi pengaturannya.
                 </div>
-            <?php elseif (!$roxyHasGroqKey && $roxyHasGeminiKey): ?>
+            <?php else: ?>
                 <div class="roxy-widget-info">
-                    Groq belum diatur. Roxy memakai provider AI pribadi.
+                    Provider aktif: <?= htmlspecialchars($roxyProviderName, ENT_QUOTES, 'UTF-8') ?>.
                 </div>
             <?php endif; ?>
 
@@ -474,11 +471,7 @@ $roxyHasAiProvider = $roxyHasGroqKey || $roxyHasGeminiKey;
         function appendResearchSetupNotice() {
             var notice = document.createElement('div');
             notice.className = 'roxy-widget-provider-note';
-            notice.appendChild(document.createTextNode('Untuk riset lebih dalam, atur provider AI personal: '));
-            var link = document.createElement('a');
-            link.href = '<?= htmlspecialchars(ems_url('/dashboard/ai_settings_personal.php'), ENT_QUOTES, 'UTF-8') ?>';
-            link.textContent = 'Setting AI Saya';
-            notice.appendChild(link);
+            notice.appendChild(document.createTextNode('Provider AI global belum dikonfigurasi. Hubungi Programmer Roxwood.'));
             messagesEl.appendChild(notice);
             messagesEl.scrollTop = messagesEl.scrollHeight;
         }

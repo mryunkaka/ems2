@@ -363,6 +363,12 @@ try {
         // ACTION: APPROVE CUTI
         // -------------------------------------------------
         if ($action === 'approve_cuti') {
+            $managerReply = trim((string)($_POST['manager_approval_reply'] ?? ''));
+            $replyLength = function_exists('mb_strlen') ? mb_strlen($managerReply, 'UTF-8') : strlen($managerReply);
+            if ($replyLength < 20) {
+                sendJsonResponse(['success' => false, 'error' => 'Balasan persetujuan wajib diisi minimal 20 karakter'], 422);
+                exit;
+            }
             // Ambil data request
             $stmt = $pdo->prepare("
                 SELECT cr.*, u.full_name, u.position
@@ -384,10 +390,11 @@ try {
                 UPDATE cuti_requests
                 SET status = 'approved',
                     approved_by = ?,
-                    approved_at = NOW()
+                    approved_at = NOW(),
+                    manager_approval_reply = ?
                 WHERE id = ?
             ");
-            $stmt->execute([$userId, $requestId]);
+            $stmt->execute([$userId, $managerReply, $requestId]);
 
             // Update user_cuti data di tabel user_rh
             $stmt = $pdo->prepare("
