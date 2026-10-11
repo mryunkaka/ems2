@@ -1,8 +1,10 @@
 #!/bin/bash
+set -o pipefail
 
 REPO="/home/fouf9972/public_html/rh_ems"
 LOG="/home/fouf9972/git-deploy.log"
 GIT="/usr/bin/git"
+PHP_BIN="${DEPLOY_PHP_BIN:-/usr/local/bin/php}"
 BRANCH="main"
 REMOTE_NAME="${DEPLOY_REMOTE:-origin}"
 FALLBACK_REMOTES="${DEPLOY_FALLBACK_REMOTES:-github-ssh github-mirror}"
@@ -203,6 +205,42 @@ if [ $REMOTE_STATUS -ne 0 ] || [ -z "$REMOTE" ]; then
   if should_log_failure "revparse:${ACTIVE_REMOTE}"; then
     log_error "gagal baca $ACTIVE_REMOTE/$BRANCH - $REMOTE"
   fi
+  exit 1
+fi
+
+if [ ! -x "$PHP_BIN" ]; then
+  log_error "PHP CLI tidak ditemukan atau tidak executable di $PHP_BIN"
+  exit 1
+fi
+
+if [ ! -f "$REPO/bin/deploy_migrations.php" ]; then
+  log_error "runner migrasi tidak ditemukan di $REPO/bin/deploy_migrations.php"
+  exit 1
+fi
+
+MIGRATION_STAGE=$(mktemp -d "/home/fouf9972/.deploy-migrations.XXXXXX") || {
+  log_error "gagal membuat folder sementara untuk migrasi"
+  exit 1
+}
+
+if ! run_git archive "$ACTIVE_REMOTE/$BRANCH" docs/sql | /bin/tar -xf - -C "$MIGRATION_STAGE"; then
+  rm -rf "$MIGRATION_STAGE"
+  log_error "gagal menyiapkan file SQL dari $ACTIVE_REMOTE/$BRANCH"
+  exit 1
+fi
+
+MIGRATION_OUT=$("$PHP_BIN" "$REPO/bin/deploy_migrations.php" "--directory=$MIGRATION_STAGE/docs/sql" 2>&1)
+MIGRATION_STATUS=$?
+rm -rf "$MIGRATION_STAGE"
+if [ -n "$MIGRATION_OUT" ]; then
+  while IFS= read -r MIGRATION_LINE; do
+    echo "[$(timestamp)] $MIGRATION_LINE" >> "$LOG"
+  done <<EOF
+$MIGRATION_OUT
+EOF
+fi
+if [ $MIGRATION_STATUS -ne 0 ]; then
+  log_error "migrasi SQL gagal; deployment kode dihentikan"
   exit 1
 fi
 

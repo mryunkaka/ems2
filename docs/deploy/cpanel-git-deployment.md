@@ -20,10 +20,39 @@ tambahkan cron berikut:
 ```
 
 Cron memeriksa `main` setiap lima menit. Jika ada commit baru, `deploy.sh`
-mengambilnya dan memperbarui checkout produksi. Jika tidak ada perubahan,
+menyiapkan file SQL dari commit terbaru, menjalankan migrasi baru, lalu hanya
+jika migrasi berhasil memperbarui checkout kode. Jika tidak ada perubahan,
 script selesai tanpa mengubah situs. Script mencatat hasil di
 `/home/fouf9972/git-deploy.log`. Ini memerlukan koneksi keluar hosting ke
 GitHub dan remote `origin` yang dapat diakses oleh akun cPanel.
+
+### Aktifkan pencatatan migrasi satu kali
+
+Riwayat lama di `docs/sql/` tidak dijalankan ulang. Runner hanya memproses
+file bernomor **103 ke atas** dan mencatat file serta checksum-nya di tabel
+`ems_deploy_migrations`. Migrasi harus memakai pola nama seperti
+`103_2026-10-12_deskripsi.sql`.
+
+Sebelum cron deployment baru berjalan, buat backup database dan pastikan
+database produksi sudah menerapkan seluruh migrasi lama sampai nomor 102.
+Lalu tambahkan baris berikut ke `.env` di hosting:
+
+```dotenv
+EMS_MIGRATION_BASELINE=102
+```
+
+Pada eksekusi pertama, runner hanya mencatat baseline 102; tidak menjalankan
+SQL lama. Jika database produksi belum sampai migrasi 102, jangan set baseline
+dulu: terapkan migrasi lama yang masih kurang secara terencana. Akun database
+juga perlu izin membuat tabel serta membaca dan menulis tabel pencatatan.
+
+Setiap file migrasi baru dijalankan satu kali sebelum versi kode baru aktif.
+Jika migrasi gagal, deploy kode dihentikan dan detailnya dicatat di
+`/home/fouf9972/git-deploy.log`; perbaiki database/migrasi sebelum melanjutkan.
+Runner menandai migrasi yang sedang berjalan agar eksekusi berikutnya berhenti
+dan tidak mengulang SQL yang mungkin sudah berjalan sebagian.
+File migrasi yang sudah tercatat tidak boleh diedit; buat nomor migrasi baru.
+Tetap tinjau dan backup sebelum migrasi yang menghapus tabel, kolom, atau data.
 
 Untuk menjalankan pemeriksaan pertama, gunakan **Terminal** cPanel:
 
@@ -34,5 +63,5 @@ Untuk menjalankan pemeriksaan pertama, gunakan **Terminal** cPanel:
 Lalu periksa `/home/fouf9972/git-deploy.log`. Endpoint
 `https://roxwoodhospitalime.my.id/ajax/deployment_status.php` menampilkan
 branch dan SHA checkout aktif. Bandingkan `commit` dengan commit terbaru di
-GitHub. Deploy kode tidak menerapkan migrasi SQL; jalankan migrasi baru secara
-terpisah sesuai checklist rilis.
+GitHub. Deployment via cron ini menjalankan migrasi baru sebelum memperbarui
+kode.

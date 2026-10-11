@@ -10,14 +10,15 @@ Use this checklist before publishing a GitHub Release.
 - Run available tests: `npm test`.
 - Syntax-check changed PHP files with `php -l`.
 - Review new SQL migrations in `docs/sql/`.
+- For cPanel auto-deploy, add new migrations as the next numbered file after `102_`; never edit a migration already deployed.
 - Confirm no `.env`, database dump, production upload, log, or private backup is staged.
 
 ## Database
 
-- Back up the production database.
-- Apply migrations in filename order.
-- Record the applied migration range in release notes.
-- Verify rollback expectations for risky migrations.
+- Back up the production database before schema or data changes.
+- cPanel auto-deploy applies numbered migrations above baseline `102` before activating the new code; other environments still apply migrations in filename order.
+- Record the migration filenames in release notes.
+- Review recovery steps for risky or destructive migrations; MySQL DDL may not roll back transactionally.
 
 ## Manual Verification
 
