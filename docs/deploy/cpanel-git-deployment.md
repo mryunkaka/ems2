@@ -1,22 +1,38 @@
 # cPanel Git Deployment
 
-The cPanel-managed checkout and production application directory are both
-`/home/fouf9972/public_html/rh_ems`.
+Checkout produksi dan direktori aplikasi adalah
+`/home/fouf9972/public_html/rh_ems`. Remote `origin` mengarah ke
+`https://github.com/mryunkaka/ems2.git`; branch produksi adalah `main`.
 
-The root `.cpanel.yml` materializes the checked-out `HEAD` in the production
-directory using `git archive`, so only files tracked by Git are copied. It
-excludes deployment metadata and `.env`. Existing `.git/`, `storage/`,
-`vendor/`, uploads, and other runtime files remain intact; deployment does
-not delete files. The production `.htaccess` denies public access to
-`.cpanel.yml` as an added precaution.
+`.cpanel.yml` menyalin `HEAD` checkout cPanel menggunakan `git archive`.
+File yang tidak dilacak Git seperti `.env`, `.git/`, `storage/`, `vendor/`,
+dan upload tidak dihapus. cPanel menjalankan task YAML ketika ada `git push`
+langsung ke repository yang dikelola melalui **Git Version Control**.
 
-This cPanel repository uses pull deployment. After a commit is pushed to
-GitHub, open **Git Version Control → Manage → Pull or Deploy**, choose **Update
-from Remote**, then **Deploy HEAD Commit**. Confirm the deployed HEAD commit in
-cPanel before testing the site. This operation copies PHP source only; apply
-any new SQL migration separately according to the release checklist.
+## Mengambil push GitHub secara otomatis
 
-To verify which commit the live checkout currently serves, request
-`https://roxwoodhospitalime.my.id/ajax/deployment_status.php`. The read-only
-JSON response contains the checked-out branch and full commit SHA. Compare
-`commit` with `git ls-remote origin refs/heads/main` before testing the site.
+Push ke GitHub tidak menjalankan hook `post-receive` milik cPanel. Untuk
+mengambil push GitHub ke hosting, buka **cPanel → Advanced → Cron Jobs** dan
+tambahkan cron berikut:
+
+```cron
+*/5 * * * * /bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh >/dev/null 2>&1
+```
+
+Cron memeriksa `main` setiap lima menit. Jika ada commit baru, `deploy.sh`
+mengambilnya dan memperbarui checkout produksi. Jika tidak ada perubahan,
+script selesai tanpa mengubah situs. Script mencatat hasil di
+`/home/fouf9972/git-deploy.log`. Ini memerlukan koneksi keluar hosting ke
+GitHub dan remote `origin` yang dapat diakses oleh akun cPanel.
+
+Untuk menjalankan pemeriksaan pertama, gunakan **Terminal** cPanel:
+
+```bash
+/bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh
+```
+
+Lalu periksa `/home/fouf9972/git-deploy.log`. Endpoint
+`https://roxwoodhospitalime.my.id/ajax/deployment_status.php` menampilkan
+branch dan SHA checkout aktif. Bandingkan `commit` dengan commit terbaru di
+GitHub. Deploy kode tidak menerapkan migrasi SQL; jalankan migrasi baru secara
+terpisah sesuai checklist rilis.

@@ -2355,7 +2355,7 @@ include __DIR__ . '/../partials/sidebar.php';
             <!-- Card Input Transaksi -->
             <div class="card farmasi-card" id="farmasiInputCard">
                 <div class="farmasi-card-header">
-                    <h2 class="farmasi-card-title">Input Transaksi</h2>
+                    <h2 class="farmasi-card-title">Input Transaksis</h2>
                     <p class="farmasi-card-subtitle">Form transaksi farmasi aktif.</p>
                 </div>
                 <div class="farmasi-card-content">
