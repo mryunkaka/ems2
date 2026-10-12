@@ -13,8 +13,8 @@ WHERE TRIM(full_name) = @medic_name;
 
 SELECT id, name, unit_code, price, bandage_qty, ifaks_qty, painkiller_qty
 FROM packages
-WHERE COALESCE(NULLIF(unit_code, ''), 'roxwood') = (
-    SELECT COALESCE(NULLIF(unit_code, ''), 'roxwood')
+WHERE COALESCE(NULLIF(unit_code, ''), 'roxwood') COLLATE utf8mb4_unicode_ci = (
+    SELECT COALESCE(NULLIF(unit_code, ''), 'roxwood') COLLATE utf8mb4_unicode_ci
     FROM user_rh
     WHERE TRIM(full_name) = @medic_name
     LIMIT 1
@@ -57,7 +57,8 @@ SELECT
     @test_tx_hash
 FROM user_rh AS medic
 JOIN packages AS package
-  ON COALESCE(NULLIF(package.unit_code, ''), 'roxwood') = COALESCE(NULLIF(medic.unit_code, ''), 'roxwood')
+  ON COALESCE(NULLIF(package.unit_code, ''), 'roxwood') COLLATE utf8mb4_unicode_ci
+   = COALESCE(NULLIF(medic.unit_code, ''), 'roxwood') COLLATE utf8mb4_unicode_ci
 WHERE TRIM(medic.full_name) = @medic_name
   AND (
       SELECT COUNT(*)
@@ -68,7 +69,7 @@ WHERE TRIM(medic.full_name) = @medic_name
   AND NOT EXISTS (
       SELECT 1
       FROM sales
-      WHERE tx_hash = @test_tx_hash
+      WHERE tx_hash COLLATE utf8mb4_unicode_ci = @test_tx_hash COLLATE utf8mb4_unicode_ci
   )
 ORDER BY package.id ASC
 LIMIT 1;
@@ -78,4 +79,4 @@ SELECT ROW_COUNT() AS inserted_rows;
 -- Verifikasi baris uji setelah INSERT.
 SELECT id, consumer_name, medic_name, package_name, price, unit_code, created_at
 FROM sales
-WHERE tx_hash = @test_tx_hash;
+WHERE tx_hash COLLATE utf8mb4_unicode_ci = @test_tx_hash COLLATE utf8mb4_unicode_ci;

@@ -191,7 +191,15 @@ try {
         // Record intent before non-transactional MySQL DDL can partially run.
         foreach (ems_split_sql($sql) as $index => $statement) {
             try {
-                $pdo->exec($statement);
+                if (preg_match('/^(SELECT|SHOW|DESCRIBE|EXPLAIN|WITH)\b/i', ltrim($statement))) {
+                    $result = $pdo->query($statement);
+                    if ($result !== false) {
+                        $result->fetchAll();
+                        $result->closeCursor();
+                    }
+                } else {
+                    $pdo->exec($statement);
+                }
             } catch (Throwable $error) {
                 throw new RuntimeException(
                     $file['name'] . ' gagal pada statement ' . ($index + 1) . ': ' . $error->getMessage(),
