@@ -19,6 +19,7 @@ error_log
 */error_log
 *.sql
 !docs/sql/*.sql
+!docs/deploy/*.sql
 cron/error_log
 actions/error_log
 vendor
