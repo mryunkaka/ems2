@@ -33,7 +33,7 @@ $recentFarmasiLoginSelect = $hasFarmasiWebLogin
     : ($hasRecentFarmasiActivity
         ? ', (SELECT MAX(fs.session_start) FROM user_farmasi_sessions fs WHERE fs.user_id = user_rh.id) AS last_farmasi_login'
         : ', NULL AS last_farmasi_login');
-$stmt = $pdo->prepare("SELECT id, full_name, position, division, tanggal_masuk, tanggal_lahir_ic" . ($hasUserUnit ? ', unit_code' : ", 'roxwood' AS unit_code") . " {$recentFarmasiLoginSelect} FROM user_rh WHERE tanggal_masuk IS NOT NULL AND DATE_FORMAT(tanggal_masuk, '%m-%d') <= ? AND YEAR(tanggal_masuk) < ? AND COALESCE(is_active, 1) = 1 {$recentFarmasiActivityWhere} ORDER BY DATE_FORMAT(tanggal_masuk, '%m-%d'), full_name");
+$stmt = $pdo->prepare("SELECT id, full_name, position, division, tanggal_masuk, tanggal_lahir_ic" . ($hasUserUnit ? ', unit_code' : ", 'roxwood' AS unit_code") . " {$recentFarmasiLoginSelect} FROM user_rh WHERE tanggal_masuk IS NOT NULL AND DATE_FORMAT(tanggal_masuk, '%m-%d') = ? AND YEAR(tanggal_masuk) < ? AND COALESCE(is_active, 1) = 1 {$recentFarmasiActivityWhere} ORDER BY full_name");
 $stmt->execute([$todayKey, $year]);
 $people = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 $items = [];
