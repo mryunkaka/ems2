@@ -327,6 +327,42 @@ function ems_medical_record_notification_user_ids(int $doctorId, array $assistan
     return array_values(array_filter($userIds, static fn (int $id): bool => $id > 0));
 }
 
+class EMSFarmasiCapacityException extends RuntimeException {}
+class EMSFarmasiCooldownException extends RuntimeException {}
+
+/**
+ * Enforce the configured concurrent farmasi-online limit while holding the
+ * settings row lock. Call inside a transaction so simultaneous online requests
+ * are serialized against the same lock.
+ */
+function ems_assert_farmasi_online_capacity(PDO $pdo, int $userId): void
+{
+    if ($userId <= 0) {
+        throw new InvalidArgumentException('User farmasi tidak valid.');
+    }
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('Pemeriksaan kapasitas farmasi harus berada di dalam transaksi.');
+    }
+
+    $settingsStmt = $pdo->query('SELECT max_online_medics FROM farmasi_online_settings ORDER BY id ASC LIMIT 1 FOR UPDATE');
+    $maxOnlineMedics = max(0, (int)($settingsStmt->fetchColumn() ?: 0));
+    if ($maxOnlineMedics <= 0) {
+        return;
+    }
+
+    $statusStmt = $pdo->prepare('SELECT status FROM user_farmasi_status WHERE user_id = ? LIMIT 1 FOR UPDATE');
+    $statusStmt->execute([$userId]);
+    if ($statusStmt->fetchColumn() === 'online') {
+        return;
+    }
+
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM user_farmasi_status WHERE status = 'online'");
+    $countStmt->execute();
+    if ((int)$countStmt->fetchColumn() >= $maxOnlineMedics) {
+        throw new EMSFarmasiCapacityException('Maksimal medis online sudah tercapai.');
+    }
+}
+
 function ems_farmasi_max_duty_minutes(PDO $pdo): int
 {
     static $cached = null;

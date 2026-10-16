@@ -37,6 +37,7 @@ try {
         FROM farmasi_online_settings
         ORDER BY id ASC
         LIMIT 1
+        FOR UPDATE
     ");
     $settingsStmt->execute();
     $settings = $settingsStmt->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -55,7 +56,7 @@ try {
             $otherOnlineCount = (int)$onlineCountStmt->fetchColumn();
 
             if ($otherOnlineCount >= $maxOnlineMedics) {
-                throw new RuntimeException('Maksimal medis online sudah tercapai.');
+                throw new EMSFarmasiCapacityException('Maksimal medis online sudah tercapai.');
             }
         }
 
@@ -77,7 +78,7 @@ try {
 
                 if ($secondsSinceOffline < $cooldownSeconds) {
                     $remainingMinutes = (int)ceil(($cooldownSeconds - $secondsSinceOffline) / 60);
-                    throw new RuntimeException('Cooldown masih aktif. Coba online lagi dalam ' . $remainingMinutes . ' menit.');
+                    throw new EMSFarmasiCooldownException('Cooldown masih aktif. Coba online lagi dalam ' . $remainingMinutes . ' menit.');
                 }
             }
         }
@@ -245,6 +246,8 @@ try {
 
     echo json_encode([
         'success' => false,
-        'message' => $e instanceof RuntimeException ? $e->getMessage() : 'Gagal update status'
+        'message' => ($e instanceof EMSFarmasiCapacityException || $e instanceof EMSFarmasiCooldownException)
+            ? $e->getMessage()
+            : 'Gagal update status'
     ]);
 }

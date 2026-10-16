@@ -679,14 +679,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($medicName === '' || $medicJabatan === '') {
                 $errors[] = "Set dulu nama petugas medis sebelum input transaksi.";
             } else {
-                try {
-                    // Sinkronkan status lebih awal agar tombol simpan tidak terblokir
-                    // hanya karena status sebelumnya masih OFFLINE.
-                    ensureFarmasiOnline($pdo, $userId, $medicName, $medicJabatan, false);
-                } catch (Throwable $e) {
-                    app_log('[FARMASI AUTO-ONLINE ERROR] user_id=' . $userId . ' | error=' . $e->getMessage());
-                }
-
                 // ===============================
                 // AMBIL INPUT + NORMALISASI CITIZEN ID
                 // ===============================
@@ -817,6 +809,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (empty($errors)) {
                     $pdo->beginTransaction();
                     $transactionStarted = true;
+
+                    try {
+                        // Transaksi farmasi mengaktifkan status online setelah berhasil;
+                        // pastikan slot tersedia sebelum transaksi disimpan.
+                        ems_assert_farmasi_online_capacity($pdo, $userId);
+                    } catch (EMSFarmasiCapacityException $e) {
+                        $errors[] = $e->getMessage();
+                    }
 
                     $addBandage = 0;
                     $addIfaks   = 0;
@@ -2360,6 +2360,8 @@ include __DIR__ . '/../partials/sidebar.php';
                 </div>
                 <div class="farmasi-card-content">
 
+                    <div id="farmasiCapacityNotice" class="notice-box notice-warning" role="status" aria-live="polite" style="display:none;"></div>
+
                     <?php if ($medicName): ?>
                         <?php
                         // Ambil status farmasi (aman, fallback offline)
@@ -2657,13 +2659,14 @@ include __DIR__ . '/../partials/sidebar.php';
                     <div class="farmasi-card-header">
                         <div class="card-header-between">
                             <h3 class="farmasi-card-title">Medis Online</h3>
-                            <div class="flex items-center gap-2">
+                            <div class="flex flex-wrap items-center justify-end gap-2">
                                 <?php if ($canViewFarmasiSettings): ?>
                                     <button type="button" id="btnFarmasiSettings" class="btn-secondary btn-sm" onclick="openFarmasiSettingsModal()">
                                         <?= ems_icon('cog-6-tooth', 'h-4 w-4') ?> Setting
                                     </button>
                                 <?php endif; ?>
                                 <span id="totalMedicsBadge" class="badge-counter">0 orang</span>
+                                <span id="onlineMedicsLimitBadge" class="badge-counter">Maksimal: memuat...</span>
                             </div>
                         </div>
                         <p class="farmasi-card-subtitle">Prioritas penjualan paling sedikit di urutan atas.</p>
@@ -5025,16 +5028,49 @@ include __DIR__ . '/../partials/sidebar.php';
 
             const container = document.getElementById('onlineMedicsContainer');
             const totalBadge = document.getElementById('totalMedicsBadge');
+            const limitBadge = document.getElementById('onlineMedicsLimitBadge');
+            const capacityNotice = document.getElementById('farmasiCapacityNotice');
             if (!container || !totalBadge) return;
 
             // STATE GLOBAL (JANGAN RESET SETIAP RENDER)
             let baseTimestamp = {};
             let lastDataHash = '';
+            let onlineMedicsCount = 0;
+            let maxOnlineMedics = 0;
+
+            function renderCapacityStatus() {
+                if (limitBadge) {
+                    limitBadge.textContent = maxOnlineMedics > 0
+                        ? `Maksimal ${maxOnlineMedics} medis`
+                        : 'Tanpa batas';
+                }
+
+                if (!capacityNotice) return;
+                const isFull = maxOnlineMedics > 0 && onlineMedicsCount >= maxOnlineMedics;
+                if (!isFull) {
+                    capacityNotice.style.display = 'none';
+                    capacityNotice.innerHTML = '';
+                    return;
+                }
+
+                capacityNotice.innerHTML = `
+                    <strong>Farmasi sedang penuh (${onlineMedicsCount}/${maxOnlineMedics} medis online).</strong><br>
+                    Silakan hubungi Comdis untuk mengatur jumlah jaga farmasi. Medis yang sudah online tetap dapat melanjutkan transaksi.
+                `;
+                capacityNotice.style.display = 'block';
+            }
+
+            window.EMSSetFarmasiOnlineLimit = function(limit) {
+                maxOnlineMedics = Math.max(0, parseInt(limit || 0, 10));
+                renderCapacityStatus();
+            };
 
             function updateTotal(count) {
+                onlineMedicsCount = Math.max(0, parseInt(count || 0, 10));
                 totalBadge.textContent = count + ' orang';
                 totalBadge.style.background = count === 0 ? '#fee2e2' : '#dcfce7';
                 totalBadge.style.color = count === 0 ? '#991b1b' : '#166534';
+                renderCapacityStatus();
             }
 
             function escapeHtml(str) {
@@ -6745,6 +6781,9 @@ include __DIR__ . '/../partials/sidebar.php';
                 FARMASI_SETTINGS.maxOnlineMedics = parseInt(json.settings.max_online_medics || 0, 10);
                 FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings.max_duty_minutes || 0, 10);
                 FARMASI_SETTINGS.cooldownMinutes = parseInt(json.settings.cooldown_minutes || 0, 10);
+                if (typeof window.EMSSetFarmasiOnlineLimit === 'function') {
+                    window.EMSSetFarmasiOnlineLimit(FARMASI_SETTINGS.maxOnlineMedics);
+                }
 
                 // Update form values
                 const maxMedicsEl = document.getElementById('settingMaxMedics');
@@ -6933,6 +6972,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         FARMASI_SETTINGS.maxOnlineMedics = maxMedics;
                         FARMASI_SETTINGS.maxDutyMinutes = parseInt(json.settings?.max_duty_minutes || 0, 10);
                         FARMASI_SETTINGS.cooldownMinutes = cooldown;
+                        if (typeof window.EMSSetFarmasiOnlineLimit === 'function') {
+                            window.EMSSetFarmasiOnlineLimit(FARMASI_SETTINGS.maxOnlineMedics);
+                        }
                         // Restart duty check jika perlu
                         if (FARMASI_SETTINGS.maxDutyMinutes > 0) {
                             startDutyCheck();
