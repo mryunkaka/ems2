@@ -93,6 +93,7 @@ function emsFindCaBundlePath(): ?string
     $candidates = [
         ini_get('curl.cainfo') ?: null,
         ini_get('openssl.cafile') ?: null,
+        getenv('LOCALAPPDATA') ? rtrim((string)getenv('LOCALAPPDATA'), '\\/') . DIRECTORY_SEPARATOR . 'Programs' . DIRECTORY_SEPARATOR . 'Git' . DIRECTORY_SEPARATOR . 'usr' . DIRECTORY_SEPARATOR . 'ssl' . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR . 'ca-bundle.crt' : null,
         'C:\\Program Files\\Git\\usr\\ssl\\certs\\ca-bundle.crt',
         'C:\\Program Files\\Git\\mingw64\\ssl\\certs\\ca-bundle.crt',
         '/etc/ssl/certs/ca-certificates.crt',
