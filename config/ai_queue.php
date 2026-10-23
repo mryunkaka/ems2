@@ -3,6 +3,17 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ai_settings.php';
 
+function ems_ai_queue_safe_return_path(string $path): string
+{
+    $path = trim($path);
+    if ($path === '' || str_contains($path, "\\") || preg_match('/[\x00-\x1F\x7F]/', $path)) return '';
+    $parts = parse_url($path);
+    if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || !str_starts_with((string)($parts['path'] ?? ''), '/dashboard/')) return '';
+    if (preg_match('/(?:^|\/)\.\.(?:\/|$)/', rawurldecode((string)$parts['path']))) return '';
+    if (!preg_match('~^/dashboard/[A-Za-z0-9_./-]+\.php$~', (string)$parts['path'])) return '';
+    return (string)$parts['path'] . (isset($parts['query']) ? '?' . $parts['query'] : '');
+}
+
 function ems_ai_queue_settings(PDO $pdo, bool $forUpdate = false): array
 {
     $defaults = ['is_enabled' => 1, 'ai_max_concurrent_requests' => 1, 'ai_max_queue_size' => 50, 'timeout_seconds' => 30];
@@ -53,17 +64,63 @@ function ems_ai_queue_status(PDO $pdo, int $jobId, int $requesterId): array
     $stmt = $pdo->prepare('SELECT * FROM system_ai_request_queue WHERE id=? AND requester_id=?'); $stmt->execute([$jobId,$requesterId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) throw new RuntimeException('Pekerjaan tidak ditemukan.');
-    $position = null;
+    $position = null; $ahead = [];
     if ($row['status'] === 'queued') {
         $q = $pdo->prepare("SELECT COUNT(*) FROM system_ai_request_queue WHERE status='queued' AND (queued_at < ? OR (queued_at = ? AND id <= ?))");
         $q->execute([$row['queued_at'],$row['queued_at'],$jobId]); $position = (int)$q->fetchColumn();
+        $aheadSql = "SELECT q.feature_label,q.queued_at,COALESCE(NULLIF(u.full_name,''),'Pengguna') AS requester_name FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='queued' AND (q.queued_at < ? OR (q.queued_at = ? AND q.id < ?)) ORDER BY q.queued_at,q.id";
+        try {
+            $q = $pdo->prepare($aheadSql);
+            $q->execute([$row['queued_at'],$row['queued_at'],$jobId]);
+            $ahead = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable) {
+            $q = $pdo->prepare("SELECT feature_label,queued_at,'Pengguna' AS requester_name FROM system_ai_request_queue WHERE status='queued' AND (queued_at < ? OR (queued_at = ? AND id < ?)) ORDER BY queued_at,id");
+            $q->execute([$row['queued_at'],$row['queued_at'],$jobId]);
+            $ahead = $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        }
     }
     try {
-        $active = $pdo->query("SELECT u.full_name AS requester_name,q.feature_label FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='running' ORDER BY q.started_at,q.id")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $active = $pdo->query("SELECT COALESCE(NULLIF(u.full_name,''),'Pengguna') AS requester_name,q.feature_label,q.started_at FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='running' ORDER BY q.started_at,q.id")->fetchAll(PDO::FETCH_ASSOC) ?: [];
     } catch (Throwable) {
-        $active = $pdo->query("SELECT 'Pengguna' AS requester_name,feature_label FROM system_ai_request_queue WHERE status='running' ORDER BY started_at,id")->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $active = $pdo->query("SELECT 'Pengguna' AS requester_name,feature_label,started_at FROM system_ai_request_queue WHERE status='running' ORDER BY started_at,id")->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
-    $out = ['job_id'=>(int)$row['id'],'status'=>$row['status'],'feature_label'=>$row['feature_label'],'position'=>$position,'active'=>$active];
+    $now = time();
+    $waitingSeconds = $row['status'] === 'queued' ? max(0, $now - (strtotime((string)$row['queued_at']) ?: $now)) : 0;
+    foreach ($ahead as &$item) $item['waited_seconds'] = max(0, $now - (strtotime((string)$item['queued_at']) ?: $now));
+    unset($item);
+    foreach ($active as &$item) $item['running_seconds'] = max(0, $now - (strtotime((string)$item['started_at']) ?: $now));
+    unset($item);
+
+    $durations = [];
+    try {
+        $recent = $pdo->query("SELECT started_at,completed_at FROM system_ai_request_queue WHERE status='completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($recent as $completed) {
+            $duration = (strtotime((string)$completed['completed_at']) ?: 0) - (strtotime((string)$completed['started_at']) ?: 0);
+            if ($duration > 0) $durations[] = $duration;
+        }
+    } catch (Throwable) {
+        $durations = [];
+    }
+    $averageJobSeconds = $durations === [] ? 60 : (int)round(array_sum($durations) / count($durations));
+    $averageJobSeconds = max(15, min(600, $averageJobSeconds));
+    $settings = ems_ai_queue_settings($pdo);
+    $concurrency = max(1, (int)($settings['ai_max_concurrent_requests'] ?? 1));
+    $estimatedWaitSeconds = $row['status'] === 'queued'
+        ? (int)(ceil((count($ahead) + count($active)) / $concurrency) * $averageJobSeconds)
+        : 0;
+    $jobRunningSeconds = $row['status'] === 'running' ? max(0, $now - (strtotime((string)($row['started_at'] ?? '')) ?: $now)) : 0;
+    $out = [
+        'job_id'=>(int)$row['id'],
+        'status'=>$row['status'],
+        'feature_label'=>$row['feature_label'],
+        'position'=>$position,
+        'waited_seconds'=>$waitingSeconds,
+        'estimated_wait_seconds'=>$estimatedWaitSeconds,
+        'job_running_seconds'=>$jobRunningSeconds,
+        'worker_delayed'=>$row['status'] === 'queued' && $waitingSeconds >= 75 && $active === [],
+        'queue_ahead'=>$ahead,
+        'active'=>$active,
+    ];
     if ($row['status'] === 'completed') $out['result'] = json_decode((string)$row['result_json'], true);
     if ($row['status'] === 'failed') $out['error'] = $row['error_message'] ?: 'Pekerjaan AI gagal.';
     return $out;

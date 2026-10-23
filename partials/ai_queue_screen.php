@@ -10,8 +10,12 @@ $queueFeature = (string)($queueFeature ?? 'Permintaan AI');
     <div class="ai-queue-progress"><span></span></div>
     <p class="ai-queue-status" data-queue-status aria-live="polite">Menghubungkan ke antrean…</p>
     <p class="ai-queue-position" data-queue-position></p>
+    <p class="ai-queue-wait" data-queue-wait></p>
+    <p class="ai-queue-worker-note" data-queue-worker-note hidden style="padding:12px 14px;border:1px solid #8b6424;border-radius:10px;background:#3b2e18;color:#ffe6ae"></p>
     <section class="ai-queue-active" aria-label="Aktivitas AI saat ini">
         <h2>Penggunaan AI saat ini</h2><ul data-queue-active><li>Memuat aktivitas…</li></ul>
+        <h2 class="ai-queue-ahead-title">Menunggu sebelum Anda</h2>
+        <ul data-queue-ahead><li>Memuat antrean...</li></ul>
     </section>
     <pre class="ai-queue-result" data-queue-result hidden></pre>
     <a class="ai-queue-continue" data-queue-continue hidden href="<?= htmlspecialchars((string)$queueNextUrl, ENT_QUOTES, 'UTF-8') ?>">Lanjut ke halaman</a>

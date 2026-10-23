@@ -15,6 +15,7 @@ require_once __DIR__ . '/../config/date_range.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/recruitment_settings.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
+require_once __DIR__ . '/../actions/candidate_interview_admin.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $role = $user['role'] ?? '';
@@ -522,6 +523,35 @@ function candidateRecomputedResult(array $row): array
 }
 
 /* ===============================
+   ADMINISTRASI SESI INTERVIEW
+   =============================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['refresh_interview_result'])) {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        exit('Invalid CSRF token');
+    }
+
+    if (!ems_candidate_can_manage_interviews($user)) {
+        http_response_code(403);
+        exit('Akses pengelolaan interview ditolak.');
+    }
+
+    $applicantId = (int)($_POST['applicant_id'] ?? 0);
+    $interviewerId = isset($_POST['interviewer_id']) ? (int)$_POST['interviewer_id'] : null;
+    try {
+        $result = ems_candidate_refresh_interview($pdo, $applicantId, $interviewerId);
+        $refreshState = !empty($result['deleted'])
+            ? 'deleted'
+            : (!empty($result['reset']) ? 'reset' : 'recalculated');
+        header('Location: candidates.php?interview_refresh=' . $refreshState);
+        exit;
+    } catch (Throwable $error) {
+        error_log('CANDIDATE_INTERVIEW_REFRESH: ' . $error->getMessage());
+        header('Location: candidates.php?interview_refresh_error=1');
+        exit;
+    }
+}
+
+/* ===============================
    SELESAI INTERVIEW (DARI LIST)
    =============================== */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['finish_interview'])) {
@@ -992,11 +1022,35 @@ $candidateSql .= " ORDER BY m.created_at DESC";
 $stmt = $pdo->prepare($candidateSql);
 $stmt->execute($candidateParams);
 $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$candidateInterviewers = [];
+$candidateIds = array_values(array_unique(array_filter(array_map(
+    static fn(array $candidate): int => (int)($candidate['id'] ?? 0),
+    $candidates
+))));
+if ($candidateIds !== []) {
+    $placeholders = implode(',', array_fill(0, count($candidateIds), '?'));
+    $interviewerStmt = $pdo->prepare("
+        SELECT s.applicant_id, s.hr_id, u.full_name
+        FROM applicant_interview_scores s
+        LEFT JOIN user_rh u ON u.id = s.hr_id
+        WHERE s.applicant_id IN ({$placeholders})
+        GROUP BY s.applicant_id, s.hr_id, u.full_name
+        ORDER BY u.full_name
+    ");
+    $interviewerStmt->execute($candidateIds);
+    foreach ($interviewerStmt->fetchAll(PDO::FETCH_ASSOC) as $interviewerRow) {
+        $candidateInterviewers[(int)$interviewerRow['applicant_id']][] = [
+            'id' => (int)$interviewerRow['hr_id'],
+            'name' => trim((string)($interviewerRow['full_name'] ?? '')) ?: 'User #' . (int)$interviewerRow['hr_id'],
+        ];
+    }
+}
 $recruitmentPortalSettings = ems_recruitment_get_settings($pdo);
 $recruitmentPortalIsOpen = (int)($recruitmentPortalSettings['is_open'] ?? 1) === 1;
 $recruitmentPortalClosedMessage = (string)($recruitmentPortalSettings['closed_message'] ?? '');
 $canManageRecruitmentSettings = candidateCanManageRecruitmentSettings($user, $userDivision);
 $canEditFinalDecision = candidateCanEditFinalDecision($user, $userDivision);
+$canManageInterviewSessions = ems_candidate_can_manage_interviews($user);
 $candidateExportQuery = http_build_query(array_filter([
     'range' => $_GET['range'] ?? 'week4',
     'from' => $_GET['from'] ?? '',
@@ -1078,6 +1132,16 @@ $candidateExportQuery = http_build_query(array_filter([
                 <div class="alert alert-danger mb-4">
                     Gagal menghapus permanen data kandidat.
                 </div>
+            <?php endif; ?>
+
+            <?php if (($_GET['interview_refresh'] ?? '') === 'deleted'): ?>
+                <div class="alert alert-success mb-4">Sesi interview dihapus dan nilai dari sesi yang tersisa berhasil dihitung ulang. Tahap kandidat dikembalikan ke interview.</div>
+            <?php elseif (($_GET['interview_refresh'] ?? '') === 'reset'): ?>
+                <div class="alert alert-success mb-4">Sesi interview direset: jawaban, skor, dan nama interviewer dihapus. Kandidat siap dinilai ulang pada tahap interview.</div>
+            <?php elseif (($_GET['interview_refresh'] ?? '') === 'recalculated'): ?>
+                <div class="alert alert-success mb-4">Nilai dari sesi interviewer yang tersisa berhasil dihitung ulang.</div>
+            <?php elseif (isset($_GET['interview_refresh_error'])): ?>
+                <div class="alert alert-danger mb-4">Gagal memperbarui hasil interview. Periksa jumlah sesi dan status kandidat, lalu coba lagi.</div>
             <?php endif; ?>
 
             <?php if (isset($_GET['recruitment_settings_saved']) && $_GET['recruitment_settings_saved'] === '1'): ?>
@@ -1247,6 +1311,35 @@ $candidateExportQuery = http_build_query(array_filter([
                                         <a href="candidate_decision.php?id=<?= (int)$c['id'] ?>" class="btn-success btn-sm action-icon-btn candidate-action-btn" title="Lihat keputusan kandidat" aria-label="Lihat keputusan kandidat">
                                             <?= ems_icon('check-badge', 'h-4 w-4') ?>
                                         </a>
+                                    <?php endif; ?>
+
+                                    <?php if ($canManageInterviewSessions && in_array($c['status'], ['interview', 'final_review'], true) && (int)$c['total_hr'] > 0 && empty($c['final_result'])): ?>
+                                        <?php $sessionInterviewers = $candidateInterviewers[(int)$c['id']] ?? []; ?>
+                                        <?php if ((int)$c['total_hr'] > 1): ?>
+                                            <form method="post" class="candidate-interview-refresh-form">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="refresh_interview_result" value="1">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <select name="interviewer_id" class="form-control form-control-sm" required aria-label="Pilih sesi interviewer yang akan dihapus">
+                                                    <option value="">Pilih sesi untuk dihapus</option>
+                                                    <?php foreach ($sessionInterviewers as $interviewer): ?>
+                                                        <option value="<?= (int)$interviewer['id'] ?>"><?= htmlspecialchars($interviewer['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                                <button type="submit" class="btn-secondary btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Hapus sesi interviewer yang dipilih dan hitung ulang nilai dari sesi yang tersisa?')" title="Hapus sesi interviewer dan hitung ulang" aria-label="Hapus sesi interviewer dan hitung ulang">
+                                                    <?= ems_icon('user-minus', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        <?php else: ?>
+                                            <form method="post">
+                                                <?= csrfField(); ?>
+                                                <input type="hidden" name="refresh_interview_result" value="1">
+                                                <input type="hidden" name="applicant_id" value="<?= (int)$c['id'] ?>">
+                                                <button type="submit" class="btn-primary btn-sm action-icon-btn candidate-action-btn" onclick="return confirm('Reset sesi interview ini? Jawaban dan skor interviewer akan dihapus agar interview dapat dilakukan ulang.')" title="Reset sesi interview" aria-label="Reset sesi interview">
+                                                    <?= ems_icon('arrow-path', 'h-4 w-4') ?>
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
                                     <?php endif; ?>
 
                                     <?php if ($canEditFinalDecision && in_array((string)($c['final_result'] ?? ''), ['lolos', 'tidak_lolos'], true)): ?>

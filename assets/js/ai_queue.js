@@ -26,7 +26,10 @@
   if (!root) return;
   const statusNode = root.querySelector('[data-queue-status]');
   const positionNode = root.querySelector('[data-queue-position]');
+  const waitNode = root.querySelector('[data-queue-wait]');
+  const workerNoteNode = root.querySelector('[data-queue-worker-note]');
   const activeNode = root.querySelector('[data-queue-active]');
+  const aheadNode = root.querySelector('[data-queue-ahead]');
   const resultNode = root.querySelector('[data-queue-result]');
   const continueNode = root.querySelector('[data-queue-continue]');
   const messages = { queued: 'Menunggu giliran di antrean…', running: 'Model AI sedang bekerja…', completed: 'Permintaan selesai.', failed: 'Permintaan tidak berhasil.' };
@@ -38,8 +41,26 @@
     }
     items.forEach((item) => {
       const li = document.createElement('li');
-      li.textContent = `${item.requester_name || 'Pengguna'} — ${item.feature_label || 'Permintaan AI'}`;
+      li.textContent = `${item.requester_name || 'Pengguna'} — ${item.feature_label || 'Permintaan AI'} (berjalan ${formatDuration(item.running_seconds)})`;
       activeNode.append(li);
+    });
+  };
+  const formatDuration = (seconds) => {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (total < 60) return `${total} detik`;
+    const minutes = Math.floor(total / 60);
+    const remainder = total % 60;
+    return remainder ? `${minutes} menit ${remainder} detik` : `${minutes} menit`;
+  };
+  const renderAhead = (items) => {
+    aheadNode.replaceChildren();
+    if (!Array.isArray(items) || items.length === 0) {
+      const li = document.createElement('li'); li.textContent = 'Tidak ada pekerjaan lain di depan Anda.'; aheadNode.append(li); return;
+    }
+    items.forEach((item) => {
+      const li = document.createElement('li');
+      li.textContent = `${item.requester_name || 'Pengguna'} — ${item.feature_label || 'Permintaan AI'} (menunggu ${formatDuration(item.waited_seconds)})`;
+      aheadNode.append(li);
     });
   };
   const poll = async () => {
@@ -54,11 +75,24 @@
       if (!response.ok || !data || !data.ok) { statusNode.textContent = data?.error || 'Status belum dapat dibaca; mencoba kembali…'; await pause(delay); delay = Math.min(8000, delay * 1.5); continue; }
       statusNode.textContent = messages[data.status] || 'Memeriksa status…';
       positionNode.textContent = data.status === 'queued' && data.position ? `Posisi antrean: ${data.position}` : '';
+      waitNode.textContent = data.status === 'queued'
+        ? `Sudah menunggu ${formatDuration(data.waited_seconds)}. Perkiraan giliran Anda mulai: sekitar ${formatDuration(data.estimated_wait_seconds)}.`
+        : (data.status === 'running' ? `Sedang diproses selama ${formatDuration(data.job_running_seconds)}.` : '');
+      workerNoteNode.hidden = !data.worker_delayed;
+      if (data.worker_delayed) workerNoteNode.textContent = 'Belum ada worker yang memproses antrean lebih dari satu menit. Cron di hosting tidak berjalan pada localhost. Untuk memproses antrean lokal, buka PowerShell di folder proyek lalu jalankan: C:\\Server\\php-8.5.12-nts-Win32-vs17-x64\\php.exe actions\\ai_queue_worker.php. Worker akan menjalankan pekerjaan satu per satu lalu berhenti.';
+      renderAhead(data.queue_ahead);
       renderActive(data.active);
       if (data.status === 'completed') {
         root.querySelector('.ai-queue-progress').hidden = true;
-        if (data.result !== undefined) { resultNode.hidden = false; resultNode.textContent = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2); }
-        if (root.dataset.nextUrl) continueNode.hidden = false;
+        if (root.dataset.nextUrl) {
+          statusNode.textContent = 'Selesai. Mengalihkan Anda ke halaman tujuan…';
+          resultNode.hidden = true;
+          continueNode.hidden = false;
+          window.setTimeout(() => window.location.assign(root.dataset.nextUrl), 1200);
+        } else if (data.result !== undefined) {
+          resultNode.hidden = false;
+          resultNode.textContent = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+        }
         return;
       }
       if (data.status === 'failed') { root.querySelector('.ai-queue-progress').hidden = true; positionNode.textContent = data.error || 'Silakan coba kembali nanti.'; return; }

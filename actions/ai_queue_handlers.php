@@ -140,17 +140,6 @@ function ems_ai_queue_prepare_submission(string $jobType, int $requesterId, arra
     return ['job_type' => $jobType, 'feature_label' => $definition['label'], 'references' => $prepared['references'], 'dedupe_key' => (string)$prepared['dedupe_key']];
 }
 
-function ems_ai_queue_safe_return_path(string $path): string
-{
-    $path = trim($path);
-    if ($path === '' || str_contains($path, "\\") || preg_match('/[\x00-\x1F\x7F]/', $path)) return '';
-    $parts = parse_url($path);
-    if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || !str_starts_with((string)($parts['path'] ?? ''), '/dashboard/')) return '';
-    if (preg_match('/(?:^|\/)\.\.(?:\/|$)/', rawurldecode((string)$parts['path']))) return '';
-    if (!preg_match('~^/dashboard/[A-Za-z0-9_./-]+\.php$~', (string)$parts['path'])) return '';
-    return (string)$parts['path'] . (isset($parts['query']) ? '?' . $parts['query'] : '');
-}
-
 function ems_ai_queue_register_handler(string $jobType, callable $handler): void
 {
     $GLOBALS['ems_ai_queue_handlers'][$jobType] = $handler;
