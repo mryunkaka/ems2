@@ -31,10 +31,28 @@ aiQueueTest('http.csrf_requires_session_token', static function (): void {
     aiQueueAssertSame(false,validateCsrfToken('wrong-token'));
 });
 
+aiQueueTest('http.browser_worker_requires_authenticated_post_and_csrf', static function (): void {
+    aiQueueAssertSame(true,ems_ai_queue_browser_request_allowed('POST',8,true));
+    aiQueueAssertSame(false,ems_ai_queue_browser_request_allowed('GET',8,true));
+    aiQueueAssertSame(false,ems_ai_queue_browser_request_allowed('POST',0,true));
+    aiQueueAssertSame(false,ems_ai_queue_browser_request_allowed('POST',8,false));
+});
+
+aiQueueTest('http.browser_worker_response_contains_only_safe_status', static function (): void {
+    $response=ems_ai_queue_browser_response(['processed'=>1,'result'=>['prompt'=>'secret'],'provider_key'=>'secret']);
+    aiQueueAssertSame(['ok','status'],array_keys($response));
+    aiQueueAssertSame(['ok'=>true,'status'=>'processed'],$response);
+});
+
+aiQueueTest('http.wait_screen_loads_csrf_generator_before_render', static function (): void {
+    $screen=file_get_contents(__DIR__.'/../../partials/ai_queue_screen.php');
+    aiQueueAssertTrue(str_contains($screen,"require_once __DIR__ . '/../auth/csrf.php'") || str_contains($screen,"require_once __DIR__.'/../auth/csrf.php'"),'Wait screen must load CSRF functions before generating its worker token.');
+});
+
 aiQueueTest('http.active_metadata_has_no_payload_fields', static function (): void {
     $pdo=aiQueueCoreDb();
     ems_ai_queue_enqueue($pdo,'test',4,'Fitur uji',['prompt'=>'rahasia'],'safe');
     $job=ems_ai_queue_claim($pdo);
     $status=ems_ai_queue_status($pdo,(int)$job['id'],4);
-    aiQueueAssertSame(['requester_name','feature_label'],array_keys($status['active'][0]));
+    aiQueueAssertSame(['requester_name','feature_label','running_seconds'],array_keys($status['active'][0]));
 });

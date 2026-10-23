@@ -31,6 +31,14 @@ aiQueueTest('domain.web_pages_do_not_call_provider_helpers_directly', static fun
     aiQueueAssertTrue(!str_contains($training,'ems_training_generate_groups('),'Halaman training harus enqueue, bukan menjalankan generator langsung.');
     aiQueueAssertTrue(!str_contains($candidate,'ems_ai_generate_candidate_summary(')&&!str_contains($candidate,'ems_ai_review_assessment_plausibility('),'Halaman detail kandidat tidak boleh memanggil model langsung.');
     aiQueueAssertTrue(str_contains($birthday,'ems_ai_queue_enqueue($pdo'),'Pengingat ulang tahun harus memasukkan job ke antrean.');
-    aiQueueAssertTrue(str_contains($anniversary,"if (!defined('EMS_AI_QUEUE_WORKER'))"),'Endpoint masa kerja hanya boleh membuat panggilan model di worker.');
+    aiQueueAssertTrue(str_contains($anniversary,'if (!ems_ai_queue_is_worker_context())'),'Endpoint masa kerja hanya boleh membuat panggilan model di worker tervalidasi.');
     aiQueueAssertTrue(!str_contains($globalSettings,'ems_gemini_test_connection($pdo, $incomingSettings'),'Uji koneksi global harus masuk antrean, bukan memanggil provider dari request web.');
+});
+
+aiQueueTest('domain.anniversary_worker_uses_actor_context_without_session_impersonation', static function (): void {
+    $handlers=file_get_contents(__DIR__.'/../../actions/ai_queue_handlers.php');
+    $anniversary=file_get_contents(__DIR__.'/../../actions/work_anniversary_notices.php');
+    aiQueueAssertTrue(!str_contains($handlers,"\$_SESSION['user_rh']="),'Queue handler must never replace the authenticated browser session.');
+    aiQueueAssertTrue(str_contains($anniversary,'ems_ai_queue_actor_id()'),'Anniversary generation must take its actor from the server-side worker context.');
+    aiQueueAssertTrue(str_contains($anniversary,'ems_ai_queue_can_skip_request_auth()'),'CLI worker must bypass browser auth only through its validated worker context.');
 });

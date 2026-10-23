@@ -1,8 +1,9 @@
 <?php
+require_once __DIR__ . '/../auth/csrf.php';
 $queueUserName = trim((string)($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? 'Pengguna'));
 $queueFeature = (string)($queueFeature ?? 'Permintaan AI');
 ?>
-<main class="ai-queue-card" data-ai-queue data-job-id="<?= (int)$queueJobId ?>" data-status-url="<?= htmlspecialchars(ems_url('/ajax/ai_queue_status.php?job_id=' . (int)$queueJobId), ENT_QUOTES, 'UTF-8') ?>" data-next-url="<?= htmlspecialchars((string)$queueNextUrl, ENT_QUOTES, 'UTF-8') ?>">
+<main class="ai-queue-card" data-ai-queue data-job-id="<?= (int)$queueJobId ?>" data-status-url="<?= htmlspecialchars(ems_url('/ajax/ai_queue_status.php?job_id=' . (int)$queueJobId), ENT_QUOTES, 'UTF-8') ?>" data-worker-url="<?= htmlspecialchars(ems_url('/ajax/ai_queue_work.php'), ENT_QUOTES, 'UTF-8') ?>" data-csrf="<?= htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8') ?>" data-next-url="<?= htmlspecialchars((string)$queueNextUrl, ENT_QUOTES, 'UTF-8') ?>">
     <div class="ai-queue-mark" aria-hidden="true">✦</div>
     <p class="ai-queue-kicker">Antrean AI Roxwood</p>
     <h1>Permintaan Anda sedang diproses</h1>

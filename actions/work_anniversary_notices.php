@@ -1,22 +1,29 @@
 <?php
-session_start();
-require_once __DIR__ . '/../auth/auth_guard.php';
-require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_settings.php';
 require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/ai_gemini_client.php';
+if (!ems_ai_queue_can_skip_request_auth()) {
+    session_start();
+    require_once __DIR__ . '/../auth/auth_guard.php';
+}
+require_once __DIR__ . '/../auth/request_guard.php';
 header('Content-Type: application/json; charset=UTF-8');
 
-$viewerId = (int)($_SESSION['user_rh']['id'] ?? 0);
+$viewerId = ems_ai_queue_actor_id();
+if (ems_ai_queue_is_worker_context() && $viewerId > 0) {
+    $actorCheck=$pdo->prepare('SELECT 1 FROM user_rh WHERE id=? LIMIT 1');
+    $actorCheck->execute([$viewerId]);
+    if ($actorCheck->fetchColumn() === false) throw new RuntimeException('Peminta apresiasi tidak tersedia.');
+}
 if ($viewerId <= 0) { http_response_code(401); echo json_encode(['success'=>false]); exit; }
 emsRequireRateLimit('work_anniversary_notices', emsCurrentRequestIdentifier($viewerId), 10, 60, 'Permintaan apresiasi terlalu sering.');
 $mode = (string)($_GET['mode'] ?? 'list');
 $requestedId = max(0, (int)($_GET['user_id'] ?? 0));
 if ($mode === 'generate') {
     emsRequireRateLimit('work_anniversary_generation', emsCurrentRequestIdentifier($viewerId), 50, 60, 'Pembuatan apresiasi terlalu sering.');
-    if (!defined('EMS_AI_QUEUE_WORKER')) {
+    if (!ems_ai_queue_is_worker_context()) {
         if($_SERVER['REQUEST_METHOD']!=='POST') { http_response_code(405); echo json_encode(['success'=>false,'message'=>'Metode tidak diizinkan.']); exit; }
         emsRequireJsonCsrf('Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.');
         $stmt=$pdo->prepare('SELECT id,tanggal_masuk,is_active FROM user_rh WHERE id=? LIMIT 1'); $stmt->execute([$requestedId]); $person=$stmt->fetch(PDO::FETCH_ASSOC);

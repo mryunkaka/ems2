@@ -34,6 +34,27 @@
   const continueNode = root.querySelector('[data-queue-continue]');
   const messages = { queued: 'Menunggu giliran di antrean…', running: 'Model AI sedang bekerja…', completed: 'Permintaan selesai.', failed: 'Permintaan tidak berhasil.' };
   const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  let workerRequestActive = false;
+  let workerRetryAt = 0;
+  let workerBackoff = 1200;
+  const triggerWorker = async () => {
+    if (workerRequestActive || Date.now() < workerRetryAt) return;
+    workerRequestActive = true;
+    try {
+      const response = await fetch(root.dataset.workerUrl, {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { Accept: 'application/json', 'X-CSRF-Token': root.dataset.csrf }
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) throw new Error('worker unavailable');
+      workerBackoff = data.status === 'idle' ? Math.min(15000, Math.round(workerBackoff * 1.7)) : 1200;
+    } catch {
+      workerBackoff = Math.min(15000, Math.round(workerBackoff * 1.7));
+    } finally {
+      workerRetryAt = Date.now() + workerBackoff;
+      workerRequestActive = false;
+    }
+  };
   const renderActive = (items) => {
     activeNode.replaceChildren();
     if (!Array.isArray(items) || items.length === 0) {
@@ -66,6 +87,7 @@
   const poll = async () => {
     let delay = 1800;
     for (;;) {
+      triggerWorker();
       let response;
       try { response = await fetch(root.dataset.statusUrl, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } }); }
       catch { statusNode.textContent = 'Koneksi terputus; mencoba kembali…'; await pause(delay); delay = Math.min(8000, delay * 1.5); continue; }

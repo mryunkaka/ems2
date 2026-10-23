@@ -88,7 +88,10 @@ function ems_ai_queue_status(PDO $pdo, int $jobId, int $requesterId): array
     $waitingSeconds = $row['status'] === 'queued' ? max(0, $now - (strtotime((string)$row['queued_at']) ?: $now)) : 0;
     foreach ($ahead as &$item) $item['waited_seconds'] = max(0, $now - (strtotime((string)$item['queued_at']) ?: $now));
     unset($item);
-    foreach ($active as &$item) $item['running_seconds'] = max(0, $now - (strtotime((string)$item['started_at']) ?: $now));
+    foreach ($active as &$item) {
+        $item['running_seconds'] = max(0, $now - (strtotime((string)$item['started_at']) ?: $now));
+        unset($item['started_at']);
+    }
     unset($item);
 
     $durations = [];
@@ -201,23 +204,82 @@ function ems_ai_queue_fail(PDO $pdo, int $jobId, Throwable $error): void
     $stmt->execute(['Terjadi kendala saat memproses permintaan AI. Silakan coba kembali.',$jobId]);
 }
 
-function ems_ai_queue_run(PDO $pdo, int $maxRunSeconds = 50): array
+function ems_ai_queue_browser_request_allowed(string $method, int $requesterId, bool $csrfValid): bool
 {
-    if (PHP_SAPI !== 'cli' || !defined('EMS_AI_QUEUE_WORKER')) throw new RuntimeException('Worker antrean hanya dapat dijalankan melalui PHP CLI.');
-    $started=microtime(true); $done=0; ems_ai_queue_recover_expired($pdo);
+    return strtoupper($method) === 'POST' && $requesterId > 0 && $csrfValid;
+}
+
+function ems_ai_queue_browser_response(array $summary): array
+{
+    return ['ok' => true, 'status' => (int)($summary['processed'] ?? 0) > 0 ? 'processed' : 'idle'];
+}
+
+function ems_ai_queue_is_worker_context(): bool
+{
+    return (PHP_SAPI === 'cli' && defined('EMS_AI_QUEUE_WORKER'))
+        || (PHP_SAPI !== 'cli' && defined('EMS_AI_QUEUE_BROWSER_WORKER'));
+}
+
+function ems_ai_queue_actor_id(): int
+{
+    $workerActorId=(int)($GLOBALS['ems_ai_queue_actor_id']??0);
+    if ($workerActorId>0 && ems_ai_queue_is_worker_context()) return $workerActorId;
+    return (int)($_SESSION['user_rh']['id']??0);
+}
+
+function ems_ai_queue_can_skip_request_auth(): bool
+{
+    return ems_ai_queue_is_worker_context() && ems_ai_queue_actor_id() > 0;
+}
+
+function ems_ai_queue_process_one(PDO $pdo): bool
+{
     require_once __DIR__.'/../actions/ai_queue_handlers.php';
-    do {
-        $job=ems_ai_queue_claim($pdo); if (!$job) break;
-        $GLOBALS['ems_ai_queue_current_job_id']=(int)$job['id'];
-        try { $refs=json_decode((string)$job['references_json'],true,32,JSON_THROW_ON_ERROR); $result=ems_ai_queue_handle($pdo,$job,$refs); ems_ai_queue_finish($pdo,(int)$job['id'],$result); }
-        catch(Throwable $error) { ems_ai_queue_fail($pdo,(int)$job['id'],$error); }
-        finally { unset($GLOBALS['ems_ai_queue_current_job_id']); }
-        $done++;
-    } while (microtime(true)-$started < max(1,$maxRunSeconds));
+    $job=ems_ai_queue_claim($pdo);
+    if (!$job) return false;
+    $GLOBALS['ems_ai_queue_current_job_id']=(int)$job['id'];
+    $previousActorId=$GLOBALS['ems_ai_queue_actor_id']??null;
+    $GLOBALS['ems_ai_queue_actor_id']=(int)$job['requester_id'];
+    try {
+        $refs=json_decode((string)$job['references_json'],true,32,JSON_THROW_ON_ERROR);
+        $result=ems_ai_queue_handle($pdo,$job,$refs);
+        ems_ai_queue_finish($pdo,(int)$job['id'],$result);
+    } catch(Throwable $error) {
+        ems_ai_queue_fail($pdo,(int)$job['id'],$error);
+    } finally {
+        unset($GLOBALS['ems_ai_queue_current_job_id']);
+        if ($previousActorId===null) unset($GLOBALS['ems_ai_queue_actor_id']);
+        else $GLOBALS['ems_ai_queue_actor_id']=$previousActorId;
+    }
+    return true;
+}
+
+function ems_ai_queue_cleanup_retention(PDO $pdo): void
+{
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
         $pdo->exec("DELETE FROM system_ai_request_queue WHERE status IN ('completed','failed') AND completed_at < datetime('now','-7 days')");
     } else {
         $pdo->exec("DELETE FROM system_ai_request_queue WHERE status IN ('completed','failed') AND completed_at < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY)");
     }
+}
+
+function ems_ai_queue_run_one(PDO $pdo): array
+{
+    if (!ems_ai_queue_is_worker_context()) throw new RuntimeException('Worker antrean hanya dapat dijalankan dari endpoint worker yang tervalidasi atau PHP CLI.');
+    ems_ai_queue_recover_expired($pdo);
+    $processed=ems_ai_queue_process_one($pdo) ? 1 : 0;
+    ems_ai_queue_cleanup_retention($pdo);
+    return ['processed'=>$processed];
+}
+
+function ems_ai_queue_run(PDO $pdo, int $maxRunSeconds = 50): array
+{
+    if (PHP_SAPI !== 'cli' || !defined('EMS_AI_QUEUE_WORKER')) throw new RuntimeException('Worker antrean hanya dapat dijalankan melalui PHP CLI.');
+    $started=microtime(true); $done=0; ems_ai_queue_recover_expired($pdo);
+    do {
+        if (!ems_ai_queue_process_one($pdo)) break;
+        $done++;
+    } while (microtime(true)-$started < max(1,$maxRunSeconds));
+    ems_ai_queue_cleanup_retention($pdo);
     return ['processed'=>$done];
 }

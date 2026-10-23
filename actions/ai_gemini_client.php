@@ -5,7 +5,9 @@ require_once __DIR__ . '/../config/ai_settings.php';
 if (!function_exists('ems_ai_require_queue_worker')) {
     function ems_ai_require_queue_worker(): void
     {
-        if (PHP_SAPI !== 'cli' || !defined('EMS_AI_QUEUE_WORKER')) {
+        $cliWorker = PHP_SAPI === 'cli' && defined('EMS_AI_QUEUE_WORKER');
+        $browserWorker = PHP_SAPI !== 'cli' && defined('EMS_AI_QUEUE_BROWSER_WORKER');
+        if (!$cliWorker && !$browserWorker) {
             throw new RuntimeException('Pemanggilan model harus melalui antrean AI.');
         }
     }

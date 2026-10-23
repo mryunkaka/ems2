@@ -111,11 +111,7 @@ ems_ai_queue_register_handler('provider_connection_test',static function(PDO $pd
 ems_ai_queue_register_handler('work_anniversary_generate',static function(PDO $pdo,array $job,array $refs):array {
     $requesterId=(int)$job['requester_id']; $userId=(int)($refs['user_id']??0); $year=(int)($refs['anniversary_year']??0);
     if($requesterId!==(int)($refs['requester_id']??0)||$userId<=0||$year!==(int)(new DateTimeImmutable('today',new DateTimeZone('Asia/Jakarta')))->format('Y')) throw new RuntimeException('Permintaan apresiasi masa kerja kedaluwarsa.');
-    $stmt=$pdo->prepare('SELECT * FROM user_rh WHERE id=? LIMIT 1'); $stmt->execute([$requesterId]); $actor=$stmt->fetch(PDO::FETCH_ASSOC);
-    if(!$actor) throw new RuntimeException('Peminta apresiasi tidak tersedia.');
     $oldGet=$_GET??[]; $oldUri=$_SERVER['REQUEST_URI']??null; $oldSelf=$_SERVER['PHP_SELF']??null;
-    if(session_status()===PHP_SESSION_NONE) session_start();
-    $_SESSION['user_rh']=['id'=>$requesterId,'full_name'=>(string)($actor['full_name']??''),'name'=>(string)($actor['full_name']??''),'role'=>(string)($actor['role']??''),'position'=>(string)($actor['position']??''),'unit_code'=>(string)($actor['unit_code']??'')]; session_write_close();
     $_GET=['mode'=>'generate','user_id'=>$userId]; $_SERVER['REQUEST_URI']='/actions/work_anniversary_notices.php?mode=generate&user_id='.$userId; $_SERVER['PHP_SELF']=__DIR__.'/work_anniversary_notices.php';
     ob_start();
     try { include __DIR__.'/work_anniversary_notices.php'; $output=(string)ob_get_clean(); }
