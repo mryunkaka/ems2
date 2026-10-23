@@ -124,8 +124,9 @@ if ($action === 'messages') {
     }
 
     $messages = ems_roxy_get_conversation_messages($pdo, $conversationId);
+    $pendingJobs = $canViewAllConversations ? [] : ems_roxy_get_pending_queue_jobs($pdo, $conversationId, $userId);
 
-    echo json_encode(['success' => true, 'messages' => $messages], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo json_encode(['success' => true, 'messages' => $messages, 'pending_jobs' => $pendingJobs], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 

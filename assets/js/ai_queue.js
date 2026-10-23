@@ -79,7 +79,12 @@
         ? `Sudah menunggu ${formatDuration(data.waited_seconds)}. Perkiraan giliran Anda mulai: sekitar ${formatDuration(data.estimated_wait_seconds)}.`
         : (data.status === 'running' ? `Sedang diproses selama ${formatDuration(data.job_running_seconds)}.` : '');
       workerNoteNode.hidden = !data.worker_delayed;
-      if (data.worker_delayed) workerNoteNode.textContent = 'Belum ada worker yang memproses antrean lebih dari satu menit. Cron di hosting tidak berjalan pada localhost. Untuk memproses antrean lokal, buka PowerShell di folder proyek lalu jalankan: C:\\Server\\php-8.5.12-nts-Win32-vs17-x64\\php.exe actions\\ai_queue_worker.php. Worker akan menjalankan pekerjaan satu per satu lalu berhenti.';
+      if (data.worker_delayed) {
+        const localHost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        workerNoteNode.textContent = localHost
+          ? 'Belum ada worker yang memproses antrean lebih dari satu menit. Untuk memprosesnya di localhost, jalankan worker PHP dari folder proyek: C:\\Server\\php-8.5.12-nts-Win32-vs17-x64\\php.exe actions\\ai_queue_worker.php.'
+          : 'Belum ada worker yang memproses antrean lebih dari satu menit. Periksa cron hosting dan log worker; cron hosting seharusnya menjalankan worker CLI setiap menit.';
+      }
       renderAhead(data.queue_ahead);
       renderActive(data.active);
       if (data.status === 'completed') {

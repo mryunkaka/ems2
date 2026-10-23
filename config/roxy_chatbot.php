@@ -863,6 +863,36 @@ function ems_roxy_get_conversation_messages(PDO $pdo, int $conversationId): arra
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/** Return only the signed-in user's unfinished/recently failed Roxy jobs for a conversation. */
+function ems_roxy_get_pending_queue_jobs(PDO $pdo, int $conversationId, int $userId): array
+{
+    if ($conversationId <= 0 || $userId <= 0) return [];
+
+    $stmt = $pdo->prepare("SELECT id,status,references_json,queued_at FROM system_ai_request_queue
+        WHERE requester_id=? AND job_type='roxy_chat'
+          AND (status IN ('queued','running') OR (status='failed' AND completed_at >= ?))
+        ORDER BY queued_at,id");
+    $stmt->execute([$userId, date('Y-m-d H:i:s', time() - 86400)]);
+    $jobs = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $references = json_decode((string)($row['references_json'] ?? ''), true);
+        if (!is_array($references) || (int)($references['conversation_id'] ?? 0) !== $conversationId) continue;
+        $messageId = (int)($references['user_message_id'] ?? 0);
+        if ($messageId <= 0) continue;
+
+        $reply = $pdo->prepare("SELECT 1 FROM bot_messages WHERE conversation_id=? AND sender='bot' AND reply_to_message_id=? LIMIT 1");
+        $reply->execute([$conversationId, $messageId]);
+        if ($reply->fetchColumn()) continue;
+
+        $jobs[] = [
+            'job_id' => (int)$row['id'],
+            'user_message_id' => $messageId,
+            'status' => (string)$row['status'],
+        ];
+    }
+    return $jobs;
+}
+
 /**
  * Orkestrasi penuh satu putaran tanya-jawab — docs/ai/assistant-module.md
  * §7.1. TIDAK menyimpan pesan user/bot di sini — caller (endpoint chat)

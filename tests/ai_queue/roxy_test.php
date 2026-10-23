@@ -40,3 +40,19 @@ aiQueueTest('roxy.existing_reply_is_returned_without_duplicate_bot_message', sta
     aiQueueAssertSame(11,$result['message_id']);
     aiQueueAssertSame(1,(int)$pdo->query("SELECT COUNT(*) FROM bot_messages WHERE sender='bot'")->fetchColumn());
 });
+
+aiQueueTest('roxy.pending_jobs_are_recoverable_after_refresh_for_owner_only', static function (): void {
+    $pdo=roxyQueueDb();
+    $pdo->exec("INSERT INTO bot_conversations(id,unit_code,user_id,title) VALUES(1,'unit-a',7,'Test')");
+    $pdo->exec("INSERT INTO bot_messages(id,conversation_id,user_id,sender,content) VALUES(10,1,7,'user','Halo')");
+    $job=ems_ai_queue_enqueue($pdo,'roxy_chat',7,'Chat Roxy',['conversation_id'=>1,'user_message_id'=>10,'unit_code'=>'unit-a'],'refresh-test');
+    $pending=ems_roxy_get_pending_queue_jobs($pdo,1,7);
+    aiQueueAssertSame(1,count($pending));
+    aiQueueAssertSame($job['job_id'],$pending[0]['job_id']);
+    aiQueueAssertSame(10,$pending[0]['user_message_id']);
+    aiQueueAssertSame('queued',$pending[0]['status']);
+    aiQueueAssertSame([] ,ems_roxy_get_pending_queue_jobs($pdo,1,8));
+    $pdo->prepare("UPDATE system_ai_request_queue SET status='failed',completed_at=CURRENT_TIMESTAMP,error_message='Provider gagal' WHERE id=?")->execute([$job['job_id']]);
+    $failed=ems_roxy_get_pending_queue_jobs($pdo,1,7);
+    aiQueueAssertSame('failed',$failed[0]['status']);
+});
