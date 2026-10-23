@@ -1,66 +1,66 @@
-# AI Request Queue Design
+# Rancangan Antrean Permintaan AI
 
-## Goal
+## Tujuan
 
-Prevent concurrent AI model calls from exhausting the shared hosting resources, while giving users a clear waiting screen until the requested AI work has finished.
+Mencegah pemanggilan model AI secara bersamaan menghabiskan sumber daya hosting bersama, sekaligus memberi pengguna layar tunggu yang jelas sampai pekerjaan AI yang diminta selesai.
 
-## Current behavior
+## Perilaku saat ini
 
-- Global Gemini and OpenAI-Compatible text calls are dispatched through `ems_gemini_generate_content()` and `ems_custom_chat_completion()` in the AI clients. Image generation also calls Gemini directly.
-- The global AI settings enforce a daily request limit, but do not cap simultaneous calls.
-- `candidate_interview_multi.php` can generate a candidate summary and an interview question pack during a page request when cached results are missing. In particular, an interview question pack contains 20 questions. Concurrent page opens can therefore make concurrent model calls and hold PHP web workers open.
-- Other central callers include Roxy chat/deep research, candidate summaries and interview packs, birthday and work anniversary content, training group generation, and provider connection tests.
-- The screenshot reports HTTP 500, but local source and the screenshot do not identify its production stack trace. Preventing AI bursts is the confirmed code-level issue; diagnosing any additional 500 cause requires production logs.
+- Pemanggilan teks global Gemini dan OpenAI-Compatible diteruskan melalui `ems_gemini_generate_content()` dan `ems_custom_chat_completion()` pada client AI. Pembuatan gambar juga memanggil Gemini secara langsung.
+- Pengaturan AI global membatasi jumlah permintaan harian, tetapi belum membatasi jumlah permintaan yang berjalan bersamaan.
+- `candidate_interview_multi.php` dapat membuat ringkasan kandidat dan paket pertanyaan interview saat halaman diminta ketika hasil belum tersimpan. Paket pertanyaan interview berisi 20 pertanyaan. Jika beberapa orang membuka halaman bersamaan, beberapa pemanggilan model dapat berjalan sekaligus dan menahan proses PHP.
+- Pemanggil utama lainnya meliputi chat/riset mendalam Roxy, ringkasan kandidat dan paket pertanyaan interview, konten ulang tahun dan masa kerja, pembuatan kelompok pelatihan, serta uji koneksi provider.
+- Tangkapan layar menunjukkan HTTP 500, tetapi kode lokal dan tangkapan layar tidak menunjukkan stack trace produksi. Lonjakan permintaan AI adalah masalah yang terkonfirmasi di kode; untuk memastikan penyebab HTTP 500 lainnya diperlukan log produksi.
 
-## Design
+## Rancangan
 
-### Queue and worker
+### Antrean dan worker
 
-Add a durable MySQL queue for AI work. A queued record contains a job type, the requesting user ID, a short display label, minimal feature-specific references/options, timestamps, state, and result or sanitized error. It must not contain provider API keys or a rendered prompt. Inputs that are not already stored must be persisted by the feature before the job is enqueued; the worker reloads them by reference.
+Tambahkan antrean AI MySQL yang menyimpan pekerjaan secara persisten. Setiap baris menyimpan jenis pekerjaan, ID pengguna peminta, label singkat, referensi/opsi minimum khusus fitur, waktu, status, serta hasil atau pesan kesalahan yang sudah disaring. Baris antrean tidak menyimpan API key provider atau prompt yang sudah dirangkai. Fitur harus menyimpan lebih dulu masukan yang belum tersimpan sebelum memasukkan pekerjaan ke antrean; worker akan memuatnya kembali berdasarkan referensi.
 
-The lifecycle is `queued -> running -> completed|failed`. Jobs are claimed atomically in FIFO order. Database-backed worker-slot locks prevent overlapping cron invocations from exceeding the configured concurrency. The default maximum concurrent model jobs is **1**; administrators can choose 1, 2, or 3. The waiting-queue cap defaults to **50** and is configurable from 10 to 200. The CLI worker processes jobs until its 50-second run window expires and exits cleanly for the next cron invocation. A model call already in progress is allowed to finish even if it exceeds that window; slot locks prevent its replacement from starting early. Expired `running` jobs are marked failed after the configured provider timeout plus a 30-second lease margin and are not retried automatically, avoiding duplicate model cost or duplicate side effects.
+Alur status adalah `queued -> running -> completed|failed`. Pekerjaan diklaim secara atomik berdasarkan urutan masuk (FIFO). Pengunci slot worker berbasis database mencegah pemanggilan cron yang tumpang tindih melewati batas konkurensi. Batas bawaan adalah **1** pekerjaan model pada satu waktu; administrator dapat memilih 1, 2, atau 3. Batas antrean tunggu bawaan adalah **50**, dan dapat diatur dari 10 sampai 200. Worker CLI memproses pekerjaan sampai jendela kerjanya selama 50 detik habis, lalu keluar agar cron berikutnya melanjutkan. Pemanggilan model yang sudah berjalan tetap dibiarkan selesai meski melewati jendela tersebut; pengunci slot mencegah penggantinya dimulai terlalu cepat. Pekerjaan `running` yang melewati batas waktu provider ditambah masa toleransi 30 detik ditandai gagal dan tidak dicoba ulang otomatis, untuk mencegah biaya model atau efek samping ganda.
 
-The AI settings page will expose the concurrency and queue-cap settings and a compact queue monitor (queued/running/failed counts plus the current job). The deployment instructions will document a once-per-minute PHP CLI cron command. A full queue is rejected with a clear message rather than accumulating unbounded work. Repeated submission of the same user/feature/entity while it is queued or running returns the existing job. Completed and failed job rows are retained for seven days; cleanup never deletes active jobs.
+Halaman Pengaturan AI menampilkan batas konkurensi, batas antrean, dan pemantauan ringkas (jumlah antrean/berjalan/gagal serta pekerjaan aktif). Petunjuk deployment menjelaskan perintah cron PHP CLI yang berjalan sekali per menit. Jika antrean penuh, permintaan ditolak dengan pesan yang jelas agar antrean tidak tumbuh tanpa batas. Permintaan berulang dari pengguna yang sama untuk fitur/entitas yang sama saat masih menunggu atau berjalan akan menggunakan kembali pekerjaan yang sudah ada. Baris pekerjaan selesai dan gagal disimpan selama tujuh hari; pembersihan tidak menghapus pekerjaan aktif.
 
-### Request and user experience
+### Permintaan dan pengalaman pengguna
 
-AI-triggering interactions enqueue work and return a job ID immediately; they do not wait for a provider response inside the originating web request. An authenticated status endpoint returns only the caller's job result and safe queue metadata. A shared loading screen polls with a bounded interval/backoff and displays:
+Interaksi yang memerlukan AI memasukkan pekerjaan ke antrean dan langsung mengembalikan ID pekerjaan; permintaan web asal tidak menunggu respons provider. Endpoint status yang memerlukan autentikasi hanya mengembalikan hasil pekerjaan pemanggil dan metadata antrean yang aman. Layar tunggu bersama memeriksa status berkala dengan jeda yang dibatasi dan menampilkan:
 
-- the caller's name, requested AI feature, queue position, and current state;
-- the name and feature label of the globally active job, without candidate or prompt details;
-- a progress indicator for `menunggu`, `sedang diproses`, `selesai`, or `gagal` (provider progress is not available, so processing is an indeterminate progress state);
-- the final result or a safe error, then the feature continues to its result page/state.
+- nama peminta, fitur AI yang diminta, posisi antrean, dan status saat ini;
+- nama pengguna dan label fitur dari pekerjaan aktif global, tanpa rincian kandidat atau prompt;
+- indikator untuk `menunggu`, `sedang diproses`, `selesai`, atau `gagal` (provider tidak menyediakan progres terperinci, jadi status pemrosesan memakai indikator tanpa persentase);
+- hasil akhir atau pesan kesalahan yang aman, lalu melanjutkan ke halaman/keadaan fitur terkait.
 
-Status polling releases the PHP session lock before responding. Job IDs are authorization-checked; users cannot read another user's result. The global active-job display contains only the requesting user's display name and the configured feature label.
+Endpoint polling melepaskan pengunci sesi PHP sebelum merespons. Akses ke ID pekerjaan diperiksa; pengguna tidak dapat membaca hasil milik pengguna lain. Tampilan pekerjaan aktif global hanya menampilkan nama pengguna peminta dan label fitur yang telah ditentukan.
 
-### Feature integration
+### Integrasi fitur
 
-All callers of the global AI provider, including text and image generation, must pass through the queue worker. Feature handlers preserve their current outputs and persistence rules while moving the model work out of web requests. The first page-level integration is candidate interview: opening the page must not trigger AI generation; if required summary/questions are absent, the user sees the queue screen, and the interview page opens or refreshes only after the results are stored. Existing cached results continue to load without a new job.
+Semua pemanggil provider AI global, termasuk pembuatan teks dan gambar, harus melewati worker antrean. Handler fitur mempertahankan keluaran dan aturan penyimpanan yang ada sambil memindahkan pekerjaan model keluar dari permintaan web. Integrasi halaman pertama adalah interview kandidat: membuka halaman tidak memulai pembuatan AI; jika ringkasan/pertanyaan yang dibutuhkan belum tersedia, pengguna melihat layar antrean, lalu halaman interview dibuka atau dimuat ulang setelah hasil tersimpan. Hasil tersimpan yang sudah ada tetap dapat langsung dimuat.
 
-Roxy chat, training group generation, birthday/work-anniversary content, and connection tests will use the same queue path where they invoke the global provider. Non-interactive scheduled tasks enqueue work and leave delivery/persistence to their existing feature handler. Personal provider configuration remains subject to the global AI enablement and concurrency policy; no path may bypass the worker to call a configured global model directly.
+Chat Roxy, pembuatan kelompok pelatihan, konten ulang tahun/masa kerja, dan uji koneksi akan menggunakan antrean yang sama ketika memanggil provider global. Tugas terjadwal non-interaktif memasukkan pekerjaan ke antrean dan menyerahkan pengiriman/penyimpanan ke handler fitur yang ada. Konfigurasi provider pribadi tetap tunduk pada status aktif AI global dan kebijakan konkurensi; tidak boleh ada jalur yang melewati worker untuk memanggil model global secara langsung dari permintaan web.
 
-### Failure handling and operations
+### Penanganan kegagalan dan operasional
 
-- Provider/handler errors mark the job `failed`, save a sanitized user-facing message, and preserve diagnostic details in server logs.
-- A worker crash leaves a `running` job that is failed after its lease expires; it is not silently lost or executed twice.
-- The queue has a configurable maximum number of waiting jobs and bounded retention for completed/failed records. Active work is never removed by retention cleanup.
-- Workers verify the global AI setting before execution. Disabling AI prevents new jobs and causes queued jobs to fail clearly without calling a provider.
-- The queue monitor makes a stalled worker visible. The cron command must use the deployed PHP CLI binary and project path; it must not be web-accessible.
+- Kesalahan provider/handler mengubah status pekerjaan menjadi `failed`, menyimpan pesan yang aman untuk pengguna, dan menyimpan rincian diagnostik di log server.
+- Jika worker berhenti, pekerjaan `running` ditandai gagal setelah masa sewa habis; pekerjaan tidak hilang tanpa jejak dan tidak dieksekusi dua kali.
+- Antrean memiliki batas jumlah pekerjaan tunggu yang dapat diatur serta masa simpan terbatas untuk baris selesai/gagal. Pembersihan tidak pernah menghapus pekerjaan aktif.
+- Worker memeriksa pengaturan AI global sebelum menjalankan pekerjaan. Menonaktifkan AI mencegah pekerjaan baru dan membuat pekerjaan tertunda gagal dengan pesan yang jelas tanpa memanggil provider.
+- Pemantauan antrean membantu menemukan worker yang macet. Perintah cron harus menggunakan PHP CLI dan jalur proyek pada server; worker tidak boleh dapat diakses melalui web.
 
-## Security and privacy
+## Keamanan dan privasi
 
-Use authenticated enqueue/status endpoints and CSRF protection for state-changing requests. Bind every status/result read to the requesting user, except for restricted administrator monitoring. Escape all names and labels in the loading UI. Do not expose prompts, provider responses, API keys, or candidate-sensitive fields in global queue status. Apply bounded size validation to job references/options and result payloads.
+Gunakan autentikasi pada endpoint antrean/status dan perlindungan CSRF untuk permintaan yang mengubah data. Batasi setiap pembacaan status/hasil ke peminta, kecuali pemantauan administrator terbatas. Escape semua nama dan label di layar tunggu. Jangan tampilkan prompt, respons provider, API key, atau data kandidat sensitif di status antrean global. Terapkan validasi ukuran pada referensi/opsi pekerjaan dan payload hasil.
 
-## Acceptance criteria
+## Kriteria penerimaan
 
-1. Ten simultaneous users requesting AI work create ten visible jobs, but at the default setting no more than one worker calls a model at a time; web requests return promptly instead of waiting on the model.
-2. The loading screen identifies who is using the model for which feature and shows queue position/state while the result is pending.
-3. Candidate interview page opening never starts an AI call. Missing AI-generated interview content is prepared as a queued job, and the interview opens with the saved result after completion.
-4. Existing cached results do not enqueue duplicate work, and repeated clicks for the same active user/feature/entity reuse the active job.
-5. Every global text/image provider call site is routed through the queue; there is no direct-call bypass from web requests.
-6. Failed, full-queue, disabled-provider, stale-worker, and unauthorized status cases produce clear, bounded behavior without leaking another user's result.
-7. The settings page shows concurrency and queue health, and deployment documentation describes the once-per-minute cron worker.
+1. Sepuluh pengguna yang meminta pekerjaan AI secara bersamaan membuat sepuluh pekerjaan yang terlihat, tetapi dengan pengaturan bawaan paling banyak satu worker memanggil model pada satu waktu; permintaan web kembali cepat tanpa menunggu model.
+2. Layar tunggu menunjukkan siapa yang sedang menggunakan model untuk fitur apa, serta posisi/status antrean selama hasil belum tersedia.
+3. Membuka halaman interview kandidat tidak pernah memulai pemanggilan AI. Konten interview yang belum ada dibuat melalui pekerjaan antrean, dan halaman interview dibuka dengan hasil tersimpan setelah pekerjaan selesai.
+4. Hasil tersimpan tidak membuat pekerjaan duplikat, dan klik berulang untuk pengguna/fitur/entitas yang sama menggunakan kembali pekerjaan aktif.
+5. Semua titik pemanggilan provider teks/gambar global melewati antrean; tidak ada jalur langsung dari permintaan web.
+6. Kasus gagal, antrean penuh, provider nonaktif, worker kedaluwarsa, dan akses status tanpa izin ditangani dengan jelas tanpa membocorkan hasil pengguna lain.
+7. Halaman pengaturan menampilkan batas konkurensi dan kondisi antrean; dokumentasi deployment menjelaskan worker cron sekali per menit.
 
-## Out of scope
+## Di luar cakupan
 
-This change does not prove or repair unrelated causes of the reported production HTTP 500 without server logs. It does not add automatic retries, provider streaming progress, priority scheduling, or a distributed message broker.
+Perubahan ini tidak membuktikan atau memperbaiki penyebab HTTP 500 produksi lainnya tanpa log server. Perubahan ini tidak menambahkan percobaan ulang otomatis, progres streaming provider, penjadwalan prioritas, atau message broker terdistribusi.
