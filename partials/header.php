@@ -847,18 +847,38 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                     document.getElementById('workAnniversarySoundButton')?.addEventListener('click', function() { playWorkAnniversarySound(musicSeeds); }, {once:true});
                 };
                 showFinalItems(response.items);
+                if (pending.length > 0 && list.children.length === 0) {
+                    list.innerHTML = '<div class="card text-sm text-slate-600"><div class="font-semibold">Menyiapkan apresiasi masa kerja</div><div data-anniversary-queue-status class="mt-2">Memasukkan pekerjaan ke antrean AI…</div><div class="mt-3 h-1.5 overflow-hidden rounded bg-slate-200"><div class="h-full w-1/3 animate-pulse rounded bg-teal-500"></div></div></div>';
+                    modal.classList.remove('hidden'); document.body.classList.add('modal-open');
+                }
                 // Nama/cerita yang belum final tidak ditampilkan. Modal muncul begitu
                 // cerita AI lengkap selesai dibuat, tanpa menahan navigasi halaman.
                 let generationFailed = false;
                 for (const task of pending) {
                     try {
-                        const generated = await safeFetchJSON(window.emsUrl('/actions/work_anniversary_notices.php?mode=generate&user_id=' + encodeURIComponent(task.id)), {}, 110000);
-                        const finalItem = generated?.success && Array.isArray(generated.items) ? generated.items[0] : null;
+                        const generated = await safeFetchJSON(window.emsUrl('/actions/work_anniversary_notices.php?mode=generate&user_id=' + encodeURIComponent(task.id)), {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRF-Token':String(window.EMS_CSRF_TOKEN||'')},body:new URLSearchParams({csrf_token:String(window.EMS_CSRF_TOKEN||'')}).toString()});
+                        if (!generated?.success || !generated.queued || !generated.job_id) { generationFailed = true; continue; }
+                        const statusNode=list.querySelector('[data-anniversary-queue-status]');
+                        let queuedResult=null; let delay=1800;
+                        while (!queuedResult) {
+                            const status=await safeFetchJSON(window.emsUrl('/ajax/ai_queue_status.php?job_id='+encodeURIComponent(generated.job_id)));
+                            if(status?.ok&&status.status==='completed') queuedResult=status.result;
+                            else if(status?.ok&&status.status==='failed') throw new Error(status.error||'Pembuatan apresiasi gagal.');
+                            else {
+                                if(statusNode) {
+                                    const active=(Array.isArray(status?.active)?status.active:[]).map(item=>(item.requester_name||'Pengguna')+' untuk '+(item.feature_label||'AI')).join(', ');
+                                    statusNode.textContent=status?.status==='queued' ? 'Menunggu giliran AI'+(status.position?' · posisi '+status.position:'')+(active?' · aktif: '+active:'')+'…' : 'Model AI sedang menyiapkan apresiasi'+(active?' · aktif: '+active:'')+'…';
+                                }
+                                await new Promise(resolve=>setTimeout(resolve,delay)); delay=Math.min(8000,Math.round(delay*1.4));
+                            }
+                        }
+                        const generatedResult=queuedResult;
+                        const finalItem = generatedResult?.items?.[0] || null;
                         if (!finalItem || !finalItem.greeting || finalItem.greeting.length < 2400) { generationFailed = true; continue; }
                         const isFirstFinal = list.children.length === 0;
                         refreshCard(finalItem);
                         if (isFirstFinal) showFinalItems([finalItem]);
-                    } catch (_) { generationFailed = true; /* Coba lagi pada kunjungan berikutnya bila provider sedang sibuk. */ }
+                    } catch (_) { generationFailed = true; const statusNode=list.querySelector('[data-anniversary-queue-status]'); if(statusNode) statusNode.textContent='Apresiasi belum berhasil dibuat. Coba lagi pada kunjungan berikutnya.'; }
                 }
                 if (!generationFailed && !modal.classList.contains('hidden') && window.localStorage) localStorage.setItem(key, '1');
             }

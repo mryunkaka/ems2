@@ -14,6 +14,8 @@ require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../config/ai_settings.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/ai_recruitment_service.php';
+require_once __DIR__ . '/../config/ai_queue.php';
+require_once __DIR__ . '/../actions/ai_queue_handlers.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 $currentUnit = ems_effective_unit($pdo, $user);
@@ -237,6 +239,22 @@ $summaryTraitItems = $recruitmentType === 'assistant_manager'
 $summaryChartScoreMap = [];
 foreach ($summaryTraitItems as $trait => $items) {
     $summaryChartScoreMap[$trait] = calculateTraitScore($answers, $items);
+}
+
+$savedInterviewPack = ems_ai_get_saved_interview_question_pack($pdo, $applicantId, $hrId);
+$needsSummary = trim((string)($aiResult['personality_summary'] ?? '')) === '';
+$summaryFeatureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $applicantId);
+$summaryAlreadyLogged = $needsSummary && ems_ai_has_successful_summary_log($pdo, $summaryFeatureKey);
+$summaryTemplateAvailable = $needsSummary && !$summaryAlreadyLogged && ems_ai_get_active_prompt_template($pdo, ems_ai_recruitment_feature_key($recruitmentType)) !== null;
+$packTemplateAvailable = $savedInterviewPack === null && ems_ai_get_active_prompt_template($pdo, 'interview_question_pack') !== null;
+$aiReady = ems_ai_global_provider_ready($pdo);
+if (ems_ai_interview_should_enqueue($aiReady, $needsSummary, $summaryTemplateAvailable, $savedInterviewPack === null, $packTemplateAvailable)) {
+    $queueReferences = ['applicant_id'=>$applicantId,'hr_id'=>$hrId,'recruitment_type'=>$recruitmentType];
+    $queueReferencesJson = htmlspecialchars(json_encode($queueReferences, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+    $csrfToken = htmlspecialchars(generateCsrfToken(), ENT_QUOTES, 'UTF-8');
+    $returnUrl = htmlspecialchars('/dashboard/candidate_interview_multi.php?id='.$applicantId, ENT_QUOTES, 'UTF-8');
+    ?><!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Menyiapkan Interview</title><style>body{margin:0;min-height:100vh;background:#0b1c27;color:#eaf4f8;font:16px/1.5 system-ui;display:grid;place-items:center;padding:24px}.box{width:min(100%,600px);background:#102531;border:1px solid #315263;border-radius:20px;padding:32px;box-shadow:0 20px 70px #0005}.accent{color:#72dacc}.wait{height:7px;background:#274552;border-radius:9px;overflow:hidden;margin:25px 0}.wait:after{content:"";display:block;height:100%;width:35%;background:#72dacc;animation:go 1.4s infinite alternate}@keyframes go{to{transform:translateX(190%)}}button{padding:12px 18px;border:0;border-radius:9px;background:#70dccd;font-weight:700;cursor:pointer}</style></head><body><main class="box" data-ai-queue-enqueue data-submit-url="<?= htmlspecialchars(ems_url('/ajax/ai_queue_submit.php'), ENT_QUOTES, 'UTF-8') ?>" data-job-type="candidate_interview_prepare" data-references="<?= $queueReferencesJson ?>" data-return-to="<?= $returnUrl ?>" data-csrf="<?= $csrfToken ?>"><p class="accent">Antrean AI Roxwood</p><h1>Menyiapkan bahan interview kandidat</h1><p>Pekerjaan akan masuk antrean sesuai giliran agar penggunaan model tetap terkendali.</p><div class="wait" data-enqueue-progress></div><p data-enqueue-status aria-live="polite">Mendaftarkan pekerjaan…</p><button type="button" data-enqueue-retry hidden>Masukkan ke antrean</button></main><script src="<?= htmlspecialchars(ems_url('/assets/js/ai_queue.js'), ENT_QUOTES, 'UTF-8') ?>" defer></script></body></html><?php
+    exit;
 }
 
 $interviewSummaryNarrative = trim((string)($aiResult['personality_summary'] ?? ''));

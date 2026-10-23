@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/ai_guard.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
@@ -20,6 +21,8 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $settings = ems_ai_get_settings($pdo);
 $promptTemplates = ems_ai_get_prompt_templates($pdo);
 $todayUsage = ems_ai_count_today_requests($pdo);
+$queueMonitor = [];
+try { if (ems_table_exists($pdo, 'system_ai_request_queue')) $queueMonitor = ems_ai_queue_monitor($pdo); } catch (Throwable) { $queueMonitor = []; }
 $hasBaseAiTables = ems_ai_settings_table_exists($pdo) && ems_ai_request_logs_table_exists($pdo) && ems_ai_prompt_templates_table_exists($pdo);
 $hasCustomProviderColumns = ems_column_exists($pdo, 'system_ai_settings', 'custom_provider')
     && ems_column_exists($pdo, 'system_ai_settings', 'custom_api_key')
@@ -83,6 +86,19 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <input type="checkbox" name="is_enabled" value="1" <?= !empty($settings['is_enabled']) ? 'checked' : '' ?>>
                                 <span>Aktifkan provider AI</span>
                             </label>
+                        </div>
+                    </div>
+
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="ai_max_concurrent_requests">Model berjalan bersamaan</label>
+                            <select id="ai_max_concurrent_requests" name="ai_max_concurrent_requests">
+                                <?php foreach ([1,2,3] as $limit): ?><option value="<?= $limit ?>" <?= (int)$settings['ai_max_concurrent_requests'] === $limit ? 'selected' : '' ?>><?= $limit ?> pekerjaan</option><?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-sm font-semibold text-slate-900" for="ai_max_queue_size">Batas pekerjaan menunggu</label>
+                            <input id="ai_max_queue_size" name="ai_max_queue_size" type="number" min="10" max="200" value="<?= (int)$settings['ai_max_queue_size'] ?>">
                         </div>
                     </div>
 
@@ -209,6 +225,16 @@ include __DIR__ . '/../partials/sidebar.php';
             </div>
 
             <div class="space-y-4">
+                <div class="card mb-0">
+                    <div class="card-header"><span>Antrean AI</span></div>
+                    <?php if ($queueMonitor): ?>
+                        <div class="space-y-2 text-sm text-slate-700">
+                            <div>Menunggu <strong><?= (int)$queueMonitor['counts']['queued'] ?></strong> · berjalan <strong><?= (int)$queueMonitor['counts']['running'] ?></strong> · gagal <strong><?= (int)$queueMonitor['counts']['failed'] ?></strong></div>
+                            <?php if ($queueMonitor['active']): ?><ul class="list-disc pl-5"><?php foreach ($queueMonitor['active'] as $active): ?><li><?= htmlspecialchars((string)($active['requester_name'] ?: 'Pengguna')) ?> — <?= htmlspecialchars((string)$active['feature_label']) ?></li><?php endforeach; ?></ul><?php else: ?><p>Tidak ada pekerjaan AI aktif saat ini.</p><?php endif; ?>
+                        </div>
+                    <?php else: ?><div class="helper-note">Antrean belum tersedia. Jalankan migrasi 103.</div><?php endif; ?>
+                </div>
+
                 <div class="card mb-0">
                     <div class="card-header">
                         <?= ems_icon('chart-bar', 'h-5 w-5') ?>

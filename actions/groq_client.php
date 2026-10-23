@@ -25,6 +25,8 @@ function ems_groq_chat_completion(
     ?int $createdBy = null,
     bool $jsonMode = false
 ): array {
+    ems_ai_require_queue_worker();
+    if (function_exists('ems_ai_queue_heartbeat')) ems_ai_queue_heartbeat($pdo);
     $apiKey = trim((string) ($settings['groq_api_key'] ?? ''));
     if ($apiKey === '') {
         throw new RuntimeException('Groq API Key belum diisi. Atur dulu di menu Roxwood AI > Setting AI Saya.');

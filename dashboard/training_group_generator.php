@@ -7,6 +7,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/training_groups.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $user = $_SESSION['user_rh'] ?? [];
@@ -160,23 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_training_gro
         $errors[] = 'Tabel grup training belum tersedia.';
     } else {
         try {
-            $result = ems_training_generate_groups(
-                $pdo,
-                $currentUnit,
-                $selectedBatch,
-                max(1, $groupSize),
-                $preferredManagerIds,
-                (int)($user['id'] ?? 0) ?: null
-            );
-
-            $_SESSION['flash_messages'][] = 'Kelompok berhasil digenerate: '
-                . (int)$result['group_count']
-                . ' grup, '
-                . (int)$result['trainee_count']
-                . ' medis online, '
-                . (int)$result['manager_count']
-                . ' manager online.';
-            header('Location: training_group_generator.php?batch=' . $selectedBatch);
+            if ($groupSize < 1 || $groupSize > 20) throw new InvalidArgumentException('Jumlah trainee per kelompok harus 1 sampai 20.');
+            $onlineManagerIds=array_map(static fn(array $row):int=>(int)$row['id'],ems_training_fetch_online_managers($pdo,$currentUnit));
+            $preferredManagerIds=array_values(array_intersect(array_unique($preferredManagerIds),$onlineManagerIds));
+            $job=ems_ai_queue_enqueue($pdo,'training_group_generate',(int)($user['id']??0),'Pembuatan kelompok training',['unit_code'=>$currentUnit,'batch'=>$selectedBatch,'group_size'=>$groupSize,'preferred_manager_ids'=>$preferredManagerIds],'training-groups:'.$currentUnit.':'.$selectedBatch);
+            $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/training_group_generator.php?batch='.$selectedBatch;
+            header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id']));
             exit;
         } catch (Throwable $e) {
             $errors[] = $e->getMessage();

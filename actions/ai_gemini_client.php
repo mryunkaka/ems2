@@ -2,6 +2,15 @@
 
 require_once __DIR__ . '/../config/ai_settings.php';
 
+if (!function_exists('ems_ai_require_queue_worker')) {
+    function ems_ai_require_queue_worker(): void
+    {
+        if (PHP_SAPI !== 'cli' || !defined('EMS_AI_QUEUE_WORKER')) {
+            throw new RuntimeException('Pemanggilan model harus melalui antrean AI.');
+        }
+    }
+}
+
 if (!function_exists('ems_ai_log_request')) {
 function ems_ai_log_request(PDO &$pdo, array $data): void
 {
@@ -199,6 +208,8 @@ function ems_ai_decode_json_text(string $text): ?array
 
 function ems_gemini_generate_content_direct(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
 {
+    ems_ai_require_queue_worker();
+    if (function_exists('ems_ai_queue_heartbeat')) ems_ai_queue_heartbeat($pdo);
     $apiKey = trim((string)($settings['gemini_api_key'] ?? ''));
     if ($apiKey === '') {
         throw new RuntimeException('API key Gemini belum diisi.');
@@ -304,6 +315,8 @@ function ems_gemini_generate_content_direct(PDO $pdo, array $settings, array $co
 /** Dispatch all text-generation features through the single global AI setting. */
 function ems_gemini_generate_content(PDO $pdo, array $settings, array $contents, ?string $model = null, string $featureKey = 'generic', ?int $createdBy = null, ?array $responseSchema = null): array
 {
+    ems_ai_require_queue_worker();
+    if (function_exists('ems_ai_queue_heartbeat')) ems_ai_queue_heartbeat($pdo);
     $global = ems_ai_get_settings($pdo);
     if (empty($global['is_enabled'])) throw new RuntimeException('Provider AI global sedang nonaktif.');
     $provider = strtolower(trim((string)($global['provider'] ?? 'gemini')));
@@ -378,6 +391,8 @@ function ems_gemini_extract_inline_image(?array $responseJson): ?array
  */
 function ems_gemini_generate_image(PDO $pdo, array $settings, array $contents, string $model, string $featureKey = 'generic_image', ?int $createdBy = null): array
 {
+    ems_ai_require_queue_worker();
+    if (function_exists('ems_ai_queue_heartbeat')) ems_ai_queue_heartbeat($pdo);
     $global = ems_ai_get_settings($pdo);
     if (strtolower((string)($global['provider'] ?? 'gemini')) !== 'gemini' || empty($global['is_enabled'])) {
         throw new RuntimeException('Fitur pembuatan gambar hanya didukung saat provider global Gemini aktif.');

@@ -368,7 +368,7 @@ function ems_birthday_generate_message(PDO $pdo, array $userRow): string
 
     try {
         $settings = ems_ai_get_settings($pdo);
-        if (empty($settings['is_enabled']) || trim((string)($settings['gemini_api_key'] ?? '')) === '') {
+        if (!ems_ai_global_provider_ready($pdo)) {
             return $fallback;
         }
 
@@ -523,8 +523,15 @@ function ems_birthday_ensure_evening_inbox(PDO $pdo): void
         if ($userId <= 0 || ems_birthday_evening_inbox_exists($pdo, $userId)) {
             continue;
         }
-
-        $message = ems_birthday_generate_message($pdo, $birthdayUser);
-        sendInbox($pdo, $userId, ems_birthday_inbox_title($birthdayUser), $message, 'birthday_evening');
+        if (ems_ai_global_provider_ready($pdo)) {
+            require_once __DIR__ . '/ai_queue.php';
+            try {
+                $dateKey=(new DateTimeImmutable('now'))->format('Y-m-d');
+                ems_ai_queue_enqueue($pdo,'birthday_message',$userId,'Ucapan ulang tahun',['user_id'=>$userId,'date_key'=>$dateKey],'birthday:'.$userId.':'.$dateKey);
+            } catch (OverflowException $e) { error_log('Birthday message queue full for user '.$userId); }
+            continue;
+        }
+        $message=ems_birthday_generate_message($pdo,$birthdayUser);
+        sendInbox($pdo,$userId,ems_birthday_inbox_title($birthdayUser),$message,'birthday_evening');
     }
 }

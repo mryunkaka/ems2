@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/ai_guard.php';
 require_once __DIR__ . '/../actions/ai_gemini_client.php';
@@ -69,6 +70,8 @@ $incomingSettings = [
     'max_output_tokens' => max(128, min(8192, (int)($_POST['max_output_tokens'] ?? 2048))),
     'timeout_seconds' => max(5, min(120, (int)($_POST['timeout_seconds'] ?? 30))),
     'daily_request_limit' => max(1, min(5000, (int)($_POST['daily_request_limit'] ?? 200))),
+    'ai_max_concurrent_requests' => max(1, min(3, (int)($_POST['ai_max_concurrent_requests'] ?? $currentSettings['ai_max_concurrent_requests'] ?? 1))),
+    'ai_max_queue_size' => max(10, min(200, (int)($_POST['ai_max_queue_size'] ?? $currentSettings['ai_max_queue_size'] ?? 50))),
 ];
 
 $modelOptions = ems_ai_model_options();
@@ -127,10 +130,12 @@ if ($action === 'save') {
                 max_output_tokens,
                 timeout_seconds,
                 daily_request_limit,
+                ai_max_concurrent_requests,
+                ai_max_queue_size,
                 created_by,
                 updated_by
             ) VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 provider = VALUES(provider),
                 is_enabled = VALUES(is_enabled),
@@ -150,6 +155,8 @@ if ($action === 'save') {
                 max_output_tokens = VALUES(max_output_tokens),
                 timeout_seconds = VALUES(timeout_seconds),
                 daily_request_limit = VALUES(daily_request_limit),
+                ai_max_concurrent_requests = VALUES(ai_max_concurrent_requests),
+                ai_max_queue_size = VALUES(ai_max_queue_size),
                 updated_by = VALUES(updated_by),
                 updated_at = CURRENT_TIMESTAMP
         ");
@@ -174,6 +181,8 @@ if ($action === 'save') {
             $incomingSettings['max_output_tokens'],
             $incomingSettings['timeout_seconds'],
             $incomingSettings['daily_request_limit'],
+            $incomingSettings['ai_max_concurrent_requests'],
+            $incomingSettings['ai_max_queue_size'],
             $userId > 0 ? $userId : null,
             $userId > 0 ? $userId : null,
         ]);
@@ -189,16 +198,12 @@ if ($action === 'save') {
 
 if ($action === 'test_connection') {
     try {
-        if ($provider !== 'gemini') throw new RuntimeException('Pilih provider Gemini untuk menjalankan pengujian ini.');
-        if ($incomingSettings['gemini_api_key'] === '') {
-            throw new RuntimeException('Isi atau simpan API key Gemini terlebih dahulu.');
-        }
-
-        $result = ems_gemini_test_connection($pdo, $incomingSettings, $userId > 0 ? $userId : null);
-        $responseText = trim((string)($result['text'] ?? ''));
-        $summary = $responseText !== '' ? $responseText : 'Koneksi berhasil, tetapi respons teks kosong.';
-        $_SESSION['flash_messages'][] = 'Test connection Gemini berhasil dengan model ' . $result['model'] . '.';
-        $_SESSION['flash_messages'][] = 'Response: ' . $summary;
+        if ($provider !== 'gemini' || strtolower((string)($currentSettings['provider']??'')) !== 'gemini') throw new RuntimeException('Simpan dan pilih Gemini sebagai provider aktif sebelum menguji koneksi.');
+        if (($incomingSettings['gemini_api_key']??'') !== ($currentSettings['gemini_api_key']??'') || $incomingSettings['gemini_base_url'] !== ($currentSettings['gemini_base_url']??'') || $incomingSettings['default_model'] !== ($currentSettings['default_model']??'')) throw new RuntimeException('Simpan perubahan pengaturan Gemini terlebih dahulu, lalu jalankan uji koneksi.');
+        if (!ems_ai_global_provider_ready($pdo)) throw new RuntimeException('Provider Gemini global belum aktif atau kredensial belum tersimpan.');
+        $job=ems_ai_queue_provider_test($pdo,$userId,'global','gemini');
+        $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/ai_settings.php';
+        header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Test connection Gemini gagal: ' . $e->getMessage();
     }
@@ -209,18 +214,12 @@ if ($action === 'test_connection') {
 
 if ($action === 'test_connection_custom') {
     try {
-        if ($provider !== 'openai_compatible') throw new RuntimeException('Pilih Custom Provider OpenAI-Compatible terlebih dahulu.');
-        $result = ems_custom_test_connection($pdo, [
-            'custom_provider' => $incomingSettings['custom_provider'],
-            'custom_api_key' => $incomingSettings['custom_api_key'],
-            'custom_base_url' => $incomingSettings['custom_base_url'],
-            'custom_default_model' => $incomingSettings['custom_default_model'],
-            'timeout_seconds' => $incomingSettings['timeout_seconds'],
-            'temperature' => $incomingSettings['temperature'],
-            'max_output_tokens' => $incomingSettings['max_output_tokens'],
-        ], $userId > 0 ? $userId : null);
-        $_SESSION['flash_messages'][] = 'Test koneksi ' . $incomingSettings['custom_provider'] . ' berhasil dengan model ' . $result['model'] . '.';
-        $_SESSION['flash_messages'][] = 'Response: ' . trim((string)$result['content']);
+        if ($provider !== 'openai_compatible' || strtolower((string)($currentSettings['provider']??'')) !== 'openai_compatible') throw new RuntimeException('Simpan dan pilih OpenAI-Compatible sebagai provider aktif sebelum menguji koneksi.');
+        foreach(['custom_provider','custom_api_key','custom_base_url','custom_default_model'] as $field) if((string)($incomingSettings[$field]??'') !== (string)($currentSettings[$field]??'')) throw new RuntimeException('Simpan perubahan provider terlebih dahulu, lalu jalankan uji koneksi.');
+        if(!ems_ai_global_provider_ready($pdo)) throw new RuntimeException('Provider global belum aktif atau kredensial belum tersimpan.');
+        $job=ems_ai_queue_provider_test($pdo,$userId,'global','openai_compatible');
+        $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/ai_settings.php';
+        header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Test custom provider gagal: ' . $e->getMessage();
     }

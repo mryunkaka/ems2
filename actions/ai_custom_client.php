@@ -179,6 +179,8 @@ function ems_custom_chat_completion(
     bool $jsonMode = false,
     ?int $maxOutputTokens = null
 ): array {
+    ems_ai_require_queue_worker();
+    if (function_exists('ems_ai_queue_heartbeat')) ems_ai_queue_heartbeat($pdo);
     $modelName = trim((string) ($model ?: ($settings['custom_default_model'] ?? '')));
     $url = ems_ai_custom_completion_url((string) ($settings['custom_base_url'] ?? ''));
     $apiKey = trim((string) ($settings['custom_api_key'] ?? ''));

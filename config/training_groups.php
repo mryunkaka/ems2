@@ -65,7 +65,7 @@ function ems_training_generate_group_identities(PDO $pdo, array $draftGroups, ?i
     $fallback = ems_training_group_fallback_identities($draftGroups);
     $settings = ems_ai_get_settings($pdo);
 
-    if (empty($settings['is_enabled']) || trim((string)($settings['gemini_api_key'] ?? '')) === '') {
+    if (!ems_ai_global_provider_ready($pdo)) {
         return $fallback;
     }
 

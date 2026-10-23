@@ -24,11 +24,22 @@ function ems_ai_settings_defaults(): array
         'max_output_tokens' => 2048,
         'timeout_seconds' => 30,
         'daily_request_limit' => 200,
+        'ai_max_concurrent_requests' => 1,
+        'ai_max_queue_size' => 50,
         'created_by' => null,
         'updated_by' => null,
         'created_at' => null,
         'updated_at' => null,
     ];
+}
+
+function ems_ai_queue_settings_normalize(array $settings): array
+{
+    $defaults = ems_ai_settings_defaults();
+    return array_merge($settings, [
+        'ai_max_concurrent_requests' => max(1, min(3, (int)($settings['ai_max_concurrent_requests'] ?? $defaults['ai_max_concurrent_requests']))),
+        'ai_max_queue_size' => max(10, min(200, (int)($settings['ai_max_queue_size'] ?? $defaults['ai_max_queue_size']))),
+    ]);
 }
 
 function ems_ai_model_options(): array
@@ -85,7 +96,7 @@ function ems_ai_get_settings(PDO $pdo): array
     ");
     $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-    return array_merge($defaults, $row);
+    return ems_ai_queue_settings_normalize(array_merge($defaults, $row));
 }
 
 function ems_ai_mask_api_key(?string $value): string

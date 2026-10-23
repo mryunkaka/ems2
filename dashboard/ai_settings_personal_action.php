@@ -10,6 +10,7 @@ require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_provider_core.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/../config/groq_settings.php';
 require_once __DIR__ . '/../actions/groq_client.php';
 require_once __DIR__ . '/../actions/ai_custom_client.php';
@@ -163,13 +164,10 @@ if ($action === 'save_custom' || $action === 'test_connection_custom') {
             ems_ai_provider_save_custom($pdo, $userId, $customProvider, $customApiKey, $customBaseUrl, $customModel);
             $_SESSION['flash_messages'] = [$customIsCleared ? 'Custom provider dinonaktifkan; pengaturan provider AI lainnya tidak berubah.' : 'Custom provider berhasil disimpan.'];
         } else {
-            $result = ems_custom_test_connection($pdo, [
-                'custom_provider' => $customProvider,
-                'custom_api_key' => $customApiKey,
-                'custom_base_url' => $customBaseUrl,
-                'custom_default_model' => $customModel,
-            ], $userId);
-            $_SESSION['flash_messages'] = ['Test custom provider berhasil dengan model ' . $result['model'] . '.', 'Response: ' . trim((string) $result['content'])];
+            foreach(['custom_provider'=>$customProvider,'custom_api_key'=>$customApiKey,'custom_base_url'=>$customBaseUrl,'custom_default_model'=>$customModel] as $field=>$value) if((string)($existing[$field]??'') !== (string)$value) { $_SESSION['flash_errors']=['Simpan kredensial provider pribadi terlebih dahulu, lalu uji koneksi.']; header('Location: '.$redirectTo); exit; }
+            $job=ems_ai_queue_provider_test($pdo,$userId,'personal','openai_compatible');
+            $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/ai_settings_personal.php';
+            header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
         }
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = [$action === 'save_custom' ? 'Gagal menyimpan custom provider: ' . $e->getMessage() : 'Test custom provider gagal: ' . $e->getMessage()];
@@ -181,23 +179,10 @@ if ($action === 'save_custom' || $action === 'test_connection_custom') {
 
 if ($action === 'test_connection') {
     try {
-        $settings = array_merge(ems_ai_settings_defaults(), [
-            'provider' => 'gemini',
-            'is_enabled' => 1,
-            'gemini_api_key' => $apiKey,
-            'gemini_base_url' => $baseUrl,
-            'default_model' => $model,
-            'timeout_seconds' => 60,
-            'daily_request_limit' => 0,
-        ]);
-
-        $result = ems_gemini_test_connection($pdo, $settings, $userId);
-        $responseText = trim((string) ($result['text'] ?? ''));
-        $summary = $responseText !== '' ? $responseText : 'Koneksi berhasil, tetapi respons teks kosong.';
-        $_SESSION['flash_messages'] = [
-            'Test koneksi Gemini berhasil dengan model ' . $result['model'] . '.',
-            'Response: ' . $summary,
-        ];
+        if((string)($existing['gemini_api_key']??'')!==$apiKey || ($isProgrammer && ((string)($existing['gemini_base_url']??'')!==$baseUrl || (string)($existing['default_model']??'')!==$model))) throw new RuntimeException('Simpan pengaturan Gemini terlebih dahulu, lalu uji koneksi.');
+        $job=ems_ai_queue_provider_test($pdo,$userId,'personal','gemini');
+        $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/ai_settings_personal.php';
+        header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Test koneksi Gemini gagal: ' . $e->getMessage()];
     }
@@ -236,14 +221,10 @@ if ($action === 'save_groq' || $action === 'test_connection_groq') {
     }
 
     try {
-        $result = ems_groq_test_connection($pdo, [
-            'groq_api_key' => $groqApiKey,
-            'groq_default_model' => $groqModel,
-        ], $userId);
-        $_SESSION['flash_messages'] = [
-            'Test koneksi Groq berhasil dengan model ' . $result['model'] . '.',
-            'Response: ' . trim((string) $result['content']),
-        ];
+        if((string)($groqExisting['groq_api_key']??'')!==$groqApiKey || (string)($groqExisting['groq_default_model']??'openai/gpt-oss-120b')!==$groqModel) throw new RuntimeException('Simpan pengaturan Groq terlebih dahulu, lalu uji koneksi.');
+        $job=ems_ai_queue_provider_test($pdo,$userId,'personal','groq');
+        $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/ai_settings_personal.php';
+        header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
     } catch (Throwable $e) {
         $_SESSION['flash_errors'] = ['Test koneksi Groq gagal: ' . $e->getMessage()];
     }

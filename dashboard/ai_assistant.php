@@ -137,6 +137,8 @@ include __DIR__ . '/../partials/sidebar.php';
 <script>
 (function () {
     var CSRF_TOKEN = <?= json_encode($csrfToken, JSON_UNESCAPED_UNICODE) ?>;
+    var AI_QUEUE_SUBMIT_URL = <?= json_encode(ems_url('/ajax/ai_queue_submit.php'), JSON_UNESCAPED_SLASHES) ?>;
+    var AI_QUEUE_STATUS_URL = <?= json_encode(ems_url('/ajax/ai_queue_status.php?job_id='), JSON_UNESCAPED_SLASHES) ?>;
     var currentConversationId = 0;
 
     var els = {
@@ -485,17 +487,21 @@ include __DIR__ . '/../partials/sidebar.php';
         body.set('csrf_token', CSRF_TOKEN);
         body.set('conversation_id', String(currentConversationId));
         body.set('message', text);
+        var requestId = (window.crypto && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : (Date.now().toString(16) + Math.random().toString(16).slice(2))).toLowerCase();
+        while (requestId.length < 32) requestId += '0';
+        requestId = requestId.slice(0, 32);
+        body.set('client_request_id', requestId);
 
-        fetch('/actions/roxy_chat_action.php', {
+        fetch(<?= json_encode(ems_url('/actions/roxy_chat_action.php'), JSON_UNESCAPED_SLASHES) ?>, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: body.toString(),
         })
             .then(readJsonResponse)
             .then(function (data) {
-                els.typing.classList.add('hidden');
-                els.sendBtn.disabled = false;
                 if (!data.success) {
+                    els.typing.classList.add('hidden');
+                    els.sendBtn.disabled = false;
                     setExpression('alert');
                     pendingUserBubble.remove();
                     els.input.value = text;
@@ -503,12 +509,8 @@ include __DIR__ . '/../partials/sidebar.php';
                     return;
                 }
                 currentConversationId = data.conversation_id;
-                setExpression(data.expression || 'netral');
-                appendBubble('bot', data.answer, answerSourceLabel(data.answer_source, data.used_deep_research, data.provider_name), data.message_id);
-                if (data.gemini_key_missing) {
-                    appendResearchSetupNotice();
-                }
                 loadConversationList(currentConversationId);
+                pollRoxyJob(data.job_id, pendingUserBubble);
             })
             .catch(function () {
                 els.typing.classList.add('hidden');
@@ -518,6 +520,47 @@ include __DIR__ . '/../partials/sidebar.php';
                 els.input.value = text;
                 appendBubble('bot', 'Koneksi ke Roxy gagal. Coba lagi.');
             });
+    }
+
+    function pollRoxyJob(jobId, pendingUserBubble) {
+        var delay = 1800;
+        function wait(ms) { return new Promise(function (resolve) { window.setTimeout(resolve, ms); }); }
+        function poll() {
+            fetch(AI_QUEUE_STATUS_URL + encodeURIComponent(jobId), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+                .then(readJsonResponse)
+                .then(function (data) {
+                    if (!data.ok && !data.success) {
+                        if (data.http_status === 401 || data.http_status === 404) {
+                            els.typing.classList.add('hidden'); els.sendBtn.disabled = false; setExpression('alert');
+                            appendBubble('bot', data.message || data.error || 'Pekerjaan Roxy tidak ditemukan.'); return;
+                        }
+                        throw new Error(data.message || data.error || 'Status pekerjaan tidak tersedia.');
+                    }
+                    if (data.status === 'queued') {
+                        var activeSummary = Array.isArray(data.active) && data.active.length ? ' · dipakai ' + data.active.map(function (item) { return (item.requester_name || 'Pengguna') + ' untuk ' + (item.feature_label || 'AI'); }).join(', ') : '';
+                        els.typing.textContent = 'Pesan masuk antrean AI' + (data.position ? ' · posisi ' + data.position : '') + activeSummary + '…';
+                        return wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); return poll(); });
+                    }
+                    if (data.status === 'running') {
+                        var currentUsers = Array.isArray(data.active) ? data.active.map(function (item) { return (item.requester_name || 'Pengguna') + ' (' + (item.feature_label || 'AI') + ')'; }).join(', ') : '';
+                        els.typing.textContent = 'Model AI sedang memproses pesan Anda' + (currentUsers ? ' · aktif: ' + currentUsers : '') + '…';
+                        return wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); return poll(); });
+                    }
+                    els.typing.classList.add('hidden');
+                    els.sendBtn.disabled = false;
+                    if (data.status === 'failed') { setExpression('alert'); appendBubble('bot', data.error || 'Roxy tidak dapat menjawab saat ini.'); return; }
+                    var result = data.result || {};
+                    setExpression(result.expression || 'netral');
+                    appendBubble('bot', result.answer || 'Roxy menyelesaikan pekerjaan tanpa jawaban.', answerSourceLabel(result.answer_source, result.used_deep_research, result.provider_name), result.message_id);
+                    if (result.gemini_key_missing) appendResearchSetupNotice();
+                })
+                .catch(function (error) {
+                    els.typing.textContent = 'Status belum tersambung; mencoba lagi…';
+                    wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); poll(); });
+                });
+        }
+        els.typing.textContent = 'Menunggu giliran model AI…';
+        poll();
     }
 
     els.sendBtn.addEventListener('click', sendMessage);

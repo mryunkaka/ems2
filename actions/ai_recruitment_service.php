@@ -226,7 +226,7 @@ function ems_ai_render_summary_from_raw_text(string $rawText): string
 
 function ems_ai_generate_candidate_summary(PDO $pdo, array $settings, array $candidate, array $result, array $chartScoreMap, array $questionEntries, string $durationText, int $yesCount, int $noCount, ?int $createdBy = null): ?string
 {
-    if (empty($settings['is_enabled']) || trim((string)($settings['gemini_api_key'] ?? '')) === '') {
+    if (!ems_ai_global_provider_ready($pdo)) {
         return null;
     }
 
@@ -275,6 +275,79 @@ function ems_ai_generate_candidate_summary(PDO $pdo, array $settings, array $can
     return ems_ai_render_summary_text($decoded);
 }
 
+/** Load and prepare missing interview material in the CLI queue worker only. */
+function ems_ai_prepare_candidate_interview(PDO $pdo, int $applicantId, int $hrId): array
+{
+    $stmt=$pdo->prepare('SELECT * FROM medical_applicants WHERE id=? LIMIT 1'); $stmt->execute([$applicantId]);
+    $candidate=$stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$candidate || !in_array((string)$candidate['status'],['ai_completed','interview'],true)) throw new RuntimeException('Kandidat tidak tersedia untuk interview.');
+    $type=ems_normalize_recruitment_type($candidate['recruitment_type']??'medical_candidate');
+    $stmt=$pdo->prepare('SELECT * FROM ai_test_results WHERE applicant_id=? LIMIT 1'); $stmt->execute([$applicantId]);
+    $result=$stmt->fetch(PDO::FETCH_ASSOC)?:[];
+    if ($result===[]) throw new RuntimeException('Hasil assessment kandidat tidak tersedia.');
+    $questions=ems_recruitment_questions_for_applicant($type,$applicantId);
+    $answers=json_decode((string)($result['answers_json']??''),true); $answers=is_array($answers)?$answers:[];
+    $entries=[]; foreach($questions as $id=>$question) $entries[]=['id'=>$id,'question'=>$question,'answer'=>$answers[$id]??'-'];
+    $yes=count(array_filter($answers,static fn($v)=>$v==='ya')); $no=count(array_filter($answers,static fn($v)=>$v==='tidak'));
+    $seconds=(int)($result['duration_seconds']??0); $duration=$seconds>0?sprintf('%02d:%02d:%02d',intdiv($seconds,3600),intdiv($seconds%3600,60),$seconds%60):'-';
+    $ids=array_map('intval',array_keys($questions)); $traits=$type==='assistant_manager'?ems_assistant_manager_trait_items($ids):getTraitItems($type);
+    $scores=[]; foreach($traits as $trait=>$items) $scores[$trait]=calculateTraitScore($answers,$items);
+    $settings=ems_ai_get_settings($pdo);
+    if (trim((string)($result['personality_summary']??''))==='' && !empty($settings['is_enabled'])) {
+        $summary=ems_ai_generate_candidate_summary($pdo,$settings,$candidate,$result,$scores,$entries,$duration,$yes,$no,$hrId);
+        if (is_string($summary)&&trim($summary)!=='') {
+            $stmt=$pdo->prepare('UPDATE ai_test_results SET personality_summary=? WHERE applicant_id=? AND (personality_summary IS NULL OR personality_summary=\'\')');
+            $stmt->execute([trim($summary),$applicantId]);
+        }
+    }
+    $pack=ems_ai_get_or_create_interview_question_pack($pdo,$settings,$candidate,$result,$answers,$questions,$applicantId,$hrId,$type);
+    $questionCount=count(ems_ai_flatten_interview_question_pack($pack));
+    if($questionCount!==20) throw new RuntimeException('Paket pertanyaan interview belum lengkap.');
+    return ['applicant_id'=>$applicantId,'recruitment_type'=>$type,'interview_url'=>'/dashboard/candidate_interview_multi.php?id='.$applicantId,'question_count'=>$questionCount];
+}
+
+function ems_ai_get_saved_interview_question_pack(PDO $pdo, int $applicantId, int $hrId): ?array
+{
+    ems_ai_ensure_interview_question_packs_table($pdo);
+    $stmt=$pdo->prepare('SELECT question_pack_json FROM applicant_interview_question_packs WHERE applicant_id=? AND hr_id=? LIMIT 1');
+    $stmt->execute([$applicantId,$hrId]); $raw=$stmt->fetchColumn();
+    if (!is_string($raw)||trim($raw)==='') return null;
+    $pack=json_decode($raw,true);
+    return is_array($pack)&&count(ems_ai_flatten_interview_question_pack($pack))===20?$pack:null;
+}
+
+function ems_ai_interview_should_enqueue(bool $providerReady, bool $summaryMissing, bool $summaryTemplateAvailable, bool $packMissing, bool $packTemplateAvailable): bool
+{
+    return $providerReady && (($summaryMissing && $summaryTemplateAvailable) || ($packMissing && $packTemplateAvailable));
+}
+
+function ems_ai_prepare_candidate_detail(PDO $pdo,int $applicantId,int $actorId,bool $makeSummary,bool $makeAudit): array
+{
+    $stmt=$pdo->prepare('SELECT * FROM medical_applicants WHERE id=? LIMIT 1');$stmt->execute([$applicantId]);$candidate=$stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt=$pdo->prepare('SELECT * FROM ai_test_results WHERE applicant_id=? LIMIT 1');$stmt->execute([$applicantId]);$result=$stmt->fetch(PDO::FETCH_ASSOC);
+    if(!$candidate||!$result)throw new RuntimeException('Data assessment kandidat tidak tersedia.');
+    $type=ems_normalize_recruitment_type($candidate['recruitment_type']??'medical_candidate');$questions=ems_recruitment_questions_for_applicant($type,$applicantId);
+    $answers=json_decode((string)($result['answers_json']??''),true);$answers=is_array($answers)?$answers:[];$yes=count(array_filter($answers,static fn($v)=>$v==='ya'));$no=count(array_filter($answers,static fn($v)=>$v==='tidak'));
+    $ids=array_map('intval',array_keys($questions));$traits=$type==='assistant_manager'?ems_assistant_manager_trait_items($ids):getTraitItems($type);$scores=[];
+    foreach($traits as $trait=>$items)$scores[$trait]=calculateTraitScore($answers,$items);
+    $bias=detectResponseBias($answers,$traits);if($type==='assistant_manager')$bias=array_values(array_unique(array_merge($bias,ems_assistant_manager_trap_flags($answers))));
+    $seconds=(int)($result['duration_seconds']??0);$duration=$seconds>0?sprintf('%02d:%02d:%02d',intdiv($seconds,3600),intdiv($seconds%3600,60),$seconds%60):'-';
+    $entries=[];foreach($questions as $id=>$question)$entries[]=['id'=>$id,'question'=>$question,'answer'=>$answers[$id]??'-'];
+    $settings=ems_ai_get_settings($pdo);$made=[];
+    if($makeSummary&&trim((string)($result['personality_summary']??''))===''){
+        $summary=ems_ai_generate_candidate_summary($pdo,$settings,$candidate,$result,$scores,$entries,$duration,$yes,$no,$actorId);
+        if(is_string($summary)&&trim($summary)!==''){$pdo->prepare("UPDATE ai_test_results SET personality_summary=? WHERE applicant_id=? AND (personality_summary IS NULL OR personality_summary='')")->execute([trim($summary),$applicantId]);$made['summary']=true;}
+    }
+    if($makeAudit){
+        $risk=json_decode((string)($result['risk_flags']??''),true);$risk=is_array($risk)?$risk:[];
+        if(!is_array($risk['ai_audit']??null)){
+            $audit=ems_ai_review_assessment_plausibility($pdo,$settings,$applicantId,$scores,$bias,$yes,$no,$duration,$type,$actorId);
+            if($audit){$risk['ai_audit']=$audit;$pdo->prepare('UPDATE ai_test_results SET risk_flags=? WHERE applicant_id=?')->execute([json_encode($risk,JSON_UNESCAPED_UNICODE),$applicantId]);$made['audit']=true;}
+        }
+    }
+    return ['applicant_id'=>$applicantId,'created'=>$made];
+}
+
 /**
  * Audit kewajaran statistik atas profil skor psikometri kandidat, memakai Gemini
  * sebagai "auditor" independen. Tugasnya BUKAN menilai kelayakan kandidat, hanya
@@ -304,7 +377,7 @@ function ems_ai_review_assessment_plausibility(
     string $recruitmentType,
     ?int $createdBy = null
 ): ?array {
-    if (empty($settings['is_enabled']) || trim((string)($settings['gemini_api_key'] ?? '')) === '') {
+    if (!ems_ai_global_provider_ready($pdo)) {
         return null;
     }
 
@@ -1365,7 +1438,7 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
     $modelName = null;
     $pack = null;
 
-    if (!empty($settings['is_enabled']) && trim((string)($settings['gemini_api_key'] ?? '')) !== '') {
+    if (ems_ai_global_provider_ready($pdo)) {
         $template = ems_ai_get_active_prompt_template($pdo, 'interview_question_pack');
         if ($template) {
             $payload = ems_ai_interview_question_pack_payload($candidate, $result, $answers, $aiQuestions, $recruitmentType);

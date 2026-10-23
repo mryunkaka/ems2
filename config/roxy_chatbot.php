@@ -814,10 +814,45 @@ function ems_roxy_save_message(
     $stmt->execute([$conversationId, $userId, $sender, $content, $replyToMessageId, $answerSource, $expressionTag]);
     $messageId = (int) $pdo->lastInsertId();
 
-    $pdo->prepare("UPDATE bot_conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = ?")
+    $pdo->prepare("UPDATE bot_conversations SET last_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
         ->execute([$conversationId]);
 
     return $messageId;
+}
+
+function ems_roxy_queue_dedupe_key(int $userId, string $clientRequestId): string
+{
+    if ($userId <= 0 || !preg_match('/^[a-f0-9]{32}$/i', $clientRequestId)) throw new InvalidArgumentException('ID pesan Roxy tidak valid.');
+    return hash('sha256','roxy-request:'.$userId.':'.strtolower($clientRequestId));
+}
+
+/** Save a user message and its queue row in one short transaction. */
+function ems_roxy_enqueue_message(PDO $pdo, int $userId, string $unitCode, ?int $requestedConversationId, string $message, string $clientRequestId): array
+{
+    require_once __DIR__.'/ai_queue.php';
+    $dedupe=ems_roxy_queue_dedupe_key($userId,$clientRequestId);
+    $pdo->beginTransaction();
+    try {
+        if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='sqlite') $pdo->query('SELECT id FROM system_ai_settings ORDER BY id LIMIT 1 FOR UPDATE')->fetchColumn();
+        $existing=$pdo->prepare('SELECT id,status,references_json FROM system_ai_request_queue WHERE requester_id=? AND dedupe_key=? ORDER BY id DESC LIMIT 1');
+        $existing->execute([$userId,hash('sha256',$dedupe)]);
+        if ($row=$existing->fetch(PDO::FETCH_ASSOC)) {
+            $refs=json_decode((string)$row['references_json'],true)?:[];
+            $pdo->commit();
+            return ['job_id'=>(int)$row['id'],'status'=>(string)$row['status'],'reused'=>true,'conversation_id'=>(int)($refs['conversation_id']??0),'user_message_id'=>(int)($refs['user_message_id']??0)];
+        }
+        $conversationId=0;
+        if (($requestedConversationId??0)>0) {
+            $owner=$pdo->prepare('SELECT id FROM bot_conversations WHERE id=? AND user_id=? AND unit_code=? LIMIT 1');
+            $owner->execute([$requestedConversationId,$userId,$unitCode]);
+            if ($owner->fetchColumn()) $conversationId=(int)$requestedConversationId;
+        }
+        $conversationId=ems_roxy_get_or_create_conversation($pdo,$userId,$unitCode,$conversationId>0?$conversationId:null,$message);
+        $userMessageId=ems_roxy_save_message($pdo,$conversationId,$userId,'user',$message);
+        $job=ems_ai_queue_enqueue($pdo,'roxy_chat',$userId,'Chat Roxy',['conversation_id'=>$conversationId,'user_message_id'=>$userMessageId,'unit_code'=>$unitCode],$dedupe);
+        $pdo->commit();
+        return $job+['conversation_id'=>$conversationId,'user_message_id'=>$userMessageId];
+    } catch(Throwable $e) { if($pdo->inTransaction())$pdo->rollBack(); throw $e; }
 }
 
 function ems_roxy_get_conversation_messages(PDO $pdo, int $conversationId): array

@@ -94,6 +94,7 @@ function ems_ai_provider_clear_settings(PDO $pdo, int $userId): void
 
 function ems_ai_provider_call_json(PDO $pdo, string $systemPrompt, string $userPrompt, string $featureKey, ?int $userId, ?array $schema = null, ?string $preferredProvider = null): array
 {
+    ems_ai_require_queue_worker();
     if (!$userId) return ['ok'=>false, 'error'=>'Sesi pengguna tidak valid. Silakan login ulang.'];
     $saved = ems_ai_get_settings($pdo);
     if (empty($saved['is_enabled'])) return ['ok'=>false,'error'=>'Provider AI global sedang nonaktif.'];

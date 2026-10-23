@@ -5,6 +5,7 @@ require_once __DIR__ . '/../auth/request_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 require_once __DIR__ . '/ai_gemini_client.php';
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -15,6 +16,20 @@ $mode = (string)($_GET['mode'] ?? 'list');
 $requestedId = max(0, (int)($_GET['user_id'] ?? 0));
 if ($mode === 'generate') {
     emsRequireRateLimit('work_anniversary_generation', emsCurrentRequestIdentifier($viewerId), 50, 60, 'Pembuatan apresiasi terlalu sering.');
+    if (!defined('EMS_AI_QUEUE_WORKER')) {
+        if($_SERVER['REQUEST_METHOD']!=='POST') { http_response_code(405); echo json_encode(['success'=>false,'message'=>'Metode tidak diizinkan.']); exit; }
+        emsRequireJsonCsrf('Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.');
+        $stmt=$pdo->prepare('SELECT id,tanggal_masuk,is_active FROM user_rh WHERE id=? LIMIT 1'); $stmt->execute([$requestedId]); $person=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!$person || (int)($person['is_active']??1)!==1 || empty($person['tanggal_masuk'])) { http_response_code(404); echo json_encode(['success'=>false,'message'=>'Data masa kerja tidak tersedia.']); exit; }
+        $todayDate=new DateTimeImmutable('today',new DateTimeZone('Asia/Jakarta')); $join=new DateTimeImmutable((string)$person['tanggal_masuk']);
+        $month=(int)$join->format('m'); $day=(int)$join->format('d'); $year=(int)$todayDate->format('Y'); if($month===2&&$day===29&&!checkdate(2,29,$year))$day=28;
+        if($join->setDate($year,$month,$day)>$todayDate) { http_response_code(422); echo json_encode(['success'=>false,'message'=>'Tanggal apresiasi belum tiba.']); exit; }
+        if(!ems_ai_global_provider_ready($pdo)) { http_response_code(503); echo json_encode(['success'=>false,'message'=>'Provider AI global belum siap.']); exit; }
+        try {
+            $job=ems_ai_queue_enqueue($pdo,'work_anniversary_generate',$viewerId,'Apresiasi masa kerja',['user_id'=>$requestedId,'anniversary_year'=>$year,'requester_id'=>$viewerId],'work-anniversary:'.$requestedId.':'.$year);
+            echo json_encode(['success'=>true,'queued'=>true,'job_id'=>$job['job_id'],'status'=>$job['status']],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES); exit;
+        } catch(OverflowException $e) { http_response_code(429); echo json_encode(['success'=>false,'message'=>$e->getMessage()]); exit; }
+    }
 }
 if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
 $today = new DateTimeImmutable('today', new DateTimeZone('Asia/Jakarta'));
@@ -43,14 +58,14 @@ $canGenerateImages = strtolower((string)($settings['provider'] ?? 'gemini')) ===
 $storageDir = dirname(__DIR__) . '/storage/work_anniversary';
 if (!is_dir($storageDir)) @mkdir($storageDir, 0750, true);
 
-function anniversaryDateLabel(?string $value): string {
+if (!function_exists('anniversaryDateLabel')) { function anniversaryDateLabel(?string $value): string {
     if (!$value || $value === '0000-00-00') return '-';
     try {
         $date = new DateTimeImmutable($value);
         $months = [1=>'Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
         return $date->format('d') . ' ' . $months[(int)$date->format('n')] . ' ' . $date->format('Y');
     } catch (Throwable $e) { return '-'; }
-}
+} }
 
 foreach ($people as $person) {
     $uid = (int)$person['id'];

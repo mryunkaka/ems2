@@ -8,6 +8,8 @@ require_once __DIR__ . '/../config/ai_settings.php';
 require_once __DIR__ . '/../config/recruitment_profiles.php';
 require_once __DIR__ . '/../actions/ai_scoring_engine.php';
 require_once __DIR__ . '/../actions/ai_recruitment_service.php';
+require_once __DIR__ . '/../config/ai_queue.php';
+require_once __DIR__ . '/../auth/csrf.php';
 
 $user = $_SESSION['user_rh'] ?? [];
 if (strtolower($user['role'] ?? '') === 'staff') {
@@ -99,71 +101,24 @@ $aiAudit = is_array($storedRiskFlags['ai_audit'] ?? null) ? $storedRiskFlags['ai
 $aiAuditError = null;
 $auditFeatureKey = ems_ai_assessment_audit_feature_key($recruitmentType, $id);
 
-function candidateDetailPersistAiAudit(PDO $pdo, int $applicantId, array $storedRiskFlags, array $audit): void
-{
-    $storedRiskFlags['ai_audit'] = $audit;
-    $stmt = $pdo->prepare("UPDATE ai_test_results SET risk_flags = ? WHERE applicant_id = ?");
-    $stmt->execute([json_encode($storedRiskFlags, JSON_UNESCAPED_UNICODE), $applicantId]);
-}
-
-if ($hasAiResult && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_audit'])) {
+$aiQueueError=null;
+$actorId=(int)($user['id']??0);
+$forceAudit=$_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['regenerate_ai_audit']);
+$forceSummary=$_SERVER['REQUEST_METHOD']==='POST'&&isset($_POST['regenerate_ai_summary']);
+$missingAudit=$hasAiResult&&$aiAudit===null&&!ems_ai_has_successful_summary_log($pdo,$auditFeatureKey);
+$summaryCacheKey=ems_ai_candidate_summary_cache_key($recruitmentType,$id);
+$missingSummary=$hasAiResult&&trim((string)($result['personality_summary']??''))===''&&ems_ai_get_active_prompt_template($pdo,ems_ai_recruitment_feature_key($recruitmentType))!==null&&!ems_ai_has_successful_summary_log($pdo,$summaryCacheKey);
+$queueNeeded=$forceAudit||$forceSummary||$missingAudit||$missingSummary;
+if(($forceAudit||$forceSummary)&&!validateCsrfToken((string)($_POST['csrf_token']??''))) $aiQueueError='Sesi kedaluwarsa. Muat ulang halaman lalu coba lagi.';
+elseif($queueNeeded&&$hasAiResult&&$actorId>0&&ems_ai_global_provider_ready($pdo)) {
+    $doAudit=$forceAudit||$missingAudit; $doSummary=$forceSummary||$missingSummary;
     try {
-        if (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === '') {
-            throw new RuntimeException('Audit AI belum bisa dijalankan karena AI belum aktif atau API key belum diisi.');
-        }
-
-        $freshAudit = ems_ai_review_assessment_plausibility(
-            $pdo,
-            $aiSettings,
-            $id,
-            $chartScoreMap,
-            $biasFlags,
-            $yesCount,
-            $noCount,
-            $durationText,
-            $recruitmentType,
-            (int)($user['id'] ?? 0) ?: null
-        );
-
-        if (!$freshAudit) {
-            throw new RuntimeException('Audit AI gagal dijalankan (respons kosong atau tidak valid).');
-        }
-
-        candidateDetailPersistAiAudit($pdo, $id, $storedRiskFlags, $freshAudit);
-        header('Location: candidate_detail.php?id=' . $id . '&audit_regenerated=1');
-        exit;
-    } catch (Throwable $e) {
-        $aiAuditError = $e->getMessage();
-    }
-} elseif (
-    $hasAiResult
-    && $aiAudit === null
-    && !empty($aiSettings['is_enabled'])
-    && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
-    && !ems_ai_has_successful_summary_log($pdo, $auditFeatureKey)
-) {
-    try {
-        $freshAudit = ems_ai_review_assessment_plausibility(
-            $pdo,
-            $aiSettings,
-            $id,
-            $chartScoreMap,
-            $biasFlags,
-            $yesCount,
-            $noCount,
-            $durationText,
-            $recruitmentType,
-            (int)($user['id'] ?? 0) ?: null
-        );
-
-        if ($freshAudit) {
-            candidateDetailPersistAiAudit($pdo, $id, $storedRiskFlags, $freshAudit);
-            $aiAudit = $freshAudit;
-        }
-    } catch (Throwable $e) {
-        $aiAuditError = $e->getMessage();
-    }
-}
+        $job=ems_ai_queue_enqueue($pdo,'candidate_detail_prepare',$actorId,'Ringkasan dan audit assessment kandidat',['applicant_id'=>$id,'requester_id'=>$actorId,'summary'=>$doSummary,'audit'=>$doAudit],'candidate-detail:'.$id.':'.$actorId.':'.(int)$doSummary.':'.(int)$doAudit);
+        $_SESSION['ai_queue_return_'.$job['job_id']]='/dashboard/candidate_detail.php?id='.$id;
+        header('Location: '.ems_url('/dashboard/ai_queue_wait.php?job_id='.$job['job_id'])); exit;
+    } catch(Throwable $e) { $aiQueueError=$e instanceof OverflowException?$e->getMessage():'Permintaan AI belum dapat dimasukkan ke antrean.'; }
+} elseif(($forceAudit||$forceSummary)&&$queueNeeded) $aiQueueError='Provider AI global belum aktif atau kredensial belum tersimpan.';
+$aiAuditError=$aiQueueError;
 
 $aiAuditPenalty = $aiAudit ? (float)($aiAudit['penalty'] ?? 0) : 0.0;
 
@@ -192,87 +147,10 @@ $chartTraitDetails = [
     ['label' => 'Honesty', 'value' => $chartScores[5]],
 ];
 
-$generatedSummaryError = null;
+$generatedSummaryError = $aiQueueError;
 $generatedSummarySuccess = isset($_GET['summary_regenerated']) && $_GET['summary_regenerated'] === '1';
 $featureKey = ems_ai_candidate_summary_cache_key($recruitmentType, $id);
-
-if ($hasAiResult && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_ai_summary'])) {
-    try {
-        if (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === '') {
-            throw new RuntimeException('AI summary belum bisa digenerate ulang karena AI belum aktif atau API key belum diisi.');
-        }
-
-        $generatedSummary = ems_ai_generate_candidate_summary(
-            $pdo,
-            $aiSettings,
-            $candidate,
-            $result,
-            $chartScoreMap,
-            $questionEntries,
-            $durationText,
-            $yesCount,
-            $noCount,
-            (int)($user['id'] ?? 0) ?: null
-        );
-
-        if (!is_string($generatedSummary) || trim($generatedSummary) === '') {
-            throw new RuntimeException('Ringkasan AI kosong.');
-        }
-
-        $personalityNarrative = trim($generatedSummary);
-        $stmt = $pdo->prepare("
-            UPDATE ai_test_results
-            SET personality_summary = ?
-            WHERE applicant_id = ?
-        ");
-        $stmt->execute([$personalityNarrative, $id]);
-
-        header('Location: candidate_detail.php?id=' . $id . '&summary_regenerated=1');
-        exit;
-    } catch (Throwable $e) {
-        $generatedSummaryError = $e->getMessage();
-    }
-}
-
-try {
-    $shouldGenerateAiSummary = $hasAiResult
-        && !empty($aiSettings['is_enabled'])
-        && trim((string)($aiSettings['gemini_api_key'] ?? '')) !== ''
-        && !ems_ai_has_successful_summary_log($pdo, $featureKey);
-
-    if ($shouldGenerateAiSummary) {
-        $generatedSummary = ems_ai_generate_candidate_summary(
-            $pdo,
-            $aiSettings,
-            $candidate,
-            $result,
-            $chartScoreMap,
-            $questionEntries,
-            $durationText,
-            $yesCount,
-            $noCount,
-            (int)($user['id'] ?? 0) ?: null
-        );
-
-        if (is_string($generatedSummary) && trim($generatedSummary) !== '') {
-            $personalityNarrative = $generatedSummary;
-
-            $stmt = $pdo->prepare("
-                UPDATE ai_test_results
-                SET personality_summary = ?
-                WHERE applicant_id = ?
-            ");
-            $stmt->execute([$personalityNarrative, $id]);
-        }
-    } elseif (trim((string)($result['personality_summary'] ?? '')) !== '') {
-        $personalityNarrative = trim((string)$result['personality_summary']);
-    }
-} catch (Throwable $e) {
-    $generatedSummaryError = $e->getMessage();
-    if (trim((string)($result['personality_summary'] ?? '')) !== '') {
-        $personalityNarrative = trim((string)$result['personality_summary']);
-    }
-}
+if(trim((string)($result['personality_summary']??''))!=='') $personalityNarrative=trim((string)$result['personality_summary']);
 
 $pageTitle = 'Detail ' . ems_recruitment_type_label($candidate['recruitment_type'] ?? 'medical_candidate');
 
@@ -493,8 +371,9 @@ function candidateDisplayLabel(?string $value): string
         <?php if ($hasAiResult): ?>
         <div class="card mt-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <h3 class="mb-0">Audit Kewajaran Skor (AI Gemini)</h3>
+                <h3 class="mb-0">Audit Kewajaran Skor (AI)</h3>
                 <form method="POST">
+                    <?= csrfField() ?>
                     <button type="submit" name="regenerate_ai_audit" value="1" class="btn-secondary btn-sm" onclick="return confirm('Jalankan ulang audit AI untuk profil skor kandidat ini?');">
                         <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                         <span>Audit Ulang dengan AI</span>
@@ -526,7 +405,7 @@ function candidateDisplayLabel(?string $value): string
                 <?php if (!empty($aiAudit['reviewed_at'])): ?>
                     <div class="mt-2 meta-text-xs">Terakhir diaudit: <?= htmlspecialchars((string)$aiAudit['reviewed_at']) ?></div>
                 <?php endif; ?>
-            <?php elseif (empty($aiSettings['is_enabled']) || trim((string)($aiSettings['gemini_api_key'] ?? '')) === ''): ?>
+            <?php elseif (!ems_ai_global_provider_ready($pdo)): ?>
                 <div class="mt-3 text-sm text-slate-500">
                     Audit AI belum aktif. Aktifkan provider AI dan isi API key di
                     <a class="font-semibold underline" href="ai_settings.php">Setting AI</a> untuk mengaktifkan audit kewajaran skor otomatis.
@@ -549,6 +428,7 @@ function candidateDisplayLabel(?string $value): string
             <div class="mt-3 flex flex-wrap items-center gap-3">
                 <?php if ($hasAiResult): ?>
                     <form method="POST">
+                        <?= csrfField() ?>
                         <button type="submit" name="regenerate_ai_summary" value="1" class="btn-secondary" onclick="return confirm('Generate ulang akan membuat ulang Ringkasan AI untuk kandidat ini. Lanjutkan?');">
                             <?= ems_icon('arrow-path', 'h-4 w-4') ?>
                             <span>Generate Ulang Ringkasan AI</span>
