@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../actions/candidate_interview_admin.php';
 require_once __DIR__ . '/../actions/interview_finalize.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../actions/status_validator.php';
@@ -308,7 +309,7 @@ $generatedInterviewPack = ems_ai_get_or_create_interview_question_pack(
 );
 $medicalInterviewQuestions = array_values((array)($generatedInterviewPack['medical_questions'] ?? []));
 $personalInterviewQuestions = array_values((array)($generatedInterviewPack['personal_questions'] ?? []));
-$flattenedInterviewQuestions = ems_ai_flatten_interview_question_pack($generatedInterviewPack);
+$flattenedInterviewQuestions = ems_ai_flatten_interview_question_pack($generatedInterviewPack, $recruitmentType);
 ems_ai_ensure_interview_question_responses_table($pdo);
 
 $stmt = $pdo->prepare("
@@ -459,6 +460,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             WHERE id = ? AND status IN ('ai_completed', 'interview')
         ");
         $stmt->execute([$applicantId]);
+
+        // Simpan preview hasil agar daftar kandidat langsung menampilkan skor
+        // interview yang baru diperbarui, tanpa menunggu finalisasi/lock.
+        ems_candidate_recalculate_interview_result($pdo, $applicantId);
 
         $pdo->commit();
 

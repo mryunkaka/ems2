@@ -301,7 +301,7 @@ function ems_ai_prepare_candidate_interview(PDO $pdo, int $applicantId, int $hrI
         }
     }
     $pack=ems_ai_get_or_create_interview_question_pack($pdo,$settings,$candidate,$result,$answers,$questions,$applicantId,$hrId,$type);
-    $questionCount=count(ems_ai_flatten_interview_question_pack($pack));
+    $questionCount=count(ems_ai_flatten_interview_question_pack($pack, $type));
     if($questionCount!==20) throw new RuntimeException('Paket pertanyaan interview belum lengkap.');
     return ['applicant_id'=>$applicantId,'recruitment_type'=>$type,'interview_url'=>'/dashboard/candidate_interview_multi.php?id='.$applicantId,'question_count'=>$questionCount];
 }
@@ -1244,18 +1244,95 @@ function ems_ai_parse_question_pack_response(string $rawText): ?array
     ];
 }
 
-function ems_ai_flatten_interview_question_pack(array $pack): array
+function ems_ai_normalize_interview_criterion_code(string $criterionCode, string $category, string $recruitmentType): string
+{
+    $code = strtolower(trim($criterionCode));
+    $recruitmentType = strtolower(trim($recruitmentType));
+
+    $validCodes = $recruitmentType === 'assistant_manager'
+        ? ['ga_coordination', 'operational_control', 'sop_compliance']
+        : ['attitude', 'communication', 'discipline', 'leadership', 'loyalty', 'responsibility', 'stress_control', 'teamwork'];
+
+    if (in_array($code, $validCodes, true)) {
+        return $code;
+    }
+
+    $medicalCandidateMap = [
+        'med_batas_kompetensi' => 'responsibility',
+        'med_disiplin_prosedur' => 'discipline',
+        'med_dokumentasi' => 'responsibility',
+        'med_etika_pasien' => 'attitude',
+        'med_kelelahan' => 'stress_control',
+        'med_kepemimpinan_tim' => 'teamwork',
+        'med_ketepatan_sop' => 'discipline',
+        'med_keterbatasan_alat' => 'responsibility',
+        'med_serah_terima' => 'communication',
+        'med_sop_prioritas' => 'responsibility',
+        'personal_area_perbaikan' => 'attitude',
+        'personal_kejujuran' => 'loyalty',
+        'personal_kesadaran_stres' => 'stress_control',
+        'personal_komitmen_jadwal' => 'discipline',
+        'personal_komunikasi_tim' => 'communication',
+        'personal_konflik_tanggung_jawab' => 'responsibility',
+        'personal_motivasi' => 'attitude',
+        'personal_nilai_bantu' => 'teamwork',
+        'personal_respons_kritik' => 'attitude',
+        'personal_verifikasi_duty' => 'responsibility',
+    ];
+    $assistantManagerMap = [
+        'med_batas_kompetensi' => 'operational_control',
+        'med_disiplin_prosedur' => 'sop_compliance',
+        'med_dokumentasi' => 'operational_control',
+        'med_etika_pasien' => 'ga_coordination',
+        'med_kelelahan' => 'operational_control',
+        'med_kepemimpinan_tim' => 'ga_coordination',
+        'med_ketepatan_sop' => 'sop_compliance',
+        'med_keterbatasan_alat' => 'operational_control',
+        'med_serah_terima' => 'ga_coordination',
+        'med_sop_prioritas' => 'sop_compliance',
+        'personal_area_perbaikan' => 'ga_coordination',
+        'personal_kejujuran' => 'ga_coordination',
+        'personal_kesadaran_stres' => 'operational_control',
+        'personal_komitmen_jadwal' => 'operational_control',
+        'personal_komunikasi_tim' => 'ga_coordination',
+        'personal_konflik_tanggung_jawab' => 'operational_control',
+        'personal_motivasi' => 'ga_coordination',
+        'personal_nilai_bantu' => 'ga_coordination',
+        'personal_respons_kritik' => 'ga_coordination',
+        'personal_verifikasi_duty' => 'operational_control',
+    ];
+
+    $aliases = $recruitmentType === 'assistant_manager' ? $assistantManagerMap : $medicalCandidateMap;
+    $mapped = $aliases[$code] ?? '';
+    if (in_array($mapped, $validCodes, true)) {
+        return $mapped;
+    }
+
+    if ($recruitmentType === 'assistant_manager') {
+        return $category === 'medis_sop' ? 'sop_compliance' : 'ga_coordination';
+    }
+
+    return $category === 'medis_sop' ? 'discipline' : 'attitude';
+}
+
+function ems_ai_flatten_interview_question_pack(array $pack, ?string $recruitmentTypeOverride = null): array
 {
     $rows = [];
+    $packRecruitmentType = $recruitmentTypeOverride
+        ?? (string)($pack['recruitment_type'] ?? 'assistant_manager');
 
-    $normalizeQuestion = static function (array $question, string $questionKey, string $category, string $defaultCriterion): array {
-        $recruitmentType = (string)($question['recruitment_type'] ?? 'assistant_manager');
+    $normalizeQuestion = static function (array $question, string $questionKey, string $category, string $defaultCriterion) use ($packRecruitmentType): array {
+        $recruitmentType = (string)($question['recruitment_type'] ?? $packRecruitmentType);
         $intent = trim((string)($question['intent'] ?? ''));
         $cleanText = ems_ai_clean_interview_question_text((string)($question['text'] ?? ''));
         if ($intent === '' || !in_array($intent, ems_ai_supported_interview_intents(), true)) {
             $intent = ems_ai_infer_interview_intent($cleanText, $category, $recruitmentType);
         }
-        $criterionCode = (string)($question['criterion_code'] ?? $defaultCriterion);
+        $criterionCode = ems_ai_normalize_interview_criterion_code(
+            (string)($question['criterion_code'] ?? $defaultCriterion),
+            $category,
+            $recruitmentType
+        );
         $guidance = ems_ai_question_answer_guidance_bundle($cleanText, $intent, $recruitmentType);
         $focusMeta = ems_ai_interview_focus_metadata($cleanText, $intent, $recruitmentType, $criterionCode);
         $goodAnswer = trim((string)($question['good_answer'] ?? ''));
@@ -1282,12 +1359,12 @@ function ems_ai_flatten_interview_question_pack(array $pack): array
     };
 
     foreach ((array)($pack['medical_questions'] ?? []) as $index => $question) {
-        $question['recruitment_type'] = (string)($pack['recruitment_type'] ?? 'assistant_manager');
+        $question['recruitment_type'] = $packRecruitmentType;
         $rows[] = $normalizeQuestion($question, 'medical_' . ($index + 1), 'medis_sop', 'sop_compliance');
     }
 
     foreach ((array)($pack['personal_questions'] ?? []) as $index => $question) {
-        $question['recruitment_type'] = (string)($pack['recruitment_type'] ?? 'assistant_manager');
+        $question['recruitment_type'] = $packRecruitmentType;
         $rows[] = $normalizeQuestion($question, 'personal_' . ($index + 1), 'non_medis_kepribadian', 'attitude');
     }
 
@@ -1378,7 +1455,7 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
         $decoded = json_decode($existingJson, true);
         if (is_array($decoded)) {
             $decoded['recruitment_type'] = $recruitmentType;
-            $flattenedExisting = ems_ai_flatten_interview_question_pack($decoded);
+            $flattenedExisting = ems_ai_flatten_interview_question_pack($decoded, $recruitmentType);
             if (count($flattenedExisting) === 20) {
                 $hasMissingGuidance = false;
                 foreach ($flattenedExisting as $row) {
@@ -1463,7 +1540,7 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
                 $rawText = trim((string)($response['text'] ?? ''));
                 if ($rawText !== '') {
                     $parsed = ems_ai_parse_question_pack_response($rawText);
-                    if (is_array($parsed) && count(ems_ai_flatten_interview_question_pack($parsed)) === 20) {
+                    if (is_array($parsed) && count(ems_ai_flatten_interview_question_pack($parsed, $recruitmentType)) === 20) {
                         $pack = $parsed;
                         $provider = 'gemini';
                         $modelName = (string)($response['model'] ?? '');
@@ -1478,6 +1555,8 @@ function ems_ai_get_or_create_interview_question_pack(PDO $pdo, array $settings,
     if (!is_array($pack)) {
         $pack = ems_ai_generate_interview_question_pack_fallback($candidate, $result, $answers, $aiQuestions, $applicantId, $hrId, $recruitmentType);
     }
+
+    $pack['recruitment_type'] = $recruitmentType;
 
     $stmt = $pdo->prepare("
         INSERT INTO applicant_interview_question_packs

@@ -1,7 +1,9 @@
 <?php
 
+require_once __DIR__ . '/env.php';
+
 if (!defined('EMS_OCR_API_KEY')) {
-    define('EMS_OCR_API_KEY', 'K85527757488957');
+    define('EMS_OCR_API_KEY', (string)ems_env('EMS_OCR_API_KEY', ''));
 }
 
 if (!defined('EMS_OCR_API_ENDPOINT')) {

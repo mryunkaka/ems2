@@ -9,6 +9,20 @@ aiQueueTest('interview.missing_material_is_queued_only_with_active_provider_and_
     aiQueueAssertSame(false,ems_ai_interview_should_enqueue(true,true,false,false,false));
 });
 
+aiQueueTest('interview.generated_criterion_codes_map_to_active_scoring_criteria', static function (): void {
+    aiQueueAssertSame('discipline', ems_ai_normalize_interview_criterion_code('MED_DISIPLIN_PROSEDUR', 'medis_sop', 'medical_candidate'));
+    aiQueueAssertSame('communication', ems_ai_normalize_interview_criterion_code('PERSONAL_KOMUNIKASI_TIM', 'non_medis_kepribadian', 'medical_candidate'));
+    aiQueueAssertSame('sop_compliance', ems_ai_normalize_interview_criterion_code('MED_KETEPATAN_SOP', 'medis_sop', 'assistant_manager'));
+    aiQueueAssertSame('responsibility', ems_ai_normalize_interview_criterion_code('responsibility', 'medis_sop', 'medical_candidate'));
+
+    $questions = ems_ai_flatten_interview_question_pack([
+        'medical_questions' => [['text' => 'Uji SOP', 'criterion_code' => 'MED_DISIPLIN_PROSEDUR']],
+        'personal_questions' => [['text' => 'Uji komunikasi', 'criterion_code' => 'PERSONAL_KOMUNIKASI_TIM']],
+    ], 'medical_candidate');
+    aiQueueAssertSame('discipline', $questions[0]['criterion_code']);
+    aiQueueAssertSame('communication', $questions[1]['criterion_code']);
+});
+
 aiQueueTest('interview.get_path_exits_before_model_generation', static function (): void {
     $source=(string)file_get_contents(__DIR__.'/../../dashboard/candidate_interview_multi.php');
     $queue=strpos($source,'ems_ai_interview_should_enqueue(');

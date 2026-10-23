@@ -4,7 +4,7 @@ session_start();
 /* ===============================
    CONFIG
    =============================== */
-define('OCR_API_KEY', 'K85527757488957');
+require_once __DIR__ . '/../config/ocr_config.php';
 define('UPLOAD_DIR', __DIR__ . '/../storage/identity/');
 define('MAX_WIDTH', 1200);
 define('TARGET_FILE_SIZE', 300 * 1024); // Target 300KB
@@ -16,6 +16,9 @@ define('MIN_QUALITY', 70); // Kualitas minimum
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../helpers/ocr_key_manager.php';
+$ocrKeyManager = ems_ocr_key_manager($pdo);
+$ocrKeyManager->importConfiguredKeyOnce(EMS_OCR_API_KEY);
 
 /* ===============================
    FUNGSI KOMPRESI
@@ -66,6 +69,72 @@ function getNextVersion($citizenId, $pdo)
     $stmt->execute([$citizenId]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     return ($result['total'] ?? 0) + 1;
+}
+
+/* ===============================
+   PREFLIGHT OCR API
+   =============================== */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_preflight') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $cache = $_SESSION['identity_ocr_preflight'] ?? null;
+    if (is_array($cache) && !empty($cache['ok']) && (int)($cache['checked_at'] ?? 0) > time() - 60) {
+        echo json_encode([
+            'ok' => (bool)($cache['ok'] ?? false),
+            'message' => (string)($cache['message'] ?? 'Status OCR belum diketahui.'),
+            'cached' => true,
+        ]);
+        exit;
+    }
+
+    // Gambar PNG sintetis 1x1; preflight tidak mengirim foto/data identitas.
+    $probe = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ioAAAAASUVORK5CYII=';
+    $probeResult = $ocrKeyManager->withKeyFailover(static function (string $apiKey) use ($probe): array {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => EMS_OCR_API_ENDPOINT,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => [
+                'base64Image' => $probe,
+                'language' => 'eng',
+                'OCREngine' => '2',
+                'isOverlayRequired' => 'false',
+            ],
+            CURLOPT_HTTPHEADER => ['apikey: ' . $apiKey],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_OPTIONS => defined('CURLSSLOPT_NATIVE_CA') ? CURLSSLOPT_NATIVE_CA : 0,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 12,
+        ]);
+        $body = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        $decoded = is_string($body) ? json_decode($body, true) : null;
+        return [
+            'success' => $curlError === '' && $httpCode === 200 && is_array($decoded) && empty($decoded['IsErroredOnProcessing']) && empty($decoded['ErrorMessage']) && empty($decoded['ErrorDetails']),
+            'http_code' => $httpCode,
+            'curl_error' => $curlError,
+            'body' => is_string($body) ? $body : '',
+        ];
+    });
+    $ok = !empty($probeResult['success']);
+    $message = $ok
+        ? 'Layanan OCR siap digunakan.'
+        : ((string)($probeResult['curl_error'] ?? '') !== '' || (int)($probeResult['http_code'] ?? 0) === 0
+            ? 'Layanan OCR tidak dapat dihubungi. Periksa koneksi server lalu coba lagi.'
+            : 'Layanan OCR menolak permintaan atau sedang bermasalah. Foto belum dapat diproses.');
+
+    $_SESSION['identity_ocr_preflight'] = [
+        'checked_at' => time(),
+        'ok' => $ok,
+        'message' => $message,
+    ];
+    http_response_code($ok ? 200 : 503);
+    echo json_encode(['ok' => $ok, 'message' => $message, 'cached' => false]);
+    exit;
 }
 
 /* ===============================
@@ -143,34 +212,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'ocr_a
     /* ===============================
        OCR API CALL
        =============================== */
-    $ch = curl_init();
-    curl_setopt_array($ch, [
-        CURLOPT_URL => 'https://api.ocr.space/parse/image',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => [
-            'apikey' => OCR_API_KEY,
-            'language' => 'eng',
-            'OCREngine' => '2',
-            'scale' => 'true',
-            'isTable' => 'true',
-            'detectOrientation' => 'true',
-            'isOverlayRequired' => 'false',
-            'file' => new CURLFile($tmpFile)
-        ]
-    ]);
+    $ocrResult = $ocrKeyManager->withKeyFailover(static function (string $apiKey) use ($tmpFile): array {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => EMS_OCR_API_ENDPOINT,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => ['apikey: ' . $apiKey],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_OPTIONS => defined('CURLSSLOPT_NATIVE_CA') ? CURLSSLOPT_NATIVE_CA : 0,
+            CURLOPT_POSTFIELDS => [
+                'language' => 'eng',
+                'OCREngine' => '2',
+                'scale' => 'true',
+                'isTable' => 'true',
+                'detectOrientation' => 'true',
+                'isOverlayRequired' => 'false',
+                'file' => new CURLFile($tmpFile),
+            ],
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 45,
+        ]);
+        $body = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        $decoded = is_string($body) ? json_decode($body, true) : null;
+        return [
+            'success' => $curlError === '' && $httpCode === 200 && is_array($decoded) && isset($decoded['ParsedResults'])
+                && empty($decoded['IsErroredOnProcessing']) && empty($decoded['ErrorMessage']) && empty($decoded['ErrorDetails'])
+                && empty($decoded['ParsedResults'][0]['ErrorMessage']),
+            'http_code' => $httpCode,
+            'curl_error' => $curlError,
+            'body' => is_string($body) ? $body : '',
+        ];
+    });
 
-    $res = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $httpCode = (int)($ocrResult['http_code'] ?? 0);
+    $json = json_decode((string)($ocrResult['body'] ?? ''), true);
 
-    $json = json_decode($res, true);
-
-    if ($httpCode !== 200 || !isset($json['ParsedResults'])) {
+    if (empty($ocrResult['success']) || !is_array($json) || !isset($json['ParsedResults'])) {
         @unlink($tmpFile);
         echo json_encode([
-            'error' => 'OCR API error',
-            'debug' => $json
+            'error' => (string)($ocrResult['curl_error'] ?? '') !== ''
+                ? 'Koneksi ke layanan OCR gagal. Periksa jaringan atau sertifikat SSL server.'
+                : 'OCR.Space menolak permintaan atau batas penggunaan API tercapai.',
+            'retry_category' => $ocrResult['failure_category'] ?? null,
         ]);
         exit;
     }
@@ -813,6 +901,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             border-color: #0284c7;
         }
 
+        .upload-area.preflight-disabled {
+            opacity: .55;
+            cursor: not-allowed;
+            filter: grayscale(.2);
+        }
+
+        .ocr-preflight-status {
+            margin: 0 0 12px;
+            padding: 10px 14px;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-size: 13px;
+        }
+
+        .ocr-preflight-status[data-state="ready"] {
+            border-color: #86efac;
+            background: #f0fdf4;
+            color: #15803d;
+        }
+
+        .ocr-preflight-status[data-state="error"] {
+            border-color: #fca5a5;
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
         .upload-content {
             padding: 24px 20px;
             display: flex;
@@ -1377,6 +1493,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             <p class="ocr-subtitle">Pindai dokumen identitas secara otomatis</p>
         </div>
 
+        <div class="ocr-preflight-status" id="ocrPreflightStatus" role="status" aria-live="polite" data-state="checking">
+            Memeriksa koneksi layanan OCR...
+        </div>
+
         <!-- Upload Area -->
         <label for="img" class="upload-area" id="uploadArea">
             <div class="upload-content">
@@ -1540,6 +1660,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 
         const uploadArea = document.getElementById('uploadArea');
         const imgInput = document.getElementById('img');
+        const ocrPreflightStatus = document.getElementById('ocrPreflightStatus');
+        let ocrPreflightReady = false;
         const loading = document.getElementById('loading');
         const error = document.getElementById('error');
         const errorMessage = document.getElementById('errorMessage');
@@ -1560,6 +1682,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             lightboxPreviewImage.src = src;
             lightbox.classList.add('active');
         }
+
+        async function checkOCRAvailability() {
+            uploadArea.classList.add('preflight-disabled');
+            imgInput.disabled = true;
+            document.querySelector('.upload-button').disabled = true;
+            try {
+                const response = await fetch('', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                    body: new URLSearchParams({ action: 'ocr_preflight' })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.message || 'Layanan OCR belum tersedia.');
+
+                ocrPreflightReady = true;
+                ocrPreflightStatus.dataset.state = 'ready';
+                ocrPreflightStatus.textContent = result.message;
+                uploadArea.classList.remove('preflight-disabled');
+                imgInput.disabled = false;
+                document.querySelector('.upload-button').disabled = false;
+            } catch (err) {
+                ocrPreflightReady = false;
+                ocrPreflightStatus.dataset.state = 'error';
+                ocrPreflightStatus.textContent = (err.message || 'Pemeriksaan OCR gagal.') + ' Coba muat ulang halaman untuk memeriksa kembali.';
+            }
+        }
+
+        checkOCRAvailability();
 
         function closePreviewLightbox() {
             if (!lightbox || !lightboxPreviewImage) return;
@@ -1627,6 +1777,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         });
 
         function handleUpload() {
+            if (!ocrPreflightReady) {
+                imgInput.value = '';
+                return;
+            }
             if (!imgInput.files.length) return;
 
             // SIMPAN FOTO KE LOCALSTORAGE

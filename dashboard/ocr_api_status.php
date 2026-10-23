@@ -3,158 +3,89 @@ session_start();
 
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/ocr_config.php';
+require_once __DIR__ . '/../auth/csrf.php';
+require_once __DIR__ . '/../actions/ai_guard.php';
+require_once __DIR__ . '/../helpers/ocr_key_manager.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $pageTitle = 'Status OCR API';
-$result = null;
-$maskedApiKey = str_repeat('*', strlen(EMS_OCR_API_KEY));
-$apiKeyLength = strlen(EMS_OCR_API_KEY);
-if ($apiKeyLength > 6) {
-    $maskedApiKey = substr(EMS_OCR_API_KEY, 0, 3)
-        . str_repeat('*', max(0, $apiKeyLength - 6))
-        . substr(EMS_OCR_API_KEY, -3);
+$isOcrAdmin = function_exists('ems_current_user_is_programmer_roxwood') && ems_current_user_is_programmer_roxwood();
+$manager = null;
+$keys = [];
+$setupError = '';
+$runResult = null;
+$flash = $_SESSION['ocr_key_flash'] ?? null;
+unset($_SESSION['ocr_key_flash']);
+
+try {
+    $manager = ems_ocr_key_manager($pdo);
+    if ($isOcrAdmin) {
+        $manager->importConfiguredKeyOnce(EMS_OCR_API_KEY);
+        $keys = $manager->listKeys();
+    }
+} catch (Throwable) {
+    $setupError = 'Penyimpanan key OCR belum siap. Pastikan secret enkripsi tersedia dan migration ocr_api_keys sudah dijalankan.';
 }
 
-if (isset($_GET['run']) && $_GET['run'] === '1') {
-    $docsProbeUrl = 'https://ocr.space/OCRAPI';
-    $testUrl = preg_replace('#/parse/image$#', '/parse/imageurl', EMS_OCR_API_ENDPOINT) . '?' . http_build_query([
-        'apikey' => EMS_OCR_API_KEY,
-        'url' => EMS_OCR_API_TEST_IMAGE,
-        'language' => 'eng',
-        'OCREngine' => '2',
-    ]);
-    $maskedTestUrl = preg_replace('/([?&]apikey=)[^&]+/i', '$1' . rawurlencode($maskedApiKey), $testUrl);
-    if (!is_string($maskedTestUrl) || $maskedTestUrl === '') {
-        $maskedTestUrl = $testUrl;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ocr_action'])) {
+    $csrfValid = validateCsrfToken(csrfRequestToken());
+    if (!ems_ocr_key_action_is_allowed($isOcrAdmin, (string)($_SERVER['REQUEST_METHOD'] ?? ''), $csrfValid)) {
+        http_response_code($isOcrAdmin ? 400 : 403);
+        exit($isOcrAdmin ? 'CSRF token tidak valid. Muat ulang halaman dan coba lagi.' : 'Akses hanya untuk Programmer Roxwood.');
     }
 
-    $docsCurl = curl_init();
-    curl_setopt_array($docsCurl, [
-        CURLOPT_URL => $docsProbeUrl,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER => [
-            'Accept: application/json,text/html,*/*',
-        ],
-    ]);
-    $docsBody = curl_exec($docsCurl);
-    $docsError = curl_error($docsCurl);
-    $docsProbe = [
-        'body' => is_string($docsBody) ? $docsBody : '',
-        'error' => $docsError,
-        'http_code' => (int) curl_getinfo($docsCurl, CURLINFO_HTTP_CODE),
-        'primary_ip' => (string) curl_getinfo($docsCurl, CURLINFO_PRIMARY_IP),
-        'total_time' => (float) curl_getinfo($docsCurl, CURLINFO_TOTAL_TIME),
-    ];
-    curl_close($docsCurl);
-
-    $apiCurl = curl_init();
-    curl_setopt_array($apiCurl, [
-        CURLOPT_URL => $testUrl,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 25,
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER => [
-            'Accept: application/json,text/html,*/*',
-        ],
-    ]);
-    $apiBody = curl_exec($apiCurl);
-    $apiProbe = [
-        'body' => is_string($apiBody) ? $apiBody : '',
-        'error' => curl_error($apiCurl),
-        'http_code' => (int) curl_getinfo($apiCurl, CURLINFO_HTTP_CODE),
-        'primary_ip' => (string) curl_getinfo($apiCurl, CURLINFO_PRIMARY_IP),
-        'total_time' => (float) curl_getinfo($apiCurl, CURLINFO_TOTAL_TIME),
-    ];
-    curl_close($apiCurl);
-
-    $rawResponse = $apiProbe['body'];
-    $curlError = $apiProbe['error'];
-    $httpCode = $apiProbe['http_code'];
-
-    $decoded = is_string($rawResponse) ? json_decode($rawResponse, true) : null;
-    $parsedText = trim((string)($decoded['ParsedResults'][0]['ParsedText'] ?? ''));
-    $apiError = trim((string)($decoded['ParsedResults'][0]['ErrorMessage'] ?? ''));
-    $isErroredOnProcessing = !empty($decoded['IsErroredOnProcessing']);
-
-    $result = [
-        'http_code' => $httpCode,
-        'status' => 'error',
-        'title' => 'Pemeriksaan gagal',
-        'message' => 'OCR API tidak merespons seperti yang diharapkan.',
-        'details' => [
-            'Docs probe HTTP' => (string) $docsProbe['http_code'],
-            'Endpoint test' => $maskedTestUrl,
-            'Docs probe IP' => $docsProbe['primary_ip'] !== '' ? $docsProbe['primary_ip'] : '-',
-            'API probe IP' => $apiProbe['primary_ip'] !== '' ? $apiProbe['primary_ip'] : '-',
-            'API response time' => number_format($apiProbe['total_time'], 2) . 's',
-        ],
-        'sample_text' => '',
-        'raw_excerpt' => is_string($rawResponse) ? mb_substr($rawResponse, 0, 400) : '',
-    ];
-
-    if ($curlError !== '') {
-        $curlErrorHaystack = strtolower($curlError);
-
-        if (strpos($curlErrorHaystack, 'timed out') !== false) {
-            $result['title'] = 'Endpoint OCR timeout';
-            $result['message'] = 'Website OCR.Space bisa diakses, tetapi endpoint API OCR tidak memberi respons tepat waktu. Ini biasanya bukan bukti limit key, melainkan timeout jalur API / firewall / rate-limit jaringan.';
-        } elseif (strpos($curlErrorHaystack, 'ssl') !== false || strpos($curlErrorHaystack, 'certificate') !== false) {
-            $result['title'] = 'Masalah SSL / sertifikat';
-            $result['message'] = 'Koneksi ke OCR API gagal pada tahap SSL/TLS. Ini biasanya terkait sertifikat, antivirus HTTPS scanning, atau konfigurasi cURL/PHP.';
-        } elseif (strpos($curlErrorHaystack, 'could not resolve host') !== false || strpos($curlErrorHaystack, 'name resolution') !== false) {
-            $result['title'] = 'DNS gagal resolve';
-            $result['message'] = 'Hostname OCR API tidak bisa di-resolve. Ini menunjukkan masalah DNS atau jaringan lokal, bukan limit API key.';
-        } elseif (strpos($curlErrorHaystack, 'failed to connect') !== false || strpos($curlErrorHaystack, 'connection refused') !== false) {
-            $result['title'] = 'Koneksi ke endpoint gagal';
-            $result['message'] = 'Server aplikasi tidak berhasil membuka koneksi ke endpoint OCR. Ini biasanya masalah firewall, proxy, atau jalur jaringan.';
-        } else {
-            $result['title'] = 'Pemeriksaan gagal';
-            $result['message'] = 'cURL error: ' . $curlError;
+    try {
+        if (!$manager instanceof OcrKeyManager) {
+            throw new RuntimeException('OCR key storage unavailable.');
         }
-
-        $result['details']['cURL error'] = $curlError;
-    } elseif ($httpCode >= 200 && $httpCode < 300 && !$isErroredOnProcessing && $parsedText !== '') {
-        $result['status'] = 'success';
-        $result['title'] = 'OCR API aktif';
-        $result['message'] = 'API key merespons normal dan berhasil membaca sample image resmi dari OCR.Space.';
-        $result['sample_text'] = $parsedText;
-    } else {
-        $errorMessage = $apiError;
-
-        if ($errorMessage === '' && is_array($decoded['ErrorMessage'] ?? null)) {
-            $errorMessage = implode(' | ', array_map('strval', $decoded['ErrorMessage']));
-        }
-
-        if ($errorMessage === '' && isset($decoded['OCRExitCode'])) {
-            $errorMessage = 'OCRExitCode: ' . (string)$decoded['OCRExitCode'];
-        }
-
-        if ($errorMessage === '' && $httpCode === 401) {
-            $errorMessage = 'API key tidak valid atau ditolak.';
-        }
-
-        if ($errorMessage === '') {
-            $errorMessage = 'Respons tidak mengandung hasil OCR yang valid.';
-        }
-
-        $errorHaystack = strtolower($errorMessage);
-        foreach (['limit', 'rate', 'quota', 'daily', 'too many'] as $needle) {
-            if (strpos($errorHaystack, $needle) !== false) {
-                $result['status'] = 'warning';
+        $action = (string)$_POST['ocr_action'];
+        $id = max(0, (int)($_POST['key_id'] ?? 0));
+        $message = 'Perubahan pengaturan OCR tersimpan.';
+        $flashType = 'success';
+        switch ($action) {
+            case 'add':
+                $manager->saveKey((string)($_POST['api_key'] ?? ''), null, (string)($_POST['label'] ?? ''));
+                $message = 'API key ditambahkan dan disimpan terenkripsi.';
                 break;
-            }
+            case 'replace':
+                $manager->saveKey((string)($_POST['api_key'] ?? ''), $id, (string)($_POST['label'] ?? ''));
+                $message = 'API key diganti dan disimpan terenkripsi.';
+                break;
+            case 'enable':
+            case 'disable':
+                $manager->setEnabled($id, $action === 'enable');
+                $message = $action === 'enable' ? 'API key diaktifkan.' : 'API key dinonaktifkan.';
+                break;
+            case 'remove':
+                $manager->removeKey($id);
+                $message = 'API key dihapus.';
+                break;
+            case 'test':
+                $test = $manager->testKey($id);
+                $message = (string)$test['message'];
+                $flashType = !empty($test['success']) ? 'success' : 'error';
+                break;
+            case 'test_enabled':
+                $test = $manager->testEnabledKeys();
+                $message = (string)$test['message'] . ' (' . (int)($test['attempts'] ?? 0) . ' key diuji)';
+                $flashType = !empty($test['success']) ? 'success' : 'error';
+                if (!empty($test['failure_category'])) {
+                    $message .= ' Kategori: ' . (string)$test['failure_category'] . '.';
+                }
+                break;
+            case 'usage':
+                $usage = $manager->probeUsage($id);
+                $message = !empty($usage['success']) ? 'Pemakaian bulanan berhasil diperbarui.' : (string)$usage['message'];
+                break;
+            default:
+                throw new InvalidArgumentException('Unknown OCR action.');
         }
-        $result['title'] = $result['status'] === 'warning'
-            ? 'Kemungkinan limit / rate limit tercapai'
-            : 'OCR API mengembalikan error';
-        $result['message'] = $errorMessage;
+        $_SESSION['ocr_key_flash'] = ['type' => $flashType, 'message' => $message];
+    } catch (Throwable) {
+        $_SESSION['ocr_key_flash'] = ['type' => 'error', 'message' => 'Aksi OCR gagal. Periksa isian, status database, dan koneksi provider.'];
     }
+    header('Location: ocr_api_status.php');
+    exit;
 }
 
 include __DIR__ . '/../partials/header.php';
@@ -164,70 +95,106 @@ include __DIR__ . '/../partials/sidebar.php';
 <section class="content">
     <div class="page page-shell">
         <h1 class="page-title">Status OCR API</h1>
-        <p class="page-subtitle">Pemeriksaan cepat API key OCR.Space yang dipakai oleh fitur scan identitas.</p>
+        <p class="page-subtitle">Kelola API key OCR.Space dan pantau pemakaian layanan.</p>
 
-        <div class="card card-section">
-            <div class="card-header">Konfigurasi</div>
-            <div class="card-body">
-                <div class="grid gap-3 md:grid-cols-2">
-                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <div class="meta-text-xs">API Key</div>
-                        <div class="font-mono text-sm text-slate-900"><?= htmlspecialchars($maskedApiKey) ?></div>
-                    </div>
-                    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <div class="meta-text-xs">Endpoint</div>
-                        <div class="text-sm text-slate-900"><?= htmlspecialchars(EMS_OCR_API_ENDPOINT) ?></div>
-                    </div>
-                </div>
-
-                <div class="mt-4 flex flex-wrap gap-3">
-                    <a href="?run=1" class="btn-primary"><?= ems_icon('arrow-path', 'h-4 w-4') ?> Cek Status OCR</a>
-                    <a href="https://ocr.space/OCRAPI" target="_blank" rel="noopener noreferrer" class="btn-secondary"><?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?> Buka Docs OCR.Space</a>
-                </div>
-            </div>
-        </div>
-
-        <?php if ($result !== null): ?>
-            <?php
-            $variantClass = $result['status'] === 'success'
-                ? 'notice-box notice-info'
-                : ($result['status'] === 'warning' ? 'notice-box notice-warning' : 'notice-box notice-danger');
-            ?>
-            <div class="<?= $variantClass ?>" style="display:block;">
-                <strong><?= htmlspecialchars($result['title']) ?></strong><br><br>
-                <?= htmlspecialchars($result['message']) ?><br><br>
-                <strong>Docs Probe HTTP:</strong> <?= htmlspecialchars((string)($result['details']['Docs probe HTTP'] ?? '-')) ?><br>
-                <strong>Docs Probe IP:</strong> <?= htmlspecialchars((string)($result['details']['Docs probe IP'] ?? '-')) ?><br>
-                <strong>HTTP Code:</strong> <?= (int)$result['http_code'] ?><br>
-                <strong>API Probe IP:</strong> <?= htmlspecialchars((string)($result['details']['API probe IP'] ?? '-')) ?><br>
-                <strong>API Response Time:</strong> <?= htmlspecialchars((string)($result['details']['API response time'] ?? '-')) ?><br>
-                <strong>Endpoint Test:</strong> <span class="font-mono text-xs"><?= htmlspecialchars($result['details']['Endpoint test']) ?></span>
-                <?php if (!empty($result['details']['cURL error'])): ?>
-                    <br><strong>cURL Error:</strong> <?= htmlspecialchars((string)$result['details']['cURL error']) ?>
-                <?php endif; ?>
-
-                <?php if ($result['sample_text'] !== ''): ?>
-                    <br><br>
-                    <strong>Sample OCR Result:</strong><br>
-                    <pre class="mt-2 rounded-xl bg-slate-950 p-3 text-xs text-slate-100 whitespace-pre-wrap"><?= htmlspecialchars($result['sample_text']) ?></pre>
-                <?php elseif ($result['raw_excerpt'] !== ''): ?>
-                    <br><br>
-                    <strong>Response Excerpt:</strong><br>
-                    <pre class="mt-2 rounded-xl bg-slate-950 p-3 text-xs text-slate-100 whitespace-pre-wrap"><?= htmlspecialchars($result['raw_excerpt']) ?></pre>
-                <?php endif; ?>
+        <?php if ($flash): ?>
+            <div class="notice-box <?= ($flash['type'] ?? '') === 'success' ? 'notice-info' : 'notice-danger' ?>" style="display:block;">
+                <?= htmlspecialchars((string)($flash['message'] ?? '')) ?>
             </div>
         <?php endif; ?>
 
-        <div class="card card-section">
-            <div class="card-header">Cara Baca Hasil</div>
-            <div class="card-body">
-                <ul class="list-disc list-inside text-sm text-slate-700 space-y-2">
-                    <li><strong>OCR API aktif</strong>: API key masih bisa dipakai normal.</li>
-                    <li><strong>Kemungkinan limit / rate limit tercapai</strong>: biasanya free plan sedang kena batas request harian atau pembatasan IP.</li>
-                    <li><strong>OCR API mengembalikan error</strong>: bisa karena API key salah, jaringan bermasalah, atau provider sedang gangguan.</li>
-                </ul>
+        <?php if ($setupError !== ''): ?>
+            <div class="notice-box notice-danger" style="display:block;"><?= htmlspecialchars($setupError) ?></div>
+        <?php endif; ?>
+
+        <?php if ($isOcrAdmin): ?>
+            <div class="card card-section">
+                <div class="card-header">API key OCR.Space</div>
+                <div class="card-body">
+                    <p class="text-sm text-slate-600">Key hanya disimpan terenkripsi. Masukkan key yang dibuat dari akun OCR.Space organisasi Anda. Tes gambar menggunakan satu konversi OCR biasa. Gunakan sejumlah kecil key milik organisasi; pergantian key tidak menaikkan batas harian berbasis IP.</p>
+                    <form method="post" class="mt-4 grid gap-3 md:grid-cols-[1fr_2fr_auto] items-end">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="ocr_action" value="add">
+                        <label class="block text-sm">Label
+                            <input name="label" maxlength="100" class="form-input mt-1 w-full" placeholder="Contoh: Key utama" required>
+                        </label>
+                        <label class="block text-sm">API key baru
+                            <input name="api_key" type="password" autocomplete="new-password" maxlength="512" class="form-input mt-1 w-full" required>
+                        </label>
+                        <button class="btn-primary" type="submit">Tambah key</button>
+                    </form>
+
+                    <div class="mt-4 flex flex-wrap gap-3">
+                        <form method="post">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="ocr_action" value="test_enabled">
+                            <button class="btn-primary" type="submit"><?= ems_icon('arrow-path', 'h-4 w-4') ?> Uji key aktif</button>
+                        </form>
+                        <a href="https://ocr.space/ocrapi" target="_blank" rel="noopener noreferrer" class="btn-secondary"><?= ems_icon('arrow-right-on-rectangle', 'h-4 w-4') ?> Buka OCR.Space</a>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            <div class="card card-section">
+                <div class="card-header">Pemakaian dan status key</div>
+                <div class="card-body">
+                    <p class="mb-4 text-sm text-slate-600">Kuota bulanan OCR.Space yang ditampilkan: Engine 1+2 sampai 25.000 konversi dan Engine 3 sampai 1.000 konversi. Data pemakaian dapat tertinggal hingga akhir hari sebelumnya; nilai sisa adalah perkiraan.</p>
+                    <?php if ($keys === []): ?>
+                        <p class="text-sm text-slate-600">Belum ada API key tersimpan.</p>
+                    <?php endif; ?>
+                    <div class="space-y-4">
+                        <?php foreach ($keys as $key): ?>
+                            <?php
+                            $used12 = isset($key['count_engine1'], $key['count_engine2']) ? (int)$key['count_engine1'] + (int)$key['count_engine2'] : null;
+                            $used3 = $key['count_engine3'] !== null ? (int)$key['count_engine3'] : null;
+                            $usageVerified = (($used12 ?? 0) + ($used3 ?? 0)) > 0 || ($key['last_test_status'] ?? '') === 'success';
+                            ?>
+                            <article class="rounded-xl border border-slate-200 bg-white p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h2 class="font-semibold text-slate-900"><?= htmlspecialchars((string)$key['label']) ?></h2>
+                                        <p class="font-mono text-sm text-slate-600"><?= htmlspecialchars((string)$key['masked_key']) ?></p>
+                                        <p class="mt-1 text-sm <?= !empty($key['enabled']) ? 'text-emerald-700' : 'text-slate-500' ?>"><?= !empty($key['enabled']) ? 'Aktif' : 'Nonaktif' ?> · Tes terakhir: <?= htmlspecialchars((string)($key['last_tested_at'] ?? 'belum pernah')) ?> · <?= htmlspecialchars((string)($key['last_test_status'] ?? 'belum diuji')) ?></p>
+                                    </div>
+                                    <div class="text-sm text-slate-700">
+                                        <?php if ($used12 !== null && $usageVerified): ?>Engine 1+2: <?= number_format($used12) ?> / 25.000 · sisa ~<?= number_format(max(0, 25000 - $used12)) ?><br><?php elseif ($used12 !== null): ?>Engine 1+2: pemakaian belum terverifikasi<br><?php else: ?>Engine 1+2: belum dicek<br><?php endif; ?>
+                                        <?php if ($used3 !== null && $usageVerified): ?>Engine 3: <?= number_format($used3) ?> / 1.000 · sisa ~<?= number_format(max(0, 1000 - $used3)) ?><br><?php elseif ($used3 !== null): ?>Engine 3: pemakaian belum terverifikasi<br><?php else: ?>Engine 3: belum dicek<br><?php endif; ?>
+                                        Snapshot provider diperbarui: <?= htmlspecialchars((string)($key['usage_checked_at'] ?? 'belum pernah')) ?>. Data pada snapshot sampai akhir hari sebelumnya.
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <?php foreach (['test' => 'Uji key', 'usage' => 'Perbarui kuota', (!empty($key['enabled']) ? 'disable' : 'enable') => (!empty($key['enabled']) ? 'Nonaktifkan' : 'Aktifkan'), 'remove' => 'Hapus'] as $action => $label): ?>
+                                        <form method="post" onsubmit="return <?= $action === 'remove' ? "confirm('Hapus key ini?')" : 'true' ?>;">
+                                            <?= csrfField() ?>
+                                            <input type="hidden" name="ocr_action" value="<?= htmlspecialchars($action) ?>">
+                                            <input type="hidden" name="key_id" value="<?= (int)$key['id'] ?>">
+                                            <button class="btn-secondary" type="submit"><?= htmlspecialchars($label) ?></button>
+                                        </form>
+                                    <?php endforeach; ?>
+                                    <details class="basis-full">
+                                        <summary class="cursor-pointer text-sm font-semibold text-sky-700">Ganti key</summary>
+                                        <form method="post" class="mt-3 grid gap-3 md:grid-cols-[1fr_2fr_auto] items-end">
+                                            <?= csrfField() ?>
+                                            <input type="hidden" name="ocr_action" value="replace">
+                                            <input type="hidden" name="key_id" value="<?= (int)$key['id'] ?>">
+                                            <label class="block text-sm">Label
+                                                <input name="label" maxlength="100" class="form-input mt-1 w-full" value="<?= htmlspecialchars((string)$key['label']) ?>" required>
+                                            </label>
+                                            <label class="block text-sm">API key pengganti
+                                                <input name="api_key" type="password" autocomplete="new-password" maxlength="512" class="form-input mt-1 w-full" required>
+                                            </label>
+                                            <button class="btn-primary" type="submit">Simpan pengganti</button>
+                                        </form>
+                                    </details>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="card card-section"><div class="card-body">Pengaturan key OCR hanya tersedia untuk Programmer Roxwood.</div></div>
+        <?php endif; ?>
     </div>
 </section>
 

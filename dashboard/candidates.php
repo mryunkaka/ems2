@@ -1197,6 +1197,7 @@ $candidateExportQuery = http_build_query(array_filter([
                             $aiScore = (float)($recomputedResult['ai_score'] ?? $c['ai_score'] ?? 0);
                             $confidence = (float)($c['confidence'] ?? 0);
                             $combinedScore = '-';
+                            $combinedScoreIsPreview = false;
 
                             if ((int)($c['interview_locked'] ?? 0) === 1) {
                                 $combinedScore = round(
@@ -1205,6 +1206,15 @@ $candidateExportQuery = http_build_query(array_filter([
                                         ($confidence * 0.1),
                                     2
                                 );
+                            } elseif ((int)($c['total_hr'] ?? 0) > 0 && $interviewScore > 0) {
+                                // Tampilkan kalkulasi sementara selama interview masih terbuka.
+                                $combinedScore = round(
+                                    ($interviewScore * 0.6) +
+                                        ($aiScore * 0.3) +
+                                        ($confidence * 0.1),
+                                    2
+                                );
+                                $combinedScoreIsPreview = true;
                             }
 
                             $statusMeta = candidateStatusMeta((string)$c['status']);
@@ -1229,7 +1239,12 @@ $candidateExportQuery = http_build_query(array_filter([
                                 <td><?= $aiScore ?: '-' ?></td>
                                 <td><?= $interviewScore ?: '-' ?></td>
                                 <td><?= $confidence ? $confidence . '%' : '-' ?></td>
-                                <td><strong><?= $combinedScore ?></strong></td>
+                                <td>
+                                    <strong><?= $combinedScore ?></strong>
+                                    <?php if ($combinedScoreIsPreview): ?>
+                                        <div class="meta-text">Preview — belum dikunci</div>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="text-sm leading-5 text-slate-700">
                                     <?php if ($c['interviewers']): ?>
                                         <?= htmlspecialchars($c['interviewers']) ?>
