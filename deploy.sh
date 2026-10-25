@@ -229,13 +229,19 @@ MIGRATION_STAGE=$(mktemp -d "/home/fouf9972/.deploy-migrations.XXXXXX") || {
   exit 1
 }
 
-if ! run_git archive "$ACTIVE_REMOTE/$BRANCH" docs/sql | /bin/tar -xf - -C "$MIGRATION_STAGE"; then
+if ! run_git archive "$ACTIVE_REMOTE/$BRANCH" docs/sql bin/deploy_migrations.php | /bin/tar -xf - -C "$MIGRATION_STAGE"; then
   rm -rf "$MIGRATION_STAGE"
-  log_error_once "migration:archive:$ACTIVE_REMOTE:$BRANCH" "gagal menyiapkan file SQL dari $ACTIVE_REMOTE/$BRANCH"
+  log_error_once "migration:archive:$ACTIVE_REMOTE:$BRANCH" "gagal menyiapkan runner migrasi dan file SQL dari $ACTIVE_REMOTE/$BRANCH"
   exit 1
 fi
 
-MIGRATION_OUT=$("$PHP_BIN" "$REPO/bin/deploy_migrations.php" "--directory=$MIGRATION_STAGE/docs/sql" 2>&1)
+if [ ! -f "$MIGRATION_STAGE/bin/deploy_migrations.php" ]; then
+  rm -rf "$MIGRATION_STAGE"
+  log_error_once "migration:runner-missing:$ACTIVE_REMOTE:$BRANCH" "runner migrasi tidak tersedia di $ACTIVE_REMOTE/$BRANCH"
+  exit 1
+fi
+
+MIGRATION_OUT=$(EMS_DEPLOY_ENV_BOOTSTRAP="$REPO/config/env.php" "$PHP_BIN" "$MIGRATION_STAGE/bin/deploy_migrations.php" "--directory=$MIGRATION_STAGE/docs/sql" 2>&1)
 MIGRATION_STATUS=$?
 rm -rf "$MIGRATION_STAGE"
 if [ $MIGRATION_STATUS -ne 0 ]; then

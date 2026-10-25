@@ -54,6 +54,27 @@ dan tidak mengulang SQL yang mungkin sudah berjalan sebagian.
 File migrasi yang sudah tercatat tidak boleh diedit; buat nomor migrasi baru.
 Tetap tinjau dan backup sebelum migrasi yang menghapus tabel, kolom, atau data.
 
+Runner migrasi selalu diambil dari commit remote yang sedang dideploy, lalu
+memakai bootstrap konfigurasi dari checkout produksi. Ini memastikan perbaikan
+runner bisa dipakai sebelum checkout kode baru.
+
+#### Pemulihan migrasi antrean AI yang terhenti
+
+Log menunjukkan `103_2026-10-23_ai_request_queue.sql` pernah berhenti saat
+`DEALLOCATE PREPARE` karena hasil `EXECUTE` belum dikonsumsi. Migrasi ini aman dijalankan
+ulang: penambahan kolom memakai pemeriksaan keberadaan kolom dan tabel antrean
+memakai `CREATE TABLE IF NOT EXISTS`. Setelah versi runner terbaru tersedia di
+produksi, hapus hanya penanda `running` migrasi ini di phpMyAdmin, lalu jalankan
+deployment lagi:
+
+```sql
+DELETE FROM ems_deploy_migrations
+WHERE migration_id = '103_2026-10-23_ai_request_queue.sql'
+  AND status = 'running';
+```
+
+Jangan hapus penanda migrasi lain tanpa memeriksa SQL dan perubahan parsialnya.
+
 Untuk menjalankan pemeriksaan pertama, gunakan **Terminal** cPanel:
 
 ```bash

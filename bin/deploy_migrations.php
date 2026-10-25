@@ -11,7 +11,8 @@ if (PHP_SAPI !== 'cli') {
     exit("CLI only\n");
 }
 
-require_once __DIR__ . '/../config/env.php';
+$envBootstrap = trim((string) (getenv('EMS_DEPLOY_ENV_BOOTSTRAP') ?: ''));
+require_once ($envBootstrap !== '' ? $envBootstrap : __DIR__ . '/../config/env.php');
 
 const EMS_MIGRATION_BASELINE = 102;
 $directory = null;
@@ -191,7 +192,10 @@ try {
         // Record intent before non-transactional MySQL DDL can partially run.
         foreach (ems_split_sql($sql) as $index => $statement) {
             try {
-                if (preg_match('/^(SELECT|SHOW|DESCRIBE|EXPLAIN|WITH)\b/i', ltrim($statement))) {
+                // EXECUTE may return a result set even when the prepared SQL
+                // is DDL (for example, an IF branch containing SELECT 1).
+                // Drain it just like a direct SELECT before the next statement.
+                if (preg_match('/^(SELECT|SHOW|DESCRIBE|EXPLAIN|WITH|EXECUTE)\b/i', ltrim($statement))) {
                     $result = $pdo->query($statement);
                     if ($result !== false) {
                         $result->fetchAll();
