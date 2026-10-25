@@ -905,11 +905,23 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
                 }
 
                 try {
-                    const data = await safeFetchJSON(window.emsUrl('/actions/heartbeat.php'), {
+                    const response = await fetch(window.emsUrl('/actions/heartbeat.php'), {
                         method: 'POST',
-                        cache: 'no-store'
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-Token': String(window.EMS_CSRF_TOKEN || '')
+                        }
                     });
 
+                    if (response.status === 401) {
+                        stopHeartbeat();
+                        window.location.replace(window.emsUrl('/auth/login.php?reason=session_expired'));
+                        return;
+                    }
+
+                    const data = await safeParseJSONResponse(response);
                     if (!data) {
                         return;
                     }
@@ -933,8 +945,10 @@ if ($userId && !$hideAltaTopbarUtilities && $resolvedPdo instanceof PDO) {
             function startHeartbeat() {
                 if (heartbeatTimer) return;
 
-                // Setiap 30 detik, dan hanya saat tab aktif
-                heartbeatTimer = setInterval(sendHeartbeat, 30000);
+                // Cek sesi segera dan ulangi berkala agar pencabutan akses
+                // mengakhiri tab lama, termasuk koneksi presence live chat.
+                sendHeartbeat();
+                heartbeatTimer = setInterval(sendHeartbeat, 15000);
             }
 
             /**
