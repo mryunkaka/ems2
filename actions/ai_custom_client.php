@@ -169,6 +169,29 @@ function ems_ai_custom_extract_completion(?array $responseJson, string $response
     return ['content' => implode('', $parts), 'finish_reason' => $finishReason, 'usage' => $usage, 'format' => 'sse'];
 }
 
+function ems_ai_custom_usage_value(array $usage, array $keys): ?int
+{
+    foreach ($keys as $key) {
+        if (isset($usage[$key]) && is_numeric($usage[$key])) {
+            return max(0, (int)$usage[$key]);
+        }
+    }
+    return null;
+}
+
+function ems_ai_custom_estimate_tokens(string $text): ?int
+{
+    $text = trim($text);
+    if ($text === '') {
+        return null;
+    }
+    $characters = function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text);
+    if (!function_exists('mb_strlen') && preg_match_all('/./us', $text, $matches) !== false) {
+        $characters = count($matches[0]);
+    }
+    return max(1, (int)ceil($characters / 4));
+}
+
 function ems_custom_chat_completion(
     PDO $pdo,
     array $settings,
@@ -255,6 +278,27 @@ function ems_custom_chat_completion(
         $errorMessage = ems_ai_custom_redact($errorMessage, $apiKey);
     }
     $responseBody = ems_ai_custom_redact((string) ($response['body'] ?? ''), $apiKey);
+    $usage = is_array($completion['usage'] ?? null) ? $completion['usage'] : [];
+    $promptTokens = ems_ai_custom_usage_value($usage, ['prompt_tokens', 'input_tokens', 'promptTokenCount', 'inputTokenCount']);
+    $responseTokens = ems_ai_custom_usage_value($usage, ['completion_tokens', 'output_tokens', 'candidatesTokenCount', 'completionTokenCount']);
+    $totalTokens = ems_ai_custom_usage_value($usage, ['total_tokens', 'totalTokenCount']);
+    $usageEstimated = false;
+    if ($promptTokens === null) {
+        $inputText = implode("\n", array_map(
+            static fn(array $message): string => ems_ai_custom_extract_message_content($message['content'] ?? ''),
+            array_filter($messages, 'is_array')
+        ));
+        $promptTokens = ems_ai_custom_estimate_tokens($inputText);
+        $usageEstimated = $promptTokens !== null;
+    }
+    if ($responseTokens === null) {
+        $responseTokens = ems_ai_custom_estimate_tokens($content);
+        $usageEstimated = $usageEstimated || $responseTokens !== null;
+    }
+    if ($totalTokens === null && $promptTokens !== null && $responseTokens !== null) {
+        $totalTokens = $promptTokens + $responseTokens;
+        $usageEstimated = $usageEstimated || $usage === [];
+    }
 
     ems_ai_log_request($pdo, [
         'feature_key' => $featureKey,
@@ -263,6 +307,10 @@ function ems_custom_chat_completion(
         'request_hash' => hash('sha256', $modelName . '|' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
         'request_payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         'response_payload' => $success ? mb_substr($responseBody, 0, 4000) : mb_substr($responseBody, 0, 1000),
+        'prompt_tokens' => $promptTokens,
+        'response_tokens' => $responseTokens,
+        'total_tokens' => $totalTokens,
+        'usage_estimated' => $usageEstimated,
         'http_status' => $response['http_status'],
         'latency_ms' => (int) round((microtime(true) - $startedAt) * 1000),
         'success_flag' => $success,

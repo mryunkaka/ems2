@@ -21,17 +21,22 @@ function ems_ai_log_request(PDO &$pdo, array $data): void
             return;
         }
 
+        $hasUsageEstimatedColumn = function_exists('ems_column_exists')
+            && ems_column_exists($connection, 'system_ai_request_logs', 'usage_estimated');
+        $usageEstimatedColumn = $hasUsageEstimatedColumn ? ', usage_estimated' : '';
+        $usageEstimatedPlaceholder = $hasUsageEstimatedColumn ? ', ?' : '';
+
         $stmt = $connection->prepare("
             INSERT INTO system_ai_request_logs
             (
                 feature_key, provider, model_name, request_hash,
                 request_payload, response_payload, prompt_tokens,
                 response_tokens, total_tokens, http_status, latency_ms,
-                success_flag, error_message, created_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                success_flag, error_message, created_by{$usageEstimatedColumn}
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?{$usageEstimatedPlaceholder})
         ");
 
-        $stmt->execute([
+        $values = [
             $data['feature_key'] ?? 'unknown',
             $data['provider'] ?? 'gemini',
             $data['model_name'] ?? '',
@@ -46,7 +51,11 @@ function ems_ai_log_request(PDO &$pdo, array $data): void
             !empty($data['success_flag']) ? 1 : 0,
             $data['error_message'] ?? null,
             $data['created_by'] ?? null,
-        ]);
+        ];
+        if ($hasUsageEstimatedColumn) {
+            $values[] = !empty($data['usage_estimated']) ? 1 : 0;
+        }
+        $stmt->execute($values);
     };
 
     try {

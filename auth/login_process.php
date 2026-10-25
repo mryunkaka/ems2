@@ -190,8 +190,16 @@ if ((int)$user['is_verified'] === 0) {
 // =====================================================
 // CEK STATUS AKTIF USER (REIGNED/NONAKTIF)
 // =====================================================
-if ((int)$user['is_active'] === 0) {
-    $hasResigned = !empty($user['resigned_at']) || !empty(trim((string)($user['resign_reason'] ?? '')));
+if ((int)$user['is_active'] === 0 || !empty($user['resigned_at']) || trim((string)($user['resign_reason'] ?? '')) !== '') {
+    $hasResigned = !empty($user['resigned_at']) || trim((string)($user['resign_reason'] ?? '')) !== '';
+    if ($hasResigned && (int)$user['is_active'] === 1) {
+        try {
+            $pdo->prepare('UPDATE user_rh SET is_active = 0 WHERE id = ?')->execute([(int)$user['id']]);
+            $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([(int)$user['id']]);
+        } catch (Throwable $e) {
+            error_log('[Auth] Failed to synchronize resigned user access: ' . $e->getMessage());
+        }
+    }
     $_SESSION['error'] = $hasResigned
         ? 'Akun Anda sudah dinonaktifkan. Hubungi administrator.'
         : 'Akun Anda belum aktif. Silakan tunggu aktivasi manager.';
