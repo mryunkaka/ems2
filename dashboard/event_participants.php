@@ -49,7 +49,16 @@ $stmt = $pdo->prepare("
         u.jenis_kelamin,
         u.citizen_id,
         u.no_hp_ic,
-        ep.registered_at
+        ep.registered_at,
+        (
+            SELECT erh.reason
+            FROM event_registration_history erh
+            WHERE erh.event_id = ep.event_id
+              AND erh.user_id = ep.user_id
+              AND erh.action = 'registered'
+            ORDER BY erh.id DESC
+            LIMIT 1
+        ) AS registration_reason
     FROM event_participants ep
     JOIN user_rh u ON u.id = ep.user_id
     WHERE ep.event_id = ?
@@ -57,6 +66,34 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$eventId]);
 $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+/* ===============================
+   DATA PESERTA YANG MEMBATALKAN
+   =============================== */
+$cancelledStmt = $pdo->prepare("
+    SELECT
+        u.id AS user_id,
+        u.full_name,
+        u.position,
+        u.batch,
+        erh.reason,
+        erh.created_at AS cancelled_at
+    FROM event_registration_history erh
+    INNER JOIN (
+        SELECT user_id, MAX(id) AS latest_id
+        FROM event_registration_history
+        WHERE event_id = ?
+        GROUP BY user_id
+    ) latest ON latest.latest_id = erh.id
+    INNER JOIN user_rh u ON u.id = erh.user_id
+    LEFT JOIN event_participants ep ON ep.event_id = erh.event_id AND ep.user_id = erh.user_id
+    WHERE erh.event_id = ?
+      AND erh.action = 'cancelled'
+      AND ep.id IS NULL
+        ORDER BY erh.created_at DESC
+");
+$cancelledStmt->execute([$eventId, $eventId]);
+$cancelledParticipants = $cancelledStmt->fetchAll(PDO::FETCH_ASSOC);
 
 /* ===============================
    GENERATE & SIMPAN KELOMPOK (FINAL)
@@ -263,6 +300,7 @@ $pageTitle = 'Peserta Event';
                             <th>Citizen ID</th>
                             <th>No HP IC</th>
                             <th>Waktu Daftar</th>
+                            <th>Alasan Daftar Ulang</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -276,12 +314,47 @@ $pageTitle = 'Peserta Event';
                                 <td><?= htmlspecialchars((string)($p['citizen_id'] ?? '')) ?></td>
                                 <td><?= htmlspecialchars((string)($p['no_hp_ic'] ?? '')) ?></td>
                                 <td><?= (new DateTime($p['registered_at']))->format('d M Y H:i') ?></td>
+                                <td><?= trim((string)($p['registration_reason'] ?? '')) !== '' ? nl2br(htmlspecialchars((string)$p['registration_reason'], ENT_QUOTES, 'UTF-8')) : '-' ?></td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
             </div>
         </div>
+        <?php if (!empty($cancelledParticipants)): ?>
+            <div class="card">
+                <div class="card-header">
+                    Peserta yang Membatalkan
+                    <span class="header-meta">Total: <strong><?= count($cancelledParticipants) ?></strong> orang</span>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table-custom">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nama</th>
+                                <th>Jabatan</th>
+                                <th>Batch</th>
+                                <th>Waktu Batal</th>
+                                <th>Alasan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($cancelledParticipants as $i => $p): ?>
+                                <tr>
+                                    <td><?= $i + 1 ?></td>
+                                    <td><strong><?= htmlspecialchars((string)$p['full_name'], ENT_QUOTES, 'UTF-8') ?></strong></td>
+                                    <td><?= htmlspecialchars(ems_position_label((string)$p['position']), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= htmlspecialchars((string)($p['batch'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= (new DateTime((string)$p['cancelled_at']))->format('d M Y H:i') ?></td>
+                                    <td><?= nl2br(htmlspecialchars((string)($p['reason'] ?? '-'), ENT_QUOTES, 'UTF-8')) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
         <div class="card">
             <div class="card-header">Generate Kelompok</div>
             <div class="card-body">

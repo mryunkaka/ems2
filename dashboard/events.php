@@ -2,50 +2,39 @@
 date_default_timezone_set('Asia/Jakarta');
 session_start();
 
+require_once __DIR__ . '/../auth/auth_guard.php';
+require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
-/*
-|--------------------------------------------------------------------------
-| AMBIL EVENT AKTIF
-|--------------------------------------------------------------------------
-*/
+$pageTitle = 'Pendaftaran Event';
+$currentUserId = (int)($_SESSION['user_rh']['id'] ?? 0);
 $eventId = (int)($_GET['id'] ?? 0);
 
 if ($eventId > 0) {
-    // Kalau ada ID, pakai ID tersebut
-    $stmt = $pdo->prepare("SELECT * FROM events WHERE id = ? AND is_active = 1");
-    $stmt->execute([$eventId]);
+    $eventStmt = $pdo->prepare('SELECT * FROM events WHERE id = ? AND is_active = 1 LIMIT 1');
+    $eventStmt->execute([$eventId]);
 } else {
-    // Kalau tidak ada ID, ambil event aktif pertama
-    $stmt = $pdo->query("
-        SELECT *
-        FROM events
-        WHERE is_active = 1
-        ORDER BY tanggal_event ASC
-        LIMIT 1
-    ");
+    $eventStmt = $pdo->query('SELECT * FROM events WHERE is_active = 1 ORDER BY tanggal_event ASC LIMIT 1');
 }
-
-$event = $stmt->fetch(PDO::FETCH_ASSOC);
-$eventUnavailable = !$event;
+$event = $eventStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+$eventUnavailable = $event === null;
 $eventId = (int)($event['id'] ?? 0);
 
-/*
-|--------------------------------------------------------------------------
-| STATISTIK PESERTA
-|--------------------------------------------------------------------------
-*/
-$stat = [
-    'total' => 0,
-    'laki' => 0,
-    'perempuan' => 0,
-];
+$messages = $_SESSION['flash_messages'] ?? [];
+$errors = $_SESSION['flash_errors'] ?? [];
+unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
+
+$stat = ['total' => 0, 'laki' => 0, 'perempuan' => 0];
+$isRegistered = false;
+$lastAction = null;
+$lastReason = null;
+$lastActionAt = null;
 
 if (!$eventUnavailable) {
     $statStmt = $pdo->prepare("
-        SELECT
-            COUNT(ep.id) AS total,
+        SELECT COUNT(ep.id) AS total,
             SUM(CASE WHEN u.jenis_kelamin = 'Laki-laki' THEN 1 ELSE 0 END) AS laki,
             SUM(CASE WHEN u.jenis_kelamin = 'Perempuan' THEN 1 ELSE 0 END) AS perempuan
         FROM event_participants ep
@@ -53,339 +42,110 @@ if (!$eventUnavailable) {
         WHERE ep.event_id = ?
     ");
     $statStmt->execute([$eventId]);
-    $stat = $statStmt->fetch(PDO::FETCH_ASSOC);
+    $stat = $statStmt->fetch(PDO::FETCH_ASSOC) ?: $stat;
+
+    $activeStmt = $pdo->prepare('SELECT 1 FROM event_participants WHERE event_id = ? AND user_id = ? LIMIT 1');
+    $activeStmt->execute([$eventId, $currentUserId]);
+    $isRegistered = (bool)$activeStmt->fetchColumn();
+
+    $historyStmt = $pdo->prepare('SELECT action, reason, created_at FROM event_registration_history WHERE event_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1');
+    $historyStmt->execute([$eventId, $currentUserId]);
+    $latestHistory = $historyStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    if ($latestHistory) {
+        $lastAction = $latestHistory['action'];
+        $lastReason = $latestHistory['reason'];
+        $lastActionAt = $latestHistory['created_at'];
+    }
 }
 
-/*
-|--------------------------------------------------------------------------
-| FLASH MESSAGES
-|--------------------------------------------------------------------------
-*/
-$messages = $_SESSION['flash_messages'] ?? [];
-$errors   = $_SESSION['flash_errors'] ?? [];
-unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
-
-/*
-|--------------------------------------------------------------------------
-| PROSES DAFTAR EVENT
-|--------------------------------------------------------------------------
-*/
-if (!$eventUnavailable && $_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    $nama   = trim($_POST['nama_lengkap'] ?? '');
-    $batch  = trim($_POST['batch'] ?? '');
-    $gender = $_POST['jenis_kelamin'] ?? '';
-
-    if ($nama === '' || $batch === '' || !in_array($gender, ['Laki-laki', 'Perempuan'], true)) {
-        $_SESSION['flash_errors'][] = 'Semua data wajib diisi.';
-        header("Location: events.php?id=$eventId");
-        exit;
-    }
-
-    try {
-        // Cari user berdasarkan nama
-        $stmt = $pdo->prepare("
-            SELECT id 
-            FROM user_rh 
-            WHERE full_name = ? 
-            LIMIT 1
-        ");
-        $stmt->execute([$nama]);
-        $userId = (int)($stmt->fetchColumn() ?: 0);
-
-        // Buat user baru jika belum ada
-        if ($userId === 0) {
-        
-            $defaultPin = '0000';
-            $pinHash = password_hash($defaultPin, PASSWORD_BCRYPT, ['cost' => 12]);
-        
-            $stmt = $pdo->prepare("
-                INSERT INTO user_rh (
-                    full_name,
-                    batch,
-                    jenis_kelamin,
-                    position,
-                    role,
-                    pin,
-                    is_active
-	                ) VALUES (
-	                    ?, ?, ?, 'trainee', 'Staff', ?, 1
-	                )
-            ");
-            $stmt->execute([$nama, $batch, $gender, $pinHash]);
-            $userId = (int)$pdo->lastInsertId();
-        
-        } else {
-        
-            // UPDATE batch & gender jika user sudah ada
-            $stmt = $pdo->prepare("
-                UPDATE user_rh
-                SET 
-                    batch = ?,
-                    jenis_kelamin = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$batch, $gender, $userId]);
-        }
-
-
-        // Cek apakah nama sudah terdaftar di event ini
-        $stmt = $pdo->prepare("
-            SELECT 1
-            FROM event_participants ep
-            JOIN user_rh u ON u.id = ep.user_id
-            WHERE ep.event_id = ?
-            AND u.full_name = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$eventId, $nama]);
-
-        if ($stmt->fetch()) {
-            $_SESSION['flash_errors'][] = 'Nama ini sudah terdaftar di event.';
-        } else {
-            // Daftar ke event
-            $stmt = $pdo->prepare("
-                INSERT INTO event_participants (event_id, user_id)
-                VALUES (?, ?)
-            ");
-            $stmt->execute([$eventId, $userId]);
-            $_SESSION['flash_messages'][] = 'Pendaftaran event berhasil!';
-        }
-    } catch (Exception $e) {
-        $_SESSION['flash_errors'][] = 'Terjadi kesalahan sistem.';
-    }
-
-    header("Location: events.php?id=$eventId");
-    exit;
-}
+include __DIR__ . '/../partials/header.php';
+include __DIR__ . '/../partials/sidebar.php';
 ?>
-<!DOCTYPE html>
-<html lang="id">
 
-<head>
-    <meta charset="UTF-8">
-    <title><?= $eventUnavailable ? 'Event Tidak Tersedia' : 'Daftar Event' ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<section class="content">
+    <div class="page page-shell-md">
+        <h1 class="page-title">Pendaftaran Event</h1>
+        <p class="page-subtitle">Daftar, lihat status, atau batalkan keikutsertaan Anda pada event.</p>
 
-    <link rel="stylesheet" href="/assets/design/tailwind/build.css">
-</head>
+        <?php foreach ($messages as $message): ?>
+            <div class="alert alert-success"><?= htmlspecialchars((string)$message, ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endforeach; ?>
+        <?php foreach ($errors as $error): ?>
+            <div class="alert alert-error"><?= htmlspecialchars((string)$error, ENT_QUOTES, 'UTF-8') ?></div>
+        <?php endforeach; ?>
 
-<body class="bg-background">
-
-    <div class="login-wrapper">
-	    <div class="page page-shell">
         <?php if ($eventUnavailable): ?>
-            <?php
-            $dashboardHref = !empty($_SESSION['user_rh']) ? '/dashboard/index.php' : '/auth/login.php';
-            $dashboardLabel = !empty($_SESSION['user_rh']) ? 'Kembali ke Dashboard' : 'Kembali ke Login';
-            ?>
-            <div class="modal-overlay" style="position:static;display:flex;min-height:72vh;padding:24px;">
-                <div class="modal-box modal-shell modal-frame-md" style="margin:auto;">
-                    <div class="modal-head">
-                        <div class="modal-title inline-flex items-center gap-2">
-                            <?= ems_icon('exclamation-triangle', 'h-5 w-5 text-warning') ?>
-                            <span>Event Belum Tersedia</span>
-                        </div>
-                    </div>
-                    <div class="modal-content">
-                        <div class="card" style="background:linear-gradient(180deg,#fff8eb 0%,#fff 100%);border:1px solid rgba(245,158,11,.22);">
-                            <div class="meta-text-xs" style="color:#b45309;">Pemberitahuan</div>
-                            <div class="text-sm text-slate-700" style="margin-top:10px;line-height:1.7;">
-                                Saat ini belum ada event aktif yang tersedia dari menu <strong>Event</strong>.
-                                Silakan tunggu event berikutnya dibuka atau hubungi pengelola event untuk informasi lebih lanjut.
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-foot">
-                        <div class="modal-actions justify-end">
-                            <a href="<?= htmlspecialchars($dashboardHref, ENT_QUOTES, 'UTF-8') ?>" class="btn-secondary">
-                                <?= htmlspecialchars($dashboardLabel, ENT_QUOTES, 'UTF-8') ?>
-                            </a>
-                            <?php if (!empty($_SESSION['user_rh'])): ?>
-                                <a href="/dashboard/event_manage.php" class="btn btn-warning">
-                                    <?= ems_icon('wrench-screwdriver', 'h-4 w-4') ?> Kelola Event
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="alert alert-warning">Saat ini tidak ada event aktif yang tersedia. Silakan hubungi pengelola event.</div>
         <?php else: ?>
-
-        <h1 class="page-title">Daftar Event</h1>
-        <p class="page-subtitle">Pendaftaran terbuka tanpa login</p>
-
-        <?php foreach ($messages as $m): ?>
-            <div class="alert alert-success"><?= htmlspecialchars($m) ?></div>
-        <?php endforeach; ?>
-
-        <?php foreach ($errors as $e): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($e) ?></div>
-        <?php endforeach; ?>
-
-        <!-- INFO EVENT -->
-        <div class="card">
-            <div class="card-header"><?= htmlspecialchars($event['nama_event']) ?></div>
-
             <?php
             $hariMap = [
-                'Sunday'    => 'Minggu',
-                'Monday'    => 'Senin',
-                'Tuesday'   => 'Selasa',
-                'Wednesday' => 'Rabu',
-                'Thursday'  => 'Kamis',
-                'Friday'    => 'Jumat',
-                'Saturday'  => 'Sabtu',
+                'Sunday' => 'Minggu', 'Monday' => 'Senin', 'Tuesday' => 'Selasa',
+                'Wednesday' => 'Rabu', 'Thursday' => 'Kamis', 'Friday' => 'Jumat', 'Saturday' => 'Sabtu',
             ];
-
-            $dt = new DateTime($event['tanggal_event']);
-            $hari = $hariMap[$dt->format('l')] ?? '';
+            $eventDate = new DateTime((string)$event['tanggal_event']);
             ?>
-
-            <p class="text-muted">
-                <?= $hari ?>, <?= $dt->format('d M Y') ?>
-                &bull; <?= htmlspecialchars($event['lokasi'] ?? '-') ?>
-            </p>
-
-            <div class="info-notice">
-                <strong>Total Peserta:</strong> <?= (int)$stat['total'] ?> orang<br>
-                <strong>Laki-laki:</strong> <?= (int)$stat['laki'] ?> orang<br>
-                <strong>Perempuan:</strong> <?= (int)$stat['perempuan'] ?> orang
+            <div class="card mb-4">
+                <div class="card-header"><?= htmlspecialchars((string)$event['nama_event'], ENT_QUOTES, 'UTF-8') ?></div>
+                <p class="text-muted">
+                    <?= htmlspecialchars($hariMap[$eventDate->format('l')] ?? '', ENT_QUOTES, 'UTF-8') ?>,
+                    <?= $eventDate->format('d M Y') ?> &bull;
+                    <?= htmlspecialchars((string)($event['lokasi'] ?: '-'), ENT_QUOTES, 'UTF-8') ?>
+                </p>
+                <?php if (trim((string)($event['keterangan'] ?? '')) !== ''): ?>
+                    <p class="text-sm text-slate-700"><?= nl2br(htmlspecialchars((string)$event['keterangan'], ENT_QUOTES, 'UTF-8')) ?></p>
+                <?php endif; ?>
+                <div class="info-notice mt-4">
+                    <strong>Total peserta aktif:</strong> <?= (int)$stat['total'] ?> orang<br>
+                    <strong>Laki-laki:</strong> <?= (int)$stat['laki'] ?> orang<br>
+                    <strong>Perempuan:</strong> <?= (int)$stat['perempuan'] ?> orang
+                </div>
             </div>
-        </div>
 
-        <!-- FORM -->
-        <div class="card">
-            <div class="card-header">Form Pendaftaran</div>
-
-            <form method="POST" class="form" autocomplete="off">
-
-                <!-- NAMA + AUTOCOMPLETE -->
-                <div class="row-form-1" style="position:relative;">
-                    <label>Nama Lengkap <span class="required">*</span></label>
-
-                    <input
-                        type="text"
-                        name="nama_lengkap"
-                        id="namaInput"
-                        placeholder="Ketik nama..."
-                        required>
-
-                    <!-- DROPDOWN AUTOCOMPLETE -->
-                    <div id="namaDropdown" class="consumer-search-dropdown hidden"></div>
-
-                    <small class="hint-info">
-                        Jika nama belum ada, akun akan dibuat otomatis
-                    </small>
-                </div>
-
-                <!-- BATCH -->
-                <div class="row-form-1">
-                    <label>Batch <span class="required">*</span></label>
-                    <input type="text" name="batch" id="batchInput" required>
-                </div>
-
-                <!-- JENIS KELAMIN -->
-                <div class="row-form-1">
-                    <label>Jenis Kelamin <span class="required">*</span></label>
-                    <select name="jenis_kelamin" id="genderSelect" required>
-                        <option value="">-- Pilih --</option>
-                        <option value="Laki-laki">Laki-laki</option>
-                        <option value="Perempuan">Perempuan</option>
-                    </select>
-                </div>
-
-                <div class="form-submit-wrapper">
-                    <button class="btn btn-success btn-submit"><?= ems_icon('check-circle', 'h-5 w-5') ?> Daftar Event
-                    </button>
-                </div>
-
-            </form>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', () => {
-
-                    const inputNama = document.getElementById('namaInput');
-                    const dropdown = document.getElementById('namaDropdown');
-                    const batchInput = document.getElementById('batchInput');
-                    const genderInput = document.getElementById('genderSelect');
-
-                    let controller = null;
-
-                    inputNama.addEventListener('input', () => {
-                        const keyword = inputNama.value.trim();
-
-                        batchInput.value = '';
-                        genderInput.value = '';
-
-                        if (keyword.length < 2) {
-                            dropdown.classList.add('hidden');
-                            dropdown.innerHTML = '';
-                            return;
-                        }
-
-                        if (controller) controller.abort();
-                        controller = new AbortController();
-
-                        fetch('../ajax/search_user_rh.php?q=' + encodeURIComponent(keyword), {
-                                signal: controller.signal
-                            })
-                            .then(res => res.json())
-                            .then(data => {
-
-                                dropdown.innerHTML = '';
-
-                                if (!data.length) {
-                                    dropdown.classList.add('hidden');
-                                    return;
-                                }
-
-                                data.forEach(user => {
-                                    const item = document.createElement('div');
-                                    item.className = 'consumer-search-item';
-
-                                    item.innerHTML = `
-                    <div class="consumer-search-name">${user.full_name}</div>
-                    <div class="consumer-search-meta">
-                        <span>${user.position ?? '-'}</span>
-                        <span class="dot">&bull;</span>
-                        <span>Batch ${user.batch ?? '-'}</span>
-                    </div>
-                `;
-
-                                    item.addEventListener('click', () => {
-                                        inputNama.value = user.full_name;
-                                        batchInput.value = user.batch ?? '';
-                                        genderInput.value = user.jenis_kelamin ?? '';
-
-                                        dropdown.classList.add('hidden');
-                                        dropdown.innerHTML = '';
-                                    });
-
-                                    dropdown.appendChild(item);
-                                });
-
-                                dropdown.classList.remove('hidden');
-                            })
-                            .catch(() => {});
-                    });
-
-                    document.addEventListener('click', (e) => {
-                        if (!inputNama.contains(e.target) && !dropdown.contains(e.target)) {
-                            dropdown.classList.add('hidden');
-                        }
-                    });
-
-                });
-            </script>
-
-
-        </div>
+            <div class="card">
+                <div class="card-header">Status Pendaftaran Anda</div>
+                <?php if ($isRegistered): ?>
+                    <div class="alert alert-success">Anda terdaftar sebagai peserta aktif event ini.</div>
+                    <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/event_registration_action.php'), ENT_QUOTES, 'UTF-8') ?>" class="space-y-3">
+                        <?= csrfField() ?>
+                        <input type="hidden" name="event_id" value="<?= $eventId ?>">
+                        <input type="hidden" name="action" value="cancel">
+                        <div>
+                            <label for="cancelReason">Alasan pembatalan <span class="required">*</span></label>
+                            <textarea id="cancelReason" name="reason" rows="3" maxlength="1000" required placeholder="Jelaskan alasan Anda membatalkan pendaftaran"></textarea>
+                        </div>
+                        <button type="submit" class="btn-warning"><?= ems_icon('x-circle', 'h-4 w-4') ?> <span>Batalkan Pendaftaran</span></button>
+                    </form>
+                <?php else: ?>
+                    <?php if ($lastAction === 'cancelled'): ?>
+                        <div class="alert alert-info">
+                            Pendaftaran sebelumnya dibatalkan pada <?= htmlspecialchars((new DateTime((string)$lastActionAt))->format('d M Y H:i'), ENT_QUOTES, 'UTF-8') ?>.
+                            <?php if (trim((string)$lastReason) !== ''): ?>
+                                <br><strong>Alasan:</strong> <?= nl2br(htmlspecialchars((string)$lastReason, ENT_QUOTES, 'UTF-8')) ?>
+                            <?php endif; ?>
+                        </div>
+                        <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/event_registration_action.php'), ENT_QUOTES, 'UTF-8') ?>" class="space-y-3">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="event_id" value="<?= $eventId ?>">
+                            <input type="hidden" name="action" value="register">
+                            <div>
+                                <label for="registerReason">Alasan daftar ulang <span class="required">*</span></label>
+                                <textarea id="registerReason" name="reason" rows="3" maxlength="1000" required placeholder="Jelaskan alasan Anda ingin mendaftar kembali"></textarea>
+                            </div>
+                            <button type="submit" class="btn-primary"><?= ems_icon('arrow-path', 'h-4 w-4') ?> <span>Daftar Kembali</span></button>
+                        </form>
+                    <?php else: ?>
+                        <p class="text-sm text-slate-700 mb-4">Masuk sebagai <strong><?= htmlspecialchars((string)($_SESSION['user_rh']['full_name'] ?? $_SESSION['user_rh']['name'] ?? ''), ENT_QUOTES, 'UTF-8') ?></strong>.</p>
+                        <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/event_registration_action.php'), ENT_QUOTES, 'UTF-8') ?>">
+                            <?= csrfField() ?>
+                            <input type="hidden" name="event_id" value="<?= $eventId ?>">
+                            <input type="hidden" name="action" value="register">
+                            <button type="submit" class="btn-primary"><?= ems_icon('user-plus', 'h-4 w-4') ?> <span>Daftar Event</span></button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
         <?php endif; ?>
-
     </div>
-    </div>
+</section>
 
-</body>
-
-</html>
+<?php include __DIR__ . '/../partials/footer.php'; ?>

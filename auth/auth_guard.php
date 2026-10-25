@@ -218,7 +218,12 @@ if (isset($_SESSION['user_rh'])) {
             }
         }
 
-        if ($currentScript !== 'sertifikat_heli_pendaftaran.php' && $currentScript !== 'sertifikat_heli_action.php') {
+        if (!in_array($currentScript, [
+            'sertifikat_heli_pendaftaran.php',
+            'sertifikat_heli_action.php',
+            'events.php',
+            'event_registration_action.php',
+        ], true)) {
             ems_enforce_dashboard_page_access(
                 $_SESSION['user_rh']['division'] ?? '',
                 $currentScript,
@@ -289,5 +294,14 @@ if (!empty($_COOKIE['remember_login'])) {
 
 setcookie('remember_login', '', authGuardRememberLoginCookieOptions(time() - 3600));
 authGuardAbortUnauthorized();
+if (basename((string)($_SERVER['PHP_SELF'] ?? '')) === 'events.php'
+    && strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'GET') {
+    $requestedEventId = (int)($_GET['id'] ?? 0);
+    $intendedEventUrl = '/dashboard/events.php';
+    if ($requestedEventId > 0) {
+        $intendedEventUrl .= '?id=' . $requestedEventId;
+    }
+    $_SESSION['auth_intended_url'] = ems_url($intendedEventUrl);
+}
 header("Location: /auth/login.php");
 exit;

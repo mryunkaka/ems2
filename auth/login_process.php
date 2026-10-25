@@ -118,6 +118,22 @@ function loginRateLimitClear(string $scope, string $identifier): void
     }
 }
 
+function loginSafeIntendedEventUrl(string $candidate): ?string
+{
+    $parts = parse_url($candidate);
+    if (!is_array($parts) || isset($parts['scheme']) || isset($parts['host']) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment'])) {
+        return null;
+    }
+    $path = (string)($parts['path'] ?? '');
+    $query = (string)($parts['query'] ?? '');
+    if ($path === '' || $path[0] !== '/' || str_starts_with($path, '//')
+        || !preg_match('~(?:^|/)dashboard/events\.php$~', $path)
+        || ($query !== '' && !preg_match('/^id=[1-9][0-9]*$/', $query))) {
+        return null;
+    }
+    return $path . ($query !== '' ? '?' . $query : '');
+}
+
 $requestedLoginUnit = ems_normalize_unit_code($_POST['login_unit'] ?? $_GET['unit'] ?? 'roxwood');
 $requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
 
@@ -300,6 +316,12 @@ if ($position === 'specialist' && !ems_specialist_degrees_are_valid((string) ($u
 
 // trainee → dashboard
 if ($position === 'trainee') {
+    $intendedEventUrl = loginSafeIntendedEventUrl((string)($_SESSION['auth_intended_url'] ?? ''));
+    if ($intendedEventUrl !== null) {
+        unset($_SESSION['auth_intended_url']);
+        header('Location: ' . $intendedEventUrl);
+        exit;
+    }
     header("Location: /dashboard/index.php");
     exit;
 }
@@ -309,6 +331,13 @@ $requiresTanggalLahirIc = ems_column_exists($pdo, 'user_rh', 'tanggal_lahir_ic')
 if ($requiresTanggalLahirIc && trim((string)($user['tanggal_lahir_ic'] ?? '')) === '') {
     $_SESSION['flash_errors'][] = 'Tanggal lahir IC sesuai KTP wajib diisi dulu sebelum akses jualan farmasi.';
     header("Location: /dashboard/setting_akun.php");
+    exit;
+}
+
+$intendedEventUrl = loginSafeIntendedEventUrl((string)($_SESSION['auth_intended_url'] ?? ''));
+if ($intendedEventUrl !== null) {
+    unset($_SESSION['auth_intended_url']);
+    header('Location: ' . $intendedEventUrl);
     exit;
 }
 

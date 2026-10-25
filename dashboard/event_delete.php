@@ -69,6 +69,9 @@ try {
     // Hapus peserta
     $pdo->prepare("DELETE FROM event_participants WHERE event_id = ?")->execute([$eventId]);
 
+    // Hapus riwayat pendaftaran agar tidak meninggalkan riwayat tanpa event.
+    $pdo->prepare("DELETE FROM event_registration_history WHERE event_id = ?")->execute([$eventId]);
+
     // Hapus event
     $pdo->prepare("DELETE FROM events WHERE id = ?")->execute([$eventId]);
 

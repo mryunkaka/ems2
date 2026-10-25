@@ -272,6 +272,20 @@ if ($isAltaUnit && !$canViewAllUnits) {
     }
 }
 
+// Event registration is available to every signed-in user when an event is active.
+if ($hasActiveEvent && isset($groupedNav['Utama']) && is_array($groupedNav['Utama'])) {
+    $hasEventMenu = false;
+    foreach ($groupedNav['Utama'] as $item) {
+        if (($item['page'] ?? '') === 'events.php') {
+            $hasEventMenu = true;
+            break;
+        }
+    }
+    if (!$hasEventMenu) {
+        $groupedNav['Utama'][] = sidebarItem('/dashboard/events.php', 'events.php', 'Event', 'ticket');
+    }
+}
+
 // The compact Alta menu replaces the usual tree, so restore Secretary for
 // valid divisions after that override too.
 if (ems_is_valid_division($division) && !isset($groupedNav['Secretary'])) {
