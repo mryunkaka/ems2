@@ -16,13 +16,14 @@ mengambil push GitHub ke hosting, buka **cPanel → Advanced → Cron Jobs** dan
 tambahkan cron berikut:
 
 ```cron
-*/5 * * * * /bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh >/dev/null 2>&1
+*/5 * * * * /bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh >> /home/fouf9972/deploy-cron.log 2>&1; echo "deploy.sh exit=$?" >> /home/fouf9972/deploy-cron.log
 ```
 
 Cron memeriksa `main` setiap lima menit. Jika ada commit baru, `deploy.sh`
 menyiapkan file SQL dari commit terbaru, menjalankan migrasi baru, lalu hanya
 jika migrasi berhasil memperbarui checkout kode. Jika tidak ada perubahan,
-script selesai tanpa mengubah situs. Script mencatat hasil di
+script selesai tanpa mengubah situs. Setiap pemanggilan menulis kode keluar ke
+`/home/fouf9972/deploy-cron.log`; detail migrasi/deployment dicatat di
 `/home/fouf9972/git-deploy.log`. Ini memerlukan koneksi keluar hosting ke
 GitHub dan remote `origin` yang dapat diakses oleh akun cPanel.
 
