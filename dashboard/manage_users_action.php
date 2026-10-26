@@ -728,6 +728,9 @@ if ($action === 'reactivate') {
         UPDATE user_rh  
         SET
             is_active = 1,
+            resign_reason = NULL,
+            resigned_by = NULL,
+            resigned_at = NULL,
             reactivated_at = NOW(),
             reactivated_by = ?,
             reactivated_note = ?

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
 $loginUnit = ems_normalize_unit_code($_GET['unit'] ?? 'roxwood');
@@ -9,6 +10,17 @@ $loginLogoPath = ems_unit_logo_path($loginUnit);
 $loginSystemName = ems_unit_system_name($loginUnit);
 $loginPageUrl = 'login.php?unit=' . urlencode($loginUnit);
 $registerRequiresIdentityDocs = $loginUnit === 'roxwood';
+$loginExampleName = 'Michael Moore';
+try {
+    $exampleStmt = $pdo->prepare("SELECT full_name FROM user_rh WHERE LOWER(full_name) LIKE ? ORDER BY is_active DESC, id ASC LIMIT 1");
+    $exampleStmt->execute(['%michael moore%']);
+    $storedExampleName = $exampleStmt->fetchColumn();
+    if (is_string($storedExampleName) && trim($storedExampleName) !== '') {
+        $loginExampleName = trim($storedExampleName);
+    }
+} catch (Throwable $e) {
+    error_log('[Auth] Failed to load login name example: ' . $e->getMessage());
+}
 
 function authRenderRegisterDocField(string $label, string $inputId, string $fieldName, bool $optional = true): void
 {
@@ -178,7 +190,7 @@ function authRenderRegisterDocField(string $label, string $inputId, string $fiel
                             <input
                                 type="text"
                                 name="full_name"
-                                placeholder="Contoh: Michael Moore"
+                                placeholder="Contoh: <?= htmlspecialchars($loginExampleName, ENT_QUOTES, 'UTF-8') ?>"
                                 required
                                 autocomplete="username"
                                 autocorrect="off"
