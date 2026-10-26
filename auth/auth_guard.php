@@ -5,6 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/auth_access.php';
 
 function authGuardWantsJsonResponse(): bool
 {
@@ -122,22 +123,18 @@ if (isset($_SESSION['user_rh'])) {
             $kontrakKerjaSelect = $hasKontrakKerjaColumn ? ', file_kontrak_kerja' : '';
             $specialistDegreesSelect = $hasSpecialistDegreesColumn ? ', specialist_degrees' : '';
             $stmt = $pdo->prepare("
-                SELECT role, position, full_name, is_active, resign_reason, resigned_at, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}{$tanggalLahirIcSelect}{$kontrakKerjaSelect}{$specialistDegreesSelect}
+                SELECT role, position, full_name, is_active, cuti_status, cuti_start_date, cuti_end_date{$divisionSelect}{$unitSelect}{$canViewAllUnitsSelect}{$tanggalLahirIcSelect}{$kontrakKerjaSelect}{$specialistDegreesSelect}
                 FROM user_rh
                 WHERE id = ?
                 LIMIT 1
             ");
             $stmt->execute([$uid]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            $hasResigned = $row && (!empty($row['resigned_at']) || trim((string)($row['resign_reason'] ?? '')) !== '');
-            if ($row && ((int)($row['is_active'] ?? 0) !== 1 || $hasResigned)) {
+            if ($row && !ems_user_access_is_active($row)) {
                 try {
-                    if ($hasResigned && (int)($row['is_active'] ?? 0) === 1) {
-                        $pdo->prepare('UPDATE user_rh SET is_active = 0 WHERE id = ?')->execute([$uid]);
-                    }
                     $pdo->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$uid]);
                 } catch (Throwable $e) {
-                    error_log('[Auth] Failed to synchronize resigned user access: ' . $e->getMessage());
+                    error_log('[Auth] Failed to revoke inactive user remember tokens: ' . $e->getMessage());
                 }
                 $_SESSION = [];
                 if (ini_get('session.use_cookies')) {
@@ -259,8 +256,7 @@ if (!empty($_COOKIE['remember_login'])) {
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            $userHasResigned = $user && (!empty($user['resigned_at']) || trim((string)($user['resign_reason'] ?? '')) !== '');
-            if ($user && (int)($user['is_active'] ?? 0) === 1 && !$userHasResigned) {
+            if ($user && ems_user_access_is_active($user)) {
                 $_SESSION['user_rh'] = [
                     'id'       => $user['id'],
                     'name'     => $user['full_name'],

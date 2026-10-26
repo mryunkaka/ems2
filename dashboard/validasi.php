@@ -33,6 +33,8 @@ try {
         WHERE is_verified = 1
           AND is_active = 0
           AND (resigned_at IS NULL OR resigned_at = '0000-00-00 00:00:00')
+          AND COALESCE(TRIM(resign_reason), '') = ''
+          AND resigned_by IS NULL
           " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = :unit_code" : "") . "
     ";
     $stmtSync = $pdo->prepare($sqlSync);

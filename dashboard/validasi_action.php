@@ -22,15 +22,23 @@ if ($id <= 0 || !in_array($act, ['approve', 'reject'])) {
 
 $status = ($act === 'approve') ? 1 : 0;
 
+$setFields = [
+    'is_verified = ?',
+    'is_active = ?',
+];
+$params = [$status, $status];
+if ($status === 1) {
+    $setFields[] = 'resign_reason = NULL';
+    $setFields[] = 'resigned_by = NULL';
+    $setFields[] = 'resigned_at = NULL';
+}
+$params[] = $id;
 $stmt = $pdo->prepare("
     UPDATE user_rh
-    SET
-        is_verified = ?,
-        is_active = ?
+    SET " . implode(",\n        ", $setFields) . "
     WHERE id = ?
     " . ($hasUnitCodeColumn ? " AND COALESCE(unit_code, 'roxwood') = ?" : "") . "
 ");
-$params = [$status, $status, $id];
 if ($hasUnitCodeColumn) {
     $params[] = $effectiveUnit;
 }
