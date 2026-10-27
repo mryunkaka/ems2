@@ -6,7 +6,7 @@
   "scripts": {
     "build:css": "npx tailwindcss -i ./assets/design/tailwind/app.css -o ./assets/design/tailwind/build.css --minify",
     "watch:css": "npx tailwindcss -i ./assets/design/tailwind/app.css -o ./assets/design/tailwind/build.css --watch",
-    "test": "echo \"No automated tests configured\""
+    "test": "node --test tests/realtime_chat_presence_test.mjs"
   },
   "repository": {
     "type": "git",

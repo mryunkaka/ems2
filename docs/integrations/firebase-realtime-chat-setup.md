@@ -7,7 +7,7 @@ File setup yang sama juga dipakai untuk fitur live music global.
 
 - Cocok untuk shared hosting/cPanel karena koneksi realtime tidak dibebankan ke PHP server.
 - Presence online didukung native lewat `onDisconnect()`.
-- Bisa menampilkan jumlah tab/browser yang sedang membuka website secara realtime.
+- Bisa menampilkan sesi tab yang sedang membuka website secara realtime; tab yang disembunyikan menghapus presence dan heartbeat yang lebih tua dari 90 detik tidak dihitung.
 
 ## Langkah setup
 
@@ -80,8 +80,9 @@ Atur Realtime Database Rules seperti ini:
 
 ## Catatan perilaku
 
-- Counter online menghitung sesi/tab aktif, bukan deduplikasi per manusia.
-- Jika satu user membuka 3 tab, counter akan naik 3.
+- Counter online menampilkan presence aktif dan menggabungkan tab dengan nama serta role yang sama.
+- Pengunjung tanpa akun dikenali memakai ID guest browser masing-masing.
+- Tab yang dipindah ke background tidak dihitung; sesi yang tidak mengirim heartbeat selama 90 detik dianggap kedaluwarsa.
 - Chat muncul global di layout footer selama konfigurasi Firebase aktif.
 - Live music sinkron saat ini aman untuk `audio direct` dan `YouTube`.
 - Link `Spotify` atau `TikTok` disimpan sebagai antrian referensi, bukan ekstraksi audio otomatis.

@@ -55,6 +55,7 @@ import {
     const visitorProfile = buildVisitorProfile(guestId, sessionId);
 
     let authUid = null;
+    let databaseServerTimeOffsetMs = 0;
     let scrolledToBottom = true;
     let editingMessageId = '';
     let editingOriginalText = '';
@@ -228,33 +229,100 @@ import {
     function attachPresence(uid) {
         const connectedRef = ref(database, '.info/connected');
         const sessionRef = ref(database, presencePath + '/' + sessionId);
+        let isConnected = false;
+        let isRegistered = false;
+        let registrationInProgress = false;
+        let registerAgainAfterCurrentRequest = false;
+        let presenceRevision = 0;
+        let presenceRemovalPromise = Promise.resolve();
 
-        onValue(connectedRef, async function (snapshot) {
-            if (snapshot.val() !== true) {
-                updateOnlineCount(0);
+        onValue(ref(database, '.info/serverTimeOffset'), function (snapshot) {
+            databaseServerTimeOffsetMs = Number(snapshot.val() || 0);
+        });
+
+        async function registerPresence() {
+            if (!isConnected || document.hidden || isRegistered) {
+                return;
+            }
+            if (registrationInProgress) {
+                registerAgainAfterCurrentRequest = true;
                 return;
             }
 
+            registrationInProgress = true;
+            registerAgainAfterCurrentRequest = false;
+            const requestRevision = presenceRevision;
             try {
+                await presenceRemovalPromise;
+                if (document.hidden || !isConnected || requestRevision !== presenceRevision) {
+                    return;
+                }
                 await onDisconnect(sessionRef).remove();
+                if (document.hidden || !isConnected || requestRevision !== presenceRevision) {
+                    return;
+                }
                 await set(sessionRef, {
                     authUid: uid,
                     senderId: visitorProfile.senderId,
                     name: visitorProfile.name,
                     role: visitorProfile.role,
                     unit: visitorProfile.unit,
-                    pageTitle: visitorProfile.pageTitle,
-                    pagePath: visitorProfile.pagePath,
+                    pageTitle: document.title || visitorProfile.pageTitle,
+                    pagePath: window.location.pathname + window.location.search,
                     openedAt: serverTimestamp(),
                     lastSeenAt: serverTimestamp()
                 });
+                if (document.hidden || !isConnected || requestRevision !== presenceRevision) {
+                    await remove(sessionRef).catch(function () {
+                        return null;
+                    });
+                    isRegistered = false;
+                } else {
+                    isRegistered = true;
+                }
             } catch (error) {
                 console.error('Failed to register presence.', error);
                 setStatus('Gagal mencatat visitor online.', true);
+            } finally {
+                registrationInProgress = false;
+                if (registerAgainAfterCurrentRequest && isConnected && !document.hidden && !isRegistered) {
+                    registerPresence();
+                }
             }
+        }
+
+        function removePresence() {
+            presenceRevision += 1;
+            isRegistered = false;
+            presenceRemovalPromise = presenceRemovalPromise.catch(function () {
+                return null;
+            }).then(function () {
+                return remove(sessionRef);
+            }).catch(function () {
+                return null;
+            });
+            return presenceRemovalPromise;
+        }
+
+        onValue(connectedRef, async function (snapshot) {
+            isConnected = snapshot.val() === true;
+            if (!isConnected) {
+                isRegistered = false;
+                return;
+            }
+
+            await registerPresence();
         });
 
         const refreshPresence = function () {
+            if (document.hidden) {
+                return;
+            }
+            if (!isRegistered) {
+                registerPresence();
+                return;
+            }
+
             update(sessionRef, {
                 pageTitle: document.title || visitorProfile.pageTitle,
                 pagePath: window.location.pathname + window.location.search,
@@ -265,14 +333,14 @@ import {
         };
 
         window.addEventListener('beforeunload', function () {
-            remove(sessionRef).catch(function () {
-                return null;
-            });
+            removePresence();
         });
 
         document.addEventListener('visibilitychange', function () {
-            if (!document.hidden) {
-                refreshPresence();
+            if (document.hidden) {
+                removePresence();
+            } else {
+                registerPresence();
             }
         });
 
@@ -282,7 +350,7 @@ import {
     function subscribePresence() {
         onValue(ref(database, presencePath), function (snapshot) {
             const visitors = snapshot.val() || {};
-            const entries = Object.entries(visitors)
+            const entries = filterFreshPresence(visitors, Date.now() + databaseServerTimeOffsetMs)
                 .map(function ([key, value]) {
                     return {
                         id: key,
@@ -290,7 +358,8 @@ import {
                         role: sanitizeText(value?.role || ''),
                         pageTitle: sanitizeText(value?.pageTitle || ''),
                         pagePath: sanitizeText(value?.pagePath || ''),
-                        openedAt: Number(value?.openedAt || 0)
+                        openedAt: Number(value?.openedAt || 0),
+                        lastSeenAt: Number(value?.lastSeenAt || 0)
                     };
                 })
                 .sort(function (left, right) {
@@ -300,6 +369,22 @@ import {
             const uniqueViewers = dedupeViewers(entries);
             updateOnlineCount(uniqueViewers.length);
             renderViewers(uniqueViewers);
+        });
+    }
+
+    function filterFreshPresence(visitors, nowMs, ttlMs = 90000) {
+        if (!visitors || typeof visitors !== 'object') {
+            return [];
+        }
+
+        return Object.entries(visitors).filter(function ([, value]) {
+            const lastSeenAt = Number(value?.lastSeenAt || 0);
+            if (!Number.isFinite(lastSeenAt) || lastSeenAt <= 0) {
+                return false;
+            }
+
+            const ageMs = nowMs - lastSeenAt;
+            return ageMs <= ttlMs && ageMs >= -30000;
         });
     }
 
