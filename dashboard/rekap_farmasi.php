@@ -408,8 +408,14 @@ unset($_SESSION['clear_form']);
 // Flag sementara untuk request POST saat ini
 $clearFormNextLoad = false;
 
-// Tanggal lokal hari ini (WITA)
-$todayDate = date('Y-m-d');
+// Tanggal kalender aplikasi mengikuti zona waktu yang ditetapkan di database.php.
+$farmasiTimezone = new DateTimeZone(date_default_timezone_get());
+$farmasiNow = new DateTimeImmutable('now', $farmasiTimezone);
+$farmasiNextMidnight = $farmasiNow->modify('tomorrow')->setTime(0, 0, 0);
+$todayDate = $farmasiNow->format('Y-m-d');
+$farmasiNextMidnightLabel = $farmasiNextMidnight->format('d M Y') . ' 00:00';
+$farmasiNextMidnightTimestamp = $farmasiNextMidnight->getTimestamp() * 1000;
+$farmasiServerNowTimestamp = $farmasiNow->getTimestamp() * 1000;
 $consumerIdentifierLabel = ems_consumer_identifier_label();
 $consumerNames = fetchDistinctConsumerNames($pdo, $effectiveUnit, $salesHasUnitCode);
 $allConsumerSummaryJS = [];
@@ -3212,6 +3218,30 @@ include __DIR__ . '/../partials/sidebar.php';
         const CONSUMER_HISTORY_SUMMARY = <?= json_encode($allConsumerSummaryJS, JSON_UNESCAPED_UNICODE); ?>;
         const CONSUMER_BLACKLIST = <?= json_encode($consumerBlacklistMap, JSON_UNESCAPED_UNICODE); ?>;
         const TODAY_CONSUMER_NAMES = <?= json_encode(array_values($todayConsumerNamesJS), JSON_UNESCAPED_UNICODE); ?>;
+        const FARMASI_NEXT_MIDNIGHT_LABEL = <?= json_encode($farmasiNextMidnightLabel, JSON_UNESCAPED_UNICODE); ?>;
+        const FARMASI_NEXT_MIDNIGHT_MS = <?= (int)$farmasiNextMidnightTimestamp ?>;
+        const FARMASI_SERVER_CLOCK_OFFSET_MS = <?= (int)$farmasiServerNowTimestamp ?> - Date.now();
+
+        // Muat ulang data transaksi harian saat hari kalender aplikasi berganti.
+        // Data TODAY_CONSUMER_NAMES dan DAILY_DETAIL dibuat di server saat render.
+        function refreshFarmasiPageAfterMidnight() {
+            const serverNow = Date.now() + FARMASI_SERVER_CLOCK_OFFSET_MS;
+            const delay = FARMASI_NEXT_MIDNIGHT_MS - serverNow;
+            if (delay <= 0) {
+                window.location.reload();
+                return;
+            }
+            window.setTimeout(function() {
+                window.location.reload();
+            }, delay);
+        }
+        refreshFarmasiPageAfterMidnight();
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && Date.now() + FARMASI_SERVER_CLOCK_OFFSET_MS >= FARMASI_NEXT_MIDNIGHT_MS) {
+                window.location.reload();
+            }
+        });
+
         // Flag global: apakah pilihan saat ini menyebabkan melewati batas harian
         let IS_OVER_LIMIT = false;
         let PRIORITY_LOCK = false;
@@ -3914,27 +3944,10 @@ include __DIR__ . '/../partials/sidebar.php';
                 footHtml += 'Silakan konfirmasi ke konsumen bahwa pembelian telah dilakukan ';
                 footHtml += 'pada waktu dan petugas medis yang tercantum di atas.<br><br>';
 
-                // Hitung jam reset (00:00 besok)
-                const now = new Date();
-                const nextDay = new Date(
-                    now.getFullYear(),
-                    now.getMonth(),
-                    now.getDate() + 1,
-                    0, 0, 0
-                );
-
-                const monthsID = [
-                    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-                    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-                ];
-
-                const nextDateStr =
-                    nextDay.getDate() + ' ' +
-                    monthsID[nextDay.getMonth()] + ' ' +
-                    nextDay.getFullYear() +
-                    ' 00:00';
-
-                const remainingMinutes = Math.max(1, Math.ceil((nextDay.getTime() - now.getTime()) / 60000));
+                // Hitung batas waktu memakai zona waktu server/aplikasi.
+                const serverNowMs = Date.now() + FARMASI_SERVER_CLOCK_OFFSET_MS;
+                const nextDateStr = FARMASI_NEXT_MIDNIGHT_LABEL;
+                const remainingMinutes = Math.max(1, Math.ceil((FARMASI_NEXT_MIDNIGHT_MS - serverNowMs) / 60000));
                 const remainingHours = Math.floor(remainingMinutes / 60);
                 const remainingOnlyMinutes = remainingMinutes % 60;
                 let remainingLabel = '';
