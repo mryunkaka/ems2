@@ -22,6 +22,7 @@ $errors = $_SESSION['flash_errors'] ?? [];
 unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 $userRole = strtolower(trim((string)($_SESSION['user_rh']['role'] ?? '')));
 $userDivision = ems_normalize_division((string)($_SESSION['user_rh']['division'] ?? ''));
+$canExportCooperation = $userDivision === 'General Affair' && ems_is_manager_plus_role($userRole);
 
 function gaInputMarker(): string
 {
@@ -191,6 +192,8 @@ $rows = [];
 $attachmentsMap = [];
 $cooperationSettings = [];
 $cooperationSettingsMap = [];
+$requestedCooperationId = filter_var($_GET['cooperation_id'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+$selectedCooperationId = $requestedCooperationId === false ? 0 : (int)$requestedCooperationId;
 $stats = [
     'total' => 0,
     'pending' => 0,
@@ -264,6 +267,10 @@ if (gaCooperationTablesReady($pdo)) {
     }
 }
 
+if ($selectedCooperationId > 0 && !isset($cooperationSettingsMap[$selectedCooperationId])) {
+    $selectedCooperationId = 0;
+}
+
 if ($hasMainTable && $hasAttachmentTable) {
     $sql = "
         SELECT
@@ -278,14 +285,29 @@ if ($hasMainTable && $hasAttachmentTable) {
         WHERE sfr.file_category = 'cooperation'
           AND COALESCE(sfr.keywords, '') LIKE :marker
           AND sfr.document_date BETWEEN :start_date AND :end_date
-        ORDER BY sfr.document_date DESC, sfr.id DESC
     ";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
+    $params = [
         ':marker' => '%' . gaInputMarker() . '%',
         ':start_date' => (string)$rangeStart,
         ':end_date' => (string)$rangeEnd,
-    ]);
+    ];
+    $cooperationIdsToFilter = $selectedCooperationId > 0
+        ? [$selectedCooperationId]
+        : array_map('intval', array_keys($cooperationSettingsMap));
+    if (!$cooperationIdsToFilter) {
+        $sql .= " AND 1 = 0";
+    } else {
+        $cooperationTagConditions = [];
+        foreach ($cooperationIdsToFilter as $index => $cooperationId) {
+            $placeholder = ':cooperation_tag_' . $index;
+            $cooperationTagConditions[] = "FIND_IN_SET($placeholder, COALESCE(sfr.keywords, '')) > 0";
+            $params[$placeholder] = 'cooperation_id:' . $cooperationId;
+        }
+        $sql .= ' AND (' . implode(' OR ', $cooperationTagConditions) . ')';
+    }
+    $sql .= " ORDER BY sfr.document_date DESC, sfr.id DESC";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     if ($rows) {
@@ -329,22 +351,6 @@ include __DIR__ . '/../partials/sidebar.php';
                     <p class="page-subtitle"><?= htmlspecialchars($rangeLabel ?? '-', ENT_QUOTES, 'UTF-8') ?></p>
                 </div>
                 <div class="inline-actions">
-                    <?php
-                    $exportParams = [];
-                    if (!empty($_GET['range'])) {
-                        $exportParams['range'] = $_GET['range'];
-                    }
-                    if (!empty($_GET['from'])) {
-                        $exportParams['from'] = $_GET['from'];
-                    }
-                    if (!empty($_GET['to'])) {
-                        $exportParams['to'] = $_GET['to'];
-                    }
-                    ?>
-                    <button type="button" id="btnExportCooperationInput" class="btn-secondary">
-                        <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
-                        <span>Export Excel</span>
-                    </button>
                     <button type="button" id="btnAddCooperationInput" class="btn-success">
                         <?= ems_icon('plus', 'h-4 w-4') ?>
                         <span>Input Kerja Sama</span>
@@ -394,9 +400,9 @@ include __DIR__ . '/../partials/sidebar.php';
         </div>
 
         <div class="card card-section mb-4">
-            <div class="card-header">Filter Rentang Tanggal</div>
+            <div class="card-header">Filter Rentang Tanggal &amp; Instansi</div>
             <div class="card-body">
-                <form method="get" class="filter-bar">
+                <form method="get" action="general_affair_kerjasama_input.php" id="gaCooperationInputFilterForm" class="filter-bar">
                     <div class="filter-group">
                         <label>Rentang</label>
                         <select name="range" id="rangeSelect" class="form-control">
@@ -416,8 +422,27 @@ include __DIR__ . '/../partials/sidebar.php';
                         <label>Tanggal Akhir</label>
                         <input type="date" name="to" value="<?= htmlspecialchars((string)($_GET['to'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" class="form-control">
                     </div>
+                    <div class="filter-group">
+                        <label>Instansi</label>
+                        <select name="cooperation_id" id="gaCooperationFilterSelect" class="form-control">
+                            <option value="0" <?= $selectedCooperationId === 0 ? 'selected' : '' ?>>Semua Instansi</option>
+                            <?php foreach ($cooperationSettings as $setting): ?>
+                                <option value="<?= (int)$setting['id'] ?>" <?= $selectedCooperationId === (int)$setting['id'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars((string)$setting['institution_name'], ENT_QUOTES, 'UTF-8') ?><?= empty($setting['is_active']) ? ' (Nonaktif)' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                     <div class="filter-group filter-action-end">
-                        <button type="submit" class="btn btn-primary">Terapkan</button>
+                        <div class="filter-action-buttons">
+                            <button type="submit" class="btn btn-primary">Terapkan</button>
+                            <?php if ($canExportCooperation): ?>
+                                <button type="submit" formaction="general_affair_kerjasama_input_export.php" class="btn-secondary">
+                                    <?= ems_icon('document-arrow-down', 'h-4 w-4') ?>
+                                    <span>Export Excel</span>
+                                </button>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -580,40 +605,6 @@ include __DIR__ . '/../partials/sidebar.php';
     </div>
 </section>
 
-<div id="gaCooperationExportModal" class="modal-overlay hidden">
-    <div class="modal-box modal-shell modal-frame-md">
-        <div class="modal-head">
-            <div class="modal-title">Export Input Kerja Sama</div>
-            <button type="button" class="modal-close-btn btn-cancel" aria-label="Tutup modal">
-                <?= ems_icon('x-mark', 'h-5 w-5') ?>
-            </button>
-        </div>
-        <form method="get" action="general_affair_kerjasama_input_export.php" class="form modal-form">
-            <?php foreach ($exportParams as $key => $value): ?>
-                <input type="hidden" name="<?= htmlspecialchars((string)$key, ENT_QUOTES, 'UTF-8') ?>" value="<?= htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8') ?>">
-            <?php endforeach; ?>
-            <div class="modal-content">
-                <label for="gaCooperationExportSelect">Instansi yang ingin diekspor</label>
-                <select name="cooperation_id" id="gaCooperationExportSelect" class="form-control" required>
-                    <option value="">-- Pilih Instansi --</option>
-                    <?php foreach ($cooperationSettings as $setting): ?>
-                        <option value="<?= (int)$setting['id'] ?>">
-                            <?= htmlspecialchars((string)$setting['institution_name'], ENT_QUOTES, 'UTF-8') ?><?= empty($setting['is_active']) ? ' (Nonaktif)' : '' ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <p class="meta-text-xs mt-2">File Excel hanya memuat input dari instansi yang dipilih pada rentang tanggal aktif.</p>
-            </div>
-            <div class="modal-foot">
-                <div class="modal-actions">
-                    <button type="button" class="btn-secondary btn-cancel">Batal</button>
-                    <button type="submit" class="btn-primary"><?= ems_icon('document-arrow-down', 'h-4 w-4') ?><span>Unduh Excel</span></button>
-                </div>
-            </div>
-        </form>
-    </div>
-</div>
-
 <div id="gaCooperationInputModal" class="modal-overlay hidden">
     <div class="modal-box modal-shell modal-frame-md">
         <div class="modal-head">
@@ -708,8 +699,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const rangeSelect = document.getElementById('rangeSelect');
     const customFields = document.querySelectorAll('.filter-custom');
     const modal = document.getElementById('gaCooperationInputModal');
-    const exportModal = document.getElementById('gaCooperationExportModal');
-    const exportButton = document.getElementById('btnExportCooperationInput');
     const openButton = document.getElementById('btnAddCooperationInput');
     const settingSelect = document.getElementById('gaCooperationSettingSelect');
     const settingInfo = document.getElementById('gaCooperationSettingInfo');
@@ -814,21 +803,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (exportButton && exportModal) {
-        exportButton.addEventListener('click', function() {
-            exportModal.classList.remove('hidden');
-            exportModal.style.display = 'flex';
-            document.body.classList.add('modal-open');
-        });
-    }
-
     document.body.addEventListener('click', function(event) {
-        const activeModal = event.target === modal || (modal && modal.contains(event.target)) ? modal
-            : (event.target === exportModal || (exportModal && exportModal.contains(event.target)) ? exportModal : null);
-        if (!activeModal) return;
-        if (event.target === activeModal || event.target.closest('.btn-cancel')) {
-            activeModal.classList.add('hidden');
-            activeModal.style.display = 'none';
+        if (!modal || !(event.target === modal || modal.contains(event.target))) return;
+        if (event.target === modal || event.target.closest('.btn-cancel')) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
             document.body.classList.remove('modal-open');
         }
 
@@ -836,12 +815,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.addEventListener('keydown', function(event) {
         if (event.key === 'Escape') {
-            [modal, exportModal].forEach(function(activeModal) {
-                if (activeModal) {
-                    activeModal.classList.add('hidden');
-                    activeModal.style.display = 'none';
-                }
-            });
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
             document.body.classList.remove('modal-open');
         }
     });
@@ -904,6 +881,17 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <style>
+    .filter-action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .filter-action-buttons button {
+        width: auto;
+        white-space: nowrap;
+    }
+
     .ga-note-cell {
         display: grid;
         gap: 8px;

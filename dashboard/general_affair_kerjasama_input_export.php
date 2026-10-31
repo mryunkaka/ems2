@@ -6,6 +6,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../helpers/general_affair_cooperation_helper.php';
+ems_require_general_affair_manager_access('/dashboard/index.php');
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../config/date_range.php';
 
@@ -100,7 +101,8 @@ $pricePerPcs = gaCooperationRegulationPricePerPcs($pdo, $effectiveUnit);
 $startDate = $_GET['from'] ?? '';
 $endDate = $_GET['to'] ?? '';
 $range = $_GET['range'] ?? 'week4';
-$selectedCooperationId = filter_var($_GET['cooperation_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$requestedCooperationId = filter_var($_GET['cooperation_id'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+$selectedCooperationId = $requestedCooperationId === false ? 0 : (int)$requestedCooperationId;
 
 $cooperationSettingsMap = [];
 if (gaCooperationTablesReady($pdo)) {
@@ -134,7 +136,7 @@ if (gaCooperationTablesReady($pdo)) {
     }
 }
 
-if (!$selectedCooperationId || !isset($cooperationSettingsMap[$selectedCooperationId])) {
+if ($selectedCooperationId > 0 && !isset($cooperationSettingsMap[$selectedCooperationId])) {
     http_response_code(400);
     exit('Pilih instansi kerja sama yang valid untuk unit Anda.');
 }
@@ -151,18 +153,23 @@ $sql = "
       AND COALESCE(sfr.keywords, '') LIKE :marker
 ";
 $params = [':marker' => '%ga_cooperation_input%'];
-$sql .= " AND FIND_IN_SET(:cooperation_tag, COALESCE(sfr.keywords, '')) > 0";
-$params[':cooperation_tag'] = 'cooperation_id:' . $selectedCooperationId;
-
-if ($range !== 'custom') {
-    $sql .= " AND sfr.document_date BETWEEN :start_date AND :end_date";
-    $params[':start_date'] = substr((string)$rangeStart, 0, 10);
-    $params[':end_date'] = substr((string)$rangeEnd, 0, 10);
-} elseif ($startDate && $endDate) {
-    $sql .= " AND sfr.document_date BETWEEN :start_date AND :end_date";
-    $params[':start_date'] = $startDate;
-    $params[':end_date'] = $endDate;
+$cooperationIdsToFilter = $selectedCooperationId > 0
+    ? [$selectedCooperationId]
+    : array_map('intval', array_keys($cooperationSettingsMap));
+if (!$cooperationIdsToFilter) {
+    $sql .= " AND 1 = 0";
+} else {
+    $cooperationTagConditions = [];
+    foreach ($cooperationIdsToFilter as $index => $cooperationId) {
+        $placeholder = ':cooperation_tag_' . $index;
+        $cooperationTagConditions[] = "FIND_IN_SET($placeholder, COALESCE(sfr.keywords, '')) > 0";
+        $params[$placeholder] = 'cooperation_id:' . $cooperationId;
+    }
+    $sql .= ' AND (' . implode(' OR ', $cooperationTagConditions) . ')';
 }
+$sql .= " AND sfr.document_date BETWEEN :start_date AND :end_date";
+$params[':start_date'] = (string)$rangeStart;
+$params[':end_date'] = (string)$rangeEnd;
 
 $sql .= " ORDER BY sfr.document_date ASC, " . ($columnReady['document_time'] ? "sfr.document_time ASC, " : "") . "sfr.id ASC";
 $stmt = $pdo->prepare($sql);
@@ -200,7 +207,9 @@ if ($range === 'custom' && $startDate && $endDate) {
     $dateRangeLabel = date('d M Y', strtotime($startDate)) . ' - ' . date('d M Y', strtotime($endDate));
 }
 
-$selectedInstitutionName = (string)($cooperationSettingsMap[$selectedCooperationId]['institution_name'] ?? '');
+$selectedInstitutionName = $selectedCooperationId > 0
+    ? (string)($cooperationSettingsMap[$selectedCooperationId]['institution_name'] ?? '')
+    : 'Semua Instansi';
 $sheet->setCellValue('A1', 'LAPORAN INPUT KERJA SAMA - ' . $selectedInstitutionName);
 $sheet->mergeCells('A1:L1');
 $sheet->getStyle('A1')->applyFromArray([
