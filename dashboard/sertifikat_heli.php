@@ -101,20 +101,20 @@ unset($certificateUser);
 
 $totalLicensed = count($certificateUsers);
 $totalActiveLicensed = 0;
-$divisionCounts = [];
+$totalActiveCertificates = 0;
+$totalExpiredCertificates = 0;
 
 foreach ($certificateUsers as $row) {
     if ((int)($row['is_active'] ?? 0) === 1) {
         $totalActiveLicensed++;
     }
 
-    $divisionName = ems_normalize_division($row['division'] ?? '') ?: 'Tanpa Division';
-    $divisionCounts[$divisionName] = ($divisionCounts[$divisionName] ?? 0) + 1;
+    if (($row['certificate_status'] ?? '') === 'Expired') {
+        $totalExpiredCertificates++;
+    } else {
+        $totalActiveCertificates++;
+    }
 }
-
-arsort($divisionCounts);
-$topDivisionLabel = array_key_first($divisionCounts) ?: '-';
-$topDivisionCount = $topDivisionLabel !== '-' ? (int)$divisionCounts[$topDivisionLabel] : 0;
 
 function heliFormatJoinDate(?string $date): string
 {
@@ -154,7 +154,7 @@ function heliFormatJoinDate(?string $date): string
             <div class="alert alert-error"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endforeach; ?>
 
-        <div class="grid gap-4 md:grid-cols-3">
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div class="card">
                 <div class="card-header">Total Pemilik Sertifikat</div>
                 <div class="text-3xl font-semibold text-slate-900"><?= $totalLicensed ?></div>
@@ -166,9 +166,13 @@ function heliFormatJoinDate(?string $date): string
             </div>
 
             <div class="card">
-                <div class="card-header">Division Terbanyak</div>
-                <div class="text-lg font-semibold text-slate-900"><?= htmlspecialchars($topDivisionLabel, ENT_QUOTES, 'UTF-8') ?></div>
-                <div class="text-sm text-slate-500"><?= $topDivisionCount ?> user</div>
+                <div class="card-header">Lisensi Sertifikat Aktif</div>
+                <div class="text-3xl font-semibold text-slate-900"><?= $totalActiveCertificates ?></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Lisensi Sertifikat Expired</div>
+                <div class="text-3xl font-semibold text-slate-900"><?= $totalExpiredCertificates ?></div>
             </div>
         </div>
 
