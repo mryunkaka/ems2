@@ -56,3 +56,39 @@ aiQueueTest('roxy.pending_jobs_are_recoverable_after_refresh_for_owner_only', st
     $failed=ems_roxy_get_pending_queue_jobs($pdo,1,7);
     aiQueueAssertSame('failed',$failed[0]['status']);
 });
+
+aiQueueTest('roxy.global_provider_answer_source_is_supported_by_schema_and_migration', static function (): void {
+    $schema = (string)file_get_contents(__DIR__ . '/../../config/roxy_chatbot.php');
+    $migration = (string)file_get_contents(__DIR__ . '/../../docs/sql/106_2026-11-03_roxy_global_provider_answer_source.sql');
+    aiQueueAssertTrue(str_contains($schema, "'global_provider'"), 'Skema baru harus menerima sumber global_provider.');
+    aiQueueAssertTrue(str_contains($migration, "'global_provider'"), 'Database yang sudah ada harus dimigrasikan agar menerima sumber global_provider.');
+});
+
+aiQueueTest('roxy.sources_prefer_latest_official_document_and_render_as_numbered_list', static function (): void {
+    $oldReference = 'https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=43&q=query';
+    $latestReference = 'https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=44&q=query';
+    $context = [
+        ['source'=>'Dokumen resmi pembanding 1','title'=>'3. Peraturan dan Standar Operasional Prosedur (SOP) 10 Mei 2026','reference'=>$oldReference],
+        ['source'=>'Dokumen resmi pembanding 2','title'=>'4. Peraturan dan Standar Operasional Prosedur (SOP) 11 Juli 2026','reference'=>$latestReference],
+        ['_type'=>'official_document_comparison','comparison'=>[
+            'documents'=>[
+                ['id'=>43,'title'=>'3. Peraturan dan Standar Operasional Prosedur (SOP) 10 Mei 2026'],
+                ['id'=>44,'title'=>'4. Peraturan dan Standar Operasional Prosedur (SOP) 11 Juli 2026'],
+            ],
+            'latest'=>['id'=>44],
+        ]],
+        ['source'=>'Panduan terkait','title'=>'Tes','reference'=>'https://example.org/guide'],
+    ];
+
+    $answer = ems_roxy_append_official_sources('Jawaban ringkas terkait 4. Peraturan dan Standar Operasional Prosedur (SOP) 11 Juli 2026 dan Tes.', $context);
+    aiQueueAssertTrue(!str_contains($answer, $oldReference), 'Sumber SOP lama harus dikeluarkan dari daftar.');
+    aiQueueAssertTrue(str_contains($answer, "**Sumber:**\n1. [4. Peraturan dan Standar Operasional Prosedur (SOP) 11 Juli 2026]({$latestReference})\n2. [Tes](https://example.org/guide)"), 'Sumber resmi terbaru dan sumber lain harus dirender sebagai daftar bernomor.');
+});
+
+aiQueueTest('roxy.omits_context_sources_when_answer_does_not_use_documents', static function (): void {
+    $context = [
+        ['source'=>'Dokumen resmi','title'=>'1. Buku Panduan Penggunaan Obat','reference'=>'https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=18&q=halo'],
+    ];
+    $answer = 'Halo, Michael. Ada yang ingin ditanyakan tentang EMS2 atau SOP/roleplay medis Roxwood Hospital?';
+    aiQueueAssertSame($answer, ems_roxy_append_official_sources($answer, $context));
+});

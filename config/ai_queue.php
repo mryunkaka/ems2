@@ -201,7 +201,10 @@ function ems_ai_queue_fail(PDO $pdo, int $jobId, Throwable $error): void
 {
     error_log('AI queue job '.$jobId.' failed: '.$error->getMessage());
     $stmt=$pdo->prepare("UPDATE system_ai_request_queue SET status='failed',error_message=?,active_dedupe_key=NULL,completed_at=CURRENT_TIMESTAMP,lease_expires_at=NULL WHERE id=? AND status='running'");
-    $stmt->execute(['Terjadi kendala saat memproses permintaan AI. Silakan coba kembali.',$jobId]);
+    $userMessage = str_starts_with($error->getMessage(), 'Roxy belum dapat menjawab.')
+        ? $error->getMessage()
+        : 'Terjadi kendala saat memproses permintaan AI. Silakan coba kembali.';
+    $stmt->execute([$userMessage,$jobId]);
 }
 
 function ems_ai_queue_browser_request_allowed(string $method, int $requesterId, bool $csrfValid): bool

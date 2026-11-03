@@ -66,6 +66,15 @@ include __DIR__ . '/../partials/sidebar.php';
 .roxy-input-row { display:flex; gap:8px; padding:12px; border-top:1px solid #e2e8f0; }
 .roxy-input-row textarea { flex:1; resize:none; }
 .roxy-typing { font-size:12px; color:#94a3b8; font-style:italic; padding:0 14px 6px; }
+.roxy-typing-indicator { display:inline-flex; align-items:center; gap:8px; color:#64748b; font-style:normal; }
+.roxy-thinking-mark { width:16px; height:16px; border:2px solid #bae6fd; border-top-color:#0284c7; border-radius:50%; animation:roxy-spin .85s linear infinite; flex:0 0 auto; }
+.roxy-thinking-dots { display:inline-flex; gap:3px; margin-left:2px; }
+.roxy-thinking-dots i { width:4px; height:4px; border-radius:50%; background:#0284c7; animation:roxy-pulse 1.1s ease-in-out infinite; }
+.roxy-thinking-dots i:nth-child(2) { animation-delay:.16s; }
+.roxy-thinking-dots i:nth-child(3) { animation-delay:.32s; }
+@keyframes roxy-spin { to { transform:rotate(360deg); } }
+@keyframes roxy-pulse { 0%,60%,100% { opacity:.28; transform:translateY(0); } 30% { opacity:1; transform:translateY(-3px); } }
+@media (prefers-reduced-motion:reduce) { .roxy-thinking-mark,.roxy-thinking-dots i { animation:none; } }
 </style>
 
 <section class="content">
@@ -122,7 +131,9 @@ include __DIR__ . '/../partials/sidebar.php';
                         <div class="roxy-bubble">Halo! Aku Roxy, asisten AI internal Roxwood Hospital. Ada yang bisa aku bantu soal aplikasi ini atau SOP medis?</div>
                     </div>
                 </div>
-                <div id="roxyTyping" class="roxy-typing hidden">Roxy sedang mengetik...</div>
+                <div id="roxyTyping" class="roxy-typing hidden" role="status" aria-live="polite">
+                    <span class="roxy-typing-indicator"><span class="roxy-thinking-mark" aria-hidden="true"></span><span data-roxy-status-text>Roxy sedang memahami pertanyaan</span><span class="roxy-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span></span>
+                </div>
                 <div class="roxy-input-row">
                     <textarea id="roxyInput" rows="1" placeholder="Tulis pertanyaan untuk Roxy..." <?= !$hasAiProvider ? 'disabled' : '' ?>></textarea>
                     <button type="button" id="roxySendBtn" class="btn-primary" <?= !$hasAiProvider ? 'disabled' : '' ?>>
@@ -139,7 +150,10 @@ include __DIR__ . '/../partials/sidebar.php';
     var CSRF_TOKEN = <?= json_encode($csrfToken, JSON_UNESCAPED_UNICODE) ?>;
     var AI_QUEUE_SUBMIT_URL = <?= json_encode(ems_url('/ajax/ai_queue_submit.php'), JSON_UNESCAPED_SLASHES) ?>;
     var AI_QUEUE_STATUS_URL = <?= json_encode(ems_url('/ajax/ai_queue_status.php?job_id='), JSON_UNESCAPED_SLASHES) ?>;
+    var AI_QUEUE_WORK_URL = <?= json_encode(ems_url('/ajax/ai_queue_work.php'), JSON_UNESCAPED_SLASHES) ?>;
     var currentConversationId = 0;
+    var loadingTimer = null;
+    var loadingState = '';
 
     var els = {
         convList: document.getElementById('roxyConvList'),
@@ -151,6 +165,7 @@ include __DIR__ . '/../partials/sidebar.php';
         typing: document.getElementById('roxyTyping'),
         avatarIcon: document.getElementById('roxyAvatarIcon'),
         statusLabel: document.getElementById('roxyStatusLabel'),
+        typingText: document.querySelector('[data-roxy-status-text]'),
     };
 
     var EXPRESSION_STYLE = {
@@ -185,6 +200,33 @@ include __DIR__ . '/../partials/sidebar.php';
         els.avatarIcon.style.color = style.color;
         els.avatarIcon.innerHTML = ICON_PATHS[icon] || ICON_PATHS['chat-bubble-left-right'];
         els.statusLabel.textContent = style.label;
+    }
+
+    function startLoadingStatus(state, position) {
+        if (!els.typingText) return;
+        var queued = state === 'queued';
+        var messages = state === 'queued'
+            ? ['Roxy sedang menunggu giliran']
+            : (state === 'checking' ? ['Menghubungkan kembali ke status antrean Roxy'] : ['Roxy sedang memproses pertanyaan']);
+        var key = state + ':' + (queued && position ? position : '');
+        if (loadingState === key && loadingTimer) return;
+        window.clearInterval(loadingTimer);
+        loadingState = key;
+        var index = 0;
+        function show() {
+            var message = messages[index % messages.length];
+            els.typingText.textContent = queued && position ? message + ' (posisi ' + position + ')' : message;
+            index++;
+        }
+        show();
+        if (messages.length > 1) loadingTimer = window.setInterval(show, 2300);
+    }
+
+    function stopLoadingStatus() {
+        window.clearInterval(loadingTimer);
+        loadingTimer = null;
+        loadingState = '';
+        els.typing.classList.add('hidden');
     }
 
     function escapeHtml(str) {
@@ -500,7 +542,7 @@ include __DIR__ . '/../partials/sidebar.php';
             .then(readJsonResponse)
             .then(function (data) {
                 if (!data.success) {
-                    els.typing.classList.add('hidden');
+                    stopLoadingStatus();
                     els.sendBtn.disabled = false;
                     setExpression('alert');
                     pendingUserBubble.remove();
@@ -513,7 +555,7 @@ include __DIR__ . '/../partials/sidebar.php';
                 pollRoxyJob(data.job_id, pendingUserBubble);
             })
             .catch(function () {
-                els.typing.classList.add('hidden');
+                stopLoadingStatus();
                 els.sendBtn.disabled = false;
                 setExpression('alert');
                 pendingUserBubble.remove();
@@ -524,29 +566,50 @@ include __DIR__ . '/../partials/sidebar.php';
 
     function pollRoxyJob(jobId, pendingUserBubble) {
         var delay = 1800;
+        var workerActive = false;
+        var finished = false;
         function wait(ms) { return new Promise(function (resolve) { window.setTimeout(resolve, ms); }); }
+        function nudgeWorker() {
+            if (workerActive || finished) return;
+            workerActive = true;
+            fetch(AI_QUEUE_WORK_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+                body: new URLSearchParams({ csrf_token: CSRF_TOKEN }).toString(),
+            }).then(readJsonResponse).catch(function () {}).then(function () {
+                workerActive = false;
+                if (finished) return;
+                fetch(AI_QUEUE_STATUS_URL + encodeURIComponent(jobId), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
+                    .then(readJsonResponse)
+                    .then(function (status) {
+                        if (status.ok && status.status === 'queued' && !status.active?.length && !finished) window.setTimeout(nudgeWorker, Math.min(delay, 8000));
+                    })
+                    .catch(function () {});
+            });
+        }
         function poll() {
             fetch(AI_QUEUE_STATUS_URL + encodeURIComponent(jobId), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
                 .then(readJsonResponse)
                 .then(function (data) {
                     if (!data.ok && !data.success) {
                         if (data.http_status === 401 || data.http_status === 404) {
-                            els.typing.classList.add('hidden'); els.sendBtn.disabled = false; setExpression('alert');
+                            finished = true; stopLoadingStatus(); els.sendBtn.disabled = false; setExpression('alert');
                             appendBubble('bot', data.message || data.error || 'Pekerjaan Roxy tidak ditemukan.'); return;
                         }
                         throw new Error(data.message || data.error || 'Status pekerjaan tidak tersedia.');
                     }
                     if (data.status === 'queued') {
-                        var activeSummary = Array.isArray(data.active) && data.active.length ? ' · dipakai ' + data.active.map(function (item) { return (item.requester_name || 'Pengguna') + ' untuk ' + (item.feature_label || 'AI'); }).join(', ') : '';
-                        els.typing.textContent = 'Pesan masuk antrean AI' + (data.position ? ' · posisi ' + data.position : '') + activeSummary + '…';
+                        startLoadingStatus('queued', data.position);
+                        if (!data.active?.length) nudgeWorker();
                         return wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); return poll(); });
                     }
                     if (data.status === 'running') {
-                        var currentUsers = Array.isArray(data.active) ? data.active.map(function (item) { return (item.requester_name || 'Pengguna') + ' (' + (item.feature_label || 'AI') + ')'; }).join(', ') : '';
-                        els.typing.textContent = 'Model AI sedang memproses pesan Anda' + (currentUsers ? ' · aktif: ' + currentUsers : '') + '…';
+                        startLoadingStatus('running');
                         return wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); return poll(); });
                     }
-                    els.typing.classList.add('hidden');
+                    finished = true;
+                    stopLoadingStatus();
                     els.sendBtn.disabled = false;
                     if (data.status === 'failed') { setExpression('alert'); appendBubble('bot', data.error || 'Roxy tidak dapat menjawab saat ini.'); return; }
                     var result = data.result || {};
@@ -555,11 +618,12 @@ include __DIR__ . '/../partials/sidebar.php';
                     if (result.gemini_key_missing) appendResearchSetupNotice();
                 })
                 .catch(function (error) {
-                    els.typing.textContent = 'Status belum tersambung; mencoba lagi…';
+                    startLoadingStatus('checking');
                     wait(delay).then(function () { delay = Math.min(8000, Math.round(delay * 1.35)); poll(); });
                 });
         }
-        els.typing.textContent = 'Menunggu giliran model AI…';
+        startLoadingStatus('queued');
+        nudgeWorker();
         poll();
     }
 

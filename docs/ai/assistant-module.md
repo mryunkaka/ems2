@@ -201,7 +201,7 @@ Satu baris = satu topik percakapan (user bisa punya banyak, seperti
 | `sender` | ENUM('user','bot') | |
 | `content` | MEDIUMTEXT | |
 | `reply_to_message_id` | INT NULL | Pesan user mana yang dijawab balasan bot ini — presisi tambahan di atas isolasi per-conversation |
-| `answer_source` | ENUM('knowledge_base','learned_correction','free_model','gemini_personal') NULL | Cuma diisi untuk pesan bot — jejak audit "jawaban ini asalnya dari mana" |
+| `answer_source` | ENUM('knowledge_base','learned_correction','free_model','gemini_personal','global_provider') NULL | Cuma diisi untuk pesan bot — jejak audit "jawaban ini asalnya dari mana" |
 | `expression_tag` | VARCHAR(30) NULL | Untuk animasi avatar (§8), mis. `empathetic`, `thinking`, `alert` |
 | `created_at` | DATETIME | |
 
