@@ -79,6 +79,10 @@ $groupedNav = [
     ],
 ];
 
+if (!$isAltaUnit) {
+    $groupedNav['Farmasi'][] = sidebarItem('/dashboard/laporan_absensi.php', 'laporan_absensi.php', 'Laporan Absensi', 'clipboard-document-list');
+}
+
 // Menu "Event" hanya ditampilkan jika ada event yang sedang aktif.
 $hasActiveEvent = false;
 if (isset($pdo) && $pdo instanceof PDO) {

@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/duty_hours_api.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../auth/csrf.php';
 
@@ -71,6 +72,7 @@ $stmt = $pdo->query("
     SELECT
         u.id,
         u.full_name,
+        u.citizen_id,
         u.position,
         u.role,
         {$divisionSelect}
@@ -92,10 +94,35 @@ $stmt = $pdo->query("
 ");
 $certificateUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $today = (new DateTimeImmutable('today', new DateTimeZone('Asia/Jakarta')))->format('Y-m-d');
+$dutyByPeriod = [];
 foreach ($certificateUsers as &$certificateUser) {
     $from = (string)($certificateUser['sertifikat_heli_valid_from'] ?? '');
     $until = (string)($certificateUser['sertifikat_heli_valid_until'] ?? '');
     $certificateUser['certificate_status'] = ($until !== '' && $until < $today) ? 'Expired' : 'Aktif';
+
+    if (!ems_duty_hours_date($from) || !ems_duty_hours_date($until) || $from > $until) {
+        $certificateUser['duty_hours'] = null;
+        continue;
+    }
+
+    $periodKey = $from . '|' . $until;
+    if (!array_key_exists($periodKey, $dutyByPeriod)) {
+        try {
+            $report = ems_duty_hours_request($pdo, 'custom_range', $from, $until);
+            $dutyByPeriod[$periodKey] = [];
+            foreach ($report['rows'] as $dutyRow) {
+                $staffId = strtoupper(trim((string)($dutyRow['registered_staff']['citizen_id'] ?? '')));
+                if ($staffId !== '') $dutyByPeriod[$periodKey][$staffId] = (int)($dutyRow['total_seconds'] ?? 0);
+            }
+        } catch (Throwable $e) {
+            $dutyByPeriod[$periodKey] = null;
+        }
+    }
+
+    $citizenId = strtoupper(trim((string)($certificateUser['citizen_id'] ?? '')));
+    $certificateUser['duty_hours'] = is_array($dutyByPeriod[$periodKey]) && isset($dutyByPeriod[$periodKey][$citizenId])
+        ? $dutyByPeriod[$periodKey][$citizenId]
+        : null;
 }
 unset($certificateUser);
 
@@ -127,6 +154,12 @@ function heliFormatJoinDate(?string $date): string
     } catch (Throwable $e) {
         return (string)$date;
     }
+}
+
+function heliFormatDutyHours(?int $seconds): string
+{
+    if ($seconds === null) return 'Tidak tersedia';
+    return intdiv($seconds, 3600) . ' jam ' . intdiv($seconds % 3600, 60) . ' menit';
 }
 ?>
 
@@ -198,6 +231,7 @@ function heliFormatJoinDate(?string $date): string
                             <th>Division</th>
                             <th>Tanggal Masuk</th>
                             <th>Masa Berlaku</th>
+                            <th>Jam Duty</th>
                             <th>Status Sertifikat</th>
                             <th>Status User</th>
                             <th>Sertifikat</th>
@@ -214,6 +248,7 @@ function heliFormatJoinDate(?string $date): string
                                 <td><?= htmlspecialchars($divisionName, ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars(heliFormatJoinDate($row['tanggal_masuk'] ?? null), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_from'] ?? null), ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_until'] ?? null), ENT_QUOTES, 'UTF-8') ?></td>
+                                <td><?= htmlspecialchars(heliFormatDutyHours($row['duty_hours']), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td data-certificate-status="<?= htmlspecialchars($row['certificate_status'], ENT_QUOTES, 'UTF-8') ?>">
                                     <?php if ($row['certificate_status'] === 'Expired'): ?><span class="badge-danger">Expired</span><?php else: ?><span class="badge-success">Aktif</span><?php endif; ?>
                                 </td>

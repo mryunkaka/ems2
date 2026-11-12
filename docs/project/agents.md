@@ -205,6 +205,10 @@ know it exists before assuming role/division checks are the whole story.
 
 ### Attendance / Leave / Resign
 `absensi_ems.php` (weekly work-hour leaderboard from `user_farmasi_sessions`),
+`laporan_absensi.php` + `laporan_absensi_export.php` (daily, weekly, monthly,
+or custom duty-hour report from the Medical Center API; server-side filtering
+matches `citizen_id` to medical-position `user_rh` records in the Roxwood unit;
+API key comes from `EMS_DUTY_HOURS_API_KEY`),
 `pengajuan_cuti_resign.php`+`_action.php` (self-service leave/resign submit +
 manager approval; approving resign deletes all `remember_tokens` and sets
 `is_active=0`), `tracking_cuti_resign.php`+`_action.php` (manager monitoring +

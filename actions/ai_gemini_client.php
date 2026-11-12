@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/ai_settings.php';
+require_once __DIR__ . '/../config/curl_ca_bundle.php';
 
 if (!function_exists('ems_ai_require_queue_worker')) {
     function ems_ai_require_queue_worker(): void
@@ -79,46 +80,6 @@ function ems_ai_log_request(PDO &$pdo, array $data): void
         }
     }
 }
-}
-
-/**
- * Cari CA bundle lokal untuk cURL — beberapa environment Windows dev (mis.
- * php.ini tanpa curl.cainfo/openssl.cafile diisi) gagal verifikasi SSL ke
- * API eksternal dengan error "unable to get local issuer certificate",
- * padahal koneksinya sendiri sehat. Sama seperti emsFindHeadlessBrowserPath()
- * di config/helpers.php: probe beberapa lokasi umum, jangan pernah matikan
- * verifikasi SSL. Kalau tidak ketemu (mis. di host Linux/cPanel produksi
- * yang CA store sistemnya sudah benar), return null dan cURL pakai default
- * bawaan sistem seperti biasa — tidak ada perubahan perilaku di sana.
- */
-function emsFindCaBundlePath(): ?string
-{
-    static $resolved = false;
-    static $path = null;
-
-    if ($resolved) {
-        return $path;
-    }
-
-    $resolved = true;
-    $candidates = [
-        ini_get('curl.cainfo') ?: null,
-        ini_get('openssl.cafile') ?: null,
-        getenv('LOCALAPPDATA') ? rtrim((string)getenv('LOCALAPPDATA'), '\\/') . DIRECTORY_SEPARATOR . 'Programs' . DIRECTORY_SEPARATOR . 'Git' . DIRECTORY_SEPARATOR . 'usr' . DIRECTORY_SEPARATOR . 'ssl' . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR . 'ca-bundle.crt' : null,
-        'C:\\Program Files\\Git\\usr\\ssl\\certs\\ca-bundle.crt',
-        'C:\\Program Files\\Git\\mingw64\\ssl\\certs\\ca-bundle.crt',
-        '/etc/ssl/certs/ca-certificates.crt',
-        '/etc/pki/tls/certs/ca-bundle.crt',
-    ];
-
-    foreach ($candidates as $candidate) {
-        if ($candidate && is_file($candidate)) {
-            $path = $candidate;
-            return $path;
-        }
-    }
-
-    return null;
 }
 
 function ems_ai_http_post_json(string $url, array $payload, array $headers, int $timeoutSeconds, string $providerLabel = 'AI', array $curlResolve = []): array

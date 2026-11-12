@@ -10,7 +10,8 @@ require_once __DIR__ . '/ai_gemini_client.php';
  * content}]`), auth Bearer token tunggal (lebih sederhana dari Cloudflare
  * yang butuh Account ID + Token terpisah). Pola cURL/logging di bawah
  * menggunakan pola client HTTP yang sudah teruji (reuse
- * ems_ai_log_request() + emsFindCaBundlePath() dari ai_gemini_client.php).
+ * ems_ai_log_request() dari ai_gemini_client.php dan emsFindCaBundlePath()
+ * dari config/curl_ca_bundle.php).
  *
  * $settings adalah baris `user_ai_settings` (atau array sejenis) — dibaca
  * pakai nama kolom aslinya (`groq_api_key`/`groq_default_model`), PER-USER
