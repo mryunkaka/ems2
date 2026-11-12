@@ -1550,7 +1550,7 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
     }
 
     // Exception: sertifikat_heli pages allow all logged-in users regardless of division
-    if ($scriptName === 'sertifikat_heli_pendaftaran.php' || $scriptName === 'sertifikat_heli_action.php') {
+    if (in_array($scriptName, ['sertifikat_heli_pendaftaran.php', 'sertifikat_heli_action.php', 'sertifikat_heli_update_action.php'], true)) {
         return;
     }
 

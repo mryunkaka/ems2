@@ -38,6 +38,8 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $currentUser = $_SESSION['user_rh'] ?? null;
 $currentUserDivision = $currentUser['division'] ?? '';
+$canManageHeliCertificates = ems_normalize_division($currentUserDivision) === 'General Affair'
+    && ems_is_manager_plus_role($currentUser['role'] ?? '');
 
 // Get current settings for pre-filling modal
 $heliSettings = null;
@@ -250,7 +252,17 @@ function heliFormatDutyHours(?int $seconds): string
                                 <td><?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_from'] ?? null), ENT_QUOTES, 'UTF-8') ?> – <?= htmlspecialchars(heliFormatJoinDate($row['sertifikat_heli_valid_until'] ?? null), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= htmlspecialchars(heliFormatDutyHours($row['duty_hours']), ENT_QUOTES, 'UTF-8') ?></td>
                                 <td data-certificate-status="<?= htmlspecialchars($row['certificate_status'], ENT_QUOTES, 'UTF-8') ?>">
-                                    <?php if ($row['certificate_status'] === 'Expired'): ?><span class="badge-danger">Expired</span><?php else: ?><span class="badge-success">Aktif</span><?php endif; ?>
+                                    <?php if ($canManageHeliCertificates): ?>
+                                        <button type="button" class="<?= $row['certificate_status'] === 'Expired' ? 'badge-danger' : 'badge-success' ?> border-0 cursor-pointer"
+                                            data-heli-certificate-edit
+                                            data-user-id="<?= (int)$row['id'] ?>"
+                                            data-user-name="<?= htmlspecialchars($row['full_name'] ?? '-', ENT_QUOTES, 'UTF-8') ?>"
+                                            data-valid-from="<?= htmlspecialchars(substr((string)($row['sertifikat_heli_valid_from'] ?? ''), 0, 10), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-valid-until="<?= htmlspecialchars(substr((string)($row['sertifikat_heli_valid_until'] ?? ''), 0, 10), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-document-url="<?= htmlspecialchars(ems_secure_file_url((string)($row['sertifikat_heli'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= $row['certificate_status'] === 'Expired' ? 'Expired' : 'Aktif' ?>
+                                        </button>
+                                    <?php elseif ($row['certificate_status'] === 'Expired'): ?><span class="badge-danger">Expired</span><?php else: ?><span class="badge-success">Aktif</span><?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ((int)($row['is_active'] ?? 0) === 1): ?>
@@ -274,10 +286,59 @@ function heliFormatDutyHours(?int $seconds): string
                 </table>
             </div>
         </div>
+
+        <?php if ($canManageHeliCertificates): ?>
+            <style>
+                #heliCertificateEditModal::backdrop {
+                    background: rgba(2, 6, 23, .65);
+                    backdrop-filter: blur(4px);
+                }
+            </style>
+            <dialog id="heliCertificateEditModal" class="rounded-xl p-0 shadow-modal" aria-labelledby="heliCertificateEditTitle">
+                <form method="post" enctype="multipart/form-data" action="<?= htmlspecialchars(ems_url('/dashboard/sertifikat_heli_update_action.php'), ENT_QUOTES, 'UTF-8') ?>" class="modal-form p-5">
+                    <?= csrfField() ?>
+                    <input type="hidden" name="user_id" id="heliCertificateUserId">
+                    <h2 id="heliCertificateEditTitle" class="text-lg font-semibold">Atur Sertifikat Heli</h2>
+                    <p class="text-sm text-slate-500 mb-3" id="heliCertificateUserName"></p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div><label for="heliValidFrom">Tanggal mulai berlaku</label><input type="date" id="heliValidFrom" name="sertifikat_heli_valid_from"></div>
+                        <div><label for="heliValidUntil">Tanggal expired</label><input type="date" id="heliValidUntil" name="sertifikat_heli_valid_until"></div>
+                    </div>
+                    <div class="mt-3">
+                        <label for="heliCertificateFile">Dokumen baru (JPG/PNG, maks. 1 MB)</label>
+                        <input type="file" id="heliCertificateFile" name="sertifikat_heli" accept="image/jpeg,image/png">
+                        <a id="heliCurrentDocument" class="btn-link mt-2 inline-block" target="_blank" rel="noopener">Lihat dokumen saat ini</a>
+                    </div>
+                    <label class="inline-flex items-center gap-2 mt-3">
+                        <input type="checkbox" name="delete_certificate" value="1">
+                        <span>Hapus dokumen saat ini</span>
+                    </label>
+                    <p class="helper-note">Tanggal dapat disimpan tanpa mengganti dokumen. Dokumen baru otomatis menggantikan dokumen lama.</p>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button type="button" class="btn-secondary" onclick="document.getElementById('heliCertificateEditModal').close()">Batal</button>
+                        <button type="submit" class="btn-primary">Simpan Perubahan</button>
+                    </div>
+                </form>
+            </dialog>
+        <?php endif; ?>
     </div>
 </section>
 
 <script>
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('[data-heli-certificate-edit]');
+        if (!button) return;
+        document.getElementById('heliCertificateUserId').value = button.dataset.userId;
+        document.getElementById('heliCertificateUserName').textContent = button.dataset.userName;
+        document.getElementById('heliValidFrom').value = button.dataset.validFrom;
+        document.getElementById('heliValidUntil').value = button.dataset.validUntil;
+        document.getElementById('heliCurrentDocument').href = button.dataset.documentUrl;
+        document.getElementById('heliCurrentDocument').hidden = !button.dataset.documentUrl;
+        document.getElementById('heliCertificateFile').value = '';
+        document.querySelector('#heliCertificateEditModal [name="delete_certificate"]').checked = false;
+        document.getElementById('heliCertificateEditModal').showModal();
+    });
+
     document.addEventListener('DOMContentLoaded', function() {
         if (!window.jQuery || !jQuery.fn.DataTable) {
             return;

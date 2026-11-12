@@ -59,6 +59,49 @@ if (!$hasSettingsId) {
     $pdo->exec("ALTER TABLE sertifikat_heli_registrations ADD COLUMN settings_id INT NULL DEFAULT NULL AFTER user_id");
 }
 
+foreach (['cancellation_reason' => 'TEXT NULL', 'cancelled_at' => 'DATETIME NULL'] as $column => $definition) {
+    $columnStmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sertifikat_heli_registrations' AND COLUMN_NAME = ?");
+    $columnStmt->execute([$column]);
+    if ((int)$columnStmt->fetchColumn() === 0) {
+        $pdo->exec("ALTER TABLE sertifikat_heli_registrations ADD COLUMN {$column} {$definition}");
+    }
+}
+
+$statusTypeStmt = $pdo->query("SHOW COLUMNS FROM sertifikat_heli_registrations LIKE 'status'");
+$statusType = (string)($statusTypeStmt->fetch(PDO::FETCH_ASSOC)['Type'] ?? '');
+if (strpos($statusType, "'cancelled'") === false) {
+    $pdo->exec("ALTER TABLE sertifikat_heli_registrations MODIFY status ENUM('registered', 'approved', 'rejected', 'cancelled') DEFAULT 'registered'");
+}
+
+$uniqueIndexStmt = $pdo->prepare("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sertifikat_heli_registrations' AND NON_UNIQUE = 0 AND INDEX_NAME IN ('uniq_user_period_registration', 'uniq_user_registration')");
+$uniqueIndexStmt->execute();
+foreach ($uniqueIndexStmt->fetchAll(PDO::FETCH_COLUMN) as $indexName) {
+    $pdo->exec('ALTER TABLE sertifikat_heli_registrations DROP INDEX `' . str_replace('`', '``', (string)$indexName) . '`');
+}
+
+if ($action === 'cancel_registration') {
+    $registrationId = (int)($_POST['registration_id'] ?? 0);
+    $reason = trim((string)($_POST['cancellation_reason'] ?? ''));
+    $settingsId = max(0, (int)($_POST['settings_id'] ?? 0));
+    $redirectTo = ems_url('/dashboard/sertifikat_heli_pendaftaran.php' . ($settingsId > 0 ? '?period=' . $settingsId : ''));
+
+    if ($registrationId < 1 || $reason === '' || strlen($reason) > 500) {
+        $_SESSION['flash_errors'][] = 'Alasan pembatalan wajib diisi (maksimal 500 karakter).';
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $cancelStmt = $pdo->prepare("UPDATE sertifikat_heli_registrations SET status = 'cancelled', cancellation_reason = ?, cancelled_at = NOW() WHERE id = ? AND user_id = ? AND status = 'registered'");
+    $cancelStmt->execute([$reason, $registrationId, $userId]);
+    if ($cancelStmt->rowCount() > 0) {
+        $_SESSION['flash_messages'][] = 'Pendaftaran berhasil dibatalkan. Slot telah tersedia kembali.';
+    } else {
+        $_SESSION['flash_errors'][] = 'Pendaftaran aktif tidak ditemukan atau sudah dibatalkan.';
+    }
+    header('Location: ' . $redirectTo);
+    exit;
+}
+
 if ($action === 'register') {
     // Get current settings
     $settingsStmt = $pdo->query("SELECT * FROM sertifikat_heli_settings ORDER BY id DESC LIMIT 1");
@@ -101,23 +144,15 @@ if ($action === 'register') {
         exit;
     }
 
-    // Check if user already registered in current period — if so, remove old record so they can re-register
-    $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ?");
+    // Prevent another active registration while keeping cancelled attempts in history.
+    $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ? AND status = 'registered' LIMIT 1");
     $checkStmt->execute([$userId, $activeSettingsId]);
     $existingReg = $checkStmt->fetch();
     if ($existingReg) {
         // Delete previous registration in this period so user can register again
-        $delStmt = $pdo->prepare("DELETE FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ?");
-        $delStmt->execute([$userId, $activeSettingsId]);
-        // Recount after deletion
-        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM sertifikat_heli_registrations WHERE status = 'registered' AND settings_id = ?");
-        $countStmt->execute([$activeSettingsId]);
-        $registeredCount = (int)$countStmt->fetchColumn();
-        if ($registeredCount >= $maxSlots) {
-            $_SESSION['flash_errors'][] = 'Slot pendaftaran sudah penuh.';
-            header('Location: ' . $redirectTo);
-            exit;
-        }
+        $_SESSION['flash_errors'][] = 'Anda sudah terdaftar pada periode ini.';
+        header('Location: ' . $redirectTo);
+        exit;
     }
 
     // Check position requirement (hierarchical check)
@@ -168,9 +203,7 @@ if ($action === 'register') {
             $user['division'] ?? null,
         ]);
 
-        $_SESSION['flash_messages'][] = $existingReg
-            ? 'Pendaftaran ulang sertifikat heli berhasil!'
-            : 'Pendaftaran sertifikat heli berhasil!';
+        $_SESSION['flash_messages'][] = 'Pendaftaran sertifikat heli berhasil!';
     } catch (Throwable $e) {
         $_SESSION['flash_errors'][] = 'Gagal mendaftar: ' . $e->getMessage();
     }

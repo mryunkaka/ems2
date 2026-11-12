@@ -218,6 +218,7 @@ if (isset($_SESSION['user_rh'])) {
         if (!in_array($currentScript, [
             'sertifikat_heli_pendaftaran.php',
             'sertifikat_heli_action.php',
+            'sertifikat_heli_update_action.php',
             'events.php',
             'event_registration_action.php',
         ], true)) {

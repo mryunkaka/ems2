@@ -90,7 +90,7 @@ if ($settings) {
 
     // Check if user already registered in current period
     if ($currentUserId > 0) {
-        $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ?");
+        $checkStmt = $pdo->prepare("SELECT id FROM sertifikat_heli_registrations WHERE user_id = ? AND settings_id = ? AND status = 'registered' LIMIT 1");
         $checkStmt->execute([$currentUserId, $activeSettingsId]);
         $userAlreadyRegistered = (bool)$checkStmt->fetch();
     }
@@ -106,7 +106,7 @@ if ($settings) {
     // - Registration hasn't ended
     // - Slots are available
     // - User meets position requirement (if set)
-    // Note: user who already registered CAN register again (e.g. if not accepted previously)
+    // A user with an active registration cannot take another slot.
     $canRegister = $registrationOpen && !$registrationEnded && $slotsAvailable && $meetsPositionRequirement && $currentUserId > 0;
 }
 
@@ -121,11 +121,19 @@ $registeredStmt = $pdo->prepare("
         shr.registered_at,
         shr.status
     FROM sertifikat_heli_registrations shr
-    WHERE shr.settings_id = ?
+    WHERE shr.settings_id = ? AND shr.status <> 'cancelled'
     ORDER BY shr.registered_at ASC
 ");
 $registeredStmt->execute([$activeSettingsId]);
 $registeredUsers = $registeredStmt->fetchAll(PDO::FETCH_ASSOC);
+
+$hasCancellationFields = (bool)$pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sertifikat_heli_registrations' AND COLUMN_NAME IN ('cancellation_reason', 'cancelled_at')")->fetchColumn();
+$cancelledUsers = [];
+if ($hasCancellationFields) {
+    $cancelledStmt = $pdo->prepare("SELECT user_name, user_jabatan, user_division, registered_at, cancellation_reason, cancelled_at FROM sertifikat_heli_registrations WHERE settings_id = ? AND status = 'cancelled' ORDER BY cancelled_at DESC");
+    $cancelledStmt->execute([$activeSettingsId]);
+    $cancelledUsers = $cancelledStmt->fetchAll(PDO::FETCH_ASSOC);
+}
 
 
 
@@ -240,19 +248,11 @@ include __DIR__ . '/../partials/sidebar.php';
                             <div class="font-semibold text-slate-900" id="countdownTimer">Loading...</div>
                         </div>
                     <?php endif; ?>
-                    <?php if ($userAlreadyRegistered && $canRegister): ?>
+                    <?php if ($userAlreadyRegistered): ?>
                         <div class="alert alert-info inline-flex items-center gap-2 mb-2">
                             <?= ems_icon('information-circle', 'h-5 w-5') ?>
-                            <span>Anda sudah terdaftar sebelumnya. Anda tetap bisa mendaftar ulang jika ingin mencoba lagi.</span>
+                            <span>Anda sudah terdaftar pada periode ini. Jika batal, gunakan tombol Batalkan pada daftar pendaftar.</span>
                         </div>
-                        <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/sertifikat_heli_action.php')) ?>">
-                            <?= csrfField() ?>
-                            <input type="hidden" name="action" value="register">
-                            <button type="submit" class="btn-primary w-full">
-                                <?= ems_icon('arrow-path', 'h-4 w-4') ?>
-                                <span>Daftar Ulang</span>
-                            </button>
-                        </form>
                     <?php elseif ($canRegister): ?>
                         <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/sertifikat_heli_action.php')) ?>">
                             <?= csrfField() ?>
@@ -284,7 +284,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <?php endif; ?>
 
         <!-- Registered Users List -->
-        <?php if ($settings && count($registeredUsers) > 0): ?>
+        <?php if ($settings): ?>
             <div class="card mb-4">
                 <div class="card-header card-header-between">
                     <span class="inline-flex items-center gap-2">
@@ -308,6 +308,7 @@ include __DIR__ . '/../partials/sidebar.php';
                                 <th>Divisi</th>
                                 <th>Waktu Daftar</th>
                                 <th>Status</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -327,13 +328,67 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <span class="badge-muted">Ditolak</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td>
+                                        <?php if ((int)$row['user_id'] === $currentUserId && $row['status'] === 'registered'): ?>
+                                            <button type="button" class="btn-secondary button-compact" data-cancel-registration="<?= (int)$row['id'] ?>">Batalkan</button>
+                                        <?php else: ?>—<?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
+                            <?php if (count($registeredUsers) === 0): ?>
+                                <tr><td colspan="7" class="text-center text-slate-500">Belum ada pendaftar aktif.</td></tr>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
         <?php endif; ?>
+
+        <?php if ($settings): ?>
+            <div class="card mb-4">
+                <div class="card-header card-header-between">
+                    <span>Riwayat Pembatalan</span>
+                    <span class="badge-muted"><?= count($cancelledUsers) ?> data</span>
+                </div>
+                <?php if ($cancelledUsers): ?>
+                    <div class="table-wrapper">
+                        <table class="table-custom" id="cancelledTable">
+                            <thead><tr><th>Nama</th><th>Jabatan</th><th>Divisi</th><th>Waktu Daftar</th><th>Waktu Batal</th><th>Alasan</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($cancelledUsers as $row): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($row['user_name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= htmlspecialchars($row['user_jabatan'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= htmlspecialchars($row['user_division'] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= formatTanggalID($row['registered_at']) ?></td>
+                                        <td><?= $row['cancelled_at'] ? formatTanggalID($row['cancelled_at']) : '-' ?></td>
+                                        <td><?= htmlspecialchars($row['cancellation_reason'] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p class="text-sm text-slate-500">Belum ada pendaftaran yang dibatalkan.</p>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <dialog id="cancelRegistrationDialog" class="rounded-xl p-0 shadow-modal" aria-labelledby="cancelRegistrationTitle">
+            <form method="post" action="<?= htmlspecialchars(ems_url('/dashboard/sertifikat_heli_action.php'), ENT_QUOTES, 'UTF-8') ?>" class="modal-form p-5">
+                <?= csrfField() ?>
+                <input type="hidden" name="action" value="cancel_registration">
+                <input type="hidden" name="registration_id" id="cancelRegistrationId">
+                <input type="hidden" name="settings_id" value="<?= $activeSettingsId ?>">
+                <h2 id="cancelRegistrationTitle" class="text-lg font-semibold">Batalkan Pendaftaran</h2>
+                <label for="cancellationReason">Alasan pembatalan</label>
+                <textarea id="cancellationReason" name="cancellation_reason" rows="3" maxlength="500" required></textarea>
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('cancelRegistrationDialog').close()">Kembali</button>
+                    <button type="submit" class="btn-primary">Konfirmasi Pembatalan</button>
+                </div>
+            </form>
+        </dialog>
     </div>
 </section>
 
@@ -349,6 +404,23 @@ include __DIR__ . '/../partials/sidebar.php';
                 }
             });
         }
+        if (window.jQuery && jQuery.fn.DataTable && document.getElementById('cancelledTable')) {
+            jQuery('#cancelledTable').DataTable({
+                pageLength: 25,
+                order: [[4, 'desc']],
+                language: {
+                    url: '<?= htmlspecialchars(ems_url('/assets/design/js/datatables-id.json'), ENT_QUOTES, 'UTF-8') ?>'
+                }
+            });
+        }
+    });
+
+    document.body.addEventListener('click', function(e) {
+        const button = e.target.closest('[data-cancel-registration]');
+        if (!button) return;
+        document.getElementById('cancelRegistrationId').value = button.dataset.cancelRegistration;
+        document.getElementById('cancellationReason').value = '';
+        document.getElementById('cancelRegistrationDialog').showModal();
     });
 
     // Countdown timer (pure JavaScript, no polling)
