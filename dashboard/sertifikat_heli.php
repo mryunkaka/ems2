@@ -38,8 +38,9 @@ unset($_SESSION['flash_messages'], $_SESSION['flash_errors']);
 
 $currentUser = $_SESSION['user_rh'] ?? null;
 $currentUserDivision = $currentUser['division'] ?? '';
-$canManageHeliCertificates = ems_normalize_division($currentUserDivision) === 'General Affair'
-    && ems_is_manager_plus_role($currentUser['role'] ?? '');
+$canManageHeliCertificates = ems_current_user_is_programmer_roxwood()
+    || (ems_normalize_division($currentUserDivision) === 'General Affair'
+    && ems_is_manager_plus_role($currentUser['role'] ?? ''));
 
 // Get current settings for pre-filling modal
 $heliSettings = null;

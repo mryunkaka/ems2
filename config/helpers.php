@@ -1315,6 +1315,10 @@ function ems_can_access_division_menu(?string $userDivision, ?string $targetDivi
 
 function ems_require_division_access(array $targetDivisions, string $redirectTo = '/dashboard/index.php'): void
 {
+    if (ems_current_user_is_programmer_roxwood()) {
+        return;
+    }
+
     $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
 
     foreach ($targetDivisions as $targetDivision) {
@@ -1330,6 +1334,10 @@ function ems_require_division_access(array $targetDivisions, string $redirectTo 
 
 function ems_require_general_affair_manager_access(string $redirectTo = '/dashboard/index.php'): void
 {
+    if (ems_current_user_is_programmer_roxwood()) {
+        return;
+    }
+
     $userDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
     $userRole = $_SESSION['user_rh']['role'] ?? '';
 
