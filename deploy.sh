@@ -3,6 +3,7 @@ set -o pipefail
 
 REPO="/home/fouf9972/public_html/rh_ems"
 LOG="/home/fouf9972/git-deploy.log"
+STATUS_FILE="${DEPLOY_STATUS_FILE:-/home/fouf9972/.deploy-status}"
 GIT="/usr/bin/git"
 PHP_BIN="${DEPLOY_PHP_BIN:-/usr/local/bin/php}"
 BRANCH="main"
@@ -25,8 +26,26 @@ log_info() {
   echo "[$(timestamp)] $1" >> "$LOG"
 }
 
+write_status() {
+  STATUS_RESULT="$1"
+  STATUS_COMMIT="$2"
+  STATUS_DETAIL=$(printf '%s' "$3" | tr '\r\n|' ' ' | sed -E 's#(https?://)[^/@[:space:]]+@#\1[redacted]@#g')
+  STATUS_DETAIL="${STATUS_DETAIL:0:1200}"
+  STATUS_ENCODED=$(printf '%s' "$STATUS_DETAIL" | base64 | tr -d '\r\n')
+  STATUS_TMP="${STATUS_FILE}.tmp.$$"
+  STATUS_DIR=$(dirname "$STATUS_FILE")
+  mkdir -p "$STATUS_DIR" 2>/dev/null || return 0
+  (
+    umask 077
+    printf '%s|%s|%s|%s|%s\n' "$STATUS_RESULT" "$(timestamp)" "$BRANCH" "$STATUS_COMMIT" "$STATUS_ENCODED" > "$STATUS_TMP" &&
+      mv -f "$STATUS_TMP" "$STATUS_FILE"
+  )
+  rm -f "$STATUS_TMP"
+}
+
 log_error() {
   echo "[$(timestamp)] ERROR: $1" >> "$LOG"
+  write_status "failed" "${OLD:-}" "$1"
 }
 
 run_git() {
@@ -214,6 +233,10 @@ if [ $REMOTE_STATUS -ne 0 ] || [ -z "$REMOTE" ]; then
   exit 1
 fi
 
+if [ "$OLD" = "$REMOTE" ]; then
+  exit 0
+fi
+
 if [ ! -x "$PHP_BIN" ]; then
   log_error_once "php:missing" "PHP CLI tidak ditemukan atau tidak executable di $PHP_BIN"
   exit 1
@@ -265,11 +288,6 @@ $MIGRATION_OUT
 EOF
 fi
 
-if [ "$OLD" = "$REMOTE" ]; then
-  log_info_once "idle:$REMOTE" "Tidak ada perubahan pada commit $REMOTE."
-  exit 0
-fi
-
 CHECKOUT_OUT=$(run_git checkout -B "$BRANCH" "$ACTIVE_REMOTE/$BRANCH" 2>&1)
 CHECKOUT_STATUS=$?
 if [ $CHECKOUT_STATUS -ne 0 ]; then
@@ -293,8 +311,10 @@ fi
 
 if [ "$ACTIVE_REMOTE" = "$REMOTE_NAME" ]; then
   log_info_once "deploy:$REMOTE" "Deploy baru: $LATEST_COMMIT"
+  write_status "success" "$REMOTE" "$LATEST_COMMIT"
 else
   log_info_once "deploy:$REMOTE" "Deploy baru [$ACTIVE_REMOTE]: $LATEST_COMMIT"
+  write_status "success" "$REMOTE" "[$ACTIVE_REMOTE] $LATEST_COMMIT"
 fi
 
 exit 0

@@ -73,7 +73,7 @@ if (strpos($statusType, "'cancelled'") === false) {
     $pdo->exec("ALTER TABLE sertifikat_heli_registrations MODIFY status ENUM('registered', 'approved', 'rejected', 'cancelled') DEFAULT 'registered'");
 }
 
-$uniqueIndexStmt = $pdo->prepare("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sertifikat_heli_registrations' AND NON_UNIQUE = 0 AND INDEX_NAME IN ('uniq_user_period_registration', 'uniq_user_registration')");
+$uniqueIndexStmt = $pdo->prepare("SELECT DISTINCT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sertifikat_heli_registrations' AND NON_UNIQUE = 0 AND INDEX_NAME IN ('uniq_user_period_registration', 'uniq_user_registration')");
 $uniqueIndexStmt->execute();
 foreach ($uniqueIndexStmt->fetchAll(PDO::FETCH_COLUMN) as $indexName) {
     $pdo->exec('ALTER TABLE sertifikat_heli_registrations DROP INDEX `' . str_replace('`', '``', (string)$indexName) . '`');

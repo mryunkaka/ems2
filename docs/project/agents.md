@@ -76,6 +76,9 @@ existing public URLs. The obsolete destructive `backfill_operations.php`,
 empty `QWEN.md`, and temporary `.codex_tmp_boot.php` were removed. Cache
 invalidation now lives at `bin/flush_setting_akun_cache.php`; `deploy-cron.php`
 remains at root for the existing deployment setup and is blocked by `.htaccess`.
+A Programmer Roxwood-only deploy monitor lives at
+`dashboard/deployment_monitoring.php`; `deploy.sh` updates its home-directory
+status file only for a real deployment or failure, so minute polling stays quiet.
 A full
 production DB dump `fouf9972_ems (1).sql` (~28MB) sits at repo root —
 gitignored, don't read it wholesale (see §6 for extracted schema).

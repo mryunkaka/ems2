@@ -330,6 +330,7 @@ $roxwoodAiManagementItems = [];
 if (ems_current_user_is_programmer_roxwood()) {
     $roxwoodAiManagementItems[] = sidebarItem('/dashboard/ai_assistant_monitoring.php', 'ai_assistant_monitoring.php', 'Monitoring Roxy', 'users');
     $roxwoodAiManagementItems[] = sidebarItem('/dashboard/ai_usage_monitoring.php', 'ai_usage_monitoring.php', 'Riwayat Pemakaian AI', 'chart-bar');
+    $groupedNav['Pengelolaan Sistem'][] = sidebarItem('/dashboard/deployment_monitoring.php', 'deployment_monitoring.php', 'Status Deployment', 'arrow-path');
 }
 if (ems_is_manager_plus_role($_SESSION['user_rh']['role'] ?? '')) {
     $roxwoodAiManagementItems[] = sidebarItem('/dashboard/ai_assistant_knowledge.php', 'ai_assistant_knowledge.php', 'Basis Pengetahuan Roxy', 'document');

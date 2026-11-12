@@ -1591,6 +1591,11 @@ function ems_enforce_dashboard_page_access(?string $division, string $scriptName
         return;
     }
 
+    // Programmer-only deployment monitoring applies its own explicit access guard.
+    if ($scriptName === 'deployment_monitoring.php') {
+        return;
+    }
+
     // Exception: Document Library ("Dokumen") — basis pengetahuan bersama,
     // dokumen.php/document_view.php/document_search bisa dibuka & dibaca
     // semua user login lintas division (§11 poin 3 docs/modules/document-library.md).

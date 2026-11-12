@@ -16,16 +16,25 @@ mengambil push GitHub ke hosting, buka **cPanel → Advanced → Cron Jobs** dan
 tambahkan cron berikut:
 
 ```cron
-*/5 * * * * /bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh >> /home/fouf9972/deploy-cron.log 2>&1; echo "deploy.sh exit=$?" >> /home/fouf9972/deploy-cron.log
+* * * * * /bin/bash /home/fouf9972/public_html/rh_ems/deploy.sh >/dev/null 2>&1
 ```
 
-Cron memeriksa `main` setiap lima menit. Jika ada commit baru, `deploy.sh`
-menyiapkan file SQL dari commit terbaru, menjalankan migrasi baru, lalu hanya
-jika migrasi berhasil memperbarui checkout kode. Jika tidak ada perubahan,
-script selesai tanpa mengubah situs. Setiap pemanggilan menulis kode keluar ke
-`/home/fouf9972/deploy-cron.log`; detail migrasi/deployment dicatat di
-`/home/fouf9972/git-deploy.log`. Ini memerlukan koneksi keluar hosting ke
-GitHub dan remote `origin` yang dapat diakses oleh akun cPanel.
+Cron memeriksa `main` setiap menit. Push ke GitHub diproses pada pemeriksaan
+cron berikutnya (paling lama sekitar satu menit); cron tidak menerima event
+push secara langsung. Jika tidak ada commit baru, script keluar tanpa
+menjalankan migrasi, mengubah situs, atau menulis event idle. Saat ada perubahan,
+`deploy.sh` menjalankan migrasi baru terlebih dahulu, lalu memperbarui checkout
+kode. Hapus command lama yang menambahkan `deploy.sh exit=0` ke
+`/home/fouf9972/deploy-cron.log`, karena baris itu hanya menunjukkan cron
+berjalan, bukan apakah GitHub memiliki commit baru.
+
+Hasil pull/deploy dan kegagalan dicatat di `/home/fouf9972/git-deploy.log`;
+status terbaru juga ditulis ke `/home/fouf9972/.deploy-status`. Keduanya dapat
+dilihat melalui **Dashboard → Pengelolaan Sistem → Status Deployment**, yang
+hanya dapat diakses Programmer Roxwood. Jika halaman belum menampilkan hasil,
+jalankan `deploy.sh` sekali setelah memperbarui cron agar format status baru
+mulai digunakan. Ini memerlukan koneksi keluar hosting ke GitHub dan remote
+`origin` yang dapat diakses oleh akun cPanel.
 
 ### Aktifkan pencatatan migrasi satu kali
 
