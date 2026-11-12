@@ -41,7 +41,7 @@ $sheet->getStyle('A5:G5')->applyFromArray(['font' => ['bold' => true, 'color' =>
 foreach ($report['rows'] as $i => $row) {
     $staff = $row['registered_staff'];
     $rowNumber = $i + 6;
-    $sheet->fromArray([[$i + 1, (string) ($staff['full_name'] ?? $row['name'] ?? '-'), (string) ($staff['citizen_id'] ?? '-'), ems_position_label($staff['position'] ?? $row['role'] ?? '-'), (string) ($row['formatted_duty_time'] ?? '0 Jam 0 Menit'), (int) ($row['total_sessions'] ?? 0), (string) ($row['last_duty_at'] ?? '-')]], null, 'A' . $rowNumber);
+    $sheet->fromArray([[$i + 1, (string) ($staff['full_name'] ?? $row['name'] ?? '-'), (string) ($staff['citizen_id'] ?? '-'), ems_position_label($row['role'] ?? $staff['position'] ?? '-'), (string) ($row['formatted_duty_time'] ?? '0 Jam 0 Menit'), (int) ($row['total_sessions'] ?? 0), (string) ($row['last_duty_at'] ?? '-')]], null, 'A' . $rowNumber);
     if ($i < 3 && (int) ($row['total_seconds'] ?? 0) > 0) {
         $rankColors = ['FEF3C7', 'E2E8F0', 'FFEDD5'];
         $sheet->getStyle('A' . $rowNumber . ':G' . $rowNumber)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB($rankColors[$i]);

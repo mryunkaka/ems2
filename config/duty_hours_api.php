@@ -2,6 +2,13 @@
 
 require_once __DIR__ . '/curl_ca_bundle.php';
 
+function ems_duty_hours_name_key(?string $name): string
+{
+    $name = preg_replace('/^RH\s*-\s*/i', '', trim((string) $name));
+    $name = preg_replace('/,\s*(?:S\.?\s*Ked\.?|A\.?\s*Md\.?\s*Kep\.?|MD|MBBS)\s*$/i', '', $name);
+    return mb_strtoupper(trim(preg_replace('/[^\pL\pN]+/u', ' ', $name) ?? ''), 'UTF-8');
+}
+
 function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = '', string $endDate = ''): array
 {
     $apiKey = trim((string) ems_env('EMS_DUTY_HOURS_API_KEY', ''));
@@ -46,9 +53,13 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
 
     $staffStmt = $pdo->query("SELECT id, full_name, citizen_id, position FROM user_rh WHERE COALESCE(NULLIF(LOWER(TRIM(unit_code)), ''), 'roxwood') = 'roxwood' AND TRIM(COALESCE(citizen_id, '')) <> ''");
     $staff = [];
+    $staffByName = [];
     foreach ($staffStmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
         if (!ems_is_medical_position($person['position'] ?? null)) continue;
-        $staff[strtoupper(trim((string) $person['citizen_id']))] = $person;
+        $citizenId = strtoupper(trim((string) $person['citizen_id']));
+        $staff[$citizenId] = $person;
+        $nameKey = ems_duty_hours_name_key((string) ($person['full_name'] ?? ''));
+        if ($nameKey !== '') $staffByName[$nameKey][] = $person;
     }
 
     $rows = [];
@@ -56,11 +67,28 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
         if (strtolower(trim((string) ($item['hospital'] ?? ''))) !== 'roxwood') {
             continue;
         }
-        $citizenId = strtoupper(trim((string) ($item['citizen_id'] ?? $item['staff_id'] ?? '')));
-        if ($citizenId === '' || !isset($staff[$citizenId])) {
-            continue;
+        $citizenId = strtoupper(trim((string) ($item['citizen_id'] ?? '')));
+        $staffId = strtoupper(trim((string) ($item['staff_id'] ?? '')));
+        // Medical Center citizen_id and staff_id can differ for the same person.
+        $registeredStaff = $staff[$citizenId] ?? $staff[$staffId] ?? null;
+        if ($registeredStaff === null) {
+            // Resolve only exact, unique names so ambiguous identities never inherit another person's duty data.
+            $nameMatches = $staffByName[ems_duty_hours_name_key((string) ($item['name'] ?? ''))] ?? [];
+            if (count($nameMatches) === 1) {
+                $registeredStaff = $nameMatches[0];
+            } elseif (in_array(strtolower(trim((string) ($item['role_name'] ?? ''))), ['trainee', 'paramedic', 'perawat', 'co_ass', 'co_asst', 'general_practitioner', 'dokter_umum', 'specialist', 'dokter_spesialis'], true)) {
+                $registeredStaff = [
+                    'id' => (int) ($item['user_id'] ?? 0),
+                    'full_name' => (string) ($item['name'] ?? '-'),
+                    'citizen_id' => $citizenId,
+                    'position' => (string) ($item['role'] ?? '-'),
+                ];
+            } else {
+                continue;
+            }
         }
-        $rows[] = $item + ['registered_staff' => $staff[$citizenId]];
+        $registeredStaff['citizen_id'] = $citizenId !== '' ? $citizenId : ($staffId !== '' ? $staffId : (string) ($registeredStaff['citizen_id'] ?? ''));
+        $rows[] = $item + ['registered_staff' => $registeredStaff];
     }
 
     usort($rows, static fn(array $a, array $b): int => ((int) ($b['total_seconds'] ?? 0)) <=> ((int) ($a['total_seconds'] ?? 0)));
