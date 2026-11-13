@@ -463,6 +463,18 @@ if ($action === 'create_case') {
             $caseId,
         ]);
 
+        $recordStmt = $pdo->prepare('SELECT id FROM medical_records WHERE doctor_id = ? OR assistant_id = ?');
+        $recordStmt->execute([$subjectUserId, $subjectUserId]);
+        $medicalRecordIds = $recordStmt->fetchAll(PDO::FETCH_COLUMN);
+        if (ems_table_exists($pdo, 'medical_record_assistants')) {
+            $assistantRecordStmt = $pdo->prepare('SELECT medical_record_id FROM medical_record_assistants WHERE assistant_user_id = ?');
+            $assistantRecordStmt->execute([$subjectUserId]);
+            $medicalRecordIds = array_merge($medicalRecordIds, $assistantRecordStmt->fetchAll(PDO::FETCH_COLUMN));
+        }
+        foreach (array_unique($medicalRecordIds) as $medicalRecordId) {
+            ems_auto_create_disciplinary_reductions_for_medical_record($pdo, (int)$medicalRecordId);
+        }
+
         $storedAttachmentPaths = disciplinaryStoreAttachments(
             $pdo,
             'disciplinary_case_attachments',
