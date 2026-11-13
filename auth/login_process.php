@@ -135,6 +135,19 @@ function loginSafeIntendedEventUrl(string $candidate): ?string
     return $path . ($query !== '' ? '?' . $query : '');
 }
 
+function loginNormalizeName(string $name): string
+{
+    $name = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
+    $name = preg_replace('/^(?:drg?\.?|prof\.?|ir\.?)\s+/u', '', $name) ?? $name;
+    do {
+        $previous = $name;
+        $name = preg_replace('/(?:\s+)(?:sp\.?\s*[a-z0-9.]+(?:\s+specialist)?|specialist|spesialis|s\.ked\.?|m\.kes\.?|ph\.d\.?)$/u', '', $name) ?? $name;
+        $name = trim($name);
+    } while ($name !== $previous);
+
+    return trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+}
+
 $requestedLoginUnit = ems_normalize_unit_code($_POST['login_unit'] ?? $_GET['unit'] ?? 'roxwood');
 $requestedLoginUrl = 'login.php?unit=' . urlencode($requestedLoginUnit);
 
@@ -177,11 +190,17 @@ if (loginRateLimitBlocked('ip', $remoteIp, $now) || loginRateLimitBlocked('name_
 // =====================================================
 // CARI USER
 // =====================================================
-$stmt = $pdo->prepare("SELECT * FROM user_rh WHERE full_name = ? LIMIT 1");
-$stmt->execute([$full_name]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$normalizedLoginName = loginNormalizeName($full_name);
+$stmt = $pdo->prepare('SELECT * FROM user_rh WHERE full_name = ? OR LOCATE(?, LOWER(full_name)) > 0');
+$stmt->execute([$full_name, $normalizedLoginName]);
+$matchingUsers = array_values(array_filter(
+    $stmt->fetchAll(PDO::FETCH_ASSOC),
+    static fn(array $candidate): bool => loginNormalizeName((string)($candidate['full_name'] ?? '')) === $normalizedLoginName
+        && password_verify($pin, (string)($candidate['pin'] ?? ''))
+));
+$user = count($matchingUsers) === 1 ? $matchingUsers[0] : null;
 
-if (!$user || !password_verify($pin, $user['pin'])) {
+if (!$user) {
     loginRateLimitRegisterFailure('ip', $remoteIp, $now);
     loginRateLimitRegisterFailure('name_ip', $remoteIp . '|' . $nameRateKey, $now);
     $_SESSION['error'] = 'Nama atau PIN salah';
