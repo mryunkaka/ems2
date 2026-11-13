@@ -258,6 +258,7 @@ if ($isSpecialistPosition) {
     }
     $specialistDegrees = implode(', ', $parsedSpecialistDegrees);
 }
+$fullName = ems_format_medical_display_name($fullName, (string)($userDb['position'] ?? ''), $specialistDegrees);
 
 $isTraineePosition = ems_normalize_position($userDb['position'] ?? '') === 'trainee';
 $requiredDocFields = [
@@ -474,7 +475,7 @@ $kodeNomorInduk = null;
 if (empty($currentKodeInduk)) {
     $batchCode = chr(64 + $batch);
     $idPart = str_pad((string)$userId, 2, '0', STR_PAD_LEFT);
-    $nameParts = preg_split('/\s+/', strtoupper($fullName));
+    $nameParts = preg_split('/\s+/', strtoupper(ems_medical_base_name($fullName)));
     $firstName = $nameParts[0] ?? '';
     $lastName = $nameParts[count($nameParts) - 1] ?? '';
     $letters = substr($firstName, 0, 2) . substr($lastName, 0, 2);

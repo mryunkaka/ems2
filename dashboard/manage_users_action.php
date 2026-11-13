@@ -326,6 +326,8 @@ if ($action === 'add_user') {
         exit;
     }
 
+    $name = ems_format_medical_display_name($name, $position);
+
     if ($hasTanggalLahirIcColumn && trim((string)$tanggalLahirIcRaw) !== '' && $tanggalLahirIc === null) {
         $_SESSION['flash_errors'][] = 'Tanggal lahir IC tidak valid.';
         header('Location: manage_users.php');
@@ -414,7 +416,7 @@ if ($action === 'add_user') {
     // ===============================
     if ($batch > 0) {
         try {
-            $generatedKode = generateKodeMedis($newUserId, $name, $batch);
+            $generatedKode = generateKodeMedis($newUserId, ems_medical_base_name($name), $batch);
 
             $pdo->prepare("
                 UPDATE user_rh
@@ -971,6 +973,7 @@ if ($hasUnitCodeColumn) {
 $stmt->execute($selectParams);
 $currentUserData = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 $currentKode = $currentUserData['kode_nomor_induk_rs'] ?? null;
+$name = ems_format_medical_display_name($name, $position, (string)($currentUserData['specialist_degrees'] ?? ''));
 
 /* ===============================
    Bangun SQL dasar DULU
@@ -1034,7 +1037,7 @@ $params[] = $batch > 0 ? $batch : null;
    =============================== */
 if (empty($currentKode) && $batch > 0) {
     try {
-        $generatedKode = generateKodeMedis($userId, $name, $batch);
+        $generatedKode = generateKodeMedis($userId, ems_medical_base_name($name), $batch);
         $sql .= ", kode_nomor_induk_rs = ?";
         $params[] = $generatedKode;
     } catch (Exception $e) {

@@ -646,6 +646,20 @@ function ems_specialist_degrees_are_valid(?string $value): bool
     return ems_parse_specialist_degrees($value) !== null;
 }
 
+function ems_medical_base_name(string $name): string
+{
+    $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+    $name = preg_replace('/^(?:drg?\.?|prof\.?|ir\.?)\s+/iu', '', $name) ?? $name;
+    do {
+        $previous = $name;
+        $name = preg_replace('/\s+specialist$/iu', '', $name) ?? $name;
+        $name = preg_replace('/(?:\s*,?\s*(?:A\.\s*Md\s*Kep\.?|S\.\s*Ked\.?|Sp\.\s*[\p{L}][\p{L}.-]{0,19}))+$/iu', '', $name) ?? $name;
+        $name = trim($name, " \t\n\r\0\x0B,");
+    } while ($name !== $previous);
+
+    return $name;
+}
+
 function ems_format_medical_display_name(string $name, ?string $position, ?string $specialistDegrees = null): string
 {
     $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
@@ -654,18 +668,16 @@ function ems_format_medical_display_name(string $name, ?string $position, ?strin
     }
 
     $normalizedPosition = ems_normalize_position($position);
-    $alreadyDoctorPrefix = preg_match('/^dr\.\s*/iu', $name) === 1;
-    $baseName = $alreadyDoctorPrefix ? preg_replace('/^dr\.\s*/iu', '', $name) : $name;
-    $baseName = trim((string) $baseName);
+    $baseName = ems_medical_base_name($name);
 
     return match ($normalizedPosition) {
-        'trainee' => $name,
-        'paramedic' => preg_match('/,?\s*A\.\s*Md\s*Kep\.?$/iu', $name) ? $name : $name . ', A. Md Kep',
-        'co_asst' => preg_match('/,?\s*S\.\s*Ked\.?$/iu', $name) ? $name : $name . ', S. Ked',
-        'general_practitioner' => ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
+        'trainee' => $baseName,
+        'paramedic' => $baseName . ', A. Md Kep',
+        'co_asst' => $baseName . ', S. Ked',
+        'general_practitioner' => 'dr. ' . $baseName,
         'specialist' => (ems_parse_specialist_degrees($specialistDegrees) !== null)
-            ? 'dr. ' . trim((string) preg_replace('/(?:\s*,?\s*Sp\.\s*[\p{L}][\p{L}.-]{0,19})+\s*(?:specialist)?$/iu', '', $baseName)) . ' ' . implode(', ', ems_parse_specialist_degrees($specialistDegrees))
-            : ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
+            ? 'dr. ' . $baseName . ' ' . implode(', ', ems_parse_specialist_degrees($specialistDegrees))
+            : 'dr. ' . $baseName,
         default => $name,
     };
 }

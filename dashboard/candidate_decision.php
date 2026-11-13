@@ -178,6 +178,8 @@ function candidateCreateUserFromApplicant(PDO $pdo, array $candidate, string $re
         throw new Exception('Nama kandidat tidak valid untuk pembuatan user.');
     }
 
+    $fullName = ems_format_medical_display_name($fullName, $recommendedPosition);
+
     $check = $pdo->prepare("SELECT id FROM user_rh WHERE full_name = ? LIMIT 1");
     $check->execute([$fullName]);
     if ($check->fetchColumn()) {
@@ -228,7 +230,7 @@ function candidateCreateUserFromApplicant(PDO $pdo, array $candidate, string $re
 
     $newUserId = (int)$pdo->lastInsertId();
 
-    $generatedKode = candidateGenerateMedicalCode($newUserId, $fullName, $batch);
+    $generatedKode = candidateGenerateMedicalCode($newUserId, ems_medical_base_name($fullName), $batch);
     $pdo->prepare("
         UPDATE user_rh
         SET kode_nomor_induk_rs = ?

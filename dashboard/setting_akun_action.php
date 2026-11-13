@@ -374,6 +374,7 @@ if ($isSpecialistPosition) {
     }
     $specialistDegrees = implode(', ', $parsedSpecialistDegrees);
 }
+$fullName = ems_format_medical_display_name($fullName, $position, $specialistDegrees);
 
 if (isset($userRhColumns['tanggal_lahir_ic'])) {
     if ($tanggalLahirIc === '') {
@@ -428,7 +429,7 @@ if (empty($currentKodeInduk)) {
     $idPart = str_pad($userId, 2, '0', STR_PAD_LEFT);
 
     // Nama → 2 huruf depan nama depan + 2 huruf depan nama belakang
-    $nameParts = preg_split('/\s+/', strtoupper($fullName));
+    $nameParts = preg_split('/\s+/', strtoupper(ems_medical_base_name($fullName)));
 
     $firstName  = $nameParts[0] ?? '';
     $lastName   = $nameParts[count($nameParts) - 1] ?? '';

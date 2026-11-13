@@ -141,8 +141,8 @@ function loginNormalizeName(string $name): string
     $name = preg_replace('/^(?:drg?\.?|prof\.?|ir\.?)\s+/u', '', $name) ?? $name;
     do {
         $previous = $name;
-        $name = preg_replace('/(?:\s+)(?:sp\.?\s*[a-z0-9.]+(?:\s+specialist)?|specialist|spesialis|s\.ked\.?|m\.kes\.?|ph\.d\.?)$/u', '', $name) ?? $name;
-        $name = trim($name);
+        $name = preg_replace('/(?:\s+|\s*,\s*)(?:sp\.?\s*[a-z0-9.]+(?:\s+specialist)?|a\.?\s*md\s*kep\.?|specialist|spesialis|s\.?\s*ked\.?|m\.kes\.?|ph\.d\.?)$/u', '', $name) ?? $name;
+        $name = trim($name, " \t\n\r\0\x0B,");
     } while ($name !== $previous);
 
     return trim(preg_replace('/\s+/u', ' ', $name) ?? $name);

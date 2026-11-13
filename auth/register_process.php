@@ -28,6 +28,7 @@ $loginRedirect = 'login.php?unit=' . urlencode($unitCode);
 
 // DEFAULT
 $position = 'trainee';
+$name = ems_format_medical_display_name($name, $position);
 
 if ($name === '' || !preg_match('/^\d{4}$/', $pin)) {
     header("Location: login.php?error=Data registrasi tidak valid");

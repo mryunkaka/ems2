@@ -105,7 +105,7 @@ try {
     }
 
     $stmt = $pdo->prepare("
-        SELECT id, position
+        SELECT id, full_name, position
         FROM user_rh
         WHERE id = ?
         LIMIT 1
@@ -151,8 +151,12 @@ try {
     }
 
     // Approve: update user position + request status
-    $stmt = $pdo->prepare("UPDATE user_rh SET position = ? WHERE id = ?");
-    $stmt->execute([$to, $userId]);
+    $fullName = ems_format_medical_display_name(
+        (string)($user['full_name'] ?? ''),
+        $to
+    );
+    $stmt = $pdo->prepare("UPDATE user_rh SET position = ?, full_name = ? WHERE id = ?");
+    $stmt->execute([$to, $fullName, $userId]);
 
     $stmt = $pdo->prepare("
         UPDATE position_promotion_requests

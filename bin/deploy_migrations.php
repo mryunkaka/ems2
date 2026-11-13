@@ -238,6 +238,52 @@ try {
         echo "Backfill selesai; catatan baru: {$created}.\n";
     }
 
+    if (ems_table_exists($pdo, 'user_rh') && ems_column_exists($pdo, 'user_rh', 'position')) {
+        $hasSpecialistDegrees = ems_column_exists($pdo, 'user_rh', 'specialist_degrees');
+        $degreeSelect = $hasSpecialistDegrees ? ', specialist_degrees' : ', NULL AS specialist_degrees';
+        $users = $pdo->query('SELECT id, full_name, position' . $degreeSelect . ' FROM user_rh ORDER BY id ASC');
+        $findName = $pdo->prepare('SELECT id FROM user_rh WHERE full_name = ? AND id <> ? LIMIT 1');
+        $updateName = $pdo->prepare('UPDATE user_rh SET full_name = ? WHERE id = ?');
+        $updatedNames = 0;
+        $skippedNames = 0;
+        $stripTitles = static function (string $name): string {
+            $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+            $name = preg_replace('/^(?:drg?\.?|prof\.?|ir\.?)\s+/iu', '', $name) ?? $name;
+            do {
+                $previous = $name;
+                $name = preg_replace('/\s+specialist$/iu', '', $name) ?? $name;
+                $name = preg_replace('/(?:\s*,?\s*(?:A\.\s*Md\s*Kep\.?|S\.\s*Ked\.?|Sp\.\s*[\p{L}][\p{L}.-]{0,19}))+$/iu', '', $name) ?? $name;
+                $name = trim($name, " \t\n\r\0\x0B,");
+            } while ($name !== $previous);
+            return $name;
+        };
+
+        while ($user = $users->fetch(PDO::FETCH_ASSOC)) {
+            if (!ems_is_medical_position((string)($user['position'] ?? ''))) {
+                continue;
+            }
+            $baseName = function_exists('ems_medical_base_name')
+                ? ems_medical_base_name((string)$user['full_name'])
+                : $stripTitles((string)$user['full_name']);
+            $displayName = ems_format_medical_display_name(
+                $baseName,
+                (string)$user['position'],
+                (string)($user['specialist_degrees'] ?? '')
+            );
+            if ($displayName === (string)$user['full_name']) {
+                continue;
+            }
+            $findName->execute([$displayName, (int)$user['id']]);
+            if ($findName->fetchColumn()) {
+                $skippedNames++;
+                continue;
+            }
+            $updateName->execute([$displayName, (int)$user['id']]);
+            $updatedNames += $updateName->rowCount();
+        }
+        echo "Gelar nama akun diperbarui: {$updatedNames}; dilewati karena nama duplikat: {$skippedNames}.\n";
+    }
+
     echo $appliedCount === 0 ? "Tidak ada migrasi SQL baru.\n" : "Migrasi baru selesai: {$appliedCount}.\n";
 } catch (Throwable $error) {
     fwrite(STDERR, 'ERROR: ' . $error->getMessage() . "\n");
