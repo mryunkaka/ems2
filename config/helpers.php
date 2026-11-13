@@ -1802,7 +1802,7 @@ function ems_auto_create_disciplinary_reductions_for_medical_record(PDO $pdo, in
     }
 
     $options = ems_disciplinary_point_reduction_options();
-    $userStmt = $pdo->prepare('SELECT id, full_name, division, position, is_active FROM user_rh WHERE id = ? LIMIT 1');
+    $userStmt = $pdo->prepare('SELECT id, full_name, is_active FROM user_rh WHERE id = ? LIMIT 1');
     $casePointsStmt = $pdo->prepare('SELECT COALESCE(SUM(total_points), 0) FROM disciplinary_cases WHERE subject_user_id = ?');
     $reductionStmt = $pdo->prepare('SELECT COALESCE(SUM(reduction_points), 0) FROM disciplinary_point_reductions WHERE subject_user_id = ?');
     $caseStmt = $pdo->prepare(
@@ -1828,11 +1828,6 @@ function ems_auto_create_disciplinary_reductions_for_medical_record(PDO $pdo, in
         $userStmt->execute([(int) $subjectUserId]);
         $subject = $userStmt->fetch(PDO::FETCH_ASSOC);
         if (!$subject || (int) ($subject['is_active'] ?? 0) !== 1) {
-            continue;
-        }
-        $subjectDivision = ems_normalize_division((string) ($subject['division'] ?? ''));
-        if ($subjectDivision !== 'Medis'
-            && !($subjectDivision === 'Medical Affair' && ems_is_medical_position((string) ($subject['position'] ?? '')))) {
             continue;
         }
 
