@@ -217,6 +217,27 @@ try {
         echo 'Selesai ' . $file['name'] . "\n";
     }
 
+    $appRoot = $envBootstrap !== '' ? dirname(dirname($envBootstrap)) : dirname(__DIR__);
+    require_once $appRoot . '/config/helpers.php';
+    if (ems_table_exists($pdo, 'medical_records')
+        && ems_column_exists($pdo, 'disciplinary_point_reductions', 'medical_record_id')) {
+        echo "Menjalankan backfill pengurangan poin otomatis.\n";
+        $lastId = 0;
+        $created = 0;
+        do {
+            $records = $pdo->prepare('SELECT id FROM medical_records WHERE id > ? ORDER BY id ASC LIMIT 100');
+            $records->execute([$lastId]);
+            $recordIds = array_map('intval', $records->fetchAll(PDO::FETCH_COLUMN));
+            foreach ($recordIds as $recordId) {
+                $created += ems_auto_create_disciplinary_reductions_for_medical_record($pdo, $recordId);
+            }
+            if ($recordIds !== []) {
+                $lastId = max($recordIds);
+            }
+        } while (count($recordIds) === 100);
+        echo "Backfill selesai; catatan baru: {$created}.\n";
+    }
+
     echo $appliedCount === 0 ? "Tidak ada migrasi SQL baru.\n" : "Migrasi baru selesai: {$appliedCount}.\n";
 } catch (Throwable $error) {
     fwrite(STDERR, 'ERROR: ' . $error->getMessage() . "\n");
