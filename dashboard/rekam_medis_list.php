@@ -116,7 +116,7 @@ function medicalRecordAssistantNamesMap(PDO $pdo, array $recordIds): array
     return $map;
 }
 
-function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJenisOperasi, bool $hasVisibilityScope, bool $isForensicPrivate): array
+function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJenisOperasi, bool $hasVisibilityScope, bool $isForensicPrivate, array $records): array
 {
     $scopeWhere = '1=1';
     if ($hasVisibilityScope) {
@@ -127,7 +127,30 @@ function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJ
         return [];
     }
 
-    $stmt = $pdo->query("
+    $patientConditions = [];
+    $patientParams = [];
+    foreach ($records as $record) {
+        $citizenId = trim((string) ($record['patient_citizen_id'] ?? ''));
+        $name = trim((string) ($record['patient_name'] ?? ''));
+        $dob = trim((string) ($record['patient_dob'] ?? ''));
+        if ($hasPatientCitizenId && $citizenId !== '') {
+            $patientConditions['cid:' . strtolower($citizenId)] = '(r.patient_citizen_id = ?)';
+            $patientParams['cid:' . strtolower($citizenId)] = $citizenId;
+        } elseif ($name !== '' && $dob !== '') {
+            $key = 'namedob:' . strtolower($name) . '|' . $dob;
+            $patientConditions[$key] = '(r.patient_name = ? AND r.patient_dob = ?)';
+            $patientParams[$key] = [$name, $dob];
+        }
+    }
+    if ($patientConditions === []) {
+        return [];
+    }
+    $patientWhere = '(' . implode(' OR ', array_values($patientConditions)) . ')';
+    $queryParams = [];
+    foreach (array_keys($patientConditions) as $key) {
+        foreach ((array) $patientParams[$key] as $value) $queryParams[] = $value;
+    }
+    $stmt = $pdo->prepare("
         SELECT
             r.id,
             r.patient_name,
@@ -140,9 +163,10 @@ function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJ
             COALESCE(d.full_name, '') AS doctor_name
         FROM medical_records r
         LEFT JOIN user_rh d ON d.id = r.doctor_id
-        WHERE {$scopeWhere}
+        WHERE {$scopeWhere} AND {$patientWhere}
         ORDER BY r.created_at DESC, r.id DESC
     ");
+    $stmt->execute($queryParams);
 
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     $historyMap = [];
@@ -182,6 +206,11 @@ function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJ
 
 // Get search keyword
 $search = trim($_GET['search'] ?? '');
+$dateFrom = trim($_GET['date_from'] ?? '');
+$dateTo = trim($_GET['date_to'] ?? '');
+$validDate = static fn (string $date): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 && date('Y-m-d', strtotime($date)) === $date;
+if (!$validDate($dateFrom)) $dateFrom = '';
+if (!$validDate($dateTo)) $dateTo = '';
 
 // Build query
 $hasVisibilityScope = medicalRecordsHasColumn($pdo, 'visibility_scope');
@@ -211,6 +240,16 @@ if ($isForensicPrivate && !$forensicPerms['can_view_all']) {
     $params[] = $userId;
 }
 
+if ($dateFrom !== '' && $dateTo !== '' && $dateFrom > $dateTo) {
+    [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+}
+$displayDateFrom = $dateFrom !== '' ? $dateFrom : date('Y-m-d', strtotime('-6 days'));
+$displayDateTo = $dateTo !== '' ? $dateTo : date('Y-m-d');
+$whereClause .= ' AND r.created_at >= ?';
+$params[] = $displayDateFrom . ' 00:00:00';
+$whereClause .= ' AND r.created_at < ?';
+$params[] = date('Y-m-d 00:00:00', strtotime($displayDateTo . ' +1 day'));
+
 if ($search !== '') {
     $searchParts = [
         'r.patient_name LIKE ?',
@@ -230,6 +269,16 @@ if ($search !== '') {
 
     if ($hasRecordCode) {
         $searchParts[] = "COALESCE(r.record_code, '') LIKE ?";
+        $params[] = "%$search%";
+    }
+
+    $searchParts[] = 'COALESCE(u.full_name, \'\') LIKE ?';
+    $params[] = "%$search%";
+    if (ems_table_exists($pdo, 'medical_record_assistants')) {
+        $searchParts[] = "EXISTS (SELECT 1 FROM medical_record_assistants mra INNER JOIN user_rh au ON au.id = mra.assistant_user_id WHERE mra.medical_record_id = r.id AND au.full_name LIKE ?)";
+        $params[] = "%$search%";
+    } else {
+        $searchParts[] = 'COALESCE(a.full_name, \'\') LIKE ?';
         $params[] = "%$search%";
     }
 
@@ -276,7 +325,7 @@ unset($recordForTitle);
 $assistantNamesMap = medicalRecordAssistantNamesMap($pdo, array_map(static fn (array $row): int => (int) ($row['id'] ?? 0), $records));
 $detailTemplates = [];
 $historyTemplates = [];
-$patientHistoryMap = medicalRecordHistoryMap($pdo, $hasPatientCitizenId, $hasJenisOperasi, $hasVisibilityScope, $isForensicPrivate);
+$patientHistoryMap = medicalRecordHistoryMap($pdo, $hasPatientCitizenId, $hasJenisOperasi, $hasVisibilityScope, $isForensicPrivate, $records);
 
 $messages = $_SESSION['flash_messages'] ?? [];
 $errors = $_SESSION['flash_errors'] ?? [];
@@ -304,7 +353,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title"><?= $isForensicPrivate ? 'Rekap Rekam Medis Private' : 'Rekap Rekam Medis' ?></h1>
-                <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private — division Forensic, atau medis lain yang sudah diberi izin khusus' : 'Daftar semua rekam medis pasien' ?></p>
+                <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private — division Forensic, atau medis lain yang sudah diberi izin khusus' : 'Daftar rekam medis pasien' ?> · Tampil <?= htmlspecialchars(date('d/m/Y', strtotime($displayDateFrom)), ENT_QUOTES, 'UTF-8') ?> sampai <?= htmlspecialchars(date('d/m/Y', strtotime($displayDateTo)), ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <div class="flex gap-2 flex-wrap justify-end">
                 <?php if (!$isForensicPrivate || $forensicPerms['can_create']): ?>
@@ -329,17 +378,19 @@ include __DIR__ . '/../partials/sidebar.php';
         <!-- Search -->
         <div class="card card-section mb-4">
             <div class="card-body">
-                <form method="GET" action="" class="flex gap-2">
+                <form method="GET" action="" class="flex flex-wrap gap-2">
                     <input type="text" name="search" class="form-input flex-1" 
-                           placeholder="Cari nama pasien, citizen ID, nama operasi, atau no rekam medis..." 
+                           placeholder="Cari pasien, citizen ID, operasi, no rekam medis, DPJP, atau asisten..."
                            value="<?= htmlspecialchars($search) ?>" />
+                    <label class="flex items-center gap-2 text-sm">Dari <input type="date" name="date_from" class="form-input" value="<?= htmlspecialchars($dateFrom, ENT_QUOTES, 'UTF-8') ?>"></label>
+                    <label class="flex items-center gap-2 text-sm">Sampai <input type="date" name="date_to" class="form-input" value="<?= htmlspecialchars($dateTo, ENT_QUOTES, 'UTF-8') ?>"></label>
                     <button type="submit" class="btn-primary">
                         <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
                         Cari
                     </button>
-                    <?php if ($search): ?>
+                    <?php if ($search || $dateFrom || $dateTo): ?>
                         <a href="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" class="btn-secondary">Reset</a>
                     <?php endif; ?>
                 </form>
