@@ -1754,13 +1754,13 @@ function ems_disciplinary_point_reduction_label(string $reductionType): string
     return $options[$reductionType]['label'] ?? ucwords(str_replace('_', ' ', $reductionType));
 }
 
-function ems_auto_create_disciplinary_reductions_for_medical_record(PDO $pdo, int $medicalRecordId): int
+function ems_auto_create_disciplinary_reduction_requests_for_medical_record(PDO $pdo, int $medicalRecordId): int
 {
     if ($medicalRecordId <= 0
         || !ems_table_exists($pdo, 'medical_records')
         || !ems_table_exists($pdo, 'disciplinary_cases')
-        || !ems_table_exists($pdo, 'disciplinary_point_reductions')
-        || !ems_column_exists($pdo, 'disciplinary_point_reductions', 'medical_record_id')) {
+        || !ems_table_exists($pdo, 'disciplinary_point_reduction_requests')
+        || !ems_column_exists($pdo, 'disciplinary_point_reduction_requests', 'medical_record_id')) {
         return 0;
     }
 
@@ -1825,9 +1825,9 @@ function ems_auto_create_disciplinary_reductions_for_medical_record(PDO $pdo, in
          LIMIT 1'
     );
     $insertStmt = $pdo->prepare(
-        'INSERT IGNORE INTO disciplinary_point_reductions
+        'INSERT IGNORE INTO disciplinary_point_reduction_requests
             (medical_record_id, subject_user_id, related_case_id, reduction_type, reduction_points,
-             activity_date, notes, created_by)
+             activity_date, notes, submitted_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $created = 0;
@@ -1857,13 +1857,12 @@ function ems_auto_create_disciplinary_reductions_for_medical_record(PDO $pdo, in
             . ' | Pasien: ' . trim((string) ($record['patient_name'] ?? '-'))
             . ' | Peran: ' . ($reductionType === 'dpjp_' . $operationTier ? 'DPJP' : 'Asisten');
 
-        $reductionPoints = min((int) $options[$reductionType]['points'], $activePoints);
         $insertStmt->execute([
             $medicalRecordId,
             (int) $subjectUserId,
             $relatedCaseId > 0 ? $relatedCaseId : null,
             $reductionType,
-            $reductionPoints,
+            (int) $options[$reductionType]['points'],
             $activityDate,
             $notes,
             (int) $subjectUserId,

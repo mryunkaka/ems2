@@ -472,7 +472,7 @@ if ($action === 'create_case') {
             $medicalRecordIds = array_merge($medicalRecordIds, $assistantRecordStmt->fetchAll(PDO::FETCH_COLUMN));
         }
         foreach (array_unique($medicalRecordIds) as $medicalRecordId) {
-            ems_auto_create_disciplinary_reductions_for_medical_record($pdo, (int)$medicalRecordId);
+            ems_auto_create_disciplinary_reduction_requests_for_medical_record($pdo, (int)$medicalRecordId);
         }
 
         $storedAttachmentPaths = disciplinaryStoreAttachments(

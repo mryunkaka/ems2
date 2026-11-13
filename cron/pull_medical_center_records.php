@@ -262,7 +262,7 @@ try {
         }
 
         if ($mirrorId > 0) {
-            ems_auto_create_disciplinary_reductions_for_medical_record($pdo, $mirrorId);
+            ems_auto_create_disciplinary_reduction_requests_for_medical_record($pdo, $mirrorId);
         }
 
         $recordsStored++;

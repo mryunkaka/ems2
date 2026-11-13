@@ -95,8 +95,9 @@ try {
     }
 
     if ($action === 'approve_request') {
-        $insert = $pdo->prepare('INSERT INTO disciplinary_point_reductions (subject_user_id, related_case_id, reduction_type, reduction_points, activity_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $insert = $pdo->prepare('INSERT INTO disciplinary_point_reductions (medical_record_id, subject_user_id, related_case_id, reduction_type, reduction_points, activity_date, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         $insert->execute([
+            !empty($request['medical_record_id']) ? (int)$request['medical_record_id'] : null,
             (int)$request['subject_user_id'],
             !empty($request['related_case_id']) ? (int)$request['related_case_id'] : null,
             (string)$request['reduction_type'],
