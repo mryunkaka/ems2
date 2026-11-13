@@ -252,6 +252,9 @@ $citizenIdSelect = $hasCitizenIdColumn ? "u.citizen_id," : "NULL AS citizen_id,"
 $noHpIcSelect = $hasNoHpIcColumn ? "u.no_hp_ic," : "NULL AS no_hp_ic,";
 $jenisKelaminSelect = $hasJenisKelaminColumn ? "u.jenis_kelamin," : "NULL AS jenis_kelamin,";
 $tanggalLahirIcSelect = $hasTanggalLahirIcColumn ? "u.tanggal_lahir_ic," : "NULL AS tanggal_lahir_ic,";
+$specialistDegreesSelect = manageUsersHasColumn($pdo, 'specialist_degrees')
+    ? 'u.specialist_degrees,'
+    : 'NULL AS specialist_degrees,';
 $manageUsersDocumentColumnLabels = [
     'file_ktp' => 'KTP',
     'file_sim' => 'SIM',
@@ -313,6 +316,7 @@ $stmtUsers = $pdo->prepare("
         {$noHpIcSelect}
         {$jenisKelaminSelect}
         {$tanggalLahirIcSelect}
+        {$specialistDegreesSelect}
         {$farmasiLoginSelectSql}
         u.is_active,
         u.tanggal_masuk,
@@ -984,7 +988,7 @@ uksort($usersByBatch, function ($a, $b) {
                                 <?php foreach ($birthdayHighlights['today'] as $birthdayUser): ?>
                                     <div class="birthday-highlight-item is-today">
                                         <div>
-                                            <div class="birthday-highlight-name"><?= htmlspecialchars($birthdayUser['full_name']) ?></div>
+                                            <div class="birthday-highlight-name"><?= htmlspecialchars(ems_medical_display_name_for_user($pdo, $birthdayUser['full_name'])) ?></div>
                                             <div class="birthday-highlight-meta">
                                                 <?= htmlspecialchars($birthdayUser['position']) ?> • <?= htmlspecialchars($birthdayUser['division']) ?>
                                             </div>
@@ -1012,7 +1016,7 @@ uksort($usersByBatch, function ($a, $b) {
                                 <?php foreach ($birthdayHighlights['upcoming'] as $birthdayUser): ?>
                                     <div class="birthday-highlight-item">
                                         <div>
-                                            <div class="birthday-highlight-name"><?= htmlspecialchars($birthdayUser['full_name']) ?></div>
+                                            <div class="birthday-highlight-name"><?= htmlspecialchars(ems_medical_display_name_for_user($pdo, $birthdayUser['full_name'])) ?></div>
                                             <div class="birthday-highlight-meta">
                                                 <?= htmlspecialchars($birthdayUser['position']) ?> • <?= htmlspecialchars($birthdayUser['division']) ?>
                                             </div>
@@ -1207,7 +1211,7 @@ uksort($usersByBatch, function ($a, $b) {
                                                         data-farmasi-login-status="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['status'], ENT_QUOTES, 'UTF-8') ?>">
 	                                            <td><?= $i + 1 ?></td>
 	                                            <td>
-                                                <strong><?= htmlspecialchars($u['full_name']) ?></strong>
+                                                <strong><?= htmlspecialchars(ems_format_medical_display_name((string)$u['full_name'], (string)$u['position'], (string)($u['specialist_degrees'] ?? '')), ENT_QUOTES, 'UTF-8') ?></strong>
 
                                                 <?php if ($isProtectedUser && !$canManageProtectedUser): ?>
                                                     <div class="status-note-muted">
@@ -1465,7 +1469,7 @@ uksort($usersByBatch, function ($a, $b) {
                                             data-farmasi-login-status="<?= htmlspecialchars(manageUsersFarmasiLoginCell($u['last_farmasi_login'] ?? null)['status'], ENT_QUOTES, 'UTF-8') ?>">
                                             <td><?= $i + 1 ?></td>
                                             <td>
-                                                <strong><?= htmlspecialchars($u['full_name']) ?></strong>
+                                                <strong><?= htmlspecialchars(ems_format_medical_display_name((string)$u['full_name'], (string)$u['position'], (string)($u['specialist_degrees'] ?? '')), ENT_QUOTES, 'UTF-8') ?></strong>
 
                                                 <?php if ($isProtectedUser && !$canManageProtectedUser): ?>
                                                     <div class="status-note-muted">

@@ -664,7 +664,7 @@ function ems_format_medical_display_name(string $name, ?string $position, ?strin
         'co_asst' => preg_match('/,?\s*S\.\s*Ked\.?$/iu', $name) ? $name : $name . ', S. Ked',
         'general_practitioner' => ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
         'specialist' => (ems_parse_specialist_degrees($specialistDegrees) !== null)
-            ? 'dr. ' . $baseName . ' ' . implode(', ', ems_parse_specialist_degrees($specialistDegrees))
+            ? 'dr. ' . trim((string) preg_replace('/(?:\s*,?\s*Sp\.\s*[\p{L}][\p{L}.-]{0,19})+\s*(?:specialist)?$/iu', '', $baseName)) . ' ' . implode(', ', ems_parse_specialist_degrees($specialistDegrees))
             : ($alreadyDoctorPrefix ? $name : 'dr. ' . $name),
         default => $name,
     };
