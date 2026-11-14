@@ -457,10 +457,7 @@ if (!$hasRegulasiHospitalMenu) {
     $groupedNav['Keuangan'][] = sidebarItem('/dashboard/regulasi_roxwood_hospital.php', 'regulasi_roxwood_hospital.php', 'Regulasi Roxwood Hospital', 'document-text');
 }
 
-$canAccessOcrApiStatus = in_array($normalizedUserFullName, [
-    'programmer roxwood',
-    'programmer alta',
-], true);
+$canAccessOcrApiStatus = ems_current_user_is_programmer_roxwood() || $normalizedUserFullName === 'programmer alta';
 
 if (ems_current_user_is_programmer_roxwood()) {
     if (!isset($groupedNav['Pengaturan']) || !is_array($groupedNav['Pengaturan'])) {

@@ -100,7 +100,7 @@ function manageUsersIsProtectedUser(?string $name): bool
     $normalized = strtolower(trim((string)$name));
     $normalized = preg_replace('/\s+/', ' ', $normalized) ?: '';
 
-    return in_array($normalized, ['programmer alta', 'programmer roxwood'], true);
+    return $normalized === 'programmer alta' || ems_is_programmer_roxwood_name($name);
 }
 
 function manageUsersCanManageProtectedUser(array $sessionUser, array $targetUser): bool

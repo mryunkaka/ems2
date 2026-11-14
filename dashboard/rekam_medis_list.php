@@ -303,6 +303,49 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute($params);
 $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($records as &$record) {
+    if (trim((string) ($record['source_provider'] ?? '')) !== 'medical_center') {
+        continue;
+    }
+    $remotePayload = ems_medical_center_decode_array($record['remote_payload_json'] ?? []);
+    if ($remotePayload === []) {
+        continue;
+    }
+    foreach (ems_medical_center_normalize_record($remotePayload) as $field => $value) {
+        if (in_array($field, ['remote_dpjp_json', 'remote_assistants_json'], true)) {
+            $current = ems_medical_center_decode_array($record[$field] ?? []);
+            $fallback = ems_medical_center_decode_array($value);
+            $hasCurrent = false;
+            if ($field === 'remote_dpjp_json') {
+                $hasCurrent = trim((string) ($current['local_name'] ?? '')) !== ''
+                    || ems_medical_center_person($current)['name'] !== '';
+            } else {
+                foreach ($current as $assistant) {
+                    $assistantName = is_array($assistant)
+                        ? trim((string) ($assistant['local_name'] ?? $assistant['remote_name'] ?? $assistant['name'] ?? $assistant['full_name'] ?? ''))
+                        : trim((string) $assistant);
+                    if ($assistantName !== '') {
+                        $hasCurrent = true;
+                        break;
+                    }
+                }
+            }
+            $hasFallback = $field === 'remote_dpjp_json'
+                ? trim((string) ($fallback['name'] ?? $fallback['local_name'] ?? '')) !== ''
+                : $fallback !== [];
+            if (!$hasCurrent && $hasFallback) {
+                $record[$field] = $value;
+            }
+            continue;
+        }
+        if (($record[$field] ?? null) === null || (is_string($record[$field] ?? null) && trim($record[$field]) === '')) {
+            if ($value !== null && (!is_string($value) || trim($value) !== '')) {
+                $record[$field] = $value;
+            }
+        }
+    }
+}
+unset($record);
 $staffNamesToFormat = [];
 foreach ($records as $recordForTitle) {
     foreach (['doctor_name', 'assistant_name', 'created_by_name'] as $nameField) {
@@ -512,20 +555,20 @@ include __DIR__ . '/../partials/sidebar.php';
                                             </button>
                                         </td>
                                         <td class="medical-cell-nowrap">
-                                            <?= htmlspecialchars($record['patient_occupation']) ?>
+                                            <?= htmlspecialchars(medicalRecordValue($record['patient_occupation'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                                         </td>
                                         <td class="medical-cell-nowrap">
                                             <?= htmlspecialchars((string)(($hasPatientCitizenId ? ($record['patient_citizen_id'] ?? null) : null) ?: '-')) ?>
                                         </td>
                                         <td class="medical-cell-nowrap">
                                             <span class="<?= htmlspecialchars(medicalRecordGenderBadgeClass($record['patient_gender'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                                                <?= htmlspecialchars($record['patient_gender']) ?>
+                                                <?= htmlspecialchars(medicalRecordValue($record['patient_gender'] ?? null), ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </td>
                                         <td class="medical-cell-nowrap">
                                             <div class="text-sm">
                                                 <div class="font-medium"><?= htmlspecialchars((string) (($record['doctor_name'] ?? '') ?: (($remoteDpjp['local_name'] ?? '') ?: ($remoteDpjp['name'] ?? '-'))), ENT_QUOTES, 'UTF-8') ?></div>
-                                                <div class="text-gray-500 text-xs"><?= htmlspecialchars((string) ($record['doctor_position'] ?? ''), ENT_QUOTES, 'UTF-8') ?></div>
+                                                <div class="text-gray-500 text-xs"><?= htmlspecialchars(medicalRecordValue($record['doctor_position'] ?? null), ENT_QUOTES, 'UTF-8') ?></div>
                                             </div>
                                         </td>
                                         <td class="medical-cell-nowrap">
@@ -537,11 +580,12 @@ include __DIR__ . '/../partials/sidebar.php';
                                             <div class="text-xs text-gray-500">Input dokumen</div>
                                         </td>
                                         <td class="medical-cell-nowrap">
-                                            <span class="<?= $record['operasi_type'] === 'major' ? 'badge-danger' : 'badge-warning' ?>">
-                                                <?= $record['operasi_type'] === 'major' ? 'Mayor' : 'Minor' ?>
-                                            </span>
+                                            <?php $operationTypeLabel = match (strtolower(trim((string) ($record['operasi_type'] ?? '')))) { 'major' => 'Mayor', 'minor' => 'Minor', default => '-' }; ?>
+                                            <span class="<?= $operationTypeLabel === 'Mayor' ? 'badge-danger' : 'badge-warning' ?>"><?= htmlspecialchars($operationTypeLabel, ENT_QUOTES, 'UTF-8') ?></span>
                                             <?php if ($hasJenisOperasi && trim((string) ($record['jenis_operasi'] ?? '')) !== ''): ?>
                                                 <div class="medical-operation-name"><?= htmlspecialchars((string) $record['jenis_operasi'], ENT_QUOTES, 'UTF-8') ?></div>
+                                            <?php elseif ($isRemoteMedicalCenterRecord): ?>
+                                                <div class="medical-operation-name">-</div>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-center">

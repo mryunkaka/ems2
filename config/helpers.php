@@ -891,6 +891,7 @@ function ems_normalize_person_name(?string $name): string
 
 function ems_is_programmer_roxwood_name(?string $name): bool
 {
+    $name = preg_replace('/^dr\.?\s+/i', '', trim((string) $name)) ?: '';
     return ems_normalize_person_name($name) === 'programmer roxwood';
 }
 

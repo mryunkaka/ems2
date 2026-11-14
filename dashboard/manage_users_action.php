@@ -167,11 +167,8 @@ function manageUsersActionNormalizeProtectedName(?string $name): string
 
 function manageUsersActionIsProtectedName(?string $name): bool
 {
-    return in_array(
-        manageUsersActionNormalizeProtectedName($name),
-        ['programmer alta', 'programmer roxwood'],
-        true
-    );
+    return manageUsersActionNormalizeProtectedName($name) === 'programmer alta'
+        || ems_is_programmer_roxwood_name($name);
 }
 
 function manageUsersActionGetTargetUser(PDO $pdo, int $userId, bool $hasUnitCodeColumn, string $effectiveUnit): ?array

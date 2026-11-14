@@ -5,6 +5,8 @@ require_once __DIR__ . '/../../actions/candidate_interview_admin.php';
 
 aiQueueTest('candidate_interview_admin.limits_access_to_programmer_or_head_hr', static function (): void {
     aiQueueAssertSame(true, ems_candidate_can_manage_interviews(['full_name' => 'Programmer Roxwood', 'role' => 'Staff', 'division' => 'Medis']));
+    aiQueueAssertSame(true, ems_candidate_can_manage_interviews(['full_name' => 'dr. Programmer Roxwood', 'role' => 'Staff', 'division' => 'Medis']));
+    aiQueueAssertSame(false, ems_candidate_can_manage_interviews(['full_name' => 'dr. Programmer Roxwood Jr.', 'role' => 'Staff', 'division' => 'Medis']));
     aiQueueAssertSame(true, ems_candidate_can_manage_interviews(['full_name' => 'HR Lead', 'role' => 'Head Manager', 'division' => 'Human Resource']));
     aiQueueAssertSame(false, ems_candidate_can_manage_interviews(['full_name' => 'HR Lead', 'role' => 'Lead Manager', 'division' => 'Human Resource']));
     aiQueueAssertSame(false, ems_candidate_can_manage_interviews(['full_name' => 'Programmer', 'role' => 'Staff', 'division' => 'Human Resource']));
