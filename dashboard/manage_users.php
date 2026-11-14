@@ -6,6 +6,8 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/birthday_helper.php';
+require_once __DIR__ . '/../config/medical_records_api.php';
+require_once __DIR__ . '/../config/duty_hours_api.php';
 require_once __DIR__ . '/../helpers/user_docs_helper.php';
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 
@@ -34,17 +36,16 @@ $editOptionalColumns = array_keys($editPromotionDateConfigs);
 
 function manageUsersHasColumn(PDO $pdo, string $column): bool
 {
-    static $cache = [];
+    static $columns = null;
 
-    if (array_key_exists($column, $cache)) {
-        return $cache[$column];
+    if ($columns === null) {
+        $columns = [];
+        foreach ($pdo->query('SHOW COLUMNS FROM user_rh')->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $columns[(string)($row['Field'] ?? '')] = true;
+        }
     }
 
-    $stmt = $pdo->prepare("SHOW COLUMNS FROM user_rh LIKE ?");
-    $stmt->execute([$column]);
-    $cache[$column] = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
-
-    return $cache[$column];
+    return isset($columns[$column]);
 }
 
 function manageUsersEnsureUpdateHistoryTable(PDO $pdo): void
@@ -111,6 +112,33 @@ function manageUsersCanManageProtectedUser(array $sessionUser, array $targetUser
 
     return (int)($sessionUser['id'] ?? 0) > 0
         && (int)($sessionUser['id'] ?? 0) === (int)($targetUser['id'] ?? 0);
+}
+
+function manageUsersIdentityDisplayName(string $name): string
+{
+    $name = preg_replace('/^RH\s*-\s*/iu', '', trim($name)) ?? trim($name);
+    $name = ems_medical_base_name($name);
+    return trim(preg_replace('/(?:\s*,?\s*(?:S\.?\s*Kep\.?|Ns\.?|M\.?\s*Kes\.?|M\.?\s*Med\.?|M\.?\s*Sc\.?|MARS|MPH|S\.?\s*Si\.?))+$/iu', '', $name) ?? $name, " \t\n\r\0\x0B,");
+}
+
+function manageUsersIdentityNameKey(string $name): string
+{
+    return ems_duty_hours_name_key(manageUsersIdentityDisplayName($name));
+}
+
+function manageUsersIsRoxwoodIdentity(array $person): bool
+{
+    return preg_match('/^RH\s*-/iu', trim((string)($person['name'] ?? ''))) === 1;
+}
+
+function manageUsersIdentityAction(string $issue): string
+{
+    if (str_contains($issue, 'ganda')) return 'HR dan tim medis: pastikan siapa pemilik ID ini, lalu perbaiki atau hapus ID yang terduplikasi.';
+    if (str_contains($issue, 'ambigu') || str_contains($issue, 'beberapa akun') || str_contains($issue, 'berbeda')) return 'Minta tim medis memastikan nama dan kedua ID milik orang yang sama, lalu samakan dengan web utama.';
+    if (str_contains($issue, 'kosong')) return 'Minta tim medis melengkapi ID warga dan ID staf pada data medis.';
+    if (str_contains($issue, 'ditemukan')) return 'Minta tim medis memastikan nama dan ID; jika benar belum ada, HR membuat atau menghubungkan akun web utama.';
+    if (str_contains($issue, 'tidak cocok') || str_contains($issue, 'belum sama')) return 'Minta tim medis memperbaiki nama atau ID agar sama dengan web utama.';
+    return 'Minta tim medis memeriksa nama dan ID, lalu samakan dengan web utama.';
 }
 
 function manageUsersMemberStatus(array $userRow): string
@@ -352,6 +380,174 @@ $stmtUsers = $pdo->prepare("
 ");
 $stmtUsers->execute($hasUnitCodeColumn ? [':unit_code' => $effectiveUnit] : []);
 $users = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+
+$canViewIdentityAudit = $effectiveUnit === 'roxwood'
+    || ems_is_programmer_roxwood_name($user['full_name'] ?? '');
+$identityAuditRows = [];
+$identityAuditError = '';
+$identityDutyUniqueCount = 0;
+$identityDutyIssueCount = 0;
+$identityResignedByCitizenId = [];
+$identityResignedByName = [];
+$identityDutyCheckedAt = (int)($_SESSION['identity_duty_checked_at'] ?? 0);
+$identityDutyRows = is_array($_SESSION['identity_duty_rows'] ?? null) ? $_SESSION['identity_duty_rows'] : [];
+$identityAuditCheckedAt = (int)($_SESSION['identity_audit_checked_at'] ?? 0);
+$identityAuditCache = json_decode((string)($_SESSION['identity_audit_json'] ?? ''), true);
+$identityAuditReady = $canViewIdentityAudit && is_array($identityAuditCache) && time() - $identityAuditCheckedAt < 10;
+if ($identityAuditReady) {
+    $identityAuditRows = is_array($identityAuditCache['rows'] ?? null) ? $identityAuditCache['rows'] : [];
+    $identityDutyUniqueCount = (int)($identityAuditCache['duty_total'] ?? 0);
+    $identityDutyIssueCount = (int)($identityAuditCache['duty_issues'] ?? 0);
+}
+$identityDutyFetchRequested = $canViewIdentityAudit && isset($_GET['check_identity_duty']);
+$identityAuditRefreshRequested = $canViewIdentityAudit && (!$identityAuditReady || $identityDutyFetchRequested);
+$identityDutyFetchSucceeded = false;
+if ($identityDutyFetchRequested) {
+    try {
+        $audit = ems_duty_hours_request($pdo, 'custom_range', '1970-01-01', date('Y-m-d'), true);
+        $identityDutyRows = array_map(static fn(array $row): array => [
+            'name' => (string)($row['name'] ?? ''), 'citizen_id' => (string)($row['citizen_id'] ?? ''), 'staff_id' => (string)($row['staff_id'] ?? '')
+        ], $audit['rows']);
+        $_SESSION['identity_duty_rows'] = $identityDutyRows;
+        $_SESSION['identity_duty_checked_at'] = $identityDutyCheckedAt = time();
+        $identityDutyFetchSucceeded = true;
+    } catch (Throwable $e) {
+        $identityAuditError = 'Silakan coba lagi atau hubungi admin.';
+    }
+}
+if ($identityAuditRefreshRequested) {
+    $localByName = [];
+    $localCitizenIds = [];
+    $identityUnitWhere = $hasUnitCodeColumn
+        ? "WHERE COALESCE(NULLIF(LOWER(TRIM(u.unit_code)), ''), 'roxwood') = 'roxwood'"
+        : '';
+    $identityCitizenIdSelect = $hasCitizenIdColumn ? 'u.citizen_id' : 'NULL AS citizen_id';
+    $identityUsersStmt = $pdo->query("SELECT u.id, u.full_name, {$identityCitizenIdSelect}, u.resigned_at FROM user_rh u {$identityUnitWhere}");
+    foreach ($identityUsersStmt->fetchAll(PDO::FETCH_ASSOC) as $localUser) {
+        $nameKey = manageUsersIdentityNameKey((string)($localUser['full_name'] ?? ''));
+        $citizenId = strtoupper(preg_replace('/[^A-Z0-9]/i', '', (string)($localUser['citizen_id'] ?? '')) ?? '');
+        if (!empty($localUser['resigned_at'])) {
+            if ($citizenId !== '') $identityResignedByCitizenId[$citizenId][] = $localUser;
+            if ($nameKey !== '') $identityResignedByName[$nameKey][] = $localUser;
+            continue;
+        }
+        if ($nameKey !== '') $localByName[$nameKey][] = $localUser;
+        if ($citizenId !== '') $localCitizenIds[$citizenId][] = $localUser;
+    }
+    foreach ($localCitizenIds as $citizenId => $matches) {
+        if (count($matches) > 1) {
+            $duplicateNames = array_map(static fn(array $match): string => manageUsersIdentityDisplayName((string)$match['full_name']), $matches);
+            $identityAuditRows[] = ['source' => 'Web farmasi', 'issue' => 'ID warga ganda', 'name' => '-', 'citizen_id' => '-', 'staff_id' => '-', 'local' => implode(', ', $duplicateNames), 'local_citizen_id' => $citizenId, 'action' => 'HR dan tim medis: pastikan siapa pemilik ID ini, lalu perbaiki atau hapus ID yang terduplikasi.'];
+        }
+    }
+
+    $identitySources = [];
+    if (ems_table_exists($pdo, 'medical_record_integrations')) {
+        $cachedRecords = $pdo->query("SELECT record_payload_json FROM medical_record_integrations WHERE provider = 'medical_center' AND hospital_code = 'roxwood'")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($cachedRecords as $payloadJson) {
+            $record = json_decode((string)$payloadJson, true);
+            if (!is_array($record)) continue;
+            $details = ems_medical_center_decode_array($record['medical_details'] ?? []);
+            $teamDetails = ems_medical_center_decode_array($details['tim'] ?? []);
+            $team = $record['members'] ?? ($teamDetails !== [] ? $teamDetails : ($details['members'] ?? $details['team'] ?? []));
+            foreach (['creator', 'dpjp'] as $key) {
+                if (!empty($record[$key])) {
+                    $person = ems_medical_center_person($record[$key]);
+                    if (manageUsersIsRoxwoodIdentity($person)) $identitySources[] = ['source' => 'Data rekam medis', 'person' => $person];
+                }
+            }
+            foreach (is_array($team) ? $team : [] as $member) {
+                $person = ems_medical_center_person($member);
+                if (manageUsersIsRoxwoodIdentity($person)) $identitySources[] = ['source' => 'Data rekam medis', 'person' => $person];
+            }
+            foreach (['first_responder', 'anestesi', 'radiologi', 'asisten_1', 'asisten_2', 'asisten_3', 'asisten_4', 'asisten_5'] as $key) {
+                if (!empty($teamDetails[$key])) {
+                    $person = ems_medical_center_person($teamDetails[$key]);
+                    if (manageUsersIsRoxwoodIdentity($person)) $identitySources[] = ['source' => 'Data rekam medis', 'person' => $person];
+                }
+            }
+        }
+    }
+    foreach ($identityDutyRows as $dutyRow) {
+        $person = [
+            'name' => (string)($dutyRow['name'] ?? ''), 'citizen_id' => (string)($dutyRow['citizen_id'] ?? ''), 'staff_id' => (string)($dutyRow['staff_id'] ?? '')
+        ];
+        if (manageUsersIsRoxwoodIdentity($person)) $identitySources[] = ['source' => 'Data jam kerja', 'person' => $person];
+    }
+    $seenIdentities = [];
+    foreach ($identitySources as $entry) {
+        $person = $entry['person'];
+        $name = trim((string)($person['name'] ?? ''));
+        $citizenId = strtoupper(preg_replace('/[^A-Z0-9]/i', '', (string)($person['citizen_id'] ?? '')) ?? '');
+        $staffId = strtoupper(preg_replace('/[^A-Z0-9]/i', '', (string)($person['staff_id'] ?? '')) ?? '');
+        if ($name === '' && $citizenId === '' && $staffId === '') continue;
+        $nameKey = manageUsersIdentityNameKey($name);
+        $signature = $entry['source'] . '|' . $citizenId . '|' . $staffId . '|' . $nameKey;
+        if (isset($seenIdentities[$signature])) continue;
+        $seenIdentities[$signature] = true;
+        $idMatches = [];
+        foreach (array_unique(array_filter([$citizenId, $staffId])) as $remoteId) {
+            foreach ($localCitizenIds[$remoteId] ?? [] as $localUser) $idMatches[(int)$localUser['id']] = $localUser;
+        }
+        $citizenMatches = $citizenId !== '' ? ($localCitizenIds[$citizenId] ?? []) : [];
+        $staffMatches = $staffId !== '' ? ($localCitizenIds[$staffId] ?? []) : [];
+        $nameMatches = $localByName[$nameKey] ?? [];
+        $resignedMatches = array_merge(
+            $citizenId !== '' ? ($identityResignedByCitizenId[$citizenId] ?? []) : [],
+            $staffId !== '' ? ($identityResignedByCitizenId[$staffId] ?? []) : [],
+            $nameKey !== '' ? ($identityResignedByName[$nameKey] ?? []) : []
+        );
+        if ($idMatches === [] && $nameMatches === [] && $resignedMatches !== []) continue;
+        $issues = [];
+        $identityAction = '';
+        if ($idMatches === [] && $nameMatches === []) {
+            $issues[] = 'Nama RH ditemukan di web utama, tetapi nama akun, Citizen ID, dan Staff ID belum ditemukan di web farmasi';
+            $identityAction = ($citizenId === '' && $staffId === '')
+                ? 'Konfirmasi ke petugas medis terkait, lalu minta mereka melengkapi Citizen ID dan Staff ID pada pengaturan web utama.'
+                : 'Minta HR dan petugas medis mencocokkan atau membuat akun web farmasi untuk orang ini.';
+        } else {
+            if ($citizenId === '' && $staffId === '') $issues[] = 'ID warga dan ID staf kosong';
+            if (count($idMatches) > 1) $issues[] = 'ID mengarah ke nama berbeda';
+            if ($citizenId !== '' && $staffId !== '' && (($citizenMatches === []) !== ($staffMatches === [])) && count($idMatches) === 1) $issues[] = 'ID warga dan ID staf belum sama-sama cocok';
+            if (count($idMatches) === 1) {
+                $matched = reset($idMatches);
+                $localNameKey = manageUsersIdentityNameKey((string)$matched['full_name']);
+                if ($nameKey !== '' && $nameKey !== $localNameKey) $issues[] = 'Nama berbeda dari web utama';
+            } elseif (count($idMatches) === 0) {
+                if (count($nameMatches) === 1) $issues[] = 'Nama sama, tetapi ID tidak cocok';
+                elseif (count($nameMatches) > 1) $issues[] = 'Nama mirip dengan beberapa akun';
+                else $issues[] = 'Nama dan ID belum ditemukan di web utama';
+            }
+            if (count($localCitizenIds[$citizenId] ?? []) > 1 && $citizenId !== '') $issues[] = 'ID warga ganda di web utama';
+        }
+        if ($entry['source'] === 'Data jam kerja') {
+            $identityDutyUniqueCount++;
+            if ($issues !== []) $identityDutyIssueCount++;
+        }
+        if ($issues !== []) {
+            $matchedNames = array_map(static fn(array $match): string => manageUsersIdentityDisplayName((string)$match['full_name']), $idMatches ?: $nameMatches);
+            $issueText = implode(', ', array_unique($issues));
+            $matchedLocalUsers = $idMatches ?: $nameMatches;
+            $localCitizenIdsText = implode(', ', array_values(array_unique(array_filter(array_map(static fn(array $match): string => trim((string)($match['citizen_id'] ?? '')), $matchedLocalUsers))))) ?: '-';
+            $identityAuditRows[] = ['source' => $entry['source'], 'issue' => $issueText, 'name' => $name !== '' ? manageUsersIdentityDisplayName($name) : '-', 'citizen_id' => $citizenId ?: '-', 'staff_id' => $staffId ?: '-', 'local' => implode(', ', $matchedNames) ?: 'Belum ditemukan', 'local_citizen_id' => $localCitizenIdsText, 'action' => $identityAction !== '' ? $identityAction : manageUsersIdentityAction($issueText)];
+        }
+    }
+    usort($identityAuditRows, static fn(array $a, array $b): int => strcasecmp(
+        (string)($a['source'] ?? '') . '|' . (string)($a['name'] ?? '') . '|' . (string)($a['issue'] ?? ''),
+        (string)($b['source'] ?? '') . '|' . (string)($b['name'] ?? '') . '|' . (string)($b['issue'] ?? '')
+    ));
+    $_SESSION['identity_audit_json'] = json_encode([
+        'rows' => $identityAuditRows,
+        'duty_total' => $identityDutyUniqueCount,
+        'duty_issues' => $identityDutyIssueCount,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+    $_SESSION['identity_audit_checked_at'] = $identityAuditCheckedAt = time();
+    $identityAuditReady = true;
+    if ($identityDutyFetchSucceeded) {
+        header('Location: ' . ems_url('/dashboard/manage_users.php?view=' . rawurlencode($viewMode) . '#identity-audit'));
+        exit;
+    }
+}
 
 $dynamicOtherDocFilters = [];
 
@@ -912,6 +1108,115 @@ uksort($usersByBatch, function ($a, $b) {
     .table-custom td:nth-child(3) {
         min-width: 80px;
     }
+
+    .identity-audit-intro {
+        margin: 0 0 1rem;
+        padding: 0.9rem 1rem;
+        border: 1px solid #bae6fd;
+        border-radius: 14px;
+        background: #f0f9ff;
+        color: #334155;
+        line-height: 1.55;
+    }
+
+    .identity-audit-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
+    .identity-audit-status {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        color: #475569;
+        font-size: 0.9rem;
+    }
+
+    .identity-audit-count {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: #fff7ed;
+        color: #c2410c;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .identity-audit-table-wrap {
+        max-height: 520px;
+        overflow: auto;
+        border: 1px solid #dbe4ee;
+        border-radius: 12px;
+    }
+
+    .identity-audit-table {
+        min-width: 1540px;
+        margin: 0;
+        table-layout: fixed;
+        border-collapse: collapse;
+    }
+
+    .identity-audit-table th,
+    .identity-audit-table td {
+        padding: 0.7rem 0.75rem;
+        border: 1px solid #d7e1ec !important;
+    }
+
+    .identity-audit-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #eff6ff;
+        color: #334155;
+        font-size: 0.78rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .identity-audit-table thead tr:first-child th:nth-child(3) { background: #dbeafe; }
+    .identity-audit-table thead tr:first-child th:nth-child(4) { background: #ccfbf1; }
+    .identity-audit-table thead tr:nth-child(2) th { top: 36px; }
+
+    .identity-audit-table col:nth-child(1) { width: 130px; }
+    .identity-audit-table col:nth-child(2) { width: 220px; }
+    .identity-audit-table col:nth-child(3) { width: 200px; }
+    .identity-audit-table col:nth-child(4),
+    .identity-audit-table col:nth-child(5) { width: 140px; }
+    .identity-audit-table col:nth-child(6) { width: 200px; }
+    .identity-audit-table col:nth-child(7) { width: 140px; }
+    .identity-audit-table col:nth-child(8) { width: 300px; }
+
+    .identity-audit-table td {
+        color: #334155;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        word-break: normal;
+        white-space: normal;
+        vertical-align: middle;
+    }
+
+    .identity-audit-table td:nth-child(1) {
+        white-space: nowrap;
+    }
+
+    .identity-audit-empty {
+        padding: 1rem;
+        border: 1px solid #bbf7d0;
+        border-radius: 12px;
+        background: #f0fdf4;
+        color: #166534;
+    }
+
+    @media (max-width: 640px) {
+        .identity-audit-toolbar { align-items: stretch; }
+        .identity-audit-toolbar .btn { width: 100%; }
+    }
 </style>
 
 <section class="content">
@@ -956,6 +1261,66 @@ uksort($usersByBatch, function ($a, $b) {
                 </div>
             </div>
         </div>
+
+        <?php if ($canViewIdentityAudit): ?>
+            <div class="card card-section mb-4 identity-audit-card" id="identity-audit">
+                <div class="card-header">Validasi Identitas Medis</div>
+                <div class="card-body">
+                    <p class="identity-audit-intro">Kami membandingkan data dari web utama Medical Center (<strong>medicalcenterime.my.id</strong>) dengan akun web farmasi Roxwood (<strong>roxwoodhospitalime.my.id</strong>). Daftar menampilkan maksimal 20 temuan dari petugas yang masih aktif. Selesaikan temuan yang terlihat; setelah data diperbaiki, temuan berikutnya akan muncul saat halaman dibuka ulang.</p>
+                    <div class="identity-audit-toolbar">
+                        <div class="identity-audit-status">
+                            <span class="identity-audit-count"><?= $identityAuditReady ? count($identityAuditRows) . ' temuan' : 'Belum diperiksa' ?></span>
+                            <?php if ($identityAuditReady && $identityDutyCheckedAt > 0): ?>
+                                <span>Data jam kerja: <?= $identityDutyUniqueCount ?> petugas diperiksa, <?= $identityDutyIssueCount ?> perlu diperbaiki, <?= max(0, $identityDutyUniqueCount - $identityDutyIssueCount) ?> cocok. Diperiksa <?= date('d M Y H:i', $identityDutyCheckedAt) ?>.</span>
+                            <?php elseif ($identityAuditReady): ?>
+                                <span>Data rekam medis diperiksa <?= date('d M Y H:i', $identityAuditCheckedAt) ?>. Data jam kerja belum tersedia pada sesi ini.</span>
+                            <?php else: ?>
+                                <span>Temuan sedang diperbarui otomatis.</span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php if ($identityAuditError !== ''): ?>
+                        <div class="alert alert-warning" role="alert">Data jam kerja belum berhasil diperiksa. <?= htmlspecialchars($identityAuditError, ENT_QUOTES, 'UTF-8') ?></div>
+                    <?php endif; ?>
+                    <?php if (!$identityAuditReady): ?>
+                        <div class="identity-audit-empty">Temuan sedang dimuat otomatis. Segarkan halaman beberapa saat lagi bila daftar belum muncul.</div>
+                    <?php elseif ($identityAuditRows === []): ?>
+                        <div class="identity-audit-empty">Tidak ada ketidaksesuaian pada sumber yang sudah diperiksa.</div>
+                    <?php else: ?>
+                        <div class="identity-audit-table-wrap">
+                            <table class="table table-sm table-striped align-middle identity-audit-table">
+                                <colgroup><col><col><col><col><col><col><col><col></colgroup>
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2">Jenis data</th>
+                                        <th rowspan="2">Temuan</th>
+                                        <th colspan="3">Web utama · medicalcenterime.my.id</th>
+                                        <th colspan="2">Web farmasi · roxwoodhospitalime.my.id</th>
+                                        <th rowspan="2">Tindakan yang harus dilakukan</th>
+                                    </tr>
+                                    <tr><th>Nama</th><th>Citizen ID</th><th>Staff ID</th><th>Nama akun</th><th>Citizen ID akun</th></tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach (array_slice($identityAuditRows, 0, 20) as $auditRow): ?>
+                                        <tr>
+                                            <td><?= htmlspecialchars($auditRow['source'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['issue'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['citizen_id'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['staff_id'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['local'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['local_citizen_id'] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($auditRow['action'] ?? manageUsersIdentityAction($auditRow['issue']), ENT_QUOTES, 'UTF-8') ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <?php if (count($identityAuditRows) > 20): ?><small>Menampilkan 20 dari <?= count($identityAuditRows) ?> temuan. Selesaikan temuan yang terlihat; setelah data diperbaiki, buka ulang halaman untuk memuat temuan berikutnya.</small><?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- View Mode Tabs -->
         <div class="card card-section mb-4">

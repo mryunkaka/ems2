@@ -9,7 +9,7 @@ function ems_duty_hours_name_key(?string $name): string
     return mb_strtoupper(trim(preg_replace('/[^\pL\pN]+/u', ' ', $name) ?? ''), 'UTF-8');
 }
 
-function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = '', string $endDate = ''): array
+function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = '', string $endDate = '', bool $includeUnmatched = false): array
 {
     $apiKey = trim((string) ems_env('EMS_DUTY_HOURS_API_KEY', ''));
     if ($apiKey === '') {
@@ -90,11 +90,14 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
                     'citizen_id' => $citizenId,
                     'position' => (string) ($item['role'] ?? '-'),
                 ];
-            } else {
+            } elseif (!$includeUnmatched) {
                 continue;
             }
         }
         if (!is_array($registeredStaff)) {
+            if ($includeUnmatched) {
+                $rows[] = $item + ['registered_staff' => null];
+            }
             continue;
         }
         $registeredStaff['medical_center_citizen_id'] = $citizenId;
