@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "DUMMY-OPERASI-001",
+    "summary": "Operasi mayor dengan Co-Ass sebagai DPJP",
+    "expected_severity": "risk",
+    "reference_title": "SOP Pelayanan Kamar Bedah (Operating Theatre / OK)",
+    "reference_location": "Halaman 2, bagian 1.3 dan 1.4; halaman 4, bagian 4.3 (operasi mayor)",
+    "reference_url": "https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=81",
+    "evidence": "Dokumen menyebut operasi mayor dilakukan oleh DPJP Dokter Umum atau Dokter Spesialis dengan dua asisten; Co-Ass tercantum sebagai DPJP untuk operasi minor.",
+    "record": {
+      "patient_code": "DUMMY-OPERASI-001 (identitas sintetis, bukan pasien nyata)",
+      "surgical_history": "Pernah menjalani Closed Reduction untuk dislokasi pergelangan kaki.",
+      "current_diagnosis": "Hematoma epidural setelah trauma; CT kepala menunjukkan epidural hematoma (EDH).",
+      "procedure": "Kraniotomi + Evakuasi Hematoma EDH",
+      "recorded_classification": "major",
+      "dpjp_role": "Co-Ass",
+      "assistant_roles": ["Paramedic"],
+      "operative_indication": "Evakuasi hematoma segera berdasarkan hasil CT dan penilaian DPJP.",
+      "anesthesia": "Anestesi umum dan pemantauan tanda vital dicatat; DPJP Co-Ass bertanggung jawab sebagai operator utama dan petugas anestesi."
+    }
+  },
+  {
+    "case_id": "DUMMY-OPERASI-002",
+    "summary": "Operasi mayor kraniotomi dengan Paramedic sebagai DPJP/operator",
+    "expected_severity": "risk",
+    "reference_title": "SOP Pelayanan Kamar Bedah (Operating Theatre / OK)",
+    "reference_location": "Halaman 2, bagian 1.3 dan 1.4; halaman 4, bagian 4.3 (operasi mayor)",
+    "reference_url": "https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=81",
+    "evidence": "Dokumen menetapkan DPJP operasi mayor adalah Dokter Umum atau Dokter Spesialis, menjalankan peran Operator Utama dan Tim Anestesi; tim pendamping dua asisten. Paramedic bukan kualifikasi DPJP operasi mayor dalam ketentuan ini.",
+    "record": {
+      "patient_code": "DUMMY-OPERASI-002 (identitas sintetis, bukan pasien nyata)",
+      "surgical_history": "Pernah menjalani ORIF regio tibia sinistra.",
+      "current_diagnosis": "Perdarahan intrakranial setelah trauma; CT kepala menunjukkan hematoma epidural.",
+      "procedure": "Kraniotomi + Evakuasi Hematoma EDH",
+      "recorded_classification": "major",
+      "dpjp_role": "Paramedic (dicatat sebagai DPJP dan operator utama); tidak ada dokter dalam tim.",
+      "assistant_roles": ["Co-Ass", "Paramedic"],
+      "operative_indication": "Evakuasi hematoma segera berdasarkan hasil CT dan penilaian DPJP.",
+      "anesthesia": "Anestesi umum dan pemantauan tanda vital dicatat sebagai dilakukan oleh DPJP Paramedic."
+    }
+  },
+  {
+    "case_id": "DUMMY-OPERASI-003",
+    "summary": "Operasi minor hanya mencatat satu dari dua asisten",
+    "expected_severity": "review",
+    "reference_title": "SOP Pelayanan Kamar Bedah (Operating Theatre / OK)",
+    "reference_location": "Halaman 2, bagian 1.3 (komposisi tim operasi)",
+    "reference_url": "https://roxwoodhospitalime.my.id/dashboard/document_view.php?id=81",
+    "evidence": "Dokumen menyebut setiap tindakan operasi melibatkan satu DPJP dan dua orang asisten operasi (Asisten 1 dan Asisten 2).",
+    "record": {
+      "patient_code": "DUMMY-OPERASI-003 (identitas sintetis, bukan pasien nyata)",
+      "surgical_history": "Pernah menjalani Closed Reduction untuk dislokasi pergelangan kaki.",
+      "current_diagnosis": "Dislokasi pergelangan kaki.",
+      "procedure": "Closed Reduction",
+      "recorded_classification": "minor",
+      "dpjp_role": "Dokter Umum",
+      "assistant_roles": ["Asisten 1: Paramedic bersertifikat Medical Class", "Asisten 2: tidak dicatat"],
+      "operative_indication": "Reposisi tertutup untuk dislokasi pergelangan kaki.",
+      "anesthesia": "Anestesi lokal dicatat."
+    }
+  }
+]

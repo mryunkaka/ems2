@@ -188,6 +188,7 @@ try {
                 'case_count' => 0,
                 'case_points' => 0,
                 'has_non_tolerable' => false,
+                'has_undecided_case' => false,
                 'latest_case_date' => null,
                 'latest_letter_status' => 'not_needed',
             ];
@@ -196,6 +197,7 @@ try {
         $caseStats[$subjectUserId]['case_count']++;
         $caseStats[$subjectUserId]['case_points'] += (int)($case['total_points'] ?? 0);
         $caseStats[$subjectUserId]['has_non_tolerable'] = $caseStats[$subjectUserId]['has_non_tolerable'] || ((int)($case['non_tolerable_count'] ?? 0) > 0);
+        $caseStats[$subjectUserId]['has_undecided_case'] = $caseStats[$subjectUserId]['has_undecided_case'] || ((string)($case['status'] ?? '') === 'open' && (int)($case['total_points'] ?? 0) === 0 && trim((string)($case['indication_names'] ?? '')) === '');
         $caseStats[$subjectUserId]['latest_letter_status'] = (string)($case['letter_status'] ?? $caseStats[$subjectUserId]['latest_letter_status']);
 
         $caseDate = trim((string)($case['case_date'] ?? ''));
@@ -232,6 +234,7 @@ try {
             'case_count' => 0,
             'case_points' => 0,
             'has_non_tolerable' => false,
+            'has_undecided_case' => false,
             'latest_case_date' => null,
             'latest_letter_status' => 'not_needed',
         ];
@@ -252,7 +255,7 @@ try {
             'has_non_tolerable' => (bool)$caseStat['has_non_tolerable'],
             'latest_case_date' => $caseStat['latest_case_date'],
             'latest_letter_status' => (string)$caseStat['latest_letter_status'],
-            'current_recommendation' => disciplinaryCurrentRecommendationLabel($activePoints, (bool)$caseStat['has_non_tolerable']),
+            'current_recommendation' => !empty($caseStat['has_undecided_case']) ? 'Menunggu tinjauan Komdis' : disciplinaryCurrentRecommendationLabel($activePoints, (bool)$caseStat['has_non_tolerable']),
         ];
 
         $summary['medics']++;
@@ -272,6 +275,12 @@ try {
 }
 
 $casesByUser = [];
+$validationIncomingCases = array_values(array_filter($caseRows, static function (array $case): bool {
+    return str_starts_with((string)($case['case_code'] ?? ''), 'MR-')
+        && (string)($case['status'] ?? '') === 'open'
+        && (int)($case['total_points'] ?? 0) === 0
+        && trim((string)($case['indication_names'] ?? '')) === '';
+}));
 foreach ($caseRows as $case) {
     $casesByUser[(int)($case['subject_user_id'] ?? 0)][] = $case;
 }
@@ -303,6 +312,39 @@ include __DIR__ . '/../partials/sidebar.php';
                     <?= ems_icon('plus', 'h-4 w-4') ?>
                     <span>Tambah Kasus Baru</span>
                 </button>
+            </div>
+        </div>
+
+        <div class="card mb-4" id="medical-record-reports">
+            <div class="card-header">
+                <span>Laporan Rekam Medis dari Medical Affair</span>
+                <span class="badge-info"><?= count($validationIncomingCases) ?> menunggu tinjauan</span>
+            </div>
+            <div class="card-body">
+                <?php if ($validationIncomingCases === []): ?>
+                    <p class="text-sm text-gray-500">Belum ada laporan rekam medis baru yang menunggu tinjauan Komdis.</p>
+                <?php else: ?>
+                    <div class="space-y-3">
+                        <?php foreach ($validationIncomingCases as $incomingCase): ?>
+                            <article class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="font-semibold"><?= htmlspecialchars((string)$incomingCase['case_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="meta-text-xs">Kode <?= htmlspecialchars((string)$incomingCase['case_code'], ENT_QUOTES, 'UTF-8') ?> · Medis: <?= htmlspecialchars((string)$incomingCase['subject_name'], ENT_QUOTES, 'UTF-8') ?> · Pelapor: <?= htmlspecialchars((string)$incomingCase['created_by_name'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                    <span class="badge-warning">Menunggu penetapan Komdis</span>
+                                </div>
+                                <div class="mt-3 text-sm"><?= nl2br(htmlspecialchars((string)$incomingCase['summary'], ENT_QUOTES, 'UTF-8')) ?></div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <button type="button" class="btn-primary btn-sm btn-open-disciplinary-detail" data-template-id="disciplinary-detail-<?= (int)$incomingCase['subject_user_id'] ?>" data-modal-title="Tinjauan Kasus Komdis" data-modal-subtitle="<?= htmlspecialchars((string)$incomingCase['subject_name'], ENT_QUOTES, 'UTF-8') ?>">Buka tinjauan Komdis</button>
+                                    <?php if (preg_match('/#(\d+)/', (string)$incomingCase['case_name'], $recordMatch)): ?>
+                                        <a class="btn-secondary btn-sm" href="/dashboard/rekam_medis_view.php?id=<?= (int)$recordMatch[1] ?>">Buka rekam medis</a>
+                                    <?php endif; ?>
+                                </div>
+                            </article>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -484,9 +526,31 @@ include __DIR__ . '/../partials/sidebar.php';
                                         <strong><?= number_format((int)$case['total_points'], 0, ',', '.') ?> poin</strong>
                                         <div class="meta-text-xs">Toleran: <?= (int)$case['tolerable_count'] ?> | Tidak toleran: <?= (int)$case['non_tolerable_count'] ?></div>
                                     </td>
-                                    <td><?= htmlspecialchars(disciplinaryToleranceSummaryLabel((string)$case['tolerance_summary']), ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= ((int)$case['total_points'] === 0 && trim((string)($case['indication_names'] ?? '')) === '') ? 'Menunggu penetapan Komdis' : htmlspecialchars(disciplinaryToleranceSummaryLabel((string)$case['tolerance_summary']), ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= disciplinaryAttachmentLinksHtml($attachmentsMap[(int)$case['id']] ?? []) ?></td>
                                     <td class="table-actions">
+                                        <?php if ((string)$case['status'] === 'open' && (int)$case['total_points'] === 0 && trim((string)($case['indication_names'] ?? '')) === ''): ?>
+                                            <details class="mb-2"><summary class="btn-primary btn-sm cursor-pointer">Tinjau &amp; tetapkan</summary>
+                                                <form method="POST" action="disciplinary_committee_action.php" class="form mt-2 min-w-64 js-validation-case-decision">
+                                                    <?= csrfField(); ?>
+                                                    <input type="hidden" name="action" value="assign_validation_case_decision">
+                                                    <input type="hidden" name="redirect_to" value="disciplinary_cases.php">
+                                                    <input type="hidden" name="case_id" value="<?= (int)$case['id'] ?>">
+                                                    <label>Pasal/indikasi jika sesuai</label>
+                                                    <select name="indication_id"><option value="">Tidak ada yang sesuai — tetapkan manual</option>
+                                                        <?php foreach ($indications as $indication): ?>
+                                                            <option value="<?= (int)$indication['id'] ?>"><?= htmlspecialchars((string)$indication['name'], ENT_QUOTES, 'UTF-8') ?> · <?= (int)$indication['default_points'] ?> poin</option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                    <label>Poin manual</label><input type="number" name="manual_points" min="1" max="1000" value="1" required>
+                                                    <label>Tingkat toleransi manual</label><select name="manual_tolerance"><option value="tolerable">Dapat ditoleransi</option><option value="non_tolerable">Tidak dapat ditoleransi</option></select>
+                                                    <label>Catatan keputusan</label><textarea name="decision_notes" rows="2"></textarea>
+                                                    <button type="submit" class="btn-success btn-sm">Simpan penetapan Komdis</button>
+                                                </form>
+                                            </details>
+                                        <?php elseif ((int)$case['total_points'] === 0 && trim((string)($case['indication_names'] ?? '')) === ''): ?>
+                                            <span class="meta-text-xs">Menunggu tinjauan Komdis</span>
+                                        <?php endif; ?>
                                         <form method="POST" action="disciplinary_committee_action.php" class="inline js-delete-case" data-confirm="Yakin ingin menghapus kasus ini? Surat peringatan terkait akan ikut terhapus, dan relasi pengurangan poin akan dilepas dari kasus ini.">
                                             <?= csrfField(); ?>
                                             <input type="hidden" name="action" value="delete_case">
@@ -933,6 +997,19 @@ include __DIR__ . '/../partials/sidebar.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.js-validation-case-decision').forEach(function(form) {
+        const indication = form.querySelector('[name="indication_id"]');
+        const manualFields = ['manual_points', 'manual_tolerance'].map(function(name) { return form.querySelector('[name="' + name + '"]'); });
+        const syncManual = function() {
+            const manual = indication.value === '';
+            manualFields.forEach(function(field) {
+                field.disabled = !manual;
+                field.required = manual && field.name === 'manual_points';
+            });
+        };
+        indication.addEventListener('change', syncManual);
+        syncManual();
+    });
     const indications = <?= json_encode(array_map(static function ($row) {
         return [
             'id' => (int)$row['id'],

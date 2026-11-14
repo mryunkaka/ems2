@@ -509,6 +509,57 @@ if ($action === 'create_case') {
     disciplinaryRedirect($redirectTo);
 }
 
+if ($action === 'assign_validation_case_decision') {
+    $caseId = (int)($_POST['case_id'] ?? 0);
+    $indicationId = (int)($_POST['indication_id'] ?? 0);
+    $manualPoints = (int)($_POST['manual_points'] ?? 0);
+    $manualTolerance = trim((string)($_POST['manual_tolerance'] ?? 'tolerable'));
+
+    try {
+        $pdo->beginTransaction();
+        $caseStmt = $pdo->prepare("SELECT id,subject_user_id,case_name FROM disciplinary_cases WHERE id=? AND status='open' AND total_points=0 FOR UPDATE");
+        $caseStmt->execute([$caseId]);
+        $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$case) throw new RuntimeException('Kasus tidak ditemukan, sudah ditinjau, atau sudah memiliki poin.');
+        $itemCount = $pdo->prepare('SELECT COUNT(*) FROM disciplinary_case_items WHERE case_id=?');
+        $itemCount->execute([$caseId]);
+        if ((int)$itemCount->fetchColumn() > 0) throw new RuntimeException('Pasal atau poin untuk kasus ini sudah pernah ditetapkan.');
+
+        if ($indicationId > 0) {
+            $indicationStmt = $pdo->prepare('SELECT id,name,default_points,tolerance_type FROM disciplinary_indications WHERE id=? AND is_active=1 LIMIT 1');
+            $indicationStmt->execute([$indicationId]);
+            $indication = $indicationStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$indication) throw new RuntimeException('Pasal yang dipilih sudah tidak aktif.');
+            $indicationName = (string)$indication['name'];
+            $points = (int)$indication['default_points'];
+            $tolerance = (string)$indication['tolerance_type'];
+        } else {
+            if ($manualPoints < 1 || $manualPoints > 1000 || !in_array($manualTolerance, ['tolerable','non_tolerable'], true)) throw new RuntimeException('Poin dan tingkat toleransi manual tidak valid.');
+            $indication = null;
+            $indicationName = 'Penetapan manual Komdis';
+            $points = $manualPoints;
+            $tolerance = $manualTolerance;
+        }
+
+        $notes = trim((string)($_POST['decision_notes'] ?? ''));
+        $insertItem = $pdo->prepare('INSERT INTO disciplinary_case_items (case_id,indication_id,indication_name_snapshot,points_snapshot,tolerance_type_snapshot,notes) VALUES (?,?,?,?,?,?)');
+        $insertItem->execute([$caseId, $indication['id'] ?? null, $indicationName, $points, $tolerance, $notes !== '' ? $notes : null]);
+        $tolerableCount = $tolerance === 'tolerable' ? 1 : 0;
+        $nonTolerableCount = $tolerance === 'non_tolerable' ? 1 : 0;
+        $toleranceSummary = disciplinaryToleranceSummary($tolerableCount, $nonTolerableCount);
+        $recommendation = ems_disciplinary_recommendation_from_points($points, $nonTolerableCount > 0);
+        $update = $pdo->prepare("UPDATE disciplinary_cases SET total_points=?,tolerable_count=?,non_tolerable_count=?,tolerance_summary=?,recommended_action=?,letter_status=?,status='reviewed',reviewed_by=?,reviewed_at=NOW() WHERE id=?");
+        $update->execute([$points,$tolerableCount,$nonTolerableCount,$toleranceSummary,$recommendation,disciplinaryLetterStatus($recommendation),$userId,$caseId]);
+        $pdo->commit();
+        $_SESSION['flash_messages'][] = 'Penetapan Komdis berhasil dicatat pada kasus.';
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $_SESSION['flash_errors'][] = 'Penetapan Komdis gagal: ' . $error->getMessage();
+    }
+
+    disciplinaryRedirect($redirectTo);
+}
+
 if ($action === 'update_case_status') {
     $caseId = (int)($_POST['case_id'] ?? 0);
     $status = trim((string)($_POST['status'] ?? 'open'));

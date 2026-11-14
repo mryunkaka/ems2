@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `medical_record_validation_findings` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `medical_record_id` INT NOT NULL,
+  `subject_user_id` INT DEFAULT NULL,
+  `rule_key` VARCHAR(100) NOT NULL,
+  `source` ENUM('offline','ai') NOT NULL DEFAULT 'offline',
+  `finding` TEXT NOT NULL,
+  `recommendation` TEXT DEFAULT NULL,
+  `reference_title` VARCHAR(255) DEFAULT NULL,
+  `reference_location` VARCHAR(100) DEFAULT NULL,
+  `reference_url` VARCHAR(500) DEFAULT NULL,
+  `status` ENUM('pending','ignored','notice_sent','reported','resolved') NOT NULL DEFAULT 'pending',
+  `disciplinary_case_id` BIGINT UNSIGNED DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_medical_validation_record_rule` (`medical_record_id`,`rule_key`),
+  KEY `idx_medical_validation_status` (`status`,`source`),
+  KEY `idx_medical_validation_subject` (`subject_user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

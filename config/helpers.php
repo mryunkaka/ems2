@@ -1303,6 +1303,11 @@ function ems_can_access_division_menu(?string $userDivision, ?string $targetDivi
     $userDivision = ems_normalize_division($userDivision);
     $targetDivision = ems_normalize_division($targetDivision);
 
+    $sessionDivision = ems_normalize_division($_SESSION['user_rh']['division'] ?? '');
+    if (ems_current_user_is_programmer_roxwood() && $userDivision !== '' && $userDivision === $sessionDivision) {
+        return true;
+    }
+
     if ($userDivision === '' || $targetDivision === '') {
         return false;
     }
@@ -1367,6 +1372,9 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 {
     $division = ems_normalize_division($division);
     $sessionUser = $_SESSION['user_rh'] ?? [];
+    if (ems_current_user_is_programmer_roxwood() && $division !== '' && $division === ems_normalize_division($sessionUser['division'] ?? '')) {
+        return null;
+    }
     $unitCode = ems_normalize_unit_code($sessionUser['unit_code'] ?? 'roxwood');
     $canViewAllUnits = !empty($sessionUser['can_view_all_units']);
     $position = ems_normalize_position($sessionUser['position'] ?? '');
@@ -1547,6 +1555,10 @@ function ems_division_allowed_dashboard_pages(?string $division): ?array
 
 function ems_enforce_dashboard_page_access(?string $division, string $scriptName, string $redirectTo = '/dashboard/index.php'): void
 {
+    if (ems_current_user_is_programmer_roxwood()) {
+        return;
+    }
+
     // Secretary workspace is available to all divisions; each page/controller
     // validates the user's division and applies its own division data scope.
     if (in_array($scriptName, [

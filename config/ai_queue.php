@@ -133,9 +133,26 @@ function ems_ai_queue_monitor(PDO $pdo): array
 {
     $counts = ['queued'=>0,'running'=>0,'completed'=>0,'failed'=>0];
     foreach ($pdo->query('SELECT status,COUNT(*) AS n FROM system_ai_request_queue GROUP BY status')->fetchAll(PDO::FETCH_ASSOC) as $row) $counts[$row['status']] = (int)$row['n'];
-    try { $active=$pdo->query("SELECT u.full_name AS requester_name,q.feature_label,q.started_at FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='running' ORDER BY q.started_at,q.id")->fetchAll(PDO::FETCH_ASSOC) ?: []; }
+    try { $active=$pdo->query("SELECT u.full_name AS requester_name,q.feature_label,q.references_json,q.started_at FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='running' ORDER BY q.started_at,q.id")->fetchAll(PDO::FETCH_ASSOC) ?: []; }
     catch(Throwable) { $active=[]; }
-    return ['counts'=>$counts,'active'=>$active];
+    try { $queued=$pdo->query("SELECT u.full_name AS requester_name,q.feature_label,q.references_json,q.queued_at FROM system_ai_request_queue q LEFT JOIN user_rh u ON u.id=q.requester_id WHERE q.status='queued' ORDER BY q.queued_at,q.id LIMIT 20")->fetchAll(PDO::FETCH_ASSOC) ?: []; }
+    catch(Throwable) { $queued=[]; }
+    $addDetails = static function (array &$jobs): void {
+        foreach ($jobs as &$job) {
+            $references = json_decode((string)($job['references_json'] ?? ''), true);
+            if (str_contains(strtolower((string)$job['feature_label']), 'rekam medis') && is_array($references) && (int)($references['record_id'] ?? 0) > 0) {
+                $job['task_detail'] = 'Rekam medis #' . (int)$references['record_id'];
+            } else {
+                $job['task_detail'] = (string)$job['feature_label'];
+            }
+            unset($job['references_json']);
+        }
+        unset($job);
+    };
+    $addDetails($active);
+    $addDetails($queued);
+    $settings = ems_ai_queue_settings($pdo);
+    return ['counts'=>$counts,'active'=>$active,'queued'=>$queued,'max_concurrent'=>max(1,(int)($settings['ai_max_concurrent_requests']??1))];
 }
 
 function ems_ai_queue_provider_test(PDO $pdo, int $requesterId, string $scope, string $provider): array
