@@ -84,6 +84,22 @@ $remoteMedicalDetails = $isRemoteMedicalCenterRecord
 $remotePayload = $isRemoteMedicalCenterRecord
     ? ems_medical_center_decode_array($record['remote_payload_json'] ?? [])
     : [];
+if ($isRemoteMedicalCenterRecord && $remotePayload !== [] && (ems_medical_center_person($remoteDpjp)['name'] === '' || $remoteAssistants === [])) {
+    $remoteFallback = ems_medical_center_normalize_record($remotePayload, $pdo);
+    $fallbackDpjp = ems_medical_center_decode_array($remoteFallback['remote_dpjp_json'] ?? []);
+    if (ems_medical_center_person($remoteDpjp)['name'] === '' && ems_medical_center_person($fallbackDpjp)['name'] !== '') {
+        $remoteDpjp = $fallbackDpjp;
+    }
+    if ($remoteAssistants === []) {
+        $remoteAssistants = ems_medical_center_decode_array($remoteFallback['remote_assistants_json'] ?? []);
+    }
+}
+if ($isRemoteMedicalCenterRecord && trim((string) ($record['doctor_name'] ?? '')) === '') {
+    $remoteDoctorName = trim((string) (($remoteDpjp['local_name'] ?? '') ?: ($remoteDpjp['name'] ?? '')));
+    if ($remoteDoctorName !== '') {
+        $record['doctor_name'] = ems_medical_doctor_display_name_for_user($pdo, $remoteDoctorName) ?: $remoteDoctorName;
+    }
+}
 $remoteCreator = $isRemoteMedicalCenterRecord
     ? ems_medical_center_person($remotePayload['creator'] ?? ($remoteMedicalDetails['creator'] ?? null))
     : ['name' => ''];

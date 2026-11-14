@@ -57,7 +57,7 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
     foreach ($staffStmt->fetchAll(PDO::FETCH_ASSOC) as $person) {
         if (!ems_is_medical_position($person['position'] ?? null)) continue;
         $citizenId = strtoupper(trim((string) $person['citizen_id']));
-        $staff[$citizenId] = $person;
+        if ($citizenId !== '') $staff[$citizenId][] = $person;
         $nameKey = ems_duty_hours_name_key((string) ($person['full_name'] ?? ''));
         if ($nameKey !== '') $staffByName[$nameKey][] = $person;
     }
@@ -70,8 +70,15 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
         $citizenId = strtoupper(trim((string) ($item['citizen_id'] ?? '')));
         $staffId = strtoupper(trim((string) ($item['staff_id'] ?? '')));
         // Medical Center citizen_id and staff_id can differ for the same person.
-        $registeredStaff = $staff[$citizenId] ?? $staff[$staffId] ?? null;
-        if ($registeredStaff === null) {
+        $idMatches = [];
+        foreach (array_unique(array_filter([$citizenId, $staffId])) as $externalId) {
+            foreach ($staff[$externalId] ?? [] as $match) {
+                $idMatches[(int) $match['id']] = $match;
+            }
+        }
+        $identityConflict = count($idMatches) > 1;
+        $registeredStaff = count($idMatches) === 1 ? reset($idMatches) : null;
+        if ($registeredStaff === null && !$identityConflict) {
             // Resolve only exact, unique names so ambiguous identities never inherit another person's duty data.
             $nameMatches = $staffByName[ems_duty_hours_name_key((string) ($item['name'] ?? ''))] ?? [];
             if (count($nameMatches) === 1) {
@@ -87,7 +94,11 @@ function ems_duty_hours_request(PDO $pdo, string $period, string $startDate = ''
                 continue;
             }
         }
-        $registeredStaff['citizen_id'] = $citizenId !== '' ? $citizenId : ($staffId !== '' ? $staffId : (string) ($registeredStaff['citizen_id'] ?? ''));
+        if (!is_array($registeredStaff)) {
+            continue;
+        }
+        $registeredStaff['medical_center_citizen_id'] = $citizenId;
+        $registeredStaff['medical_center_staff_id'] = $staffId;
         $rows[] = $item + ['registered_staff' => $registeredStaff];
     }
 

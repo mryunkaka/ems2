@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/curl_ca_bundle.php';
+
 if (!function_exists('ems_medical_center_api_url')) {
     function ems_medical_center_api_url(): string
     {
@@ -98,7 +100,7 @@ if (!function_exists('ems_medical_center_request_json')) {
             throw new RuntimeException('Tidak dapat menyiapkan koneksi Medical Center API.');
         }
 
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_HTTPGET => true,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 10,
@@ -107,7 +109,12 @@ if (!function_exists('ems_medical_center_request_json')) {
                 'Accept: application/json',
                 sprintf('%s: %s', 'X-API-Key', $apiKey),
             ],
-        ]);
+        ];
+        $caBundle = emsFindCaBundlePath();
+        if ($caBundle !== null) {
+            $options[CURLOPT_CAINFO] = $caBundle;
+        }
+        curl_setopt_array($ch, $options);
 
         $body = curl_exec($ch);
         $curlError = curl_error($ch);
@@ -262,14 +269,17 @@ if (!function_exists('ems_medical_center_person')) {
             if ($name === '' && is_array($nestedPerson)) {
                 $name = trim((string) ($nestedPerson['name'] ?? ($nestedPerson['full_name'] ?? ($nestedPerson['nama'] ?? ''))));
             }
-            $citizenId = trim((string) ($value['citizen_id'] ?? ($value['staff_id'] ?? ($value['kode_medis'] ?? ''))));
-            if ($citizenId === '' && is_array($nestedPerson)) {
-                $citizenId = trim((string) ($nestedPerson['citizen_id'] ?? ($nestedPerson['staff_id'] ?? '')));
+            $citizenId = trim((string) ($value['citizen_id'] ?? ''));
+            $staffId = trim((string) ($value['staff_id'] ?? ($value['kode_medis'] ?? '')));
+            if (is_array($nestedPerson)) {
+                $citizenId = $citizenId ?: trim((string) ($nestedPerson['citizen_id'] ?? ''));
+                $staffId = $staffId ?: trim((string) ($nestedPerson['staff_id'] ?? ($nestedPerson['kode_medis'] ?? '')));
             }
             $remoteId = $value['id'] ?? null;
         } else {
             $text = trim((string) ($value ?? ''));
             $citizenId = '';
+            $staffId = '';
             $name = $text;
             if (preg_match('/^(.*?)\s*\(([^()]+)\)\s*$/u', $text, $matches)) {
                 $name = trim($matches[1]);
@@ -281,6 +291,7 @@ if (!function_exists('ems_medical_center_person')) {
         return [
             'name' => $name,
             'citizen_id' => $citizenId,
+            'staff_id' => $staffId,
             'remote_id' => $remoteId,
         ];
     }
@@ -302,21 +313,33 @@ if (!function_exists('ems_medical_center_gender')) {
 if (!function_exists('ems_medical_center_local_staff')) {
     function ems_medical_center_local_staff(PDO $pdo, mixed $value): ?array
     {
+        static $staffCache = [];
         $person = ems_medical_center_person($value);
-        $remoteCitizenId = trim((string) ($person['citizen_id'] ?? ''));
-        if ($remoteCitizenId === '') {
+        $remoteIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): string => strtoupper(trim((string) $id)),
+            [$person['citizen_id'] ?? '', $person['staff_id'] ?? '']
+        ))));
+        if ($remoteIds === []) {
             return null;
         }
+        $cacheKey = implode('|', $remoteIds);
+        if (array_key_exists($cacheKey, $staffCache)) {
+            return $staffCache[$cacheKey];
+        }
 
-        $sql = 'SELECT id, full_name, citizen_id, position FROM user_rh WHERE citizen_id = ?';
-        $params = [$remoteCitizenId];
+        $sql = 'SELECT id, full_name, citizen_id, position FROM user_rh WHERE UPPER(TRIM(citizen_id)) IN (' . implode(',', array_fill(0, count($remoteIds), '?')) . ')';
+        $params = $remoteIds;
         if (ems_column_exists($pdo, 'user_rh', 'unit_code')) {
-            $sql .= " AND unit_code = 'roxwood'";
+            $sql .= " AND COALESCE(NULLIF(LOWER(TRIM(unit_code)), ''), 'roxwood') = 'roxwood'";
         }
         $sql .= ' LIMIT 1';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $matches = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: [] as $staff) {
+            $matches[(int) $staff['id']] = $staff;
+        }
+        return $staffCache[$cacheKey] = count($matches) === 1 ? reset($matches) : null;
     }
 }
 
@@ -543,6 +566,45 @@ if (!function_exists('ems_medical_center_normalize_record')) {
                 $remoteDpjp = $teamMember;
             }
         }
+        // GET lama bisa kosongkan dpjp; skor DPJP dan ID creator di members mengidentifikasi DPJP-nya.
+        if (($remoteDpjp === null || $remoteDpjp === '') && (float) ($record['poin']['dpjp'] ?? 0) > 0) {
+            $creator = $record['creator'] ?? null;
+            $creatorPerson = ems_medical_center_person($creator);
+            foreach (is_array($team) ? $team : [] as $teamMember) {
+                $memberPerson = ems_medical_center_person($teamMember);
+                if (
+                    ($creatorPerson['remote_id'] !== null && (string) $creatorPerson['remote_id'] === (string) ($memberPerson['remote_id'] ?? ''))
+                    || ($creatorPerson['staff_id'] !== '' && $creatorPerson['staff_id'] === ($memberPerson['staff_id'] ?? ''))
+                    || ($creatorPerson['citizen_id'] !== '' && $creatorPerson['citizen_id'] === ($memberPerson['citizen_id'] ?? ''))
+                ) {
+                    $remoteDpjp = $creator;
+                    break;
+                }
+            }
+        }
+        if (($remoteDpjp !== null && $remoteDpjp !== '') && $remoteAssistants === []) {
+            $dpjpPerson = ems_medical_center_person($remoteDpjp);
+            $dpjpIds = array_filter([
+                (string) ($dpjpPerson['remote_id'] ?? ''),
+                (string) ($dpjpPerson['citizen_id'] ?? ''),
+                (string) ($dpjpPerson['staff_id'] ?? ''),
+            ]);
+            foreach (is_array($team) ? $team : [] as $index => $teamMember) {
+                $memberPerson = ems_medical_center_person($teamMember);
+                $memberIds = array_filter([
+                    (string) ($memberPerson['remote_id'] ?? ''),
+                    (string) ($memberPerson['citizen_id'] ?? ''),
+                    (string) ($memberPerson['staff_id'] ?? ''),
+                ]);
+                if ($dpjpIds !== [] && array_intersect($dpjpIds, $memberIds) !== []) {
+                    continue;
+                }
+                if ($dpjpIds === [] && strcasecmp($dpjpPerson['name'], $memberPerson['name']) === 0) {
+                    continue;
+                }
+                $remoteAssistants['member_' . $index] = $teamMember;
+            }
+        }
         $photos = $record["photos"] ?? ($details["photos"] ?? []);
         $localDpjp = $pdo !== null ? ems_medical_center_local_staff($pdo, $remoteDpjp) : null;
         $firstResponder = $teamDetails['first_responder'] ?? null;
@@ -605,7 +667,11 @@ if (!function_exists('ems_medical_center_normalize_record')) {
             }
             $resolvedValue = array_merge(
                 is_array($assistantValue) ? $assistantValue : [],
-                ['remote_name' => $remotePerson['name'], 'remote_citizen_id' => $remotePerson['citizen_id']]
+                [
+                    'remote_name' => $remotePerson['name'],
+                    'remote_citizen_id' => $remotePerson['citizen_id'],
+                    'remote_staff_id' => $remotePerson['staff_id'],
+                ]
             );
             if ($localStaff !== null) {
                 $resolvedValue = array_merge($resolvedValue, [

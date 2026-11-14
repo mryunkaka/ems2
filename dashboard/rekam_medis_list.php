@@ -208,6 +208,8 @@ function medicalRecordHistoryMap(PDO $pdo, bool $hasPatientCitizenId, bool $hasJ
 $search = trim($_GET['search'] ?? '');
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo = trim($_GET['date_to'] ?? '');
+$dateRangeSubmitted = array_key_exists('date_from', $_GET) || array_key_exists('date_to', $_GET);
+$useDefaultWeek = !$dateRangeSubmitted && $search === '';
 $validDate = static fn (string $date): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 && date('Y-m-d', strtotime($date)) === $date;
 if (!$validDate($dateFrom)) $dateFrom = '';
 if (!$validDate($dateTo)) $dateTo = '';
@@ -243,12 +245,26 @@ if ($isForensicPrivate && !$forensicPerms['can_view_all']) {
 if ($dateFrom !== '' && $dateTo !== '' && $dateFrom > $dateTo) {
     [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
 }
-$displayDateFrom = $dateFrom !== '' ? $dateFrom : date('Y-m-d', strtotime('-6 days'));
-$displayDateTo = $dateTo !== '' ? $dateTo : date('Y-m-d');
-$whereClause .= ' AND r.created_at >= ?';
-$params[] = $displayDateFrom . ' 00:00:00';
-$whereClause .= ' AND r.created_at < ?';
-$params[] = date('Y-m-d 00:00:00', strtotime($displayDateTo . ' +1 day'));
+if ($dateFrom !== '') {
+    $whereClause .= ' AND r.created_at >= ?';
+    $params[] = $dateFrom . ' 00:00:00';
+}
+if ($dateTo !== '') {
+    $whereClause .= ' AND r.created_at < ?';
+    $params[] = date('Y-m-d 00:00:00', strtotime($dateTo . ' +1 day'));
+}
+if ($useDefaultWeek) {
+    $whereClause .= ' AND r.created_at >= ? AND r.created_at < ?';
+    $params[] = date('Y-m-d 00:00:00', strtotime('-6 days'));
+    $params[] = date('Y-m-d 00:00:00', strtotime('+1 day'));
+}
+$dateRangeLabel = match (true) {
+    $dateFrom !== '' && $dateTo !== '' => date('d/m/Y', strtotime($dateFrom)) . ' sampai ' . date('d/m/Y', strtotime($dateTo)),
+    $dateFrom !== '' => 'sejak ' . date('d/m/Y', strtotime($dateFrom)),
+    $dateTo !== '' => 'sampai ' . date('d/m/Y', strtotime($dateTo)),
+    $useDefaultWeek => '1 minggu terakhir',
+    default => 'semua tanggal',
+};
 
 if ($search !== '') {
     $searchParts = [
@@ -311,7 +327,7 @@ foreach ($records as &$record) {
     if ($remotePayload === []) {
         continue;
     }
-    foreach (ems_medical_center_normalize_record($remotePayload) as $field => $value) {
+    foreach (ems_medical_center_normalize_record($remotePayload, $pdo) as $field => $value) {
         if (in_array($field, ['remote_dpjp_json', 'remote_assistants_json'], true)) {
             $current = ems_medical_center_decode_array($record[$field] ?? []);
             $fallback = ems_medical_center_decode_array($value);
@@ -396,7 +412,7 @@ include __DIR__ . '/../partials/sidebar.php';
         <div class="flex justify-between items-center mb-4">
             <div>
                 <h1 class="page-title"><?= $isForensicPrivate ? 'Rekap Rekam Medis Private' : 'Rekap Rekam Medis' ?></h1>
-                <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private — division Forensic, atau medis lain yang sudah diberi izin khusus' : 'Daftar rekam medis pasien' ?> · Tampil <?= htmlspecialchars(date('d/m/Y', strtotime($displayDateFrom)), ENT_QUOTES, 'UTF-8') ?> sampai <?= htmlspecialchars(date('d/m/Y', strtotime($displayDateTo)), ENT_QUOTES, 'UTF-8') ?></p>
+                <p class="page-subtitle"><?= $isForensicPrivate ? 'Daftar rekam medis private — division Forensic, atau medis lain yang sudah diberi izin khusus' : 'Daftar rekam medis pasien' ?> · Rentang: <?= htmlspecialchars($dateRangeLabel, ENT_QUOTES, 'UTF-8') ?></p>
             </div>
             <div class="flex gap-2 flex-wrap justify-end">
                 <?php if (!$isForensicPrivate || $forensicPerms['can_create']): ?>
@@ -437,6 +453,7 @@ include __DIR__ . '/../partials/sidebar.php';
                         <a href="<?= $isForensicPrivate ? 'forensic_medical_records_list.php' : 'rekam_medis_list.php' ?>" class="btn-secondary">Reset</a>
                     <?php endif; ?>
                 </form>
+                <p class="text-xs text-gray-500 mt-2">Tanggal dibiarkan kosong. Tampilan awal otomatis memakai 1 minggu terakhir; jika Anda mencari pasien atau Citizen ID tanpa mengisi tanggal, sistem mencari seluruh riwayat yang dapat Anda akses. Pencarian seluruh riwayat dapat memuat lebih lama.</p>
             </div>
         </div>
 
