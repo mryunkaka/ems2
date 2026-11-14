@@ -13,6 +13,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/env.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/medical_records_api.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 
 $lockPath = __DIR__ . '/../storage/cache/medical_center_get.lock';
 $lockDir = dirname($lockPath);
@@ -152,6 +153,11 @@ try {
         'INSERT INTO medical_records (`' . implode('`,`', $mirrorColumns) . '`)
          VALUES (' . implode(',', array_fill(0, count($mirrorColumns), '?')) . ')'
     );
+    $auditRequesterId = ems_table_exists($pdo, 'system_ai_request_queue')
+        && ems_table_exists($pdo, 'medical_record_validation_findings')
+        && ems_column_exists($pdo, 'medical_record_validation_findings', 'severity')
+        ? (int) $pdo->query("SELECT id FROM user_rh WHERE is_active=1 AND LOWER(REPLACE(division,' ',''))='medicalaffair' ORDER BY id LIMIT 1")->fetchColumn()
+        : 0;
 
     foreach ($remoteRecords as $record) {
         $remoteId = trim((string) ($record['id'] ?? ''));
@@ -222,6 +228,7 @@ try {
         }
         $mirrorFind->execute(['medical_center', 'roxwood', $remoteId]);
         $mirrorId = (int) ($mirrorFind->fetchColumn() ?: 0);
+        $mirrorWasCreated = false;
         if ($mirrorId <= 0 && $patientName !== null && $remoteEventAt !== null) {
             // Medical Center dapat mengirim ulang operasi yang sama dengan ID
             // berbeda. Jangan membuat dua rekam medis lokal hanya karena ID
@@ -255,6 +262,7 @@ try {
         } else {
             $mirrorInsert->execute($mirrorValues);
             $mirrorId = (int) $pdo->lastInsertId();
+            $mirrorWasCreated = true;
         }
 
         if ($mirrorId > 0 && isset($mapped['remote_local_assistant_ids']) && is_array($mapped['remote_local_assistant_ids'])) {
@@ -263,6 +271,14 @@ try {
 
         if ($mirrorId > 0) {
             ems_auto_create_disciplinary_reduction_requests_for_medical_record($pdo, $mirrorId);
+        }
+
+        if ($mirrorWasCreated && $auditRequesterId > 0 && $eventAt !== null && $eventAt >= new DateTimeImmutable('-7 days', new DateTimeZone('Asia/Jakarta'))) {
+            try {
+                ems_ai_queue_enqueue($pdo, 'medical_record_validation', $auditRequesterId, 'Validasi awal rekam medis', ['requester_id' => $auditRequesterId, 'record_id' => $mirrorId], 'medical-record-validation-v2:' . $mirrorId);
+            } catch (Throwable $queueError) {
+                error_log('Medical record validation enqueue: ' . $queueError->getMessage());
+            }
         }
 
         $recordsStored++;

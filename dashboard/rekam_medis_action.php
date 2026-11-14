@@ -8,6 +8,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
 require_once __DIR__ . '/../config/forensic_private_access.php';
 require_once __DIR__ . '/../config/inbox_helper.php';
+require_once __DIR__ . '/../config/ai_queue.php';
 
 // Validate request method
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -297,6 +298,23 @@ try {
     ems_auto_create_disciplinary_reduction_requests_for_medical_record($pdo, $recordId);
 
     $pdo->commit();
+
+    if ($visibilityScope === 'standard'
+        && ems_table_exists($pdo, 'system_ai_request_queue')
+        && ems_table_exists($pdo, 'medical_record_validation_findings')
+        && ems_column_exists($pdo, 'medical_record_validation_findings', 'severity')) {
+        try {
+            $requesterId = $userId;
+            if (!ems_can_access_division_menu($userDivision, 'Medical Affair') && !ems_is_programmer_roxwood_name((string) ($user['full_name'] ?? ''))) {
+                $requesterId = (int) $pdo->query("SELECT id FROM user_rh WHERE is_active=1 AND LOWER(REPLACE(division,' ',''))='medicalaffair' ORDER BY id LIMIT 1")->fetchColumn();
+            }
+            if ($requesterId > 0) {
+                ems_ai_queue_enqueue($pdo, 'medical_record_validation', $requesterId, 'Validasi awal rekam medis', ['requester_id' => $requesterId, 'record_id' => $recordId], 'medical-record-validation-v2:' . $recordId);
+            }
+        } catch (Throwable $queueError) {
+            error_log('Medical record validation enqueue: ' . $queueError->getMessage());
+        }
+    }
 
     if (!empty($notificationUserIds)) {
         $pushUsers = [];

@@ -335,12 +335,16 @@ try {
         $validationAiClearCount = (int) $pdo->query("SELECT COUNT(*) FROM medical_record_validation_findings f INNER JOIN medical_records r ON r.id=f.medical_record_id WHERE f.source='ai' AND f.rule_key='ai_v2_completed' AND f.status='resolved' AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND NOT EXISTS (SELECT 1 FROM medical_record_validation_findings x WHERE x.medical_record_id=f.medical_record_id AND x.source='ai' AND x.rule_key LIKE 'ai_v2_%' AND x.rule_key<>'ai_v2_completed' AND x.status='pending')")->fetchColumn();
 
         $validationAiEnabled = ems_ai_global_provider_ready($pdo);
-        if (ems_table_exists($pdo, 'system_ai_request_queue') && $validationAiEnabled) {
+        if (ems_table_exists($pdo, 'system_ai_request_queue') && $validationAiEnabled
+            && ems_table_exists($pdo, 'medical_record_validation_findings')
+            && ems_column_exists($pdo, 'medical_record_validation_findings', 'severity')) {
             $hasScopeForQueue = ems_column_exists($pdo, 'medical_records', 'visibility_scope');
             $activeAiJobs = $pdo->query("SELECT COUNT(*) FROM system_ai_request_queue WHERE job_type='medical_record_validation' AND status IN ('queued','running')")->fetchColumn();
             $queueLimit = max(0, 3 - (int) $activeAiJobs);
             $queueSql = "SELECT r.id FROM medical_records r WHERE r.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) " . ($hasScopeForQueue ? "AND COALESCE(r.visibility_scope,'standard')='standard' " : '')
-                . "AND NOT EXISTS (SELECT 1 FROM medical_record_validation_findings f WHERE f.medical_record_id=r.id AND f.source='ai' AND f.rule_key LIKE 'ai_v2_%') ORDER BY r.created_at DESC LIMIT " . $queueLimit;
+                . "AND NOT EXISTS (SELECT 1 FROM medical_record_validation_findings f WHERE f.medical_record_id=r.id AND f.source='ai' AND f.rule_key LIKE 'ai_v2_%') "
+                . "AND (SELECT COUNT(*) FROM system_ai_request_queue q WHERE q.job_type='medical_record_validation' AND q.dedupe_key=SHA2(CONCAT('medical-record-validation-v2:',r.id),256)) < 2 "
+                . "ORDER BY r.created_at DESC LIMIT " . $queueLimit;
             foreach ($pdo->query($queueSql)->fetchAll(PDO::FETCH_COLUMN) as $recordId) {
                 try {
                     $requesterId = (int) ($_SESSION['user_rh']['id'] ?? 0);
