@@ -292,6 +292,7 @@ require_once __DIR__ . '/../auth/auth_guard.php';
 require_once __DIR__ . '/../auth/csrf.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/helpers.php';
+require_once __DIR__ . '/../config/duty_hours_api.php';
 require_once __DIR__ . '/../config/date_range.php'; // hasilkan $rangeStart, $rangeEnd, $rangeLabel
 require_once __DIR__ . '/../assets/design/ui/icon.php';
 require_once __DIR__ . '/../assets/design/ui/component.php';
@@ -346,6 +347,30 @@ $stmtCurrentUser = $pdo->prepare("
 ");
 $stmtCurrentUser->execute([$userId]);
 $currentUserProfile = $stmtCurrentUser->fetch(PDO::FETCH_ASSOC) ?: [];
+
+$monthlyDutyLabel = 'Tidak tersedia';
+$monthlyDutyRangeLabel = '';
+$monthStart = new DateTimeImmutable('first day of this month');
+$monthEnd = new DateTimeImmutable('last day of this month');
+$monthNames = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+$monthlyDutyRangeLabel = $monthStart->format('j') . '–' . $monthEnd->format('j') . ' ' . $monthNames[(int) $monthStart->format('n')];
+try {
+    $monthlyDutyReport = ems_duty_hours_request(
+        $pdo,
+        'custom_range',
+        $monthStart->format('Y-m-d'),
+        $monthEnd->format('Y-m-d')
+    );
+    foreach ($monthlyDutyReport['rows'] as $dutyRow) {
+        if ((int) ($dutyRow['registered_staff']['id'] ?? 0) === $userId) {
+            $monthlyDutyLabel = (string) ($dutyRow['formatted_duty_time'] ?? formatDuration((int) ($dutyRow['total_seconds'] ?? 0)));
+            break;
+        }
+    }
+    if ($monthlyDutyLabel === 'Tidak tersedia') $monthlyDutyLabel = '0j 0m';
+} catch (Throwable $e) {
+    app_log('Gagal mengambil jam duty bulanan untuk user ' . $userId . ': ' . $e->getMessage());
+}
 
 $missingProfileFields = [];
 if (empty($currentUserProfile['tanggal_masuk'])) {
@@ -2852,6 +2877,10 @@ include __DIR__ . '/../partials/sidebar.php';
 
                         <p class="muted-copy-tight">
                             Rentang aktif: <strong><?= htmlspecialchars($rangeLabel) ?></strong>
+                        </p>
+                        <p class="muted-copy-tight">
+                            Jam duty <?= htmlspecialchars($monthlyDutyRangeLabel, ENT_QUOTES, 'UTF-8') ?>:
+                            <strong><?= htmlspecialchars($monthlyDutyLabel, ENT_QUOTES, 'UTF-8') ?></strong>
                         </p>
                     </div>
                 </div>

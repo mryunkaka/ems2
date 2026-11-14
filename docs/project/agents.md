@@ -79,6 +79,9 @@ remains at root for the existing deployment setup and is blocked by `.htaccess`.
 A Programmer Roxwood-only deploy monitor lives at
 `dashboard/deployment_monitoring.php`; `deploy.sh` updates its home-directory
 status file only for a real deployment or failure, so minute polling stays quiet.
+The Programmer Roxwood-only `dashboard/database_tools.php` page exports and
+restores SQL dumps for base tables, saves pre-import backups under protected
+`storage/database_backups/`, and checks foreign-key relationships after import.
 A full
 production DB dump `fouf9972_ems (1).sql` (~28MB) sits at repo root —
 gitignored, don't read it wholesale (see §6 for extracted schema).
@@ -281,7 +284,8 @@ reduction points (floor 0).
 `validasi.php`+`_action.php` (new-account verification; approve/reject
 toggle `is_verified`+`is_active` together), `ranking.php`, `regulasi.php`
 (editable pricing) / `regulasi_roxwood_hospital.php` (read-only poster),
-`storage_audit.php` (superuser-only orphan-file scanner), `rekap_delete_bulk.php`
+`storage_audit.php` (superuser-only orphan-file scanner),
+`database_tools.php` (superuser-only base-table SQL backup/import), `rekap_delete_bulk.php`
 (⚠ **no CSRF or role check** — any logged-in user can mass-delete `ems_sales`
 rows), `sync_from_sheet.php` (⚠ **no auth at all**, meant to run only via
 cron — trusts a public Google Sheet CSV export to drive `sales` inserts),
